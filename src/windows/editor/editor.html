@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<link rel="stylesheet" type="text/css" 
+		href="../../assets/style/main.css">
+	<link rel="stylesheet" type="text/css" 
+		href="../../assets/style/editor.css">
+	<script type="text/javascript" 
+		src="../../assets/scripts/theme.js"></script>
+</head>
+<body>
+	<div class='topbar' id='topbar-view'>Damen3D Editor</div>
+	
+	<div class="editor-main">
+		<div class='inspector resizable' id='insp-view'></div>
+	
+		<div class="center-column">
+			<div class='game resizable' id='game-container' tabindex='0'></div>
+			<div class='assets resizable' id='assets-view'></div>
+		</div>
+	</div>
+	
+	<script type="module" src="../../engine/d3deditor.js"></script>
+	<script>
+		// Simple resizable behavior
+		document.querySelectorAll('.resizable').forEach(el => {
+			const handle = el.querySelector('::after'); // pseudo elements not directly selectable
+		});
+
+		let current, startX, startY, startWidth, startHeight;
+
+		document.addEventListener('mousedown', e => {
+			if (e.target.closest('.inspector.resizable') && e.offsetX > e.target.offsetWidth - 6) {
+				current = e.target;
+				startX = e.clientX;
+				startWidth = current.offsetWidth;
+				document.body.style.cursor = 'ew-resize';
+			} else if (e.target.closest('.assets.resizable') && e.offsetY < 6) {
+				current = e.target;
+				startY = e.clientY;
+				startHeight = current.offsetHeight;
+				document.body.style.cursor = 'ns-resize';
+			}
+		});
+
+		document.addEventListener('mousemove', e => {
+			if (!current) return;
+			if (current.classList.contains('inspector')) {
+				const newWidth = startWidth + (e.clientX - startX);
+				current.style.width = newWidth + 'px';
+			} else if (current.classList.contains('assets')) {
+				const newHeight = startHeight - (e.clientY - startY);
+				current.style.height = newHeight + 'px';
+			}
+		});
+
+		document.addEventListener('mouseup', () => {
+			current = null;
+			document.body.style.cursor = 'default';
+		});
+	</script>
+</body>
+</html>

@@ -1,0 +1,1 @@
+rm -f testproject.d3dproj && ./d3dmakeproj testproject testproject

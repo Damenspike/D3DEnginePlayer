@@ -1,0 +1,106 @@
+/* Make the editor fill the screen */
+html, body {
+	margin: 0;
+	padding: 0;
+	height: 100%;
+	width: 100%;
+	overflow: hidden;
+	display: flex;
+	flex-direction: column; /* topbar on top, rest below */
+}
+body.light {
+	.inspector, .assets, .topbar {
+		border-color: rgba(0, 0, 0, 0.15);
+	}
+}
+body.dark {
+	.inspector, .assets, .topbar {
+		border-color: rgba(255, 255, 255, 0.15);
+	}
+}
+
+/* TOP BAR (top bar) */
+.topbar {
+	height: 40px;
+	flex-shrink: 0;
+	border-bottom: 2px solid #666;
+	display: flex;
+	align-items: center;
+	padding: 0 10px;
+}
+
+/* MAIN EDITOR AREA BELOW TOPBAR */
+.editor-main {
+	flex: 1;
+	display: flex;
+	flex-direction: row; /* inspector | center column */
+	height: 100%;
+}
+
+/* INSPECTOR (left sidebar) */
+.inspector {
+	width: 450px;
+	min-width: 150px;
+	max-width: 700px;
+	height: 100%;
+	overflow: auto;
+	flex-shrink: 0;
+	border-right: 2px solid #666;
+}
+
+/* CENTER COLUMN */
+.center-column {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	overflow: hidden;
+}
+
+/* GAME VIEW */
+.game {
+	flex: 1;
+	overflow: hidden;
+	background: black;
+	border: 2px solid rgba(0, 0, 0, 0);
+}
+.game:focus {
+	outline: none;
+	border: 2px solid #0099ff;
+}
+
+/* ASSETS (bottom panel) */
+.assets {
+	height: 300px;
+	min-height: 100px;
+	max-height: 400px;
+	overflow: auto;
+	flex-shrink: 0;
+	border-top: 2px solid #666;
+}
+
+/* Resize handles */
+.resizable {
+	position: relative;
+}
+
+.resizable::after {
+	content: "";
+	position: absolute;
+}
+
+.inspector.resizable::after {
+	top: 0;
+	right: -2px;
+	width: 4px;
+	height: 100%;
+	cursor: ew-resize;
+}
+
+.assets.resizable::after {
+	top: -2px;
+	left: 0;
+	width: 100%;
+	height: 4px;
+	cursor: ns-resize;
+}

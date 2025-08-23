@@ -1,5 +1,5 @@
 // d3dobject.js
-const fs = require('fs');
+const fs = require('fs').promises;
 const axios = require('axios');
 const JSZip = require('jszip');
 const path = require('path');
@@ -86,55 +86,63 @@ export default class D3DObject {
 			this.parent[name] = this;
 	}
 	
-	async createObject(objData) {
+	async createObject(objData, executeScripts = true) {
 		const child = new D3DObject(objData.name, this);
 		
 		// Apply transforms
+		child.zip = this.zip;
 		child.position = objData.position;
 		child.rotation = objData.rotation;
 		child.scale = objData.scale;
 		child.uuid = objData.uuid ?? child.uuid;
+		child.editorOnly = !!objData.editorOnly || false;
+		
+		if(objData.engineScript)
+			child.engineScript = objData.engineScript;
+		
+		if(_root) {
+			if(!_root.superIndex)
+				_root.superIndex = {};
+				
+			_root.superIndex[child.uuid] = child;
+		}
 		
 		// Handle components with switch case
 		for (const component of objData.components || []) {
 			switch (component.type) {
 				case 'HTML': {
 					const elementId = `plate-html-${child.name}`; // no # in id
-					const container3d = document.getElementById('game-container');
 					const htmlSource = path.join('assets', component.properties.source);
 					const htmlContent = await this.zip.file(htmlSource)?.async('string') ?? '';
 					
 					// Remove old container if exists
-					let containerUI = document.getElementById(elementId);
-					if (containerUI) containerUI.remove();
+					let htmlContainer = document.getElementById(elementId);
+					if (htmlContainer) htmlContainer.remove();
 					
 					// Create new container
-					containerUI = document.createElement('div');
-					containerUI.id = elementId;
-					containerUI.classList.add('container', 'container--ui');
-					containerUI.innerHTML = htmlContent;
-					
-					// Create a script inside this container
-					const script = document.createElement('script');
-					script.textContent = `function getSelf(){return _root.superIndex['${child.uuid}'];};`;
-					containerUI.appendChild(script);  // <-- Append script to containerUI
+					htmlContainer = document.createElement('div');
+					htmlContainer.id = elementId;
+					htmlContainer.classList.add('container', 'container--ui');
+					htmlContainer.innerHTML = htmlContent;
 					
 					// Assign reference
-					child.containerUI = containerUI;
+					child.htmlContainer = htmlContainer;
 					
-					// Append to 3D container or defer
-					if (!container3d) {
-						child._onStart = () => {
-							const container3dDeferred = document.getElementById('game-container');
-							container3dDeferred.appendChild(containerUI);
+					if(!window._editor) {
+						// Append to 3D container or defer
+						if (!_container3d) {
+							child._onStart = () => {
+								const container3dDeferred = document.getElementById('game-container');
+								container3dDeferred.appendChild(htmlContainer);
+							}
+						} else {
+							_container3d.appendChild(htmlContainer);
 						}
-					} else {
-						container3d.appendChild(containerUI);
-					}
-					
-					// Visibility toggle
-					child._onVisibilityChanged = () => {
-						child.containerUI.style.display = child.visible ? 'block' : 'none';
+						
+						// Visibility toggle
+						child._onVisibilityChanged = () => {
+							child.htmlContainer.style.display = child.visible ? 'block' : 'none';
+						}
 					}
 					break;
 				}
@@ -218,47 +226,40 @@ export default class D3DObject {
 		this.object3d.add(child.object3d);
 		this.children.push(child);
 		
-		if(_root) {
-			if(!_root.superIndex)
-				_root.superIndex = {};
-				
-			_root.superIndex[child.uuid] = child;
-		}
-		
 		child.visible = true; // invoke visibility events
 		
 		// Recurse for nested objects if any
 		if (objData.children && objData.children.length > 0)
 			await child.buildScene({ objects: objData.children });
+			
+		if(executeScripts)
+			await child.executeScripts();
+			
+		return child;
 	}
 	
 	async load(uri) {
 		let buffer;
 		
-		try {
-			if (uri.startsWith('http://') || uri.startsWith('https://')) {
-				// Remote URL
-				console.log('Fetching remote .d3d from URL...');
-				const response = await axios.get(uri, { responseType: 'arraybuffer' });
-				buffer = Buffer.from(response.data);
-			} else {
-				// Local file
-				console.log('Reading local .d3d file...');
-				buffer = fs.readFileSync(uri);
-			}
-			
-			if(buffer) {
-				// Pass buffer to your next step
-				await this.loadFromBuffer(buffer);
-				
-				console.log('File loaded, size:', buffer.length, 'bytes');
-			}
-			
-			return buffer;
-			
-		} catch (err) {
-			console.error('Failed to load .d3d file:', err);
+		if (uri.startsWith('http://') || uri.startsWith('https://')) {
+			// Remote URL
+			console.log('Fetching remote .d3d from URL...');
+			const response = await axios.get(uri, { responseType: 'arraybuffer' });
+			buffer = Buffer.from(response.data);
+		} else {
+			// Local file
+			console.log('Reading local .d3d file...');
+			buffer = await fs.readFile(uri);
 		}
+		
+		if(buffer) {
+			// Pass buffer to your next step
+			await this.loadFromBuffer(buffer);
+			
+			console.log('File loaded, size:', buffer.length, 'bytes');
+		}
+		
+		return buffer;
 	}
 	
 	async loadFromBuffer(buffer) {
@@ -305,28 +306,35 @@ export default class D3DObject {
 	
 		// Create all objects
 		for (const objData of scene.objects) {
-			await this.createObject(objData);
+			await this.createObject(objData, false);
 		}
-	
-		// Execute scripts recursively
-		const executeScriptsFor = async (d3dobject) => {
-			const scriptName = path.join('scripts', `object_${d3dobject.name}_${d3dobject.uuid}.js`);
-			const script = await this.zip.file(scriptName)?.async('string');
-			if (script) {
-				d3dobject.runInSandbox(script);
-				console.log(`${scriptName} executed in sandbox`);
-			}
-	
-			if (d3dobject.children && d3dobject.children.length > 0) {
-				for (const child of d3dobject.children) {
-					await executeScriptsFor(child);
-				}
-			}
-		};
-	
-		await executeScriptsFor(this);
+		
+		// When building scene, wait for all objects to be made first, then execute scripts
+		await this.executeScripts();
 	}
 	
+	async executeScripts() {
+		let script;
+		let scriptName = path.join('scripts', `object_${this.name}_${this.uuid}.js`);
+		
+		if(this.engineScript) {
+			scriptName = path.join(__dirname, '../../', `engine/${this.engineScript}`);
+			script = await fs.readFile(scriptName, 'utf8');
+		}else{
+			script = await this.zip.file(scriptName)?.async('string');
+		}
+		
+		if (script && (!window._editor || this.editorOnly)) {
+			this.runInSandbox(script);
+			console.log(`${scriptName} executed in sandbox`);
+		}
+		
+		if (this.children && this.children.length > 0) {
+			for (const child of this.children) {
+				await child.executeScripts();
+			}
+		}
+	}
 	runInSandbox(script) {
 		const sandbox = {
 			console,
@@ -334,6 +342,7 @@ export default class D3DObject {
 			_root,
 			_input,
 			_time,
+			_editor,
 			self: this,
 			Vector3: THREE.Vector3,
 			Quaternion: THREE.Quaternion

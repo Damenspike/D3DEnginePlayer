@@ -1,11 +1,13 @@
 {
   "name": "Damen3DPlayer",
   "productName": "Damen3D Player",
-  "version": "1.0.0",
+  "playerVersion": "1.0.0",
+  "editorVersion": "1.0.0",
   "main": "index.js",
   "license": "MIT",
   "scripts": {
-    "start": "electron ."
+	"player": "electron ./player.js",
+	"editor": "electron ./editor.js"
   },
   "devDependencies": {
     "electron": "^37.3.1"

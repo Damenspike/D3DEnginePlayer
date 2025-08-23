@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>Damen3D Player</title>
+	<link rel="stylesheet" type="text/css" 
+		href="../../assets/style/main.css">
+</head>
+<body>
+	<center>
+		<div 
+			class='logo no-select'
+			style="margin-bottom: 20px;"
+		></div>
+		
+		<p>Open a local or remote d3d file</p>
+		
+		<input 
+			id="d3dInput" 
+			type="text" 
+			class="tf"
+			style="width: 300px;"
+			placeholder="Enter URL or browse local file" 
+		/>
+		<button id="browseBtn">Browse</button>
+		
+		<p>
+			<button id="loadBtn">Load</button>
+		</p>
+	</center>
+	
+	<script type="module" src="../../engine/d3dplayer.js"></script>
+	
+	<script>
+		const { ipcRenderer } = require('electron');
+
+		const input = document.getElementById('d3dInput');
+		const browseBtn = document.getElementById('browseBtn');
+		const loadBtn = document.getElementById('loadBtn');
+
+		browseBtn.addEventListener('click', async () => {
+			const filePath = await ipcRenderer.invoke('browse-d3d');
+			if (filePath) input.value = filePath;
+		});
+
+		loadBtn.addEventListener('click', () => {
+			let uri = input.value.trim();
+			
+			if(!uri) uri = '/Users/jack/Documents/Damen3D/misc/d3dmake/testworld.d3d';
+			if (!uri) return alert('Please enter a D3D file path or URL');
+			ipcRenderer.send('load-d3d', uri);
+		});
+		
+		// Set initial theme
+		ipcRenderer.invoke('get-theme').then(theme => {
+			document.body.classList.remove('dark', 'light');
+			document.body.classList.add(theme);
+		});
+		
+		// Listen for theme changes
+		ipcRenderer.on('theme-changed', (_, theme) => {
+			document.body.classList.remove('dark', 'light');
+			document.body.classList.add(theme);
+		});
+	</script>
+</body>
+</html>

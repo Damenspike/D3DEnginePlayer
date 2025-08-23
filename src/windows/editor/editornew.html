@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<link rel="stylesheet" type="text/css" 
+		href="../../assets/style/main.css">
+	<script type="text/javascript" 
+		src="../../assets/scripts/theme.js"></script>
+</head>
+<style>
+	.new-project {
+		flex: 1;
+		padding: 20px;
+		
+		.tf {
+			width: 100%;
+		}
+	}
+	.field {
+		text-align: left;
+		margin-bottom: 20px;
+	}
+	.field label {
+		display: block;
+		font-weight: bold;
+		margin-bottom: 10px;
+	}
+	.field input {
+		width: 100%;
+		box-sizing: border-box; /* important: keeps padding from messing width */
+	}
+</style>
+<body>
+	<div class='new-project'>
+		
+		<div class="field">
+			<label for="project-name">Project name</label>
+			<input
+				id="project-name"
+				type="text"
+				class="tf"
+			/>
+		</div>
+		
+		<div class="field">
+			<label for="author">Author</label>
+			<input
+				id="author"
+				type="text"
+				class="tf"
+			/>
+		</div>
+		
+		<div class="field">
+			<label>Default dimensions</label>
+			<input
+				name="width"
+				type="number"
+				class="tf tf--num"
+				value="760"
+				placeholder="Width px"
+			/>
+			<input
+				name="height"
+				type="number"
+				class="tf tf--num"
+				value="480"
+				placeholder="Height px"
+			/>
+		</div>
+		
+		<button
+			onclick="javascript:;"
+			style="width: 100%;"
+		>
+			Create Project
+		</button>
+		
+	</div>
+</body>
+</html>

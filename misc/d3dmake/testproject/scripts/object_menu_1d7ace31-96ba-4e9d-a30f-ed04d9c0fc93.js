@@ -1,3 +1,7 @@
+self.htmlContainer.getElementById('begin').addEventListener('click', () => {
+	self.visible = !self.visible;
+});
+
 _input.freezeMouse();
 _input.addEventListener('keydown', (e) => {
 	if(e.code == 'Escape')
@@ -14,7 +18,4 @@ self.onVisibilityChanged = () => {
 		_input.freezeMouse();
 	else
 		_input.unfreezeMouse();
-}
-self.close = () => {
-	self.visible = !self.visible;
 }

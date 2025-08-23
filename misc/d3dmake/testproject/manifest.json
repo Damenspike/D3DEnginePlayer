@@ -1,0 +1,15 @@
+{
+	"name": "Test World",
+	"author": "Damen",
+	"engine": "Damen3D 1.0 Alpha",
+	"width": 760,
+	"height": 480,
+	"description": "This is a sample world for testing Damen3D player.",
+	"startScene": 0,
+	"version": "1.0.0",
+	"editorConfig": {
+		"lastScene": 0,
+		"lastCameraPosition": {"x": 10, "y": 0, "z": 0},
+		"lastCameraRotation": {"x": 5, "y": 0, "z": 0}
+	}
+}

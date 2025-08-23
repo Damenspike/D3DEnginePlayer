@@ -66,8 +66,26 @@ export default class D3DInput {
 	}
 
 	_keyNameToCode(key) {
+		// letters a-z
 		if (key.length === 1 && /^[a-z]$/i.test(key)) return 'Key' + key.toUpperCase();
-		return key;
+	
+		// digits
+		if (key.length === 1 && /^[0-9]$/.test(key)) return 'Digit' + key;
+	
+		// modifiers
+		switch (key.toLowerCase()) {
+			case 'shift': return 'ShiftLeft';   // or maybe check both ShiftLeft/ShiftRight
+			case 'ctrl': return 'ControlLeft';
+			case 'space': return 'Space';
+			case 'control': return 'ControlLeft';
+			case 'alt': return 'AltLeft';
+			case 'meta': return 'MetaLeft';     // command key on Mac
+			case 'arrowup': return 'ArrowUp';
+			case 'arrowdown': return 'ArrowDown';
+			case 'arrowleft': return 'ArrowLeft';
+			case 'arrowright': return 'ArrowRight';
+			default: return key;                // fallback to whatever string
+		}
 	}
 
 	getKeyDown(key) {
@@ -82,6 +100,10 @@ export default class D3DInput {
 		if (this.getKeyDown('s')) y += 1;
 		if (this.getKeyDown('w')) y -= 1;
 		return { x, y };
+	}
+	
+	getIsGameInFocus() {
+		return _container3d.matches(':focus');
 	}
 
 	// --- Mouse ---

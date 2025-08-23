@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<link rel="stylesheet" type="text/css" 
+		href="../../assets/style/main.css">
+	<script type="text/javascript" 
+		src="../../assets/scripts/theme.js"></script>
+</head>
+<body>
+	<center>
+		
+		<div class='logo no-select'></div>
+		
+		<p>
+			<button 
+				id="loadBtn"
+				onclick="ipcRenderer.invoke('new-project')"
+			>
+				New Project
+			</button>
+		</p>
+		<p>
+			<button 
+				id="loadBtn"
+				onclick="ipcRenderer.invoke('open-project')"
+			>
+				Open Project
+			</button>
+		</p>
+	</center>
+</body>
+</html>

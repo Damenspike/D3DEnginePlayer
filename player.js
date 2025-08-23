@@ -1,15 +1,16 @@
 const { app, BrowserWindow, Menu, dialog, ipcMain, nativeTheme } = require('electron');
 const path = require('path');
 
-let mainWindow;
+let startWindow;
 let gameWindow;
 let gameURI;
 
-function createMainWindow() {
-	mainWindow = new BrowserWindow({
-		width: 600,
-		height: 360,
+function createStartWindow() {
+	startWindow = new BrowserWindow({
+		width: 500,
+		height: 300,
 		resizable: false,
+		titleBarStyle: 'hidden',
 		webPreferences: {
 			preload: path.join(__dirname, 'preload.js'),
 			nodeIntegration: true,
@@ -17,21 +18,21 @@ function createMainWindow() {
 		}
 	});
 
-	mainWindow.loadFile('src/index.html');
+	startWindow.loadFile('src/windows/player/playerstart.html');
 
-	mainWindow.on('closed', () => {
-		mainWindow = null;
+	startWindow.on('closed', () => {
+		startWindow = null;
 	});
 
 	// Send initial theme
-	mainWindow.webContents.on('did-finish-load', () => {
-		mainWindow.webContents.send('theme-changed', nativeTheme.shouldUseDarkColors ? 'dark' : 'light');
+	startWindow.webContents.on('did-finish-load', () => {
+		startWindow.webContents.send('theme-changed', nativeTheme.shouldUseDarkColors ? 'dark' : 'light');
 	});
 
 	// React to theme changes
 	nativeTheme.on('updated', () => {
-		if (mainWindow) {
-			mainWindow.webContents.send('theme-changed', nativeTheme.shouldUseDarkColors ? 'dark' : 'light');
+		if (startWindow) {
+			startWindow.webContents.send('theme-changed', nativeTheme.shouldUseDarkColors ? 'dark' : 'light');
 		}
 	});
 }
@@ -47,7 +48,7 @@ function createGameWindow() {
 		}
 	});
 
-	gameWindow.loadFile('src/game.html');
+	gameWindow.loadFile('src/windows/player/player.html');
 
 	gameWindow.on('closed', () => {
 		gameWindow = null;
@@ -92,8 +93,8 @@ const menuTemplate = [
 				label: 'Open',
 				accelerator: 'CmdOrCtrl+O',
 				click: () => {
-					if (!mainWindow) createMainWindow();
-					else mainWindow.show();
+					if (!startWindow) createStartWindow();
+					else startWindow.show();
 				}
 			},
 			{
@@ -114,7 +115,9 @@ const menuTemplate = [
 			{ type: 'separator' },
 			{ role: 'cut' },
 			{ role: 'copy' },
-			{ role: 'paste' }
+			{ role: 'paste' },
+			{ type: 'separator' },
+			{ role: 'selectall' }
 		]
 	},
 
@@ -135,14 +138,14 @@ const menuTemplate = [
 Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate));
 
 // --- App events ---
-app.whenReady().then(createMainWindow);
+app.whenReady().then(createStartWindow);
 
 app.on('window-all-closed', () => {
 	if (process.platform !== 'darwin') app.quit();
 });
 
 app.on('activate', () => {
-	if (!mainWindow) createMainWindow();
+	if (!startWindow) createStartWindow();
 });
 
 // --- IPC handlers ---
