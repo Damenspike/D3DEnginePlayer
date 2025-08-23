@@ -1,0 +1,1 @@
+cd $2 && zip -r ../$1.d3d . -x "__MACOSX" "*.DS_Store" && cd ..

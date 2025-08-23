@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>Damen3D Player</title>
+	<style>
+		body { 
+			font-family: sans-serif; 
+			padding: 20px; 
+			margin: 0;
+			overflow: hidden;
+		}
+		input { width: 400px; }
+		
+		body.light {
+			background: #eee;
+			color: #000;
+		}
+		body.dark {
+			background: #222;
+			color: #eee;
+		}
+		body.dark .tf {
+			border-bottom: 2px solid rgba(255, 255, 255, 0.5);
+		}
+		body.dark .logo {
+			background-image: url('./assets/images/d3dlogowhite.png');
+		}
+		body.dark .tf {
+			color: black;
+		}
+		
+		.logo {
+			width: 250px;
+			height: 100px;
+			background-image: url('./assets/images/d3dlogo.png');
+			background-size: contain; 
+			background-repeat: no-repeat; 
+			background-position: center; 
+		}
+		.no-select {
+			user-drag: none;
+			-webkit-user-drag: none;
+			user-select: none;
+			-moz-user-select: none;
+			-webkit-user-select: none;
+			-ms-user-select: none;
+		}
+		.tf {
+			outline: none;
+			background: white;
+			border: none;
+			border-bottom: 2px solid rgba(0, 0, 0, 0.14);
+			padding: 7px;
+			margin-bottom: 15px;
+			min-width: 350px;
+			border-radius: 7px;
+		}
+		.tf:focus {
+			border-bottom: 2px solid rgba(0, 0, 0, 0.578);
+		}
+		
+		button {
+			background: #0099ff;
+			border: none;
+			padding: 7px;
+			min-width: 100px;
+			color: rgb(255, 255, 255);
+			font-weight: bold;
+			text-align: center;
+			border-radius: 7px;
+			cursor: pointer;
+			display: inline-block;
+			text-decoration: none !important;
+			font-family: sans-serif;
+			transition: all 0.2s ease-in-out;
+			text-shadow: 0px 0px 3px rgba(0, 0, 0, 0.142);
+			
+			i {
+				vertical-align: middle;
+				padding: 2px;
+			}
+		}
+		button:hover {
+			background: #0074c1;
+		}
+		button:active {
+			filter: brightness(50%);
+		}
+	</style>
+</head>
+<body>
+	<div class='logo no-select'></div>
+	
+	<p>Open a local or remote game file</p>
+	<input 
+		id="d3dInput" 
+		type="text" 
+		class="tf"
+		placeholder="Enter URL or browse local file" 
+	/>
+	<button id="browseBtn">Browse</button>
+	
+	<p>
+		<button id="loadBtn">Load</button>
+	</p>
+	
+	<script type="module" src="./engine/renderer.js"></script>
+	
+	<script>
+		const { ipcRenderer } = require('electron');
+
+		const input = document.getElementById('d3dInput');
+		const browseBtn = document.getElementById('browseBtn');
+		const loadBtn = document.getElementById('loadBtn');
+
+		browseBtn.addEventListener('click', async () => {
+			const filePath = await ipcRenderer.invoke('browse-d3d');
+			if (filePath) input.value = filePath;
+		});
+
+		loadBtn.addEventListener('click', () => {
+			let uri = input.value.trim();
+			
+			if(!uri) uri = '/Users/jack/Documents/Damen3D/misc/d3dmake/testworld.d3d';
+			if (!uri) return alert('Please enter a D3D file path or URL');
+			ipcRenderer.send('load-d3d', uri);
+		});
+		
+		// Set initial theme
+		ipcRenderer.invoke('get-theme').then(theme => {
+			document.body.classList.remove('dark', 'light');
+			document.body.classList.add(theme);
+		});
+		
+		// Listen for theme changes
+		ipcRenderer.on('theme-changed', (_, theme) => {
+			document.body.classList.remove('dark', 'light');
+			document.body.classList.add(theme);
+		});
+	</script>
+</body>
+</html>
