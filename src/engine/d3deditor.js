@@ -35,32 +35,35 @@ function closeEditor() {
 
 // Main loader
 async function loadD3DProj(uri) {
-	// 1. Init root
+	// Init root
 	await initRoot(uri);
 
-	// 2. Setup renderer
+	// Setup renderer
 	const renderer = initRenderer();
 
-	// 3. Setup editor camera
+	// Setup editor camera
 	const camera = await initEditorCamera();
 
-	// 4. Setup composer and passes
+	// Setup composer and passes
 	const { composer, outlinePass } = initComposer(renderer, camera);
 
-	// 5. Configure editor state
+	// Configure editor state
 	initEditorConfig(camera);
 
-	// 6. Start update + render loop
+	// Start update + render loop
 	startAnimationLoop(composer, outlinePass);
 
-	// 7. Setup resize handling
+	// Setup resize handling
 	setupResize(renderer, camera);
 
-	// 8. Update editor window title
+	// Update editor window title
 	ipcRenderer.send('update-editor-window', { title: _root.manifest.name });
 
-	// 9. Enable object selection via raycasting
+	// Enable object selection via raycasting
 	setupSelection(renderer, camera);
+	
+	// Setup inspector
+	updateInspector();
 }
 
 /* ---------------- Helper Functions ---------------- */
@@ -148,6 +151,7 @@ function startAnimationLoop(composer, outlinePass) {
 		updateObject('beforeEditorRenderFrame', _root);
 
 		requestAnimationFrame(animate);
+		updateInspector();
 
 		_time.delta = _time.now - _time.lastRender;
 		_time.lastRender = _time.now;
@@ -357,6 +361,165 @@ function addGridHelper() {
 	const scene = _root.object3d;
 	scene.add(grid);
 	return grid;
+}
+
+function updateInspector(updateAll = false) {
+	function bindInputField(element, value, onChange) {
+		element.val(value);
+		
+		if(element._blurAdded)
+			return;
+			
+		element.on('blur', function() {
+			const val = $(this).val();
+			
+			onChange(val, element);
+		})
+		.on('keypress', function(e) {
+			if (e.which === 13) 
+				$(this).blur();
+		});
+		
+		element._blurAdded = true;
+	}
+	const gui = _editor.gui;
+	const project = _editor.project;
+	const selectedObject = _editor.selectedObjects.length > 0 ? _editor.selectedObjects[0] : null;
+	
+	if(selectedObject !== gui.selectedObject || updateAll) {
+		
+		if(selectedObject) {
+			$('#insp-cell-object').show();
+			
+			bindInputField(
+				$("#insp-object-name"), 
+				selectedObject.name,
+				(val, element) => {
+					if(val && selectedObject.isNameAllowed(val)) {
+						selectedObject.name = val;
+					} else {
+						element.val(selectedObject.name);
+						showError({
+							message: `Invalid object name`
+						});
+					}
+				}
+			);
+			bindInputField(
+				$("#insp-object-pos-x"), 
+				selectedObject.position.x,
+				(val, element) => {
+					selectedObject.position.x = Number(val) || 0;
+				}
+			);
+			bindInputField(
+				$("#insp-object-pos-y"), 
+				selectedObject.position.y,
+				(val, element) => {
+					selectedObject.position.y = Number(val) || 0;
+				}
+			);
+			bindInputField(
+				$("#insp-object-pos-z"), 
+				selectedObject.position.z,
+				(val, element) => {
+					selectedObject.position.z = Number(val) || 0;
+				}
+			);
+			
+			bindInputField(
+				$("#insp-object-rot-x"), 
+				selectedObject.rotation.x,
+				(val, element) => {
+					selectedObject.rotation.x = Number(val) || 0;
+				}
+			);
+			bindInputField(
+				$("#insp-object-rot-y"), 
+				selectedObject.rotation.y,
+				(val, element) => {
+					selectedObject.rotation.y = Number(val) || 0;
+				}
+			);
+			bindInputField(
+				$("#insp-object-rot-z"), 
+				selectedObject.rotation.z,
+				(val, element) => {
+					selectedObject.rotation.z = Number(val) || 0;
+				}
+			);
+			
+			bindInputField(
+				$("#insp-object-scale-x"), 
+				selectedObject.scale.x,
+				(val, element) => {
+					selectedObject.scale.x = Number(val) || 0;
+				}
+			);
+			bindInputField(
+				$("#insp-object-scale-y"), 
+				selectedObject.scale.y,
+				(val, element) => {
+					selectedObject.scale.y = Number(val) || 0;
+				}
+			);
+			bindInputField(
+				$("#insp-object-scale-z"), 
+				selectedObject.scale.z,
+				(val, element) => {
+					selectedObject.scale.z = Number(val) || 0;
+				}
+			);
+		}else{
+			$('#insp-cell-object').hide();
+		}
+		
+		gui.selectedObject = selectedObject;
+	}
+	if(project !== gui.project || updateAll) {
+		
+		bindInputField(
+			$("#insp-project-name"), 
+			_editor.project.name,
+			(val, element) => {
+				if(val) {
+					_editor.project.name = val;
+				} else {
+					element.val(_editor.project.name);
+					showError({
+						message: `Invalid project name`
+					});
+				}
+			}
+		);
+		bindInputField(
+			$("#insp-project-author"), 
+			_editor.project.author,
+			(val, element) => {
+				_editor.project.author = val;
+			}
+		);
+		bindInputField(
+			$("#insp-project-dimensions-width"), 
+			_editor.project.width,
+			(val, element) => {
+				const width = Math.max(10, Math.min(3000, Number(val)));
+				_editor.project.width = width;
+				element.val(width);
+			}
+		);
+		bindInputField(
+			$("#insp-project-dimensions-height"), 
+			_editor.project.height,
+			(val, element) => {
+				const height = Math.max(10, Math.min(3000, Number(val)));
+				_editor.project.height = height;
+				element.val(height);
+			}
+		);
+		
+		gui.project = project;
+	}
 }
 
 ipcRenderer.on('d3dproj-load', async (_, uri) => {

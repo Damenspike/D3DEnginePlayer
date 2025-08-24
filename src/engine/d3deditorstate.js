@@ -9,6 +9,7 @@ export const Tools = Object.freeze({
 
 export default class D3DEditorState {
 	constructor() {
+		this.gui = {};
 		this.project = null;
 		this.camera = null;
 		this.tool = Tools.Select;

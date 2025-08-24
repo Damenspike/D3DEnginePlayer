@@ -24,6 +24,17 @@ body.dark {
 			color: white;
 		}
 	}
+	.inspector-cell {
+		background: rgba(0, 0, 0, 0.22);
+		
+		.insp-title {
+			border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+		}
+	}
+}
+
+#insp-cell-object {
+	display: none;
 }
 
 /* TOP BAR (top bar) */
@@ -47,10 +58,11 @@ body.dark {
 /* INSPECTOR (left sidebar) */
 .inspector {
 	width: 450px;
-	min-width: 150px;
+	min-width: 300px;
 	max-width: 700px;
 	height: 100%;
-	overflow: auto;
+	overflow-x: hidden;
+	overflow-y: scroll;
 	flex-shrink: 0;
 	border-right: 2px solid #666;
 }
@@ -134,4 +146,61 @@ body.dark {
 	i {
 		color: white;
 	}
+}
+.inspector-cell {
+	margin: 10px;
+	padding: 10px;
+	background: rgba(0, 0, 0, 0.1);
+	border-radius: 10px;
+	
+	.insp-title {
+		padding: 5px;
+		padding-left: 0px;
+		padding-bottom: 10px;
+		border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+		margin-bottom: 10px;
+		font-size: 12px;
+		font-weight: bold;
+		text-transform: uppercase;
+		opacity: 0.8;
+		cursor: pointer;
+		user-select: none;
+	}
+	
+	.field {
+		margin-bottom: 5px;
+	}
+}
+.insp-title:focus {
+	outline: 2px solid #0099ff;
+	outline-offset: 2px;
+}
+.inspector-cell.collapsed {
+	.insp-body {
+		display: none;
+	}
+	.insp-title {
+		border-bottom: none !important;
+		margin-bottom: 0px;
+		padding-bottom: 5px;
+	}
+}
+.vector-input {
+	display: flex;
+	align-items: center;
+	gap: 8px;          /* tweak spacing between columns */
+	flex-wrap: nowrap; /* keep them on one line */
+	
+	label {
+		width: 70px;
+		font-size: 12px;
+		text-transform: uppercase;
+	}
+}
+.vector-input > .tf {
+	flex: 1 1 0;       /* equal-width columns */
+	min-width: 0;      /* prevent overflow from long values */
+}
+.vector-field {
+	margin-bottom: 0px;
 }

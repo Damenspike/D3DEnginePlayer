@@ -106,6 +106,11 @@ export default class D3DInput {
 		if (this.getKeyDown('a')) x -= 1;
 		if (this.getKeyDown('s')) y += 1;
 		if (this.getKeyDown('w')) y -= 1;
+		
+		if (this.getKeyDown('arrowright')) x += 1;
+		if (this.getKeyDown('arrowleft')) x -= 1;
+		if (this.getKeyDown('arrowdown')) y += 1;
+		if (this.getKeyDown('arrowup')) y -= 1;
 		return { x, y };
 	}
 	

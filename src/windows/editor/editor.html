@@ -51,7 +51,129 @@
 	</div>
 	
 	<div class="editor-main">
-		<div class='inspector resizable' id='insp-view'></div>
+		<div class='inspector resizable no-select' id='insp-view'>
+			<div class='inspector-cell' id='insp-cell-object'>
+				<div class='insp-title'>
+					Object
+				</div>
+				<div class="insp-body">
+					<!-- inspector !-->
+					
+					<div class="field">
+						<label>Name</label>
+						<input
+							id="insp-object-name"
+							type="text"
+							class="tf"
+						/>
+					</div>
+					<div class="field vector-field">
+						<div class="vector-input">
+							<label>Position</label>
+							<input
+								id="insp-object-pos-x"
+								type="number"
+								class="tf"
+							/>
+							<input
+								id="insp-object-pos-y"
+								type="number"
+								class="tf"
+							/>
+							<input
+								id="insp-object-pos-z"
+								type="number"
+								class="tf"
+							/>
+						</div>
+					</div>
+					<div class="field vector-field">
+						<div class="vector-input">
+							<label>Rotation</label>
+							<input
+								id="insp-object-rot-x"
+								type="number"
+								class="tf"
+							/>
+							<input
+								id="insp-object-rot-y"
+								type="number"
+								class="tf"
+							/>
+							<input
+								id="insp-object-rot-z"
+								type="number"
+								class="tf"
+							/>
+						</div>
+					</div>
+					<div class="field vector-field">
+						<div class="vector-input">
+							<label>Scale</label>
+							<input
+								id="insp-object-scale-x"
+								type="number"
+								class="tf"
+							/>
+							<input
+								id="insp-object-scale-y"
+								type="number"
+								class="tf"
+							/>
+							<input
+								id="insp-object-scale-z"
+								type="number"
+								class="tf"
+							/>
+						</div>
+					</div>
+				</div>
+			</div>
+			
+			<div class='inspector-cell' id='insp-cell-project'>
+				<div class='insp-title'>
+					Project
+				</div>
+				<div class="insp-body">
+					<div class="field">
+						<label>Project name</label>
+						<input
+							id="insp-project-name"
+							type="text"
+							class="tf"
+						/>
+					</div>
+					<div class="field">
+						<label for="author">Author</label>
+						<input
+							id="insp-project-author"
+							type="text"
+							class="tf"
+						/>
+					</div>
+					
+					<div class="field">
+						<label>Default dimensions</label>
+						<input
+							id="insp-project-dimensions-width"
+							name="width"
+							type="number"
+							class="tf tf--num"
+							value="760"
+							placeholder="Width px"
+						/>
+						<input
+							id="insp-project-dimensions-height"
+							name="height"
+							type="number"
+							class="tf tf--num"
+							value="480"
+							placeholder="Height px"
+						/>
+					</div>
+				</div>
+			</div>
+		</div>
 	
 		<div class="center-column">
 			<div class='game resizable' id='game-container' tabindex='0'></div>
@@ -100,3 +222,29 @@
 	</script>
 </body>
 </html>
+<script>
+	const $ = require('jquery');
+	
+	// restore state on load
+	$('.inspector-cell').each(function() {
+		const id = this.id || '';
+		const saved = localStorage.getItem('insp-collapsed:' + id);
+		if (saved === '1') $(this).addClass('collapsed');
+	});
+	
+	// toggle on click
+	$(document).on('click', '.insp-title', function() {
+		const $cell = $(this).closest('.inspector-cell');
+		const id = $cell.attr('id') || '';
+		$cell.toggleClass('collapsed');
+		localStorage.setItem('insp-collapsed:' + id, $cell.hasClass('collapsed') ? '1' : '0');
+	});
+	
+	// keyboard support (Enter/Space)
+	$(document).on('keydown', '.insp-title', function(e) {
+		if (e.key === 'Enter' || e.key === ' ') {
+			e.preventDefault();
+			$(this).trigger('click');
+		}
+	});
+</script>
