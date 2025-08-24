@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
 	<meta charset="UTF-8">
+	<link rel="stylesheet" 
+		href="../../../node_modules/material-icons/iconfont/material-icons.css">
 	<link rel="stylesheet" type="text/css" 
 		href="../../assets/style/main.css">
 	<link rel="stylesheet" type="text/css" 
@@ -10,7 +12,43 @@
 		src="../../assets/scripts/theme.js"></script>
 </head>
 <body>
-	<div class='topbar' id='topbar-view'>Damen3D Editor</div>
+	<div class='topbar' id='topbar-view'>
+		<div 
+			class='tool-option no-select' 
+			id='tool-select'
+			onclick="_editor.setTool('select')"
+		>
+			<i class="material-icons">navigation</i>
+		</div>
+		<div 
+			class='tool-option no-select' 
+			id='tool-pan'
+			onclick="_editor.setTool('pan')"
+		>
+			<i class="material-icons">camera_alt</i>
+		</div>
+		<div 
+			class='tool-option no-select' 
+			id='tool-transform'
+			onclick="_editor.setTool('transform')"
+		>
+			<i class="material-icons">open_with</i>
+		</div>
+		<div 
+			class='tool-option no-select' 
+			id='tool-rotate'
+			onclick="_editor.setTool('rotate')"
+		>
+			<i class="material-icons">rotate_right</i>
+		</div>
+		<div 
+			class='tool-option no-select' 
+			id='tool-scale'
+			onclick="_editor.setTool('scale')"
+		>
+			<i class="material-icons">aspect_ratio</i>
+		</div>
+	</div>
 	
 	<div class="editor-main">
 		<div class='inspector resizable' id='insp-view'></div>

@@ -107,6 +107,12 @@ function setupTheme(browserWindow) {
 function closeEditorWindow() {
 	return new Promise(resolve => {
 		if (!editorWindow) return resolve();
+		
+		// If already destroyed, just cleanup and resolve
+		if (editorWindow.isDestroyed()) {
+			editorWindow = null;
+			return resolve();
+		}
 
 		editorWindow.once('closed', () => {
 			editorWindow = null;

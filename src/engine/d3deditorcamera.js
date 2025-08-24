@@ -1,10 +1,12 @@
 const moveSpeed = 5;
 const mouseSensitivity = 0.4;
+const zoomSpeed = 0.4;
 
 // Pitch/Yaw angles in radians
 let yaw = 0;
 let pitch = 0;
 let wasForcingPan = false;
+let initialTool = 'select';
 
 function updateRotation() {
 	const delta = _time.delta;
@@ -37,19 +39,33 @@ function updateMotion() {
 	
 	self.object3d.translateX(axis.x * speed);  // right/left
 }
+function updateZoom() {
+	const delta = _time.delta;
+	const wheelDelta = _input.getWheelDelta();
+	const mult = _input.getKeyDown('space') ? 3 : 1;
+	const speed = zoomSpeed * mult * delta;
+	
+	self.object3d.translateZ(wheelDelta.y * speed);
+}
 
 self.beforeEditorRenderFrame = () => {
-	if(_input.getIsGameInFocus()) {
+	const isGameInFocus = _input.getIsGameInFocus();
+	
+	if(isGameInFocus) {
 		if(_input.getRightMouseButtonDown()) {
+			if(!wasForcingPan)
+				initialTool = _editor.tool;
+			
 			_editor.setTool('pan');
 			wasForcingPan = true;
 		}else
 		if(wasForcingPan) {
-			_editor.setTool('select');
+			_editor.setTool(initialTool);
 			wasForcingPan = false;
 		}
 		
-		_editor.tool == 'pan' && updateRotation();
-		_input.getIsGameInFocus() && updateMotion();
+		_editor.tool == 'pan' && (_input.getLeftMouseButtonDown() || _input.getRightMouseButtonDown()) && updateRotation();
+		updateMotion();
+		updateZoom();
 	}
 };

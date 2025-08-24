@@ -69,6 +69,7 @@ async function loadD3DProj(uri) {
 	_editor.config = _editor.project.editorConfig;
 	_editor.camera = camera;
 	_editor.gridHelper = addGridHelper();
+	_editor.setTool('select'); // default tool
 	
 	if(!_editor.config) {
 		throw new Error('Missing editor configuration');

@@ -8,7 +8,10 @@ export default class D3DInput {
 		this.mouseLock = false;
 		this.mouse = { x: 0, y: 0, buttons: {} };
 		this._mouseDelta = { x: 0, y: 0 };
-		this._mouseFrozen = false;   // <-- NEW
+		this._mouseFrozen = false;
+		
+		this._wheelDelta = { x: 0, y: 0, z: 0 };
+		this._wheelListeners = [];
 
 		this._mouseDownListeners = [];
 		this._mouseUpListeners = [];
@@ -22,6 +25,7 @@ export default class D3DInput {
 		this._onMouseUp = this._onMouseUp.bind(this);
 		this._onMouseMove = this._onMouseMove.bind(this);
 		this._onPointerLockChange = this._onPointerLockChange.bind(this);
+		this._onWheel = this._onWheel.bind(this);
 
 		// Add event listeners
 		window.addEventListener('keydown', this._onKeyDown);
@@ -29,6 +33,9 @@ export default class D3DInput {
 		window.addEventListener('mousedown', this._onMouseDown);
 		window.addEventListener('mouseup', this._onMouseUp);
 		window.addEventListener('mousemove', this._onMouseMove);
+		window.addEventListener('wheel', this._onWheel, { passive: true });
+		
+		// Pointer lock event
 		document.addEventListener('pointerlockchange', this._onPointerLockChange);
 	}
 
@@ -110,6 +117,9 @@ export default class D3DInput {
 	_afterRenderFrame() {
 		this._mouseDelta.x = 0;
 		this._mouseDelta.y = 0;
+		this._wheelDelta.x = 0;
+		this._wheelDelta.y = 0;
+		this._wheelDelta.z = 0;
 	}
 	
 	_onMouseDown(e) {
@@ -153,6 +163,20 @@ export default class D3DInput {
 	getMouseDelta() {
 		return { ...this._mouseDelta };
 	}
+	
+	// --- Wheel (scroll) ---
+	_onWheel(e) {
+		if (this._mouseFrozen) return;
+		this._wheelDelta.x += e.deltaX;
+		this._wheelDelta.y += e.deltaY;
+		this._wheelDelta.z += e.deltaZ;
+		this._wheelListeners.forEach(listener => listener(e));
+	}
+	
+	getWheelDelta() {
+		// Return copy so external code doesn’t mutate state
+		return { ...this._wheelDelta };
+	}
 
 	// --- Event listeners ---
 	addEventListener(type, handler) {
@@ -162,6 +186,7 @@ export default class D3DInput {
 			case 'mousedown': this._mouseDownListeners.push(handler); break;
 			case 'mouseup': this._mouseUpListeners.push(handler); break;
 			case 'mousemove': this._mouseMoveListeners.push(handler); break;
+			case 'wheel': this._wheelListeners.push(handler); break;
 			case 'pointerlockchange': this._pointerLockListeners.push(handler); break;
 		}
 	}
@@ -174,6 +199,7 @@ export default class D3DInput {
 			case 'mousedown': arr = this._mouseDownListeners; break;
 			case 'mouseup': arr = this._mouseUpListeners; break;
 			case 'mousemove': arr = this._mouseMoveListeners; break;
+			case 'wheel': arr = this._wheelListeners; break;
 			case 'pointerlockchange': arr = this._pointerLockListeners; break;
 			default: return;
 		}
@@ -188,6 +214,7 @@ export default class D3DInput {
 		window.removeEventListener('mousedown', this._onMouseDown);
 		window.removeEventListener('mouseup', this._onMouseUp);
 		window.removeEventListener('mousemove', this._onMouseMove);
+		window.removeEventListener('wheel', this._onWheel);
 		document.removeEventListener('pointerlockchange', this._onPointerLockChange);
 
 		this._listenersDown = [];
@@ -199,5 +226,7 @@ export default class D3DInput {
 		this.mouse = { x: 0, y: 0, buttons: {} };
 		this._mouseDelta = { x: 0, y: 0 };
 		this._mouseFrozen = false;
+		this._wheelListeners = [];
+		this._wheelDelta = { x: 0, y: 0, z: 0 };
 	}
 }
