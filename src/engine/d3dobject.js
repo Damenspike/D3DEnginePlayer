@@ -80,6 +80,7 @@ export default class D3DObject {
 		this.parent = parent; // D3DObject or null for root
 		this.children = [];
 		this.object3d = this.parent ? new THREE.Object3D() : new THREE.Scene();
+		this.object3d.userData.d3dobject = this;
 		this.scenes = [];
 		
 		if(this.parent)
@@ -153,6 +154,9 @@ export default class D3DObject {
 						component.properties.clipNear || 0.1, 
 						component.properties.clipFar || 1000
 					);
+					camera.position.set(child.position.x, child.position.y, child.position.z);
+					camera.rotation.set(child.rotation.x, child.rotation.y, child.rotation.z);
+					camera.scale.set(child.scale.x, child.scale.y, child.scale.z);
 					child.object3d = camera;
 					break;
 				}

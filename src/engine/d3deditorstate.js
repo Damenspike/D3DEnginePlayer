@@ -12,6 +12,7 @@ export default class D3DEditorState {
 		this.project = null;
 		this.camera = null;
 		this.tool = Tools.Select;
+		this.selectedObjects = [];
 	}
 
 	setTool(tool) {
