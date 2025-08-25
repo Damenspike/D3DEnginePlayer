@@ -204,3 +204,6 @@ body.dark {
 .vector-field {
 	margin-bottom: 0px;
 }
+.vector-input--top {
+	align-items: flex-start;
+}

@@ -1,8 +1,15 @@
 <style>
+	@font-face {
+		font-family: "Proxima Nova";
+		src: url("../fonts/Proxima Nova Reg.woff") format("woff");
+		font-weight: 400;
+	}
+	
 	body { 
 		padding: 20px; 
 		margin: 0;
 		overflow: hidden;
+		font-family: "Proxima Nova", sans-serif;
 	}
 	p, label {
 		font-size: 14px;
@@ -27,7 +34,7 @@
 	}
 	
 	* {
-		font-family: arial, sans-serif
+		font-family: "Proxima Nova", sans-serif;
 	}
 	
 	.logo {
@@ -101,5 +108,14 @@
 	}
 	button:active {
 		filter: brightness(50%);
+	}
+	input[type=checkbox] {
+		width: 20px;
+		height: 20px;
+	}
+	input[type="range"] {
+		width: 100%;
+		background: transparent;
+		padding: 0;
 	}
 </style>

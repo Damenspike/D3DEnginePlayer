@@ -169,6 +169,12 @@ const menuTemplate = [
 				label: 'Open Project',
 				accelerator: 'CmdOrCtrl+O',
 				click: () => openBrowse()
+			},
+			{ type: 'separator' },
+			{
+				label: 'Save',
+				accelerator: 'CmdOrCtrl+S',
+				click: () => null
 			}
 		]
 	},

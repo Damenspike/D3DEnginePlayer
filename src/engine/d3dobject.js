@@ -44,6 +44,58 @@ export default class D3DObject {
 		this._onVisibilityChanged?.();
 	}
 	
+	get opacity() {
+		let value = 1;
+	
+		function findOpacity(o) {
+			if (o.material) {
+				if (Array.isArray(o.material)) {
+					// just take the first non-null material
+					for (let m of o.material) {
+						if (m) {
+							value = m.opacity;
+							return true; // stop search
+						}
+					}
+				} else {
+					value = o.material.opacity;
+					return true;
+				}
+			}
+			if (o.children && o.children.length) {
+				for (let child of o.children) {
+					if (findOpacity(child)) return true;
+				}
+			}
+			return false;
+		}
+	
+		findOpacity(this.object3d);
+		return value;
+	}
+	set opacity(value) {
+		const opacity = Math.max(0, Math.min(1, Number(value)));
+		
+		function applyOpacity(o) {
+			if (o.material) {
+				if (Array.isArray(o.material)) {
+					o.material.forEach(m => {
+						m.transparent = opacity < 1;
+						m.opacity = opacity;
+						m.needsUpdate = true;
+					});
+				} else {
+					o.material.transparent = opacity < 1;
+					o.material.opacity = opacity;
+					o.material.needsUpdate = true;
+				}
+			}
+			if (o.children && o.children.length) o.children.forEach(applyOpacity);
+		}
+		
+		applyOpacity(this.object3d);
+	}
+	
 	///////////////////////////////
 	// Getters only
 	///////////////////////////////

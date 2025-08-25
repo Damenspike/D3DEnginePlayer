@@ -202,6 +202,7 @@ function setupSelection(renderer, camera) {
 
 	renderer.domElement.addEventListener('mousedown', (event) => {
 		if (_editor.tool !== 'select' || event.button !== 0) return;
+		if (_input.getKeyDown('alt')) return;
 
 		const r = renderer.domElement.getBoundingClientRect();
 		startPoint = {
@@ -382,6 +383,53 @@ function updateInspector(updateAll = false) {
 		
 		element._blurAdded = true;
 	}
+	function bindCheckboxField(element, value, onChange) {
+		// set initial state
+		element.prop('checked', !!value);
+	
+		// avoid duplicate listeners
+		if (element._changeAdded) return;
+	
+		element
+			.on('change', function() {
+				const checked = $(this).prop('checked');
+				onChange(checked, element);
+			})
+			.on('keypress', function(e) {
+				// Enter toggles and emits change
+				if (e.which === 13) {
+					const next = !$(this).prop('checked');
+					$(this).prop('checked', next).trigger('change');
+					e.preventDefault();
+				}
+			});
+	
+		element._changeAdded = true;
+	}
+	function bindSliderField(element, value, onChange) {
+		// set initial value
+		element.val(value);
+	
+		// avoid duplicate listeners
+		if (element._inputAdded) return;
+	
+		element
+			.on('input change', function() {
+				const val = parseFloat($(this).val());
+				onChange(val, element);
+			})
+			.on('keypress', function(e) {
+				// Enter confirms current value
+				if (e.which === 13) {
+					const val = parseFloat($(this).val());
+					onChange(val, element);
+					$(this).blur();
+				}
+			});
+	
+		element._inputAdded = true;
+	}
+	
 	const gui = _editor.gui;
 	const project = _editor.project;
 	const selectedObject = _editor.selectedObjects.length > 0 ? _editor.selectedObjects[0] : null;
@@ -400,7 +448,7 @@ function updateInspector(updateAll = false) {
 					} else {
 						element.val(selectedObject.name);
 						showError({
-							message: `Invalid object name`
+							message: `Invalid object name. ${val != '' ? 'Object names must contain no spaces or special characters apart from - and _' : ''}`
 						});
 					}
 				}
@@ -468,6 +516,21 @@ function updateInspector(updateAll = false) {
 				selectedObject.scale.z,
 				(val, element) => {
 					selectedObject.scale.z = Number(val) || 0;
+				}
+			);
+			
+			bindCheckboxField(
+				$("#insp-object-visible"), 
+				selectedObject.visible,
+				(val, element) => {
+					selectedObject.visible = !!val;
+				}
+			);
+			bindSliderField(
+				$("#insp-object-opacity"), 
+				selectedObject.opacity,
+				(val, element) => {
+					selectedObject.opacity = Number(val);
 				}
 			);
 		}else{
