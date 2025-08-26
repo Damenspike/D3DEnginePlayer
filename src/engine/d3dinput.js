@@ -57,6 +57,9 @@ export default class D3DInput {
 
 	// --- Keyboard ---
 	_onKeyDown(e) {
+		if(this.getKeyDown('control') || this.getKeyDown('meta'))
+			return; // stop other inputs getting stuck
+		
 		this._keys[e.code] = true;
 		this._listenersDown.forEach(listener => listener(e));
 	}
@@ -102,6 +105,10 @@ export default class D3DInput {
 
 	getControllerAxis() {
 		let x = 0, y = 0;
+		
+		if(this.getKeyDown('control') || this.getKeyDown('meta'))
+			return { x, y };
+		
 		if (this.getKeyDown('d')) x += 1;
 		if (this.getKeyDown('a')) x -= 1;
 		if (this.getKeyDown('s')) y += 1;

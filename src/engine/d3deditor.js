@@ -11,6 +11,7 @@ import D3DInput from './d3dinput.js';
 import D3DTime from './d3dtime.js';
 import D3DEditorState from './d3deditorstate.js';
 import D3DInfiniteGrid from './d3dinfinitegrid.js';
+import D3DTransformGizmo from './d3dtransformgizmo.js';
 
 let rootContext;
 
@@ -43,12 +44,12 @@ async function loadD3DProj(uri) {
 
 	// Setup editor camera
 	const camera = await initEditorCamera();
+	
+	// Configure editor state
+	initEditorConfig(camera);
 
 	// Setup composer and passes
 	const { composer, outlinePass } = initComposer(renderer, camera);
-
-	// Configure editor state
-	initEditorConfig(camera);
 
 	// Start update + render loop
 	startAnimationLoop(composer, outlinePass);
@@ -83,6 +84,7 @@ function initRenderer() {
 	renderer.toneMapping = THREE.ACESFilmicToneMapping;
 	renderer.toneMappingExposure = 1.0;
 	_container3d.appendChild(renderer.domElement);
+	_editor.renderer = renderer;
 	return renderer;
 }
 
@@ -104,6 +106,8 @@ async function initEditorCamera() {
 function initComposer(renderer, camera) {
 	const scene = _root.object3d;
 	const composer = new EffectComposer(renderer);
+	
+	_editor.composer = composer;
 
 	const renderPass = new RenderPass(scene, camera);
 	composer.addPass(renderPass);
@@ -114,6 +118,9 @@ function initComposer(renderer, camera) {
 		camera
 	);
 	composer.addPass(outlinePass);
+	
+	// Setup transform gizmo
+	setupTransformGizmo();
 
 	const gammaCorrectionPass = new ShaderPass(GammaCorrectionShader);
 	composer.addPass(gammaCorrectionPass);
@@ -158,7 +165,10 @@ function startAnimationLoop(composer, outlinePass) {
 
 		outlinePass.selectedObjects = _editor.selectedObjects.map(d3dobj => d3dobj.object3d);
 		composer.render();
-
+		
+		if(_editor.gizmo)
+			_editor.gizmo.update();
+		
 		updateObject('afterEditorRenderFrame', _root);
 		_input._afterRenderFrame?.();
 	}
@@ -203,6 +213,7 @@ function setupSelection(renderer, camera) {
 	renderer.domElement.addEventListener('mousedown', (event) => {
 		if (_editor.tool !== 'select' || event.button !== 0) return;
 		if (_input.getKeyDown('alt')) return;
+		if (_editor.gizmo.busy) return;
 
 		const r = renderer.domElement.getBoundingClientRect();
 		startPoint = {
@@ -219,6 +230,11 @@ function setupSelection(renderer, camera) {
 
 	renderer.domElement.addEventListener('mousemove', (event) => {
 		if (!startPoint) return;
+		if (_editor.gizmo.busy) {
+			selectionBox.style.display = 'none';
+			startPoint = null;
+			return;
+		}
 
 		const r = renderer.domElement.getBoundingClientRect();
 		const currentX = event.clientX - r.left; // canvas-local
@@ -355,6 +371,37 @@ function setupSelection(renderer, camera) {
 			_editor.selectedObjects = [];
 		}
 	}
+}
+
+function setupTransformGizmo() {
+	const scene = _root.object3d;
+	const camera = _editor.camera;
+	const renderer = _editor.renderer;
+	
+	// create once
+	const gizmo = new D3DTransformGizmo({
+		scene,
+		camera,
+		dom: renderer.domElement,
+		getSelected: () => _editor.selectedObjects[0]?.object3d || null
+	});
+	
+	// attach/detach on selection changes
+	gizmo.attach(_editor.selectedObjects[0]?.object3d);
+	
+	// on tool changes
+	function setTool(tool) {
+		switch (tool) {
+			case 'position': gizmo.setMode('translate'); break;
+			case 'rotation': gizmo.setMode('rotate'); break;
+			case 'scale': gizmo.setMode('scale'); break;
+		}
+	}
+	
+	//gizmo.setSpace('local');
+	gizmo.setSnap({ translate: 0.25, rotate: THREE.MathUtils.degToRad(5), scale: 0.1 });
+	
+	_editor.gizmo = gizmo;
 }
 
 function addGridHelper() {

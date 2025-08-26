@@ -171,7 +171,7 @@ body.dark {
 		margin-bottom: 5px;
 	}
 }
-.insp-title:focus {
+.inspector-cell:focus {
 	outline: 2px solid #0099ff;
 	outline-offset: 2px;
 }

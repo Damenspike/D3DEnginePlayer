@@ -14,6 +14,7 @@ export default class D3DEditorState {
 		this.camera = null;
 		this.tool = Tools.Select;
 		this.selectedObjects = [];
+		this.renderer = null;
 	}
 
 	setTool(tool) {
