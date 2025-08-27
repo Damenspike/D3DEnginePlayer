@@ -32,7 +32,6 @@ body {
 p, label {
 	font-size: 14px;
 }
-input { width: 400px; }
 
 body.light {
 	background: #eee;
@@ -75,7 +74,6 @@ body.dark {
 	outline: none;
 	background: rgba(255, 255, 255, 0.6);
 	padding: 6px;
-	margin-bottom: 15px;
 	border-radius: 7px;
 	border: none;
 	border: 2px solid rgba(0, 0, 0, 0);
@@ -114,6 +112,30 @@ body.dark {
 }
 .mt {
 	margin-top: 10px;
+}
+.ml2 {
+	margin-left: 20px;
+}
+.mr2 {
+	margin-right: 20px;
+}
+.mb2 {
+	margin-bottom: 20px;
+}
+.mt2 {
+	margin-top: 20px;
+}
+.vt {
+	vertical-align: top;
+}
+.vm {
+	vertical-align: middle;
+}
+.vb {
+	vertical-align: bottom;
+}
+.ib {
+	display: inline-block;
 }
 
 button {
