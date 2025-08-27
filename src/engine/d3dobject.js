@@ -1,14 +1,15 @@
 // d3dobject.js
-const fs = require('fs').promises;
-const axios = require('axios');
-const JSZip = require('jszip');
-const path = require('path');
-const vm = require('vm');
-const { v4: uuidv4 } = require('uuid');
-const { GLTFLoader } = require('three/examples/jsm/loaders/GLTFLoader.js');
+import axios from 'axios';
+import JSZip from 'jszip';
+import { v4 as uuidv4 } from 'uuid';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 const protectedNames = [
 	'_root', 'Input', 'position', 'rotation', 'scale', 'name', 'parent', 'children', 'threeObj', 'scenes', 'zip', 'forward', 'right', 'up', 'quaternion', 'beforeRenderFrame', 'onAddedToScene'
 ]
+
+const fs = window.require('fs').promises;
+const path = window.require('path');
+const vm = window.require('vm');
 
 export default class D3DObject {
 	///////////////////////////////
@@ -134,9 +135,29 @@ export default class D3DObject {
 		this.object3d = this.parent ? new THREE.Object3D() : new THREE.Scene();
 		this.object3d.userData.d3dobject = this;
 		this.scenes = [];
+		this.components = [];
 		
 		if(this.parent)
 			this.parent[name] = this;
+		
+		this.setupDefaultMethods();
+	}
+	setupDefaultMethods() {
+		if(window._editor) {
+			this.__beforeEditorRenderFrame = () => {
+				if(!this.lastMatrixWorld) {
+					this.lastMatrixWorld = new THREE.Matrix4().copy(this.object3d.matrixWorld);
+					return;
+				}
+				
+				if(!this.object3d.matrixWorld.equals(this.lastMatrixWorld)) {
+					this.onTransformationChange?.();
+					_editor.updateInspector?.();
+				}
+				
+				this.lastMatrixWorld = new THREE.Matrix4().copy(this.object3d.matrixWorld);
+			}
+		}
 	}
 	
 	async createObject(objData, executeScripts = true) {
@@ -149,6 +170,7 @@ export default class D3DObject {
 		child.scale = objData.scale;
 		child.uuid = objData.uuid ?? child.uuid;
 		child.editorOnly = !!objData.editorOnly || false;
+		child.components = objData.components || [];
 		
 		if(objData.engineScript)
 			child.engineScript = objData.engineScript;
@@ -160,124 +182,8 @@ export default class D3DObject {
 			_root.superIndex[child.uuid] = child;
 		}
 		
-		// Handle components with switch case
-		for (const component of objData.components || []) {
-			switch (component.type) {
-				case 'HTML': {
-					const elementId = `plate-html-${child.name}`; // no # in id
-					const htmlSource = path.join('assets', component.properties.source);
-					const htmlContent = await this.zip.file(htmlSource)?.async('string') ?? '';
-					
-					// Remove old container if exists
-					let htmlContainer = document.getElementById(elementId);
-					if (htmlContainer) htmlContainer.remove();
-					
-					// Create new container
-					htmlContainer = document.createElement('div');
-					htmlContainer.id = elementId;
-					htmlContainer.classList.add('container', 'container--ui');
-					htmlContainer.innerHTML = htmlContent;
-					
-					// Assign reference
-					child.htmlContainer = htmlContainer;
-					
-					if(!window._editor) {
-						// Append to 3D container or defer
-						if (!_container3d) {
-							child._onStart = () => {
-								const container3dDeferred = document.getElementById('game-container');
-								container3dDeferred.appendChild(htmlContainer);
-							}
-						} else {
-							_container3d.appendChild(htmlContainer);
-						}
-						
-						// Visibility toggle
-						child._onVisibilityChanged = () => {
-							child.htmlContainer.style.display = child.visible ? 'block' : 'none';
-						}
-					}
-					break;
-				}
-				case 'Camera': {
-					const camera = new THREE.PerspectiveCamera(
-						component.properties.fieldOfView || 75, 
-						this.manifest.width / this.manifest.height,
-						component.properties.clipNear || 0.1, 
-						component.properties.clipFar || 1000
-					);
-					camera.position.set(child.position.x, child.position.y, child.position.z);
-					camera.rotation.set(child.rotation.x, child.rotation.y, child.rotation.z);
-					camera.scale.set(child.scale.x, child.scale.y, child.scale.z);
-					child.object3d = camera;
-					break;
-				}
-				case 'Light': {
-					if (component.properties.type === 'AmbientLight') {
-						const light = new THREE.AmbientLight(
-							parseInt(component.properties.color || '0xffffff', 16),
-							component.properties.intensity || 0.5
-						);
-						child.object3d.add(light);
-					}else 
-					if (component.properties.type === 'DirectionalLight') {
-						const light = new THREE.DirectionalLight(
-							parseInt(component.properties.color || '0xffffff', 16),
-							component.properties.intensity || 1
-						);
-						if (component.properties.position) {
-							light.position.set(
-								component.properties.position.x, 
-								component.properties.position.y, 
-								component.properties.position.z
-							);
-						}
-						child.object3d.add(light);
-					}
-					break;
-				}
-				case 'Mesh': {
-					if (component.properties.mesh) {
-						const modelPath = path.join('assets', component.properties.mesh);
-						const modelData = await this.zip.file(modelPath)?.async('arraybuffer');
-						if (!modelData) {
-							console.warn(`Model file not found: ${modelPath}`);
-							break;
-						}
-						const loader = new GLTFLoader();
-						const gltf = await loader.parseAsync(modelData, '');
-						child.object3d.add(gltf.scene);
-					}
-					if (component.properties.materials && component.properties.materials.length > 0) {
-						const matPath = path.join('assets', component.properties.materials[0]);
-						const matStr = await this.zip.file(matPath)?.async('string');
-						
-						if (!matStr) {
-							console.warn(`Material file not found: ${matPath}`);
-							break;
-						}
-						const matParams = JSON.parse(matStr);
-						if (!THREE[matParams.type]) {
-							console.warn(`Unknown material type: ${matParams.type}`);
-							break;
-						}
-						const material = new THREE[matParams.type](matParams);
-						if (child.object3d.children.length > 0) {
-							child.object3d.children[0].material = material;
-						} else {
-							child.object3d.add(
-								new THREE.Mesh(
-									new THREE.BoxGeometry(1, 1, 1), material
-								)
-							);
-						}
-					}
-					break;
-				}
-				default:
-					console.warn(`Unknown component type: ${component.type}`);
-			}
-		}
+		// Handle all child components
+		await child.updateComponents();
 		
 		this.object3d.add(child.object3d);
 		this.children.push(child);
@@ -374,8 +280,12 @@ export default class D3DObject {
 		let scriptName = path.join('scripts', `object_${this.name}_${this.uuid}.js`);
 		
 		if(this.engineScript) {
-			scriptName = path.join(__dirname, '../../', `engine/${this.engineScript}`);
-			script = await fs.readFile(scriptName, 'utf8');
+			const url = new URL(`/engine/${this.engineScript}`, window.location.origin);
+			const res = await fetch(url.toString());
+			if (!res.ok) 
+				throw new Error(`Failed to fetch engine script ${filename}: ${res.status}`);
+			script = await res.text();
+			scriptName = this.engineScript;
 		}else{
 			script = await this.zip.file(scriptName)?.async('string');
 		}
@@ -393,19 +303,183 @@ export default class D3DObject {
 	}
 	runInSandbox(script) {
 		const sandbox = {
-			console,
 			THREE,
 			_root,
 			_input,
 			_time,
 			_editor,
 			self: this,
+			console: {
+				log: (...args) => console.log(`[${this.name}]`, ...args),
+				warn: (...args) => console.warn(`[${this.name}]`, ...args),
+				error: (...args) => console.error(`[${this.name}]`, ...args),
+				assert: (...args) => console.assert(...args)
+			},
 			Vector3: THREE.Vector3,
 			Quaternion: THREE.Quaternion
 		};
 		
 		const wrappedScript = `(function() { ${script} }).call(self)`;
 		vm.runInNewContext(wrappedScript, sandbox);
+	}
+	async updateComponents() {
+		for (const component of this.components) {
+			switch (component.type) {
+				case 'HTML': {
+					const elementId = `plate-html-${this.name}`; // no # in id
+					const htmlSource = path.join('assets', component.properties.source);
+					const htmlContent = await this.zip.file(htmlSource)?.async('string') ?? '';
+					
+					// Remove old container if exists
+					let htmlContainer = document.getElementById(elementId);
+					if (htmlContainer) htmlContainer.remove();
+					
+					// Create new container
+					htmlContainer = document.createElement('div');
+					htmlContainer.id = elementId;
+					htmlContainer.classList.add('container', 'container--ui');
+					htmlContainer.innerHTML = htmlContent;
+					
+					// Assign reference
+					this.htmlContainer = htmlContainer;
+					
+					if(!window._editor) {
+						// Append to 3D container or defer
+						if (!_container3d) {
+							this._onStart = () => {
+								const container3dDeferred = document.getElementById('game-container');
+								container3dDeferred.appendthis(htmlContainer);
+							}
+						} else {
+							_container3d.appendthis(htmlContainer);
+						}
+						
+						// Visibility toggle
+						this._onVisibilityChanged = () => {
+							this.htmlContainer.style.display = this.visible ? 'block' : 'none';
+						}
+					}
+					break;
+				}
+				case 'Camera': {
+					if(!this.cameraSetup) {
+						const camera = new THREE.PerspectiveCamera(
+							component.properties.fieldOfView || 75, 
+							_root.manifest.width / _root.manifest.height,
+							component.properties.clipNear || 0.1, 
+							component.properties.clipFar || 1000
+						);
+						
+						camera.position.set(
+							this.position.x,
+							this.position.y,
+							this.position.z
+						);
+						camera.rotation.set(
+							this.rotation.x,
+							this.rotation.y,
+							this.rotation.z
+						);
+						camera.scale.set(
+							this.scale.x,
+							this.scale.y,
+							this.scale.z
+						);
+						
+						this.object3d = camera;
+						this.cameraSetup = true;
+					}else{
+						const camera = this.object3d;
+						
+						camera.fieldOfView = component.properties.fieldOfView;
+						camera.clipNear = component.properties.clipNear;
+						camera.clipFar = component.properties.clipFar;
+					}
+					
+					break;
+				}
+				case 'Light': {
+					if (component.properties.type === 'AmbientLight') {
+						if(!this.light) {
+							const light = new THREE.AmbientLight(
+								parseInt(component.properties.color, 16),
+								component.properties.intensity
+							);
+							this.object3d.add(light);
+							this.light = light;
+						}else{
+							const light = this.light;
+							light.color = parseInt(component.properties.color || '0xffffff', 16);
+							light.intensity = component.properties.intensity;
+						}
+					}else 
+					if (component.properties.type === 'DirectionalLight') {
+						if(!this.light) {
+							const light = new THREE.DirectionalLight(
+								parseInt(component.properties.color, 16),
+								component.properties.intensity
+							);
+							if (component.properties.position) {
+								light.position.set(
+									component.properties.position.x, 
+									component.properties.position.y, 
+									component.properties.position.z
+								);
+							}
+							this.object3d.add(light);
+							this.light = light;
+						}else{
+							const light = this.light;
+							light.color = parseInt(component.properties.color || '0xffffff', 16);
+							light.intensity = component.properties.intensity;
+						}
+					}
+					break;
+				}
+				case 'Mesh': {
+					if (component.properties.mesh) {
+						const modelPath = path.join('assets', component.properties.mesh);
+						const modelData = await _root.zip.file(modelPath)?.async('arraybuffer');
+						if (!modelData) {
+							console.warn(`Model file not found: ${modelPath}`);
+							break;
+						}
+						const loader = new GLTFLoader();
+						const gltf = await loader.parseAsync(modelData, '');
+						this.object3d.add(gltf.scene);
+						
+						if(this.modelScene)
+							this.object3d.remove(this.modelScene);
+						
+						this.modelScene = gltf.scene;
+					}
+					if (component.properties.materials && component.properties.materials.length > 0) {
+						const matPath = path.join('assets', component.properties.materials[0]);
+						const matStr = await this.zip.file(matPath)?.async('string');
+						
+						if (!matStr) {
+							console.warn(`Material file not found: ${matPath}`);
+							break;
+						}
+						const matParams = JSON.parse(matStr);
+						if (!THREE[matParams.type]) {
+							console.warn(`Unknown material type: ${matParams.type}`);
+							break;
+						}
+						const material = new THREE[matParams.type](matParams);
+						if (this.object3d.children.length > 0) {
+							this.object3d.children[0].material = material;
+						} else {
+							console.warn(`No mesh renderer found for material`);
+						break;
+						}
+					}
+					break;
+				}
+				default:
+					console.warn(`Unknown component type: ${component.type}`);
+			}
+		}
 	}
 	
 	find(name) {

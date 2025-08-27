@@ -1,121 +1,153 @@
-<style>
-	@font-face {
-		font-family: "Proxima Nova";
-		src: url("../fonts/Proxima Nova Reg.woff") format("woff");
-		font-weight: 400;
-	}
-	
-	body { 
-		padding: 20px; 
-		margin: 0;
-		overflow: hidden;
-		font-family: "Proxima Nova", sans-serif;
-	}
-	p, label {
-		font-size: 14px;
-	}
-	input { width: 400px; }
-	
-	body.light {
-		background: #eee;
-		color: #222;
-	}
-	body.dark {
-		background: #222;
-		color: #eee;
-		
-		.logo {
-			background-image: url('../images/d3dlogowhite.png');
-		}
-		.tf {
-			background: rgba(0, 0, 0, 0.4);
-			color: white;
-		}
-	}
-	
-	* {
-		font-family: "Proxima Nova", sans-serif;
-	}
+/* Regular */
+@font-face {
+	font-family: "Proxima Nova";
+	src: url("../fonts/Proxima Nova Reg.woff") format("woff");
+	font-weight: 400;
+	font-style: normal;
+	font-display: swap;
+}
+
+/* Bold */
+@font-face {
+	font-family: "Proxima Nova";
+	src: url("../fonts/Proxima Nova Bold.woff") format("woff");
+	font-weight: 700; 
+	font-style: normal;
+	font-display: swap;
+}
+
+#root, .editor-shell {
+	margin: 0;
+	padding: 0;
+	width: 100%;
+	height: 100%;
+}
+
+body { 
+	padding: 20px; 
+	margin: 0;
+	overflow: hidden;
+	font-family: "Proxima Nova", sans-serif;
+}
+p, label {
+	font-size: 14px;
+}
+input { width: 400px; }
+
+body.light {
+	background: #eee;
+	color: #222;
+}
+body.dark {
+	background: #222;
+	color: #eee;
 	
 	.logo {
-		width: 250px;
-		height: 100px;
-		background-image: url('../images/d3dlogo.png');
-		background-size: contain; 
-		background-repeat: no-repeat; 
-		background-position: center; 
-	}
-	.no-select {
-		user-drag: none;
-		-webkit-user-drag: none;
-		user-select: none;
-		-moz-user-select: none;
-		-webkit-user-select: none;
-		-ms-user-select: none;
+		background-image: url('../images/d3dlogowhite.png');
 	}
 	.tf {
-		outline: none;
-		background: rgba(255, 255, 255, 0.6);
-		padding: 6px;
-		margin-bottom: 15px;
-		border-radius: 7px;
-		border: none;
-		border: 2px solid rgba(0, 0, 0, 0);
-		font-size: 14px;
+		background: rgba(0, 0, 0, 0.4);
+		color: white;
 	}
-	.tf:focus {
-		border: 2px solid #0099ff;
-	}
-	.tf--num {
-		width: 100px !important;
-	}
-	.field {
-		text-align: left;
-		margin-bottom: 20px;
-	}
-	.field label {
-		display: block;
-		font-weight: bold;
-		margin-bottom: 10px;
-	}
-	.field input {
-		width: 100%;
-		box-sizing: border-box; /* important: keeps padding from messing width */
-	}
+}
+
+* {
+	font-family: "Proxima Nova", sans-serif;
+}
+
+.logo {
+	width: 250px;
+	height: 100px;
+	background-image: url('../images/d3dlogo.png');
+	background-size: contain; 
+	background-repeat: no-repeat; 
+	background-position: center; 
+}
+.no-select {
+	user-drag: none;
+	-webkit-user-drag: none;
+	user-select: none;
+	-moz-user-select: none;
+	-webkit-user-select: none;
+	-ms-user-select: none;
+}
+.tf {
+	outline: none;
+	background: rgba(255, 255, 255, 0.6);
+	padding: 6px;
+	margin-bottom: 15px;
+	border-radius: 7px;
+	border: none;
+	border: 2px solid rgba(0, 0, 0, 0);
+	font-size: 14px;
+}
+.tf:focus {
+	border: 2px solid #0099ff;
+}
+.tf--num {
+	width: 100px !important;
+}
+.field {
+	text-align: left;
+	margin-bottom: 20px;
+}
+.field label {
+	display: block;
+	font-weight: bold;
+	margin-bottom: 10px;
 	
-	button {
-		background: #0099ff;
-		border: none;
-		padding: 8px;
-		min-width: 100px;
-		color: rgb(255, 255, 255);
-		font-weight: bold;
-		text-align: center;
-		border-radius: 7px;
-		cursor: pointer;
-		display: inline-block;
-		text-decoration: none !important;
-		transition: all 0.2s ease-in-out;
-		text-shadow: 0px 0px 3px rgba(0, 0, 0, 0.142);
-		
-		i {
-			vertical-align: middle;
-			padding: 2px;
-		}
+	font-size: 12px;
+	text-transform: uppercase;
+}
+.field input {
+	width: 100%;
+	box-sizing: border-box; /* important: keeps padding from messing width */
+}
+.ml {
+	margin-left: 10px;
+}
+.mr {
+	margin-right: 10px;
+}
+.mb {
+	margin-bottom: 10px;
+}
+.mt {
+	margin-top: 10px;
+}
+
+button {
+	background: #0099ff;
+	border: none;
+	padding: 8px;
+	min-width: 100px;
+	color: rgb(255, 255, 255);
+	font-weight: bold;
+	text-align: center;
+	border-radius: 7px;
+	cursor: pointer;
+	display: inline-block;
+	text-decoration: none !important;
+	transition: all 0.2s ease-in-out;
+	text-shadow: 0px 0px 3px rgba(0, 0, 0, 0.142);
+	
+	i {
+		vertical-align: middle;
+		padding: 2px;
 	}
-	button:hover {
-		background: #0074c1;
-	}
-	button:active {
-		filter: brightness(50%);
-	}
-	input[type=checkbox] {
-		width: 20px;
-		height: 20px;
-	}
-	input[type="range"] {
-		width: 100%;
-		background: transparent;
-		padding: 0;
-	}
-</style>
+}
+button:hover {
+	background: #0074c1;
+}
+button:active {
+	filter: brightness(50%);
+}
+input[type=checkbox] {
+	width: 20px;
+	height: 20px;
+}
+input[type="range"] {
+	width: 100%;
+	background: transparent;
+	padding: 0;
+}

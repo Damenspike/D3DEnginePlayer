@@ -8,11 +8,14 @@ const {
 	screen
 } = require('electron');
 const path = require('path');
-const pkg = require('./package.json');
+const pkg = require('../package.json');
+const isDev = !app.isPackaged;
 
 let startWindow;
 let newProjectWindow;
 let editorWindow;
+
+let lastOpenedProjectUri;
 
 function createStartWindow() {
 	startWindow = new BrowserWindow({
@@ -28,7 +31,7 @@ function createStartWindow() {
 		}
 	});
 
-	startWindow.loadFile('src/windows/editor/editorstart.html');
+	startWindow.loadFile('../src/windows/editor/editorstart.html');
 
 	startWindow.on('closed', () => {
 		startWindow = null;
@@ -54,7 +57,7 @@ function createNewProjectWindow() {
 		}
 	});
 
-	newProjectWindow.loadFile('src/windows/editor/editornew.html');
+	newProjectWindow.loadFile('../src/windows/editor/editornew.html');
 
 	newProjectWindow.on('closed', () => {
 		newProjectWindow = null;
@@ -70,25 +73,27 @@ function createNewProjectWindow() {
 async function createEditorWindow() {
 	const { width, height } = screen.getPrimaryDisplay().workAreaSize;
 
-	// Wait for previous window to close if it exists
 	await closeEditorWindow();
-	
+
+	// Use safer prefs for the React/Vite editor window
 	editorWindow = new BrowserWindow({
 		title: 'Damen3D Editor',
-		width: width,
-		height: height,
+		width,
+		height,
 		resizable: true,
 		webPreferences: {
 			preload: path.join(__dirname, 'preload.js'),
-			nodeIntegration: true,
-			contextIsolation: false
+			contextIsolation: false,
+			nodeIntegration: true
 		}
 	});
-
-	editorWindow.loadFile('src/windows/editor/editor.html');
+	
+	if(isDev)
+		await editorWindow.loadURL('http://localhost:5173');
+	else
+		await editorWindow.loadFile('../dist/editor/main/index.html');
 
 	setupTheme(editorWindow);
-
 	return new Promise(resolve => {
 		editorWindow.webContents.once('did-finish-load', resolve);
 	});
@@ -132,12 +137,9 @@ async function openBrowse() {
 }
 async function openProject(uri) {
 	console.log('Open project', uri);
-	await createEditorWindow();
+	lastOpenedProjectUri = uri;
 	
-	editorWindow.webContents.send(
-		'd3dproj-load',
-		uri
-	);
+	await createEditorWindow();
 }
 function startNewProject() {
 	if(!newProjectWindow) createNewProjectWindow()
@@ -240,6 +242,9 @@ ipcMain.handle('new-project', () => startNewProject());
 
 // Browse D3D Project
 ipcMain.handle('open-project', () => openBrowse());
+
+// Get project URI
+ipcMain.handle('get-current-project-uri', () => lastOpenedProjectUri);
 
 // Close editor
 ipcMain.on('close-editor', () => closeEditorWindow());

@@ -1,5 +1,6 @@
 const { app, BrowserWindow, Menu, dialog, ipcMain, nativeTheme } = require('electron');
 const path = require('path');
+const isDev = !app.isPackaged;
 
 let startWindow;
 let gameWindow;
@@ -37,27 +38,27 @@ function createStartWindow() {
 	});
 }
 
-function createGameWindow() {
+async function createGameWindow() {
 	gameWindow = new BrowserWindow({
 		width: 800,
 		height: 600,
 		webPreferences: {
 			preload: path.join(__dirname, 'preload.js'),
-			nodeIntegration: true,
-			contextIsolation: false
+			contextIsolation: true,
+			nodeIntegration: false
 		}
 	});
 
-	gameWindow.loadFile('src/windows/player/player.html');
+	if(isDev)
+		await gameWindow.loadURL('http://localhost:5174');
+	else
+		await gameWindow.loadFile(path.join(__dirname, 'dist/player/index.html'));
 
-	gameWindow.on('closed', () => {
-		gameWindow = null;
-	});
-
+	gameWindow.on('closed', () => { gameWindow = null; });
 	return gameWindow.webContents;
 }
 
-function loadGameURI(uri) {
+async function loadGameURI(uri) {
 	console.log('Loading game URI:', uri);
 	gameURI = uri;
 
@@ -67,7 +68,7 @@ function loadGameURI(uri) {
 	}
 
 	// Create new game window and send URI once loaded
-	const gameWebContents = createGameWindow();
+	const gameWebContents = await createGameWindow();
 	gameWebContents.once('did-finish-load', () => {
 		gameWebContents.send('d3d-load', uri);
 	});

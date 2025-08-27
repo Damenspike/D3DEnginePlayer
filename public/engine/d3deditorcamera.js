@@ -7,7 +7,7 @@ let initialTool = 'select';
 
 function updateMotion() {
 	const delta = _time.delta;
-	const axis = _input.getControllerAxis();
+	const axis = _input.getControllerAxisArrowsOnly();
 	const mult = _input.getKeyDown('control') ? 3 : 1;
 	const speed = moveSpeed * mult * delta;
 	
@@ -43,12 +43,12 @@ function moveForward(distance) {
 	// move camera
 	self.object3d.position.addScaledVector(dir, distance);
 }
-function focusOn(targets, distance = 5, duration = 0.35) {
+function focusOn(targets, distance = null, duration = 0.35, padding = 1.15) {
 	// normalize to array
 	const list = Array.isArray(targets) ? targets : (targets ? [targets] : []);
 	if (!list.length) return;
 
-	// combined world-space AABB center
+	// union world-space AABB (includes object scale/children)
 	const box = new THREE.Box3();
 	let any = false;
 	for (let i = 0; i < list.length; i++) {
@@ -60,32 +60,59 @@ function focusOn(targets, distance = 5, duration = 0.35) {
 			else box.union(b);
 		}
 	}
+	if (!any) return;
+
+	// center & size
 	const target = new THREE.Vector3();
-	if (any) box.getCenter(target);
-	else {
-		const first = list[0]?.object3d;
-		if (!first) return;
-		first.getWorldPosition(target);
+	box.getCenter(target);
+	const size = box.getSize(new THREE.Vector3()).multiplyScalar(padding);
+
+	// current camera data
+	const cam = self.object3d; // perspective editor cam
+	const from = cam.position.clone();
+
+	// compute framing distance if not provided
+	let dist = distance;
+	if (dist == null) {
+		if (cam.isPerspectiveCamera) {
+			const vFov = THREE.MathUtils.degToRad(cam.fov);
+			const hFov = 2 * Math.atan(Math.tan(vFov * 0.5) * cam.aspect);
+
+			const distV = (size.y * 0.5) / Math.tan(vFov * 0.5);
+			const distH = (size.x * 0.5) / Math.tan(hFov * 0.5);
+
+			// ensure depth fits too (push back by half-depth so back faces aren't clipped)
+			const depthPad = size.z * 0.5;
+
+			dist = Math.max(distV, distH) + depthPad;
+
+			// respect near plane a bit
+			dist = Math.max(dist, cam.near + 0.1);
+		} else if (cam.isOrthographicCamera) {
+			// fit orthographic frustum by adjusting distance minimally (orbit radius),
+			// but usually you’d change cam.zoom; here we just move to center.
+			dist = cam.position.clone().sub(target).length();
+		} else {
+			dist = 5; // fallback
+		}
 	}
 
-	// current camera position
-	const from = self.object3d.position.clone();
-
-	// use the camera's current forward to define the viewing ray
+	// camera forward
 	const forward = new THREE.Vector3();
-	self.object3d.getWorldDirection(forward); // unit vector pointing where camera looks
+	cam.getWorldDirection(forward); // unit -Z for typical cams
 
-	// place camera so target sits exactly along forward at the given distance
-	const to = target.clone().sub(forward.clone().multiplyScalar(distance));
+	// destination so that target sits 'dist' along forward
+	const to = target.clone().sub(forward.clone().multiplyScalar(dist));
 
+	// set new orbit pivot for your editor controls
 	self._orbit = target.clone();
-	
-	// tween state (advanced in beforeEditorRenderFrame via _time.delta)
+
+	// tween state (advanced elsewhere)
 	self._focusTween = {
 		from,
 		to,
 		elapsed: 0,
-		duration, // seconds
+		duration,
 		ease: (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2)
 	};
 }
@@ -187,11 +214,11 @@ self.beforeEditorRenderFrame = () => {
 			wasForcingPan = false;
 		}
 		
-		if(_editor.tool == 'pan' && (_input.getLeftMouseButtonDown() || _input.getRightMouseButtonDown()))
-			updateOrbit(false);
-		else
 		if (_input.getKeyDown('alt') && _input.getLeftMouseButtonDown())
 			updateOrbit(true);
+		else
+		if(_editor.tool == 'pan' && (_input.getLeftMouseButtonDown() || _input.getRightMouseButtonDown()))
+			updateOrbit(false);
 		
 		updateMotion();
 		updateTween();

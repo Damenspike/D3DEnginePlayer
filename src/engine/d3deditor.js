@@ -1,22 +1,28 @@
 // d3deditor.js
-const three = require('three');
-const { EffectComposer } = require('three/examples/jsm/postprocessing/EffectComposer.js');
-const { RenderPass } = require('three/examples/jsm/postprocessing/RenderPass.js');
-const { OutlinePass } = require('three/examples/jsm/postprocessing/OutlinePass.js');
-const { GammaCorrectionShader } = require('three/examples/jsm/shaders/GammaCorrectionShader.js');
-const { ShaderPass } = require('three/examples/jsm/postprocessing/ShaderPass.js');
-const { ipcRenderer } = require('electron');
+import * as three from 'three';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { OutlinePass } from 'three/examples/jsm/postprocessing/OutlinePass.js';
+import { GammaCorrectionShader } from 'three/examples/jsm/shaders/GammaCorrectionShader.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { arraysEqual } from './d3dutility.js';
+import $ from 'jquery';
 import D3DObject from './d3dobject.js';
 import D3DInput from './d3dinput.js';
 import D3DTime from './d3dtime.js';
 import D3DEditorState from './d3deditorstate.js';
 import D3DInfiniteGrid from './d3dinfinitegrid.js';
 import D3DTransformGizmo from './d3dtransformgizmo.js';
+import D3DComponents from './d3dcomponents.js';
+
+const fs = window.require('fs').promises;
+const path = window.require('path');
+const vm = window.require('vm');
+const { ipcRenderer } = window.electron;
 
 let rootContext;
 
 window.THREE = three;
-window._container3d = document.getElementById('game-container');
 window._input = new D3DInput();
 window._time = new D3DTime();
 window._editor = new D3DEditorState();
@@ -27,15 +33,28 @@ THREE.Vector3.up = new THREE.Vector3(0, 1, 0);
 THREE.Vector3.forward = new THREE.Vector3(0, 0, 1);
 
 // Error handling
-function showError({title, message, closeEditorWhenDone}) {
+function showError(args) {
+	let title, message, closeEditorWhenDone;
+	
+	if(typeof(args) == 'string')
+		message = args;
+	else {
+		title = args.title;
+		message = args.message;
+		closeEditorWhenDone = args.closeEditorWhenDone;
+	}
+	
 	ipcRenderer.send('show-error', {title, message, closeEditorWhenDone});
 }
 function closeEditor() {
 	ipcRenderer.send('close-editor');
 }
 
+_editor.showError = showError;
+_editor.closeEditor = closeEditor;
+
 // Main loader
-async function loadD3DProj(uri) {
+export async function loadD3DProj(uri) {
 	// Init root
 	await initRoot(uri);
 
@@ -62,9 +81,6 @@ async function loadD3DProj(uri) {
 
 	// Enable object selection via raycasting
 	setupSelection(renderer, camera);
-	
-	// Setup inspector
-	updateInspector();
 }
 
 /* ---------------- Helper Functions ---------------- */
@@ -142,6 +158,8 @@ function initEditorConfig(camera) {
 	_editor.camera = camera;
 	_editor.gridHelper = addGridHelper();
 	_editor.setTool('select'); // default tool
+	_editor.setTransformTool('translate'); // default tool
+	_editor.onProjectLoaded?.();
 
 	if (!_editor.config) {
 		throw new Error('Missing editor configuration');
@@ -156,9 +174,9 @@ function updateObject(method, d3dobj) {
 function startAnimationLoop(composer, outlinePass) {
 	function animate() {
 		updateObject('beforeEditorRenderFrame', _root);
+		updateObject('__beforeEditorRenderFrame', _root);
 
 		requestAnimationFrame(animate);
-		updateInspector();
 
 		_time.delta = _time.now - _time.lastRender;
 		_time.lastRender = _time.now;
@@ -175,7 +193,7 @@ function startAnimationLoop(composer, outlinePass) {
 
 	_time.lastRender = _time.now;
 	updateObject('onEditorStart', _root);
-	updateObject('_onEditorStart', _root);
+	updateObject('__onEditorStart', _root);
 	animate();
 }
 
@@ -336,6 +354,8 @@ function setupSelection(renderer, camera) {
 		} else {
 			_editor.selectedObjects = selectedObjects;
 		}
+		
+		_editor.onObjectSelected?.(_editor.selectedObjects);
 	});
 
 	// --- Helper: single click select ---
@@ -370,6 +390,8 @@ function setupSelection(renderer, camera) {
 		}else{
 			_editor.selectedObjects = [];
 		}
+		
+		_editor.onObjectSelected?.(_editor.selectedObjects);
 	}
 }
 
@@ -383,23 +405,11 @@ function setupTransformGizmo() {
 		scene,
 		camera,
 		dom: renderer.domElement,
-		getSelected: () => _editor.selectedObjects[0]?.object3d || null
+		getSelected: () => _editor.selectedObjects[0]
 	});
 	
 	// attach/detach on selection changes
-	gizmo.attach(_editor.selectedObjects[0]?.object3d);
-	
-	// on tool changes
-	function setTool(tool) {
-		switch (tool) {
-			case 'position': gizmo.setMode('translate'); break;
-			case 'rotation': gizmo.setMode('rotate'); break;
-			case 'scale': gizmo.setMode('scale'); break;
-		}
-	}
-	
-	//gizmo.setSpace('local');
-	gizmo.setSnap({ translate: 0.25, rotate: THREE.MathUtils.degToRad(5), scale: 0.1 });
+	gizmo.attach(_editor.selectedObjects[0]);
 	
 	_editor.gizmo = gizmo;
 }
@@ -409,227 +419,6 @@ function addGridHelper() {
 	const scene = _root.object3d;
 	scene.add(grid);
 	return grid;
-}
-
-function updateInspector(updateAll = false) {
-	function bindInputField(element, value, onChange) {
-		element.val(value);
-		
-		if(element._blurAdded)
-			return;
-			
-		element.on('blur', function() {
-			const val = $(this).val();
-			
-			onChange(val, element);
-		})
-		.on('keypress', function(e) {
-			if (e.which === 13) 
-				$(this).blur();
-		});
-		
-		element._blurAdded = true;
-	}
-	function bindCheckboxField(element, value, onChange) {
-		// set initial state
-		element.prop('checked', !!value);
-	
-		// avoid duplicate listeners
-		if (element._changeAdded) return;
-	
-		element
-			.on('change', function() {
-				const checked = $(this).prop('checked');
-				onChange(checked, element);
-			})
-			.on('keypress', function(e) {
-				// Enter toggles and emits change
-				if (e.which === 13) {
-					const next = !$(this).prop('checked');
-					$(this).prop('checked', next).trigger('change');
-					e.preventDefault();
-				}
-			});
-	
-		element._changeAdded = true;
-	}
-	function bindSliderField(element, value, onChange) {
-		// set initial value
-		element.val(value);
-	
-		// avoid duplicate listeners
-		if (element._inputAdded) return;
-	
-		element
-			.on('input change', function() {
-				const val = parseFloat($(this).val());
-				onChange(val, element);
-			})
-			.on('keypress', function(e) {
-				// Enter confirms current value
-				if (e.which === 13) {
-					const val = parseFloat($(this).val());
-					onChange(val, element);
-					$(this).blur();
-				}
-			});
-	
-		element._inputAdded = true;
-	}
-	
-	const gui = _editor.gui;
-	const project = _editor.project;
-	const selectedObject = _editor.selectedObjects.length > 0 ? _editor.selectedObjects[0] : null;
-	
-	if(selectedObject !== gui.selectedObject || updateAll) {
-		
-		if(selectedObject) {
-			$('#insp-cell-object').show();
-			
-			bindInputField(
-				$("#insp-object-name"), 
-				selectedObject.name,
-				(val, element) => {
-					if(val && selectedObject.isNameAllowed(val)) {
-						selectedObject.name = val;
-					} else {
-						element.val(selectedObject.name);
-						showError({
-							message: `Invalid object name. ${val != '' ? 'Object names must contain no spaces or special characters apart from - and _' : ''}`
-						});
-					}
-				}
-			);
-			bindInputField(
-				$("#insp-object-pos-x"), 
-				selectedObject.position.x,
-				(val, element) => {
-					selectedObject.position.x = Number(val) || 0;
-				}
-			);
-			bindInputField(
-				$("#insp-object-pos-y"), 
-				selectedObject.position.y,
-				(val, element) => {
-					selectedObject.position.y = Number(val) || 0;
-				}
-			);
-			bindInputField(
-				$("#insp-object-pos-z"), 
-				selectedObject.position.z,
-				(val, element) => {
-					selectedObject.position.z = Number(val) || 0;
-				}
-			);
-			
-			bindInputField(
-				$("#insp-object-rot-x"), 
-				selectedObject.rotation.x,
-				(val, element) => {
-					selectedObject.rotation.x = Number(val) || 0;
-				}
-			);
-			bindInputField(
-				$("#insp-object-rot-y"), 
-				selectedObject.rotation.y,
-				(val, element) => {
-					selectedObject.rotation.y = Number(val) || 0;
-				}
-			);
-			bindInputField(
-				$("#insp-object-rot-z"), 
-				selectedObject.rotation.z,
-				(val, element) => {
-					selectedObject.rotation.z = Number(val) || 0;
-				}
-			);
-			
-			bindInputField(
-				$("#insp-object-scale-x"), 
-				selectedObject.scale.x,
-				(val, element) => {
-					selectedObject.scale.x = Number(val) || 0;
-				}
-			);
-			bindInputField(
-				$("#insp-object-scale-y"), 
-				selectedObject.scale.y,
-				(val, element) => {
-					selectedObject.scale.y = Number(val) || 0;
-				}
-			);
-			bindInputField(
-				$("#insp-object-scale-z"), 
-				selectedObject.scale.z,
-				(val, element) => {
-					selectedObject.scale.z = Number(val) || 0;
-				}
-			);
-			
-			bindCheckboxField(
-				$("#insp-object-visible"), 
-				selectedObject.visible,
-				(val, element) => {
-					selectedObject.visible = !!val;
-				}
-			);
-			bindSliderField(
-				$("#insp-object-opacity"), 
-				selectedObject.opacity,
-				(val, element) => {
-					selectedObject.opacity = Number(val);
-				}
-			);
-		}else{
-			$('#insp-cell-object').hide();
-		}
-		
-		gui.selectedObject = selectedObject;
-	}
-	if(project !== gui.project || updateAll) {
-		
-		bindInputField(
-			$("#insp-project-name"), 
-			_editor.project.name,
-			(val, element) => {
-				if(val) {
-					_editor.project.name = val;
-				} else {
-					element.val(_editor.project.name);
-					showError({
-						message: `Invalid project name`
-					});
-				}
-			}
-		);
-		bindInputField(
-			$("#insp-project-author"), 
-			_editor.project.author,
-			(val, element) => {
-				_editor.project.author = val;
-			}
-		);
-		bindInputField(
-			$("#insp-project-dimensions-width"), 
-			_editor.project.width,
-			(val, element) => {
-				const width = Math.max(10, Math.min(3000, Number(val)));
-				_editor.project.width = width;
-				element.val(width);
-			}
-		);
-		bindInputField(
-			$("#insp-project-dimensions-height"), 
-			_editor.project.height,
-			(val, element) => {
-				const height = Math.max(10, Math.min(3000, Number(val)));
-				_editor.project.height = height;
-				element.val(height);
-			}
-		);
-		
-		gui.project = project;
-	}
 }
 
 ipcRenderer.on('d3dproj-load', async (_, uri) => {

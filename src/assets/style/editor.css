@@ -33,10 +33,6 @@ body.dark {
 	}
 }
 
-#insp-cell-object {
-	display: none;
-}
-
 /* TOP BAR (top bar) */
 .topbar {
 	height: 40px;
@@ -124,6 +120,11 @@ body.dark {
 	cursor: ns-resize;
 }
 
+.tools-section {
+	display: inline-block;
+	vertical-align: middle;
+	margin-right: 15px;
+}
 .tool-option {
 	display: inline-flex;
 	justify-content: center; /* center horizontally */
@@ -133,7 +134,7 @@ body.dark {
 	background: rgb(255, 255, 255);
 	border-radius: 5px;
 	box-shadow: 0px 0px 3px rgba(0, 0, 0, 0.107);
-	margin-right: 5px;
+	margin-right: 2px;
 	cursor: pointer;
 	
 	i {
@@ -185,6 +186,9 @@ body.dark {
 		padding-bottom: 5px;
 	}
 }
+.component-cell {
+	margin: 0px !important;
+}
 .vector-input {
 	display: flex;
 	align-items: center;
@@ -193,8 +197,6 @@ body.dark {
 	
 	label {
 		width: 70px;
-		font-size: 12px;
-		text-transform: uppercase;
 	}
 }
 .vector-input > .tf {

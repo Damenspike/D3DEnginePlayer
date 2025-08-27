@@ -13,46 +13,56 @@
 </head>
 <body>
 	<div class='topbar' id='topbar-view'>
-		<div 
-			class='tool-option no-select' 
-			id='tool-select'
-			onclick="_editor.setTool('select')"
-		>
-			<i class="material-icons">navigation</i>
+		<div class='tools-section'>
+			<div 
+				class='tool-option no-select' 
+				id='tool-select'
+				onclick="_editor.setTool('select')"
+				tabindex="0"
+			>
+				<i class="material-icons">navigation</i>
+			</div>
+			<div 
+				class='tool-option no-select' 
+				id='tool-pan'
+				onclick="_editor.setTool('pan')"
+				tabindex="0"
+			>
+				<i class="material-icons">camera_alt</i>
+			</div>
 		</div>
-		<div 
-			class='tool-option no-select' 
-			id='tool-pan'
-			onclick="_editor.setTool('pan')"
-		>
-			<i class="material-icons">camera_alt</i>
-		</div>
-		<div 
-			class='tool-option no-select' 
-			id='tool-transform'
-			onclick="_editor.setTool('transform')"
-		>
-			<i class="material-icons">open_with</i>
-		</div>
-		<div 
-			class='tool-option no-select' 
-			id='tool-rotate'
-			onclick="_editor.setTool('rotate')"
-		>
-			<i class="material-icons">rotate_right</i>
-		</div>
-		<div 
-			class='tool-option no-select' 
-			id='tool-scale'
-			onclick="_editor.setTool('scale')"
-		>
-			<i class="material-icons">aspect_ratio</i>
+		
+		<div class='tools-section'>
+			<div 
+				class='tool-option no-select' 
+				id='ttool-translate'
+				onclick="_editor.setTransformTool('translate')"
+				tabindex="0"
+			>
+				<i class="material-icons">open_with</i>
+			</div>
+			<div 
+				class='tool-option no-select' 
+				id='ttool-rotate'
+				onclick="_editor.setTransformTool('rotate')"
+				tabindex="0"
+			>
+				<i class="material-icons">rotate_right</i>
+			</div>
+			<div 
+				class='tool-option no-select' 
+				id='ttool-scale'
+				onclick="_editor.setTransformTool('scale')"
+				tabindex="0"
+			>
+				<i class="material-icons">aspect_ratio</i>
+			</div>
 		</div>
 	</div>
 	
 	<div class="editor-main">
 		<div class='inspector resizable no-select' id='insp-view'>
-			<div class='inspector-cell' id='insp-cell-object' tabindex='0'>
+			<div class='inspector-cell' id='insp-cell-object' tabindex='1'>
 				<div class='insp-title'>
 					Object
 				</div>
@@ -154,6 +164,10 @@
 							</div>
 							
 						</div>
+					</div>
+					<div class="field">
+						<label>Components</label>
+						<div class="components" id="insp-components"></div>
 					</div>
 				</div>
 			</div>
@@ -273,6 +287,16 @@
 		if (e.key === 'Enter' || e.key === ' ') {
 			e.preventDefault();
 			$(this).trigger('click');
+		}
+	});
+	
+	$(document).on('keydown', function(e) {
+		const $el = $(document.activeElement);
+		if (!$el.hasClass('tool-option')) return;
+	
+		if (e.key === 'Enter' || e.key === ' ') {
+			e.preventDefault();   // stop page scrolling on Space
+			$el.trigger('click'); // fire the click handler
 		}
 	});
 </script>

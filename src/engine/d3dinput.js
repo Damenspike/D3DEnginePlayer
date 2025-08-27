@@ -103,22 +103,28 @@ export default class D3DInput {
 		return this._keys[code] === true;
 	}
 
-	getControllerAxis() {
+	getControllerAxis(wasd = true) {
 		let x = 0, y = 0;
 		
 		if(this.getKeyDown('control') || this.getKeyDown('meta'))
 			return { x, y };
 		
-		if (this.getKeyDown('d')) x += 1;
-		if (this.getKeyDown('a')) x -= 1;
-		if (this.getKeyDown('s')) y += 1;
-		if (this.getKeyDown('w')) y -= 1;
+		if(wasd) {
+			if (this.getKeyDown('d')) x += 1;
+			if (this.getKeyDown('a')) x -= 1;
+			if (this.getKeyDown('s')) y += 1;
+			if (this.getKeyDown('w')) y -= 1;
+		}
 		
 		if (this.getKeyDown('arrowright')) x += 1;
 		if (this.getKeyDown('arrowleft')) x -= 1;
 		if (this.getKeyDown('arrowdown')) y += 1;
 		if (this.getKeyDown('arrowup')) y -= 1;
 		return { x, y };
+	}
+	
+	getControllerAxisArrowsOnly() {
+		return this.getControllerAxis(false);
 	}
 	
 	getIsGameInFocus() {
