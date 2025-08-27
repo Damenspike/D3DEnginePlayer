@@ -386,9 +386,11 @@ function setupSelection(renderer, camera) {
 				else _editor.selectedObjects = [selectedObject];
 			} else {
 				_editor.selectedObjects = [];
+				_editor.gizmo.busy = false;
 			}
 		}else{
 			_editor.selectedObjects = [];
+			_editor.gizmo.busy = false;
 		}
 		
 		_editor.onObjectSelected?.(_editor.selectedObjects);

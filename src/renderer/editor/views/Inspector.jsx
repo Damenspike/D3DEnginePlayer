@@ -5,6 +5,8 @@ import ComponentCell from './ComponentCell.jsx';
 import VectorInput from './VectorInput.jsx';
 import AssetExplorerDialog from './AssetExplorerDialog.jsx';
 
+import { MdDelete, MdAdd, MdFolderOpen } from "react-icons/md";
+
 const autoBlur = (e) => {
 	if (e.key === 'Enter') {
 		e.preventDefault();   // stop form submit
@@ -15,6 +17,7 @@ let onSelectFile;
 
 export default function Inspector() {
 	const _editor = window._editor;
+	const _root = window._root;
 	const THREE = window.THREE;
 	
 	const [object, setObject] = useState();
@@ -22,6 +25,7 @@ export default function Inspector() {
 	const [dummyProject, setDummyProject] = useState();
 	const [assetExplorerOpen, setAssetExplorerOpen] = useState(false);
 	const [assetExplorerFilter, setAssetExplorerFilter] = useState('all');
+	const [assetExplorerSelected, setAssetExplorerSelected] = useState();
 	
 	useEffect(() => {
 		_editor.onProjectLoaded = () => {
@@ -45,9 +49,10 @@ export default function Inspector() {
 		setDummyObject({...dummyObject});
 		setDummyProject({...dummyProject});
 	}
-	const openAssetExplorer = ({ format, onSelect }) => {
+	const openAssetExplorer = ({ format, selectedAsset, onSelect }) => {
 		setAssetExplorerFilter(format);
 		setAssetExplorerOpen(true);
+		setAssetExplorerSelected(selectedAsset);
 		onSelectFile = onSelect;
 	}
 	
@@ -207,10 +212,10 @@ export default function Inspector() {
 						const current = dummyComponent.properties[fieldId] ?? '';
 						const open = () => openAssetExplorer({
 							format: 'model',
+							selectedAsset: current,
 							onSelect: (assetName) => {
 								dummyComponent.properties[fieldId] = assetName;
 								component.properties[fieldId] = assetName;
-								console.log(assetName);
 								update();
 							}
 						});
@@ -228,8 +233,90 @@ export default function Inspector() {
 									className="btn" 
 									onClick={open}
 								>
-									Browse…
+									<MdFolderOpen />
 								</button>
+							</div>
+						);
+						break;
+					}
+					case 'file[]': {
+						const current = Array.isArray(dummyComponent.properties[fieldId])
+							? dummyComponent.properties[fieldId]
+							: [];
+					
+						const browseAndAppend = () => openAssetExplorer({
+							format: 'material',
+							selectedAsset: '',
+							onSelect: (assetPath) => {
+								const updated = [...current, assetPath];
+								dummyComponent.properties[fieldId] = updated;
+								component.properties[fieldId] = updated;
+								update();
+							}
+						});
+					
+						fieldContent = (
+							<div className="file-array-field">
+								<div className="file-array-list">
+									{current.map((filePath, idx) => {
+										const browse = () => {
+											openAssetExplorer({
+												format: 'material',
+												selectedAsset: filePath,
+												onSelect: (assetPath) => {
+													const updated = [...current];
+													updated[idx] = assetPath;
+													dummyComponent.properties[fieldId] = updated;
+													component.properties[fieldId] = updated;
+													update();
+												}
+											})
+										}
+										
+										return (
+											<div key={idx} className="file-array-row">
+												<input
+													className="tf"
+													type="text"
+													readOnly
+													value={filePath}
+													placeholder="No asset selected"
+													onClick={browse}
+												/>
+												<button
+													className="btn"
+													title="Browse"
+													onClick={browse}
+												>
+													<MdFolderOpen />
+												</button>
+												<button
+													className="btn btn--danger"
+													title="Remove"
+													onClick={() => {
+														const updated = current.filter((_, i) => i !== idx);
+														dummyComponent.properties[fieldId] = updated;
+														component.properties[fieldId] = updated;
+														update();
+													}}
+												>
+													<MdDelete />
+												</button>
+											</div>
+										)
+									})}
+								</div>
+					
+								{/* add button */}
+								<div className="file-array-actions">
+									<button
+										className="btn"
+										title="Add"
+										onClick={browseAndAppend}
+									>
+										<MdAdd />
+									</button>
+								</div>
 							</div>
 						);
 						break;
@@ -375,21 +462,97 @@ export default function Inspector() {
 			</InspectorCell>
 		)
 	}
+	const drawSceneInspector = () => {
+		
+		const drawObjects = () => {
+			const rows = [];
+			const objects = [..._editor.parent.children];
+			
+			if(objects.length < 1)
+				return <div className='no-label'>No objects</div>
+			
+			objects.forEach(object => {
+				const selected = _editor.selectedObjects.includes(object);
+				
+				if(object.editorOnly)
+					return;
+				
+				rows.push(
+					<div 
+						key={rows.length}
+						className={`object-row ${selected ? 'object-row--selected' : ''}`}
+						onClick={() => {
+							if(_input.getKeyDown('shift')) {
+								const anchor = _editor.selectedObjects[0];
+								const startIndex = objects.indexOf(anchor);
+								const endIndex = objects.indexOf(object);
+								
+								if (startIndex == -1 || endIndex == -1) 
+									return;
+								
+								const start = Math.min(startIndex, endIndex);
+								const end = Math.max(startIndex, endIndex);
+								
+								for (let i = start; i <= end; i++) {
+									const o = objects[i];
+									if (!_editor.selectedObjects.includes(o)) {
+										_editor.selectedObjects.push(o);
+									}
+								}
+							}else
+							if(_input.getKeyDown('alt')) {
+								if(!_editor.selectedObjects.includes(object))
+									_editor.selectedObjects.push(object);
+								else {
+									_editor.selectedObjects.splice(
+										_editor.selectedObjects.indexOf(object),
+										1
+									)
+								}
+							}else{
+								_editor.selectedObjects = [object];
+							}
+							update();
+						}}
+						onDoubleClick={() => {
+							_editor.parent = object;
+						}}
+					>
+						{object.name}
+					</div>
+				)
+			})
+			
+			return rows;
+		}
+		
+		return (
+			<InspectorCell id="insp-cell-scene" title="Scene">
+				<div className="scene-objects-list shade">
+					{drawObjects()}
+				</div>
+			</InspectorCell>
+		)
+	}
 	
 	return (
 		<div className="inspector resizable no-select" id="insp-view">
 			{object && drawObjectInspector()}
+			{_root && drawSceneInspector()}
 			{_editor.project && drawProjectInspector()}
+			
+			<div style={{height: 45}} />
 			
 			<AssetExplorerDialog
 				isOpen={assetExplorerOpen}
 				onClose={() => setAssetExplorerOpen(false)}
 				onSelect={onSelectFile}
-				zip={window._root?.zip}
+				zip={_root?.zip}
 				folder="assets/"
 				defaultFilter={assetExplorerFilter}
 				allowChangeFormat={false}
 				allowImport={true}
+				selectedAsset={assetExplorerSelected}
 			/>
 		</div>
 	)

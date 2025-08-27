@@ -10,6 +10,14 @@ export const TransformTools = Object.freeze({
 })
 
 export default class D3DEditorState {
+	get parent() {
+		return this._parent ?? _root;
+	}
+	set parent(value) {
+		this._parent = value;
+		_editor.updateInspector();
+	}
+	
 	constructor() {
 		this.gui = {};
 		this.project = null;

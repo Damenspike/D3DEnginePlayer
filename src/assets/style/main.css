@@ -88,18 +88,22 @@ body.dark {
 .field {
 	text-align: left;
 	margin-bottom: 20px;
-}
-.field label {
-	display: block;
-	font-weight: bold;
-	margin-bottom: 10px;
 	
-	font-size: 12px;
-	text-transform: uppercase;
-}
-.field input {
-	width: 100%;
-	box-sizing: border-box; /* important: keeps padding from messing width */
+	label {
+		display: block;
+		font-weight: bold;
+		margin-bottom: 10px;
+		
+		font-size: 12px;
+		text-transform: uppercase;
+	}
+	button {
+		min-width: 35px !important;
+	}
+	input {
+		width: 100%;
+		box-sizing: border-box; /* important: keeps padding from messing width */
+	}
 }
 .ml {
 	margin-left: 10px;
@@ -150,7 +154,6 @@ button {
 	cursor: pointer;
 	display: inline-block;
 	text-decoration: none !important;
-	transition: all 0.2s ease-in-out;
 	text-shadow: 0px 0px 3px rgba(0, 0, 0, 0.142);
 	
 	i {
@@ -165,8 +168,8 @@ button:active {
 	filter: brightness(50%);
 }
 input[type=checkbox] {
-	width: 20px;
-	height: 20px;
+	width: 15px;
+	height: 15px;
 }
 input[type="range"] {
 	width: 100%;

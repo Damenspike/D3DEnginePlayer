@@ -24,9 +24,10 @@ body.dark {
 			color: white;
 		}
 	}
-	.inspector-cell {
+	.shade {
 		background: rgba(0, 0, 0, 0.22);
-		
+	}
+	.inspector-cell {
 		.insp-title {
 			border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 		}
@@ -170,7 +171,6 @@ body.dark {
 .inspector-cell {
 	margin: 10px;
 	padding: 10px;
-	background: rgba(0, 0, 0, 0.1);
 	border-radius: 10px;
 	
 	.insp-title {
@@ -369,4 +369,53 @@ body.dark {
 	.btn {
 		flex: 0 0 auto;
 	}
+}
+.file-array-field {
+	.file-array-list {
+		/* no bullets; using div rows anyway */
+		display: grid;
+		gap: 8px;
+	}
+	.file-array-row {
+		display: grid;
+		grid-template-columns: 1fr auto auto;
+		gap: 8px;
+		align-items: center;
+	}
+	.file-array-actions {
+		margin-top: 8px;
+	}
+	.file-array-field .btn svg {
+		vertical-align: middle;
+	}
+}
+.shade {
+	background: rgba(0, 0, 0, 0.1);
+}
+.scene-objects-list {
+	max-height: 250px;
+	padding: 5px;
+	overflow-x: hidden;
+	overflow-y: scroll;
+	border-radius: 10px;
+	
+	.object-row {
+		padding: 7px;
+		border-radius: 5px;
+		margin: 5px;
+		cursor: pointer;
+		font-size: 14px;
+	}
+	.object-row:hover {
+		background: rgba(0, 0, 0, 0.3);
+	}
+	.object-row--selected {
+		background: #0099ff !important;
+	}
+}
+.no-label {
+	text-align: center;
+	font-size: 14px;
+	opacity: 0.8;
+	padding: 10px;
 }

@@ -130,6 +130,18 @@ export default class D3DInput {
 	getIsGameInFocus() {
 		return _container3d.matches(':focus');
 	}
+	
+	getCursorOverGame() {
+		const pos = this.getMousePosition();
+		const rect = _container3d.getBoundingClientRect();
+		
+		return (
+			pos.x >= rect.left &&
+			pos.x <= rect.right &&
+			pos.y >= rect.top &&
+			pos.y <= rect.bottom
+		)
+	}
 
 	// --- Mouse ---
 	_afterRenderFrame() {

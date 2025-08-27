@@ -8,6 +8,7 @@ const EXT_GROUPS = {
 	json: ['.json'],
 	txt: ['.txt','.md','.csv'],
 	model: ['.glb','.gltf'],
+	material: ['.mat'],
 	all: []
 };
 
@@ -44,34 +45,50 @@ async function previewURLFromZip(zip, path) {
 export default function AssetExplorerDialog({
 	isOpen,
 	onClose,
-	onSelect,				// (assetRelativeName) => void  e.g. "sprites/ship.png"
+	onSelect,
 	folder = 'assets/',
 	allowImport = true,
 	zip = window._root?.zip,
 	defaultFilter = 'all',
-	allowChangeFormat = true
+	allowChangeFormat = true,
+	selectedAsset = ''
 }) {
 	const [all, setAll] = useState([]);
 	const [query, setQuery] = useState('');
 	const [extFilter, setExtFilter] = useState(defaultFilter);
 	const [customExt, setCustomExt] = useState('');
-	const [active, setActive] = useState(null); // {path,name}
+	const [active, setActive] = useState();
 	const [previewURL, setPreviewURL] = useState(null);
 	const listRef = useRef(null);
 	const fileInputRef = useRef(null);
-	
-	console.log(extFilter);
 
 	// load/reset when opened
 	useEffect(() => {
 		if (!isOpen) return;
 		const items = listAssetsFromZip(zip, folder);
 		setAll(items);
-		setActive(items[0] ?? null);
 		setQuery('');
 		setExtFilter(defaultFilter);
 		setCustomExt('');
-	}, [isOpen, zip, folder, defaultFilter]);
+	
+		// build a full path from selectedAsset (if it isn't already)
+		const fullPath = selectedAsset
+			? (selectedAsset.startsWith(folder) ? selectedAsset : `${folder}${selectedAsset}`)
+			: '';
+	
+		// try: match by full path, then by name (relative path)
+		let initial =
+			(fullPath && items.find(i => i.path === fullPath)) ||
+			(selectedAsset && items.find(i => i.name === selectedAsset)) ||
+			items[0] || null;
+	
+		setActive(initial);
+	
+		// scroll once the row actually exists in the DOM
+		if (initial) {
+			requestAnimationFrame(() => scrollIntoView(initial));
+		}
+	}, [isOpen, zip, folder, defaultFilter, selectedAsset]);
 
 	// preview
 	useEffect(() => {
@@ -209,6 +226,7 @@ export default function AssetExplorerDialog({
 					>
 						<option value="all">All</option>
 						<option value="model">3D Models</option>
+						<option value="material">Materials</option>
 						<option value="img">Images</option>
 						<option value="audio">Audio</option>
 						<option value="json">JSON</option>

@@ -200,6 +200,7 @@ function updateOrbit(usePivot) {
 
 self.beforeEditorRenderFrame = () => {
 	const isGameInFocus = _input.getIsGameInFocus();
+	const isCursorOverGame = _input.getCursorOverGame();
 	
 	if(isGameInFocus) {
 		if(_input.getRightMouseButtonDown()) {
@@ -221,10 +222,13 @@ self.beforeEditorRenderFrame = () => {
 			updateOrbit(false);
 		
 		updateMotion();
-		updateTween();
-		
-		if(_input.getKeyDown('f') && _editor.selectedObjects.length > 0)
-			focusOn(_editor.selectedObjects);
 	}
-	updateZoom();
+	
+	if(_input.getKeyDown('f') && _editor.selectedObjects.length > 0)
+		focusOn(_editor.selectedObjects);
+	
+	if(isCursorOverGame)
+		updateZoom();
+	
+	updateTween();
 };

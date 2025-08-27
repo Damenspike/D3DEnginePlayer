@@ -15,7 +15,7 @@ export default function InspectorCell({ id, title, defaultOpen = true, children 
 	}, [key, open]);
 
 	return (
-		<div className={`inspector-cell${open ? '' : ' collapsed'}`} id={id} tabIndex={1}>
+		<div className={`inspector-cell${open ? '' : ' collapsed'} shade`} id={id} tabIndex={1}>
 			<div className="insp-title" role="button" tabIndex={0}
 				onClick={() => setOpen(!open)}
 				onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(!open); } }}>
