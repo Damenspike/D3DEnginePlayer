@@ -59,11 +59,11 @@
 				"scale": {"x": 1, "y": 1, "z": 1},
 				"components": [
 					{
-						"type": "Light",
+						"type": "DirectionalLight",
 						"properties": {
-							"type": "DirectionalLight",
 							"color": "0xffffff",
-							"intensity": 3
+							"intensity": 3,
+							"castShadow": true
 						}
 					}
 				],

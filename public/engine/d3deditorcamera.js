@@ -43,24 +43,49 @@ function moveForward(distance) {
 	// move camera
 	self.object3d.position.addScaledVector(dir, distance);
 }
-function focusOn(targets, distance = null, duration = 0.35, padding = 1.15) {
-	// normalize to array
-	const list = Array.isArray(targets) ? targets : (targets ? [targets] : []);
+function focusOn(targets, distance = null, duration = 0.35, padding = 1.15, pointSize = 0.5) {
+	const list = [...targets];
 	if (!list.length) return;
 
 	// union world-space AABB (includes object scale/children)
-	const box = new THREE.Box3();
-	let any = false;
+	const box = new THREE.Box3().makeEmpty();
+	const tmpBox = new THREE.Box3();
+	const tmpV = new THREE.Vector3();
+
+	let hadGeometry = false;
+	let hadPoints = false;
+
 	for (let i = 0; i < list.length; i++) {
 		const obj3d = list[i] && list[i].object3d;
 		if (!obj3d) continue;
-		const b = new THREE.Box3().setFromObject(obj3d);
-		if (!b.isEmpty()) {
-			if (!any) { box.copy(b); any = true; }
-			else box.union(b);
+
+		tmpBox.makeEmpty();
+		tmpBox.setFromObject(obj3d);
+
+		if (!tmpBox.isEmpty()) {
+			// has renderable bounds
+			if (box.isEmpty()) box.copy(tmpBox);
+			else box.union(tmpBox);
+			hadGeometry = true;
+		} else {
+			// no mesh: fall back to world position
+			obj3d.getWorldPosition(tmpV);
+			if (box.isEmpty()) box.set(tmpV.clone(), tmpV.clone());
+			else box.expandByPoint(tmpV);
+			hadPoints = true;
 		}
 	}
-	if (!any) return;
+
+	if (box.isEmpty()) return; // nothing valid at all
+
+	// ensure a minimum size if we only had points (no geometry)
+	if (!hadGeometry && hadPoints) {
+		// Inflate the box so it has some extents (centered on points union)
+		const half = pointSize * 0.5;
+		const c = box.getCenter(new THREE.Vector3());
+		box.min.set(c.x - half, c.y - half, c.z - half);
+		box.max.set(c.x + half, c.y + half, c.z + half);
+	}
 
 	// center & size
 	const target = new THREE.Vector3();
@@ -78,22 +103,22 @@ function focusOn(targets, distance = null, duration = 0.35, padding = 1.15) {
 			const vFov = THREE.MathUtils.degToRad(cam.fov);
 			const hFov = 2 * Math.atan(Math.tan(vFov * 0.5) * cam.aspect);
 
-			const distV = (size.y * 0.5) / Math.tan(vFov * 0.5);
-			const distH = (size.x * 0.5) / Math.tan(hFov * 0.5);
+			// guard against zero size
+			const sx = Math.max(size.x, pointSize);
+			const sy = Math.max(size.y, pointSize);
+			const sz = Math.max(size.z, pointSize);
 
-			// ensure depth fits too (push back by half-depth so back faces aren't clipped)
-			const depthPad = size.z * 0.5;
+			const distV = (sy * 0.5) / Math.tan(vFov * 0.5);
+			const distH = (sx * 0.5) / Math.tan(hFov * 0.5);
+			const depthPad = sz * 0.5;
 
 			dist = Math.max(distV, distH) + depthPad;
-
-			// respect near plane a bit
 			dist = Math.max(dist, cam.near + 0.1);
 		} else if (cam.isOrthographicCamera) {
-			// fit orthographic frustum by adjusting distance minimally (orbit radius),
-			// but usually you’d change cam.zoom; here we just move to center.
+			// keep current radius; controls usually zoom for ortho
 			dist = cam.position.clone().sub(target).length();
 		} else {
-			dist = 5; // fallback
+			dist = 5;
 		}
 	}
 
@@ -201,6 +226,7 @@ function updateOrbit(usePivot) {
 self.beforeEditorRenderFrame = () => {
 	const isGameInFocus = _input.getIsGameInFocus();
 	const isCursorOverGame = _input.getCursorOverGame();
+	const inputFieldInFocus = _input.getInputFieldInFocus();
 	
 	if(isGameInFocus) {
 		if(_input.getRightMouseButtonDown()) {
@@ -224,7 +250,7 @@ self.beforeEditorRenderFrame = () => {
 		updateMotion();
 	}
 	
-	if(_input.getKeyDown('f') && _editor.selectedObjects.length > 0)
+	if(_input.getKeyDown('f') && !inputFieldInFocus && _editor.selectedObjects.length > 0 && !self._focusTween)
 		focusOn(_editor.selectedObjects);
 	
 	if(isCursorOverGame)

@@ -1,3 +1,5 @@
+const { ipcRenderer } = window.electron;
+
 // Tool enum
 export const Tools = Object.freeze({
 	Select: 'select',
@@ -86,5 +88,9 @@ export default class D3DEditorState {
 	}
 	getTransformTool() {
 		return this.transformTool;
+	}
+	
+	setDirty(dirty) {
+		ipcRenderer.send('set-dirty', dirty);
 	}
 }

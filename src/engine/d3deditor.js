@@ -46,12 +46,21 @@ function showError(args) {
 	
 	ipcRenderer.send('show-error', {title, message, closeEditorWhenDone});
 }
+async function showConfirm({title = '', message = '', onDeny = null, onConfirm}) {
+	const confirm = await ipcRenderer.invoke('show-confirm', {title, message});
+	
+	if(confirm)
+		onConfirm();
+	else
+		onDeny?.();
+}
 function closeEditor() {
 	ipcRenderer.send('close-editor');
 }
 
 _editor.showError = showError;
 _editor.closeEditor = closeEditor;
+_editor.showConfirm = showConfirm;
 
 // Main loader
 export async function loadD3DProj(uri) {
@@ -386,11 +395,9 @@ function setupSelection(renderer, camera) {
 				else _editor.selectedObjects = [selectedObject];
 			} else {
 				_editor.selectedObjects = [];
-				_editor.gizmo.busy = false;
 			}
 		}else{
 			_editor.selectedObjects = [];
-			_editor.gizmo.busy = false;
 		}
 		
 		_editor.onObjectSelected?.(_editor.selectedObjects);

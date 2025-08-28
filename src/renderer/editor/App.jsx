@@ -11,7 +11,7 @@ export default function App() {
 	const theme = useSystemTheme();
 	
 	return (
-		<div className="editor-shell">
+		<div className="editor-shell" onClick={() => _editor.setDirty(true)}>
 			<Topbar />
 			<EditorMain />
 		</div>

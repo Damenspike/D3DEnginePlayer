@@ -398,41 +398,40 @@ export default class D3DObject {
 					
 					break;
 				}
-				case 'Light': {
-					if (component.properties.type === 'AmbientLight') {
-						if(!this.light) {
-							const light = new THREE.AmbientLight(
-								parseInt(component.properties.color, 16),
-								component.properties.intensity
+				case 'AmbientLight': {
+					if(!this.light) {
+						const light = new THREE.AmbientLight(
+							parseInt(component.properties.color, 16),
+							component.properties.intensity
+						);
+						this.object3d.add(light);
+						this.light = light;
+					}else{
+						const light = this.light;
+						light.color = parseInt(component.properties.color || '0xffffff', 16);
+						light.intensity = component.properties.intensity;
+					}
+					break;
+				}
+				case 'DirectionalLight': {
+					if(!this.light) {
+						const light = new THREE.DirectionalLight(
+							parseInt(component.properties.color, 16),
+							component.properties.intensity
+						);
+						if (component.properties.position) {
+							light.position.set(
+								component.properties.position.x, 
+								component.properties.position.y, 
+								component.properties.position.z
 							);
-							this.object3d.add(light);
-							this.light = light;
-						}else{
-							const light = this.light;
-							light.color = parseInt(component.properties.color || '0xffffff', 16);
-							light.intensity = component.properties.intensity;
 						}
-					}else 
-					if (component.properties.type === 'DirectionalLight') {
-						if(!this.light) {
-							const light = new THREE.DirectionalLight(
-								parseInt(component.properties.color, 16),
-								component.properties.intensity
-							);
-							if (component.properties.position) {
-								light.position.set(
-									component.properties.position.x, 
-									component.properties.position.y, 
-									component.properties.position.z
-								);
-							}
-							this.object3d.add(light);
-							this.light = light;
-						}else{
-							const light = this.light;
-							light.color = parseInt(component.properties.color || '0xffffff', 16);
-							light.intensity = component.properties.intensity;
-						}
+						this.object3d.add(light);
+						this.light = light;
+					}else{
+						const light = this.light;
+						light.color.set(Number(component.properties.color));
+						light.intensity = component.properties.intensity;
 					}
 					break;
 				}

@@ -142,6 +142,11 @@ export default class D3DInput {
 			pos.y <= rect.bottom
 		)
 	}
+	
+	getInputFieldInFocus() {
+		return document.activeElement && 
+			document.activeElement.tagName === "INPUT";
+	}
 
 	// --- Mouse ---
 	_afterRenderFrame() {

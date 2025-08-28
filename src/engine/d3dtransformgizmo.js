@@ -109,6 +109,7 @@ export default class D3DTransformGizmo {
 	detach() {
 		this.d3dobject = null;
 		this._group.visible = false;
+		this._endDrag();
 	}
 
 	setMode(mode) {
@@ -134,7 +135,13 @@ export default class D3DTransformGizmo {
 	update() {
 		// keep attached to selected if a getter is provided
 		const sel = this.getSelected();
-		if (sel !== this.d3dobject) this.attach(sel);
+		if (sel !== this.d3dobject) {
+			if(!sel) {
+				this.detach();
+			}else{
+				this.attach(sel);
+			}
+		}
 		
 		if (!this.object) return;
 

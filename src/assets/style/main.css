@@ -48,6 +48,9 @@ body.dark {
 		background: rgba(0, 0, 0, 0.4);
 		color: white;
 	}
+	.field input[type="color"] {
+		border: 2px solid #eee;
+	}
 }
 
 * {
@@ -104,6 +107,24 @@ body.dark {
 		width: 100%;
 		box-sizing: border-box; /* important: keeps padding from messing width */
 	}
+	input[type="color"] {
+		-webkit-appearance: none;
+		appearance: none;
+		width: 32px;
+		height: 32px;
+		padding: 0;
+		border: 2px solid #444;
+		border-radius: 10px;
+		cursor: pointer;
+	}
+	input[type="color"]::-webkit-color-swatch-wrapper {
+		padding: 0;
+		border-radius: 6px;
+	}
+	input[type="color"]::-webkit-color-swatch {
+		border: none;
+		border-radius: 6px;
+	}
 }
 .ml {
 	margin-left: 10px;
@@ -141,6 +162,17 @@ body.dark {
 .ib {
 	display: inline-block;
 }
+.flex {
+	display: flex;
+	alignItems: center;
+	gap: 5px;
+}
+.slider-value {
+	width: 50px;
+	text-align: right;
+	padding: 3px;
+	font-size: 14px;
+}
 
 button {
 	background: #0099ff;
@@ -156,7 +188,7 @@ button {
 	text-decoration: none !important;
 	text-shadow: 0px 0px 3px rgba(0, 0, 0, 0.142);
 	
-	i {
+	svg {
 		vertical-align: middle;
 		padding: 2px;
 	}
@@ -166,6 +198,12 @@ button:hover {
 }
 button:active {
 	filter: brightness(50%);
+}
+button:disabled, button:disabled:active {
+	background: #565656;
+	opacity: 0.4;
+	filter: none;
+	cursor: not-allowed;
 }
 input[type=checkbox] {
 	width: 15px;

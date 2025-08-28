@@ -1,11 +1,22 @@
-import React, { forwardRef, useState, useEffect } from 'react';
+import React, { forwardRef, useState, useEffect, useRef } from 'react';
 import D3DComponents from '../../../engine/d3dcomponents.js';
 import InspectorCell from './InspectorCell.jsx';
 import ComponentCell from './ComponentCell.jsx';
 import VectorInput from './VectorInput.jsx';
 import AssetExplorerDialog from './AssetExplorerDialog.jsx';
 
-import { MdDelete, MdAdd, MdFolderOpen } from "react-icons/md";
+import { 
+	MdDelete, 
+	MdAdd, 
+	MdFolderOpen, 
+	MdGames,
+	MdViewInAr,
+	MdLightbulbOutline,
+	MdPhotoCamera,
+	MdHtml,
+	MdFolder, MdInsertDriveFile, MdExpandMore, MdChevronRight,
+	MdUpload, MdCreateNewFolder, MdRefresh, MdDeleteForever
+} from "react-icons/md";
 
 const autoBlur = (e) => {
 	if (e.key === 'Enter') {
@@ -26,6 +37,23 @@ export default function Inspector() {
 	const [assetExplorerOpen, setAssetExplorerOpen] = useState(false);
 	const [assetExplorerFilter, setAssetExplorerFilter] = useState('all');
 	const [assetExplorerSelected, setAssetExplorerSelected] = useState();
+	const [sceneInspectorExpanded, setSceneInspectorExpanded] = useState(false);
+	const [objectInspectorExpanded, setObjectInspectorExpanded] = useState(false);
+	
+	// Scene config states
+	const [bgType, setBgType] = useState('none');
+	const [bgColor, setBgColor] = useState('#000000');
+	const [bgTexturePath, setBgTexturePath] = useState('');
+	
+	// Asset Tree
+	const assetFileInputRef = useRef(null);
+	const [assetTree, setAssetTree] = useState(null);
+	const [assetExpanded, setAssetExpanded] = useState(new Set(['assets']));
+	const [selectedAssetPaths, setSelectedAssetPaths] = useState(new Set());
+	const [lastSelectedPath, setLastSelectedPath] = useState(null); 
+	const [currentAssetFolder, setCurrentAssetFolder] = useState('assets');
+	const [newFolderOpen, setNewFolderOpen] = useState(false);
+	const [newFolderName, setNewFolderName] = useState('');
 	
 	useEffect(() => {
 		_editor.onProjectLoaded = () => {
@@ -61,6 +89,8 @@ export default function Inspector() {
 			<InspectorCell 
 				id="insp-cell-object" 
 				title="Object" 
+				expanded={objectInspectorExpanded}
+				onExpand={() => setObjectInspectorExpanded(!objectInspectorExpanded)}
 			>
 				<div className="field">
 					<label>Name</label>
@@ -132,35 +162,37 @@ export default function Inspector() {
 					/>
 				</div>
 				
-				<div className="field mt2">
-					<div className="vector-input vector-input--top">
-						<div>
-							<label>Visible</label>
-							<input 
-								type="checkbox" 
-								checked={object.visible} 
-								onChange={e => {
-									object.visible = e.target.checked;
-									update();
-								}} 
-							/>
-						</div>
-						<div>
-							<label>Opacity</label>
-							<input 
-								type="range" 
-								min={0} 
-								max={1}
-								step={0.01}
-								value={object.opacity} 
-								onChange={e => {
-									object.opacity = Number(e.target.value);
-									update();
-								}}
-							/>
+				{objectInspectorExpanded && (
+					<div className="field mt2">
+						<div className="vector-input vector-input--top">
+							<div>
+								<label>Visible</label>
+								<input 
+									type="checkbox" 
+									checked={object.visible} 
+									onChange={e => {
+										object.visible = e.target.checked;
+										update();
+									}} 
+								/>
+							</div>
+							<div>
+								<label>Opacity</label>
+								<input 
+									type="range" 
+									min={0} 
+									max={1}
+									step={0.01}
+									value={object.opacity} 
+									onChange={e => {
+										object.opacity = Number(e.target.value);
+										update();
+									}}
+								/>
+							</div>
 						</div>
 					</div>
-				</div>
+				)}
 				
 				<div className="components-editor">
 					{drawComponentsEditor()}
@@ -184,6 +216,8 @@ export default function Inspector() {
 			
 			for(let fieldId in schema.fields) {
 				const field = schema.fields[fieldId];
+				const current = dummyComponent.properties[fieldId];
+				
 				let fieldContent;
 				
 				switch(field.type) {
@@ -192,20 +226,137 @@ export default function Inspector() {
 							<input 
 								className="tf" 
 								type="text" 
-								value={dummyComponent.properties[fieldId] ?? ''} 
+								value={current ?? ''} 
 								onKeyDown={autoBlur}
 								onChange={e => {
-									dummyComponent.properties[fieldId] = e.target.value;
+									let val = e.target.value;
+									
+									if(field.convert)
+										val = field.covert(val);
+									
+									dummyComponent.properties[fieldId] = val;
 									update();
 								}}
 								onBlur={e => {
-									const val = String(e.target.value) || '';
+									let val = String(e.target.value) || '';
+									
+									if(field.convert)
+										val = field.covert(val);
 									
 									component.properties[fieldId] = val;
+									object.updateComponents();
 									update();
 								}}
 							/>
 						)
+						break;
+					}
+					case 'number': {
+						fieldContent = (
+							<input 
+								className="tf tf--num" 
+								type="number" 
+								value={Number(current) || 0} 
+								onKeyDown={autoBlur}
+								min={field.min}
+								max={field.max}
+								onChange={e => {
+									let val = Number(e.target.value) || 0;
+									
+									if(field.convert)
+										val = field.covert(val);
+										
+									dummyComponent.properties[fieldId] = val;
+									update();
+								}}
+								onBlur={e => {
+									let val = Number(e.target.value) || 0;
+									
+									if(field.min !== undefined && val < field.min)
+										val = field.min;
+									
+									if(field.min !== undefined && val > field.max)
+										val = field.max;
+									
+									if(field.convert)
+										val = field.covert(val);
+									
+									component.properties[fieldId] = val;
+									object.updateComponents();
+									update();
+								}}
+							/>
+						)
+						break;
+					}
+					case 'slider': {
+						fieldContent = (
+							<div className='flex'>
+								<input 
+									type="range" 
+									value={Number(current) || 0} 
+									onKeyDown={autoBlur}
+									min={field.min}
+									max={field.max}
+									onChange={e => {
+										let val = Number(e.target.value) || 0;
+										
+										if(field.min !== undefined && val < field.min)
+											val = field.min;
+										
+										if(field.min !== undefined && val > field.max)
+											val = field.max;
+											
+										if(field.convert)
+											val = field.covert(val);
+										
+										dummyComponent.properties[fieldId] = val;
+										component.properties[fieldId] = val;
+										object.updateComponents();
+										update();
+									}}
+								/>
+								<div className='slider-value'>
+									{Number(current) || 0}
+								</div>
+							</div>
+						)
+						break;
+					}
+					case 'boolean': {
+						fieldContent = (
+							<input 
+								type="checkbox" 
+								checked={!!current} 
+								onKeyDown={autoBlur}
+								onChange={e => {
+									const val = !!e.target.checked;
+									
+									dummyComponent.properties[fieldId] = val;
+									component.properties[fieldId] = val;
+									object.updateComponents();
+									update();
+								}}
+							/>
+						)
+						break;
+					}
+					case 'color': {
+						fieldContent = (
+							<input 
+								type="color" 
+								value={current.replace('0x', '#')}
+								onKeyDown={autoBlur}
+								onChange={e => {
+									const val = (e.target.value || '#ffffff').replace('#', '0x');
+									
+									dummyComponent.properties[fieldId] = val;
+									component.properties[fieldId] = val;
+									object.updateComponents();
+									update();
+								}}
+							/>
+						);
 						break;
 					}
 					case 'file': {
@@ -216,6 +367,7 @@ export default function Inspector() {
 							onSelect: (assetName) => {
 								dummyComponent.properties[fieldId] = assetName;
 								component.properties[fieldId] = assetName;
+								object.updateComponents();
 								update();
 							}
 						});
@@ -230,7 +382,6 @@ export default function Inspector() {
 									onClick={open}
 								/>
 								<button 
-									className="btn" 
 									onClick={open}
 								>
 									<MdFolderOpen />
@@ -268,6 +419,7 @@ export default function Inspector() {
 													updated[idx] = assetPath;
 													dummyComponent.properties[fieldId] = updated;
 													component.properties[fieldId] = updated;
+													object.updateComponents();
 													update();
 												}
 											})
@@ -284,19 +436,18 @@ export default function Inspector() {
 													onClick={browse}
 												/>
 												<button
-													className="btn"
 													title="Browse"
 													onClick={browse}
 												>
 													<MdFolderOpen />
 												</button>
 												<button
-													className="btn btn--danger"
 													title="Remove"
 													onClick={() => {
 														const updated = current.filter((_, i) => i !== idx);
 														dummyComponent.properties[fieldId] = updated;
 														component.properties[fieldId] = updated;
+														object.updateComponents();
 														update();
 													}}
 												>
@@ -310,7 +461,6 @@ export default function Inspector() {
 								{/* add button */}
 								<div className="file-array-actions">
 									<button
-										className="btn"
 										title="Add"
 										onClick={browseAndAppend}
 									>
@@ -337,7 +487,7 @@ export default function Inspector() {
 			
 			rows.push(
 				<ComponentCell 
-					title={component.type}
+					title={schema.name || component.type}
 					key={rows.length} 
 				>
 					{fields}
@@ -463,7 +613,64 @@ export default function Inspector() {
 		)
 	}
 	const drawSceneInspector = () => {
+		const scene = _root.object3d;
 		
+		const drawPath = () => {
+			const path = [];
+			const objectFrame = _editor.parent;
+			
+			if(!objectFrame || !objectFrame.parent)
+				return;
+			
+			let stack = [objectFrame];
+			let current = objectFrame;
+			
+			while(current.parent != null) {
+				stack.push(current.parent);
+				current = current.parent;
+			}
+			
+			stack = stack.reverse();
+			stack.forEach(object => {
+				const drawArrow = () => {
+					if(stack.indexOf(object) == stack.length - 1)
+						return;
+					
+					return (
+						<>
+							&nbsp;
+							&gt;
+							&nbsp;
+						</>
+					)
+				}
+				path.push(
+					<>
+						<div 
+							key={path.length}
+							className='object-path-item'
+							onClick={() => {
+								const oldParent = _editor.parent;
+								
+								_editor.parent = object;
+								
+								if(object == (oldParent.parent ?? _root))
+									_editor.selectedObjects = [oldParent];
+								else
+									_editor.selectedObjects = [];
+									
+								_editor.onObjectSelected(_editor.selectedObjects);
+							}}
+						>
+							{object.name}
+						</div>
+						{drawArrow()}
+					</>
+				)
+			});
+			
+			return path;
+		}
 		const drawObjects = () => {
 			const rows = [];
 			const objects = [..._editor.parent.children];
@@ -477,12 +684,28 @@ export default function Inspector() {
 				if(object.editorOnly)
 					return;
 				
+				const drawIcon = () => {
+					if(object.components.find(c => c.type == 'Mesh'))
+						return <MdViewInAr />;
+					else
+					if(object.components.find(c => c.type.includes('Light')))
+						return <MdLightbulbOutline />;
+					else
+					if(object.components.find(c => c.type == 'Camera'))
+						return <MdPhotoCamera />;
+					else
+					if(object.components.find(c => c.type == 'HTML'))
+						return <MdHtml />;
+					else
+						return <MdGames />;
+				}
+				
 				rows.push(
 					<div 
 						key={rows.length}
 						className={`object-row ${selected ? 'object-row--selected' : ''}`}
-						onClick={() => {
-							if(_input.getKeyDown('shift')) {
+						onClick={e => {
+							if(e.shiftKey) {
 								const anchor = _editor.selectedObjects[0];
 								const startIndex = objects.indexOf(anchor);
 								const endIndex = objects.indexOf(object);
@@ -500,7 +723,7 @@ export default function Inspector() {
 									}
 								}
 							}else
-							if(_input.getKeyDown('alt')) {
+							if(e.metaKey || e.ctrlKey) {
 								if(!_editor.selectedObjects.includes(object))
 									_editor.selectedObjects.push(object);
 								else {
@@ -510,36 +733,522 @@ export default function Inspector() {
 									)
 								}
 							}else{
-								_editor.selectedObjects = [object];
+								if(_editor.selectedObjects.length <= 1) {
+									if(!_editor.selectedObjects.includes(object))
+										_editor.selectedObjects = [object];
+									else {
+										_editor.selectedObjects.splice(
+											_editor.selectedObjects.indexOf(object),
+											1
+										)
+									}
+								}else{
+									_editor.selectedObjects = [object];
+								}
 							}
-							update();
+							_editor.onObjectSelected(_editor.selectedObjects);
 						}}
 						onDoubleClick={() => {
 							_editor.parent = object;
+							_editor.selectedObjects = [];
+							_editor.onObjectSelected(_editor.selectedObjects);
 						}}
 					>
-						{object.name}
+						{drawIcon()} {object.name}
 					</div>
 				)
 			})
 			
 			return rows;
 		}
+		const drawBackgroundSettings = () => {
+			// helpers
+			const applyNone = () => {
+				scene.background = null;
+			};
+		
+			const applyColor = (hex) => {
+				try {
+					scene.background = new THREE.Color(hex || '#000000');
+				} catch {
+					// ignore invalid hex
+				}
+			};
+		
+			const applyTextureFromZip = async (path) => {
+				try {
+					const f = _root?.zip?.file(path);
+					if (!f) return;
+					const blob = await f.async('blob');
+					const url = URL.createObjectURL(blob);
+		
+					new THREE.TextureLoader().load(
+						url,
+						(tex) => {
+							URL.revokeObjectURL(url);
+							tex.mapping = THREE.EquirectangularReflectionMapping; // good default for sky panoramas
+							tex.colorSpace = THREE.SRGBColorSpace;
+							tex.needsUpdate = true;
+							scene.background = tex;
+						},
+						undefined,
+						() => URL.revokeObjectURL(url)
+					);
+				} catch (e) {
+					console.warn('Failed to load background texture:', e);
+				}
+			};
+		
+			// UI
+			return (
+				<div className="scene-insp-background-settings">
+					{/* Type */}
+					<div className="field">
+						<label>Background</label>
+						<select
+							className="tf"
+							value={bgType}
+							onChange={async (e) => {
+								const t = e.target.value;
+								setBgType(t);
+		
+								if (t === 'none') {
+									applyNone();
+								} else if (t === 'color') {
+									applyColor(bgColor);
+								} else if (t === 'texture') {
+									if (bgTexturePath) await applyTextureFromZip(bgTexturePath);
+								}
+							}}
+						>
+							<option value="none">None</option>
+							<option value="color">Color</option>
+							<option value="texture">Texture (equirect)</option>
+						</select>
+					</div>
+		
+					{/* Color settings */}
+					{bgType === 'color' && (
+						<div className="field">
+							<label>Background Color</label>
+							<div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+								<input
+									type="color"
+									value={bgColor}
+									onChange={(e) => {
+										const val = e.target.value || '#000000';
+										setBgColor(val);
+										applyColor(val);
+									}}
+								/>
+								<input
+									type="text"
+									className="tf"
+									value={bgColor}
+									onChange={(e) => {
+										const v = e.target.value.trim();
+										setBgColor(v);
+										// apply only if valid 6-digit hex (#RRGGBB)
+										if (/^#[0-9a-fA-F]{6}$/.test(v)) applyColor(v);
+									}}
+									onBlur={(e) => {
+										const v = e.target.value.trim();
+										if (!/^#[0-9a-fA-F]{6}$/.test(v)) {
+											setBgColor('#000000');
+											applyColor('#000000');
+										}
+									}}
+									placeholder="#000000"
+									style={{ width: 96, textAlign: 'center' }}
+								/>
+							</div>
+						</div>
+					)}
+		
+					{/* Texture settings */}
+					{bgType === 'texture' && (
+						<div className="field">
+							<label>Background Texture</label>
+							<div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8 }}>
+								<input
+									className="tf"
+									type="text"
+									readOnly
+									value={bgTexturePath}
+									placeholder="No texture selected"
+									onClick={() => {
+										openAssetExplorer({
+											format: 'img',
+											selectedAsset: bgTexturePath,
+											onSelect: async (assetPath) => {
+												setBgTexturePath(assetPath);
+												await applyTextureFromZip(assetPath);
+											}
+										});
+									}}
+								/>
+								<button
+									onClick={() => {
+										openAssetExplorer({
+											format: 'img',
+											selectedAsset: bgTexturePath,
+											onSelect: async (assetPath) => {
+												setBgTexturePath(assetPath);
+												await applyTextureFromZip(assetPath);
+											}
+										});
+									}}
+								>
+									Browse…
+								</button>
+							</div>
+							{bgTexturePath && (
+								<div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
+									Hint: use an equirectangular panorama for best results.
+								</div>
+							)}
+						</div>
+					)}
+				</div>
+			);
+		};
 		
 		return (
-			<InspectorCell id="insp-cell-scene" title="Scene">
+			<InspectorCell 
+				id="insp-cell-scene" 
+				title="Scene" 
+				expanded={sceneInspectorExpanded}
+				onExpand={() => setSceneInspectorExpanded(!sceneInspectorExpanded)}
+			>
+				<div className="path-container">
+					{drawPath()}
+				</div>
 				<div className="scene-objects-list shade">
 					{drawObjects()}
 				</div>
+				{sceneInspectorExpanded && (
+					drawBackgroundSettings()
+				)}
 			</InspectorCell>
 		)
 	}
+	const drawAssetInspector = () => {
+		const zip = _root.zip;
+		if (!zip)
+			return <div className="no-label">No project file mounted</div>;
+	
+		// --- helpers ---
+		const buildTree = () => {
+			const root = { name: 'assets', path: 'assets', type: 'dir', children: new Map() };
+	
+			zip.forEach((rel, file) => {
+				if (!rel.startsWith('assets/')) return;
+				if (rel.startsWith('assets/Standard/')) return;
+	
+				const stripped = rel.slice('assets/'.length);
+				if (!stripped) return;
+	
+				const parts = stripped.split('/').filter(Boolean);
+				let node = root;
+				for (let i = 0; i < parts.length; i++) {
+					const part = parts[i];
+					const isLast = i === parts.length - 1;
+					const keyPath = (node.path ? node.path + '/' : '') + part;
+	
+					if (isLast && !file.dir) {
+						node.children.set(part, { name: part, path: keyPath, type: 'file' });
+					} else {
+						if (!node.children.has(part)) {
+							node.children.set(part, { name: part, path: keyPath, type: 'dir', children: new Map() });
+						}
+						node = node.children.get(part);
+					}
+				}
+			});
+	
+			const normalize = (n) => {
+				if (n.type === 'dir') {
+					const arr = Array.from(n.children.values());
+					arr.sort((a, b) => {
+						if (a.type !== b.type) return a.type === 'dir' ? -1 : 1;
+						return a.name.localeCompare(b.name);
+					});
+					n.children = arr;
+					n.children.forEach(normalize);
+				}
+			};
+			normalize(root);
+			return root;
+		};
+	
+		const isExpanded = (p) => assetExpanded.has(p);
+		const toggleExpanded = (p) => {
+			const next = new Set(assetExpanded);
+			if (next.has(p)) next.delete(p); else next.add(p);
+			setAssetExpanded(next);
+		};
+	
+		const setCurrentFolderTo = (path) => {
+			if (!path) return setCurrentAssetFolder('assets');
+			const f = zip.file(path);
+			const isFile = f && !f.dir;
+			if (isFile) {
+				const idx = path.lastIndexOf('/');
+				setCurrentAssetFolder(idx >= 0 ? path.slice(0, idx) : 'assets');
+			} else {
+				setCurrentAssetFolder(path);
+			}
+		};
+	
+		const onImportFiles = async (files) => {
+			if (!files || files.length === 0) return;
+			for (const file of files) {
+				const buf = await file.arrayBuffer();
+				const base = currentAssetFolder || 'assets';
+				const target = (base ? base + '/' : '') + file.name;
+				zip.file(target, buf);
+			}
+			setAssetTree(buildTree());
+		};
+	
+		const onNewFolder = (name) => {
+			const base = currentAssetFolder || 'assets';
+			const safe = (name || '').replace(/[\\:*?"<>|]/g, '_').trim();
+			if (!safe) return;
+			const path = base + '/' + safe + '/';
+			zip.folder(path);
+			setAssetTree(buildTree());
+			setAssetExpanded(new Set(assetExpanded).add(base));
+			setNewFolderOpen(false);
+			setNewFolderName('');
+		};
+	
+		// --- multi-select helpers ---
+		const isFileSelected = (p) => selectedAssetPaths.has(p);
+		const setSingleSelection = (p) => {
+			const next = new Set();
+			if (p) next.add(p);
+			setSelectedAssetPaths(next);
+			setLastSelectedPath(p || null);
+		};
+		const toggleSelection = (p) => {
+			const next = new Set(selectedAssetPaths);
+			if (next.has(p)) next.delete(p); else next.add(p);
+			setSelectedAssetPaths(next);
+			setLastSelectedPath(p);
+		};
+	
+		// Select range within one folder (siblings is the array for that folder)
+		const selectRange = (siblings, fromPath, toPath) => {
+			if (!fromPath || !toPath) {
+				setSingleSelection(toPath);
+				return;
+			}
+			const filesOnly = siblings.filter(n => n.type === 'file');
+			const idxA = filesOnly.findIndex(n => n.path === fromPath);
+			const idxB = filesOnly.findIndex(n => n.path === toPath);
+			if (idxA === -1 || idxB === -1) {
+				setSingleSelection(toPath);
+				return;
+			}
+			const start = Math.min(idxA, idxB);
+			const end = Math.max(idxA, idxB);
+			const next = new Set(selectedAssetPaths);
+			for (let i = start; i <= end; i++) next.add(filesOnly[i].path);
+			setSelectedAssetPaths(next);
+			setLastSelectedPath(toPath);
+		};
+	
+		const filename = (p) => p.split('/').pop();
+	
+		// --- delete (multi) ---
+		const canDelete = selectedAssetPaths.size > 0 || (currentAssetFolder && currentAssetFolder !== 'assets');
+	
+		const deleteSelectedConfirm = async () => {
+			if (selectedAssetPaths.size > 0) {
+				const count = selectedAssetPaths.size;
+				const label = count === 1 ? filename([...selectedAssetPaths][0]) : `${count} files`;
+				_editor.showConfirm({
+					message: `Delete ${label}? This action cannot be undone.`,
+					onConfirm: deleteSelected
+				});
+			} else if (currentAssetFolder && currentAssetFolder !== 'assets') {
+				const label = currentAssetFolder.slice('assets/'.length);
+				_editor.showConfirm({
+					message: `Delete folder “${label}” and all its contents? This cannot be undone.`,
+					onConfirm: deleteSelected
+				});
+			}
+		};
+	
+		const deleteSelected = () => {
+			// Delete files if any selected
+			if (selectedAssetPaths.size > 0) {
+				for (const p of selectedAssetPaths) zip.remove(p);
+				setSelectedAssetPaths(new Set());
+			} else if (currentAssetFolder && currentAssetFolder !== 'assets') {
+				// Delete the whole folder recursively
+				const target = currentAssetFolder.endsWith('/') ? currentAssetFolder : currentAssetFolder + '/';
+				const toRemove = [];
+				zip.forEach((rel) => {
+					if (rel.startsWith(target)) toRemove.push(rel);
+				});
+				toRemove.push(target);
+				toRemove.forEach(p => zip.remove(p));
+	
+				// move selection to parent
+				const up = target.replace(/\/$/, '');
+				const idx = up.lastIndexOf('/');
+				const parent = idx >= 0 ? up.slice(0, idx) : 'assets';
+				setCurrentAssetFolder(parent || 'assets');
+			}
+			setAssetTree(buildTree());
+		};
+	
+		// --- rendering ---
+		const renderNode = (node, depth = 0, siblings = []) => {
+			if (node.type === 'file') {
+				const selected = isFileSelected(node.path);
+				return (
+					<div
+						key={node.path}
+						className={`object-row ${selected ? 'object-row--selected' : ''}`}
+						style={{ paddingLeft: 6 + depth * 24 }}
+						title={node.path}
+						onClick={(e) => {
+							// selection rules: Shift = range, Ctrl/Cmd = toggle, else single
+							if (e.shiftKey) {
+								selectRange(siblings, lastSelectedPath, node.path);
+							} else if (e.metaKey || e.ctrlKey) {
+								toggleSelection(node.path);
+							} else {
+								setSingleSelection(node.path);
+							}
+							setCurrentFolderTo(node.path);
+						}}
+						onDoubleClick={() => {
+							// Open file via OS if you want; for now we just single-select
+							setSingleSelection(node.path);
+						}}
+					>
+						<MdInsertDriveFile /> {node.name}
+					</div>
+				);
+			}
+	
+			// directory
+			const open = isExpanded(node.path);
+			return (
+				<React.Fragment key={node.path || 'assets'}>
+					<div
+						className="object-row"
+						style={{ paddingLeft: 6 + depth * 14 }}
+						title={node.path || '/'}
+						onClick={(e) => {
+							// Clicking a folder: toggle expand on simple click; don't mix into file selection set
+							toggleExpanded(node.path);
+							setCurrentFolderTo(node.path);
+							// Optional: clear file selection when changing folder
+							if (!e.metaKey && !e.ctrlKey && !e.shiftKey) setSelectedAssetPaths(new Set());
+						}}
+						onDoubleClick={() => {
+							toggleExpanded(node.path);
+							setCurrentFolderTo(node.path);
+						}}
+					>
+						{open ? <MdExpandMore /> : <MdChevronRight />} <MdFolder /> {node.name || '(assets)'}
+					</div>
+					{open && node.children?.map(child => (
+						<React.Fragment key={child.path}>
+							{renderNode(child, depth + 1, node.children)}
+						</React.Fragment>
+					))}
+				</React.Fragment>
+			);
+		};
+	
+		// Build once (or after refresh)
+		const tree = assetTree ?? buildTree();
+		if (assetTree !== tree) setAssetTree(tree); // prime state once
+	
+		return (
+			<InspectorCell id="insp-cell-assets" title="Assets">
+				{/* Toolbar */}
+				<div className="tools-section assets-insp-tools">
+					<button onClick={() => assetFileInputRef.current?.click()} title="Import here">
+						<MdUpload /> Import
+					</button>
+	
+					{!newFolderOpen ? (
+						<button onClick={() => setNewFolderOpen(true)} title="Create folder">
+							<MdCreateNewFolder /> Folder
+						</button>
+					) : (
+						<span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+							<input
+								className="tf"
+								type="text"
+								placeholder="New folder name"
+								autoFocus
+								value={newFolderName}
+								onChange={e => setNewFolderName(e.target.value)}
+								onKeyDown={(e) => {
+									if (e.key === 'Enter') onNewFolder(newFolderName);
+									else if (e.key === 'Escape') { setNewFolderOpen(false); setNewFolderName(''); }
+								}}
+								style={{ width: 160 }}
+							/>
+							<button onClick={() => onNewFolder(newFolderName)}>Add</button>
+							<button onClick={() => { setNewFolderOpen(false); setNewFolderName(''); }}>Cancel</button>
+						</span>
+					)}
+	
+					<button className="btn-small" onClick={() => setAssetTree(buildTree())} title="Refresh">
+						<MdRefresh />
+					</button>
+	
+					<button
+						className="btn-small"
+						onClick={deleteSelectedConfirm}
+						title={selectedAssetPaths.size > 0 ? `Delete selected` : `Delete folder`}
+						disabled={!canDelete}
+					>
+						<MdDeleteForever />
+					</button>
+	
+					<input
+						ref={assetFileInputRef}
+						type="file"
+						multiple
+						style={{ display: 'none' }}
+						onChange={async (e) => {
+							const files = Array.from(e.target.files || []);
+							e.target.value = '';
+							await onImportFiles(files);
+						}}
+					/>
+				</div>
+	
+				<div className="scene-objects-list shade">
+					{tree.children && tree.children.length
+						? tree.children.map(n => (
+							<React.Fragment key={n.path}>
+								{renderNode(n, 0, tree.children)}
+							</React.Fragment>
+						))
+						: <div className="no-label">No assets</div>
+					}
+				</div>
+			</InspectorCell>
+		);
+	};
 	
 	return (
-		<div className="inspector resizable no-select" id="insp-view">
-			{object && drawObjectInspector()}
+		<>
 			{_root && drawSceneInspector()}
-			{_editor.project && drawProjectInspector()}
+			{object && drawObjectInspector()}
+			{_root && drawAssetInspector()}
+			{_editor.project && _editor.parent == _root && drawProjectInspector()}
 			
 			<div style={{height: 45}} />
 			
@@ -554,6 +1263,6 @@ export default function Inspector() {
 				allowImport={true}
 				selectedAsset={assetExplorerSelected}
 			/>
-		</div>
+		</>
 	)
 }

@@ -11,6 +11,7 @@ const path = require('path');
 const pkg = require('../package.json');
 const isDev = !app.isPackaged;
 
+let editorDirty = false;
 let startWindow;
 let newProjectWindow;
 let editorWindow;
@@ -88,6 +89,29 @@ async function createEditorWindow() {
 		}
 	});
 	
+	editorWindow.on('close', async (e) => {
+		if (!editorDirty) 
+			return;
+		
+		e.preventDefault();
+		
+		const { response } = await dialog.showMessageBox(editorWindow, {
+			type: 'question',
+			buttons: ['Save', "Don’t Save", 'Cancel'],
+			defaultId: 0,
+			cancelId: 2,
+			message: 'Save changes before closing?',
+		});
+	
+		if(response === 0) {
+			editorWindow.webContents.send('request-save-and-close');
+		}else
+		if (response === 1) {
+			editorDirty = false;
+			editorWindow.destroy();
+		}
+	});
+	
 	if(isDev)
 		await editorWindow.loadURL('http://localhost:5173');
 	else
@@ -118,7 +142,7 @@ function closeEditorWindow() {
 			editorWindow = null;
 			return resolve();
 		}
-
+		
 		editorWindow.once('closed', () => {
 			editorWindow = null;
 			resolve();
@@ -263,6 +287,27 @@ ipcMain.on('show-error', async (event, { title, message, closeEditorWhenDone }) 
 	event.reply('show-error-closed', closeEditorWhenDone);
 });
 
+// Show error dialog
+ipcMain.handle('show-confirm', async (event, { title = 'Confirm', message = 'Are you sure?' }) => {
+	const win =
+		BrowserWindow.fromWebContents(event.sender) ||
+		BrowserWindow.getFocusedWindow();
+
+	if (!win) return false;
+
+	const { response } = await dialog.showMessageBox(win, {
+		type: 'question',
+		title,
+		message,
+		buttons: ['Yes', 'No'],
+		defaultId: 0,
+		cancelId: 1,
+		normalizeAccessKeys: true
+	});
+
+	return response === 0; // true if "Yes"
+});
+
 // Update window size/title
 ipcMain.on('update-editor-window', (_, { width, height, title }) => {
 	if (editorWindow && !editorWindow.isDestroyed()) {
@@ -271,4 +316,14 @@ ipcMain.on('update-editor-window', (_, { width, height, title }) => {
 		
 		editorWindow.setTitle(`${title} - Damen3D Editor ${pkg.editorVersion}`);
 	}
+});
+
+ipcMain.on('set-dirty', (_, isDirty) => {
+	editorDirty = isDirty;
+	editorWindow.setDocumentEdited(editorDirty);
+	
+	if(!editorWindow.d3deditortitle)
+		editorWindow.d3deditortitle = editorWindow.getTitle();
+	
+	editorWindow.setTitle(editorWindow.d3deditortitle + (isDirty ? ' *' : ''));
 });

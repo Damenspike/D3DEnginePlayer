@@ -5,16 +5,18 @@ import useResizable from '../hooks/useResizable.js';
 
 export default function EditorMain() {
 	const inspRef = React.useRef(null);
-	const assetsRef = React.useRef(null);
+	const consoleRef = React.useRef(null);
 	useResizable(inspRef, 'x');
-	useResizable(assetsRef, 'y');
+	useResizable(consoleRef, 'y');
 
 	return (
 		<div className="editor-main">
-			<Inspector ref={inspRef} />
+			<div className="inspector resizable no-select" ref={inspRef}>
+				<Inspector />
+			</div>
 			<div className="center-column">
 				<GameView />
-				<div className="assets resizable" id="assets-view" ref={assetsRef}></div>
+				<div className="console resizable" ref={consoleRef}></div>
 			</div>
 		</div>
 	);
