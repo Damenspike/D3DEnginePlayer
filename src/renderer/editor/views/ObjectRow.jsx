@@ -16,11 +16,19 @@ export default function ObjectRow({
 		}
 	}, [editing]);
 	
+	useEffect(() => {
+		setDraftName(name);
+	}, [name]);
+	
 	const saveRename = () => {
 		const newName = draftName.trim();
 		
-		if (newName && newName !== name) 
-			onRename?.(newName);
+		if (newName && newName !== name) {
+			let res = onRename?.(newName);
+			console.log('Res', res);
+			if(res !== undefined)
+				setDraftName(res);
+		}
 		
 		setEditing(false);
 	}

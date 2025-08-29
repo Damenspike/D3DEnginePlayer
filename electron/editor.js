@@ -170,8 +170,13 @@ function startNewProject() {
 	else newProjectWindow.show()
 }
 function sendDelete() {
-	console.log('Send delete');
 	editorWindow.webContents.send('delete');
+}
+function sendUndo() {
+	editorWindow.webContents.send('undo');
+}
+function sendRedo() {
+	editorWindow.webContents.send('redo');
 }
 
 // --- Menu ---
@@ -212,8 +217,16 @@ const menuTemplate = [
 	{
 		label: 'Edit',
 		submenu: [
-			{ role: 'undo' },
-			{ role: 'redo' },
+			{ 
+				label: 'Undo',
+				accelerator: 'CmdOrCtrl+Z',
+				click: () => sendUndo()
+			},
+			{ 
+				label: 'Redo',
+				accelerator: 'CmdOrCtrl+Shift+Z',
+				click: () => sendRedo()
+			},
 			{ type: 'separator' },
 			{ role: 'cut' },
 			{ role: 'copy' },

@@ -9,6 +9,7 @@ const EXT_GROUPS = {
 	txt: ['.txt','.md','.csv'],
 	model: ['.glb','.gltf'],
 	material: ['.mat'],
+	html: ['.html'],
 	all: []
 };
 
@@ -229,6 +230,7 @@ export default function AssetExplorerDialog({
 						<option value="material">Materials</option>
 						<option value="img">Images</option>
 						<option value="audio">Audio</option>
+						<option value="html">HTML</option>
 						<option value="json">JSON</option>
 						<option value="txt">Text / CSV / MD</option>
 						<option value="custom">Custom ext…</option>

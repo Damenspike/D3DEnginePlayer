@@ -516,7 +516,7 @@ export default class D3DObject {
 	}
 	
 	isValidName(str) {
-		return /^[A-Za-z0-9_-]+$/.test(str);
+		return /^[A-Za-z0-9 _-]+$/.test(str);
 	}
 	isNameAllowed(str) {
 		return !protectedNames.includes(str) && this.isValidName(str);

@@ -10,7 +10,8 @@ const D3DComponents = {
 			},
 			'materials': { 
 				label: 'Materials', 
-				type: 'file[]'
+				type: 'file[]',
+				format: 'mat'
 			}
 		}
 	},
@@ -23,13 +24,13 @@ const D3DComponents = {
 				max: 179
 			},
 			'clipNear': { 
-				label: 'Near clipping', 
+				label: 'Minimum distance', 
 				type: 'number',
 				min: 0,
 				max: 10000000
 			},
 			'clipFar': { 
-				label: 'Far clipping', 
+				label: 'Maximum distance', 
 				type: 'number',
 				min: 1,
 				max: 10000000
@@ -118,6 +119,16 @@ const D3DComponents = {
 			'castShadow': { 
 				label: 'Casts shadows', 
 				type: 'boolean'
+			}
+		}
+	},
+	HTML: {
+		name: 'HTML Overlay',
+		fields: {
+			'source': {
+				label: 'Source',
+				type: 'file',
+				format: 'html'
 			}
 		}
 	}

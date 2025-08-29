@@ -201,6 +201,7 @@ function startAnimationLoop(composer, outlinePass) {
 	}
 
 	_time.lastRender = _time.now;
+	
 	updateObject('onEditorStart', _root);
 	updateObject('__onEditorStart', _root);
 	animate();
@@ -436,4 +437,10 @@ ipcRenderer.once('show-error-closed', (_, closeEditorWhenDone) => {
 });
 ipcRenderer.on('delete', () => {
 	_editor.onDeleteKey();
+});
+ipcRenderer.on('undo', () => {
+	_editor.undo();
+});
+ipcRenderer.on('redo', () => {
+	_editor.redo();
 });

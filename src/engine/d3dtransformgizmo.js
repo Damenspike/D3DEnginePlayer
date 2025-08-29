@@ -481,6 +481,7 @@ export default class D3DTransformGizmo {
 		this._active = this._hover;
 		this._dragging = true;
 		this._setActiveVisibility();
+		this.beginMatrixWorld = this.object.matrixWorld.clone();
 	
 		const id = this._active;
 		const worldPos = this._group.getWorldPosition(new THREE.Vector3());
@@ -597,6 +598,22 @@ export default class D3DTransformGizmo {
 		this._active = null;
 		this._dragData = null;
 		this._setActiveVisibility();
+		
+		if(this.beginMatrixWorld) {
+			const oldMatrixWorld = this.beginMatrixWorld.clone();
+			const newMatrixWorld = this.object.matrixWorld.clone();
+			const object = this.object;
+			
+			if (!oldMatrixWorld.equals(newMatrixWorld)) {
+				_editor.addStep({
+					name: 'Transformation',
+					undo: () => applyWorld(object, oldMatrixWorld),
+					redo: () => applyWorld(object, newMatrixWorld),
+				});
+			}
+			
+			this.beginMatrixWorld = null;
+		}
 	}
 
 	_updateDrag() {
@@ -865,4 +882,21 @@ export default class D3DTransformGizmo {
 			y: -((mouse.y - rect.top) / rect.height) * 2 + 1
 		};
 	}
+}
+
+function applyWorld(obj, worldMatrix) {
+	const Matrix4 = window.THREE.Matrix4;
+	
+	// parent^-1 * world -> local
+	const parentWorldInv = obj.parent
+		? new Matrix4().copy(obj.parent.matrixWorld).invert()
+		: new Matrix4().identity();
+
+	const local = new Matrix4().multiplyMatrices(parentWorldInv, worldMatrix);
+
+	// write into local TRS
+	local.decompose(obj.position, obj.quaternion, obj.scale);
+
+	// ensure world matrices update
+	obj.updateMatrixWorld(true);
 }

@@ -71,7 +71,11 @@ export default function Inspector() {
 			const object = objects[0];
 			
 			setObject(object);
-			setDummyObject({...object});
+			
+			if(!object)
+				setDummyObject({});
+			else
+				setDummyObject({...object, name: object.name});
 		}
 	}, []);
 	
@@ -132,16 +136,33 @@ export default function Inspector() {
 							update();
 						}}
 						onBlur={e => {
-							const val = String(e.target.value) || '';
+							const val = String(e.target.value).trim() || '';
 							
 							if(!val || !object.isNameAllowed(val)) {
 								dummyObject.name = object.name; // revert
 								update();
 								
-								return _editor.showError(`Invalid object name. ${val != '' ? 'Object names must contain no spaces or special characters apart from - and _' : ''}`);
+								return _editor.showError(`Invalid object name. ${val != '' ? 'Object names can only contain alphanumeric characters.' : ''}`);
 							}
 							
+							const oldName = object.name;
+							const newName = val;
+							_editor.addStep({
+								name: 'Edit object name',
+								undo: () => {
+									object.name = oldName;
+									dummyObject.name = oldName;
+									update();
+								},
+								redo: () => {
+									object.name = newName;
+									dummyObject.name = newName;
+									update();
+								}
+							});
+							
 							object.name = val;
+							dummyObject.name = val;
 							update();
 						}}
 					/>
@@ -151,6 +172,18 @@ export default function Inspector() {
 						label="Position"
 						value={object.position} 
 						onSave={vector => {
+							const oldPosition = object.position.clone();
+							const newPosition = new THREE.Vector3(vector.x, vector.y, vector.z);
+							_editor.addStep({
+								name: 'Update position',
+								undo: () => {
+									object.position.set(oldPosition);
+								},
+								redo: () => {
+									object.position.set(newPosition);
+								}
+							});
+							
 							object.position.set(
 								vector.x, 
 								vector.y, 
@@ -168,6 +201,22 @@ export default function Inspector() {
 							z: THREE.MathUtils.radToDeg(object.rotation.z)
 						}} 
 						onSave={vector => {
+							const oldRotation = object.rotation.clone();
+							const newRotation = new THREE.Euler(
+								THREE.MathUtils.degToRad(vector.x), 
+								THREE.MathUtils.degToRad(vector.y), 
+								THREE.MathUtils.degToRad(vector.z)
+							);
+							_editor.addStep({
+								name: 'Update rotation',
+								undo: () => {
+									object.rotation.set(oldRotation);
+								},
+								redo: () => {
+									object.rotation.set(newRotation);
+								}
+							});
+							
 							object.rotation.set(
 								THREE.MathUtils.degToRad(vector.x), 
 								THREE.MathUtils.degToRad(vector.y), 
@@ -181,6 +230,18 @@ export default function Inspector() {
 						label="Scale"
 						value={object.scale} 
 						onSave={vector => {
+							const oldScale = object.scale.clone();
+							const newScale = new THREE.Vector3(vector.x, vector.y, vector.z);
+							_editor.addStep({
+								name: 'Update scale',
+								undo: () => {
+									object.position.set(oldScale);
+								},
+								redo: () => {
+									object.position.set(newScale);
+								}
+							});
+							
 							object.scale.set(
 								vector.x, 
 								vector.y, 
@@ -381,7 +442,7 @@ export default function Inspector() {
 					case 'file': {
 						const current = dummyComponent.properties[fieldId] ?? '';
 						const open = () => openAssetExplorer({
-							format: 'model',
+							format: field.format,
 							selectedAsset: current,
 							onSelect: (assetName) => {
 								dummyComponent.properties[fieldId] = assetName;
@@ -415,7 +476,7 @@ export default function Inspector() {
 							: [];
 					
 						const browseAndAppend = () => openAssetExplorer({
-							format: 'material',
+							format: field.format,
 							selectedAsset: '',
 							onSelect: (assetPath) => {
 								const updated = [...current, assetPath];
@@ -728,10 +789,13 @@ export default function Inspector() {
 						selected={selected}
 						onRename={(newName) => {
 							if(!object.isValidName(newName))
-								return;
+								return object.name;
 							
 							object.name = newName;
+							dummyObject.name = newName;
 							update();
+							
+							return object.name;
 						}}
 						onClick={e => {
 							if(e.shiftKey) {
@@ -1161,6 +1225,8 @@ export default function Inspector() {
 							} catch (err) {
 								console.warn('Rename failed:', err);
 							}
+							
+							return newName;
 						}}
 						title={node.path}
 						onClick={(e) => {
@@ -1202,6 +1268,8 @@ export default function Inspector() {
 							} catch (err) {
 								console.warn('Rename failed:', err);
 							}
+							
+							return newName;
 						}}
 						onClick={(e) => {
 							// Clicking a folder: toggle expand on simple click; don't mix into file selection set

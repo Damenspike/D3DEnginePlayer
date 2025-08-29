@@ -9,7 +9,10 @@ export const TransformTools = Object.freeze({
 	Translate: 'translate',
 	Rotate: 'rotate',
 	Scale: 'scale'
-})
+});
+
+// Undo/redo
+const stepLimit = 100;
 
 export default class D3DEditorState {
 	get parent() {
@@ -29,6 +32,8 @@ export default class D3DEditorState {
 		this.selectedObjects = [];
 		this.renderer = null;
 		this.gizmo = null;
+		this.steps = [];
+		this.currentStep = -1;
 	}
 
 	setTool(tool) {
@@ -88,6 +93,60 @@ export default class D3DEditorState {
 	}
 	getTransformTool() {
 		return this.transformTool;
+	}
+	
+	addStep({ name, undo, redo }) {
+		// drop future steps if we've undone
+		if(this.currentStep < this.steps.length - 1) {
+			this.steps = this.steps.slice(0, this.currentStep + 1);
+		}
+	
+		this.steps.push({ name, undo, redo });
+		this.currentStep++;
+	
+		// enforce limit
+		if(this.steps.length > stepLimit) {
+			// drop oldest
+			this.steps.shift();
+			this.currentStep--; // adjust index since we removed one at the start
+		}
+	}
+	
+	undo() {
+		if(this.currentStep < 0 || this.steps.length < 1) {
+			console.log('Nothing to undo');
+			return;
+		}
+	
+		const step = this.steps[this.currentStep];
+		this.currentStep--;
+		
+		try {
+			step.undo();
+		}catch(e) {
+			console.error('D3DEditor error executing undo', e);
+		}
+	}
+	
+	redo() {
+		if(this.steps.length < 1 || this.currentStep >= this.steps.length - 1) {
+			console.log('Nothing to redo');
+			return;
+		}
+	
+		const step = this.steps[this.currentStep + 1];
+		this.currentStep++;
+		
+		try {
+			step.redo();
+		}catch(e) {
+			console.error('D3DEditor error executing redo', e);
+		}
+	}
+	
+	resetSteps() {
+		this.steps = [];
+		this.currentStep = -1;
 	}
 	
 	setDirty(dirty) {
