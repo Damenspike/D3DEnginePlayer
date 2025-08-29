@@ -15,6 +15,26 @@ export default class D3DObject {
 	///////////////////////////////
 	// Getters and setters only
 	///////////////////////////////
+	get name() {
+		return this._name;
+	}
+	set name(value) {
+		if(!this.isValidName(value))
+			throw new Error(`Invalid name ${value} for object`);
+		
+		if(this == window._root && this.name == '_root')
+			throw new Error('Can not rename root');
+		
+		const oldName = this._name;
+		
+		this._name = value;
+		
+		if(this.parent) {
+			delete this.parent[oldName];
+			this.parent[this._name] = this;
+		}
+	}
+	
 	get position() {
 		return this.object3d.position;
 	}
@@ -129,16 +149,13 @@ export default class D3DObject {
 		if (!global._root) global._root = this; // root is not defined so this must be root
 		
 		this.uuid = global._root != this ? uuidv4() : '';
-		this.name = name;
 		this.parent = parent; // D3DObject or null for root
+		this.name = name;
 		this.children = [];
 		this.object3d = this.parent ? new THREE.Object3D() : new THREE.Scene();
 		this.object3d.userData.d3dobject = this;
 		this.scenes = [];
 		this.components = [];
-		
-		if(this.parent)
-			this.parent[name] = this;
 		
 		this.setupDefaultMethods();
 	}
@@ -483,6 +500,19 @@ export default class D3DObject {
 	
 	find(name) {
 		return this.children.find(child => child.name == name);
+	}
+	
+	delete() {
+		if(this.parent == null)
+			throw new Error("Can't delete _root");
+		
+		const idx = this.parent.children.indexOf(this);
+		
+		if(idx < 0)
+			throw new Error("Parent doesn't contain child?");
+			
+		this.parent.children.splice(idx, 1);
+		this.parent.object3d.remove(this.object3d);
 	}
 	
 	isValidName(str) {

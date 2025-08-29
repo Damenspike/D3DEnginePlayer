@@ -169,6 +169,10 @@ function startNewProject() {
 	if(!newProjectWindow) createNewProjectWindow()
 	else newProjectWindow.show()
 }
+function sendDelete() {
+	console.log('Send delete');
+	editorWindow.webContents.send('delete');
+}
 
 // --- Menu ---
 const isMac = process.platform === 'darwin';
@@ -214,6 +218,12 @@ const menuTemplate = [
 			{ role: 'cut' },
 			{ role: 'copy' },
 			{ role: 'paste' },
+			{ 
+				label: 'Delete',
+				accelerator: process.platform === 'darwin' 
+					? 'Backspace' : 'Delete',
+				click: () => sendDelete()
+			},
 			{ type: 'separator' },
 			{ role: 'selectall' }
 		]
@@ -288,7 +298,10 @@ ipcMain.on('show-error', async (event, { title, message, closeEditorWhenDone }) 
 });
 
 // Show error dialog
-ipcMain.handle('show-confirm', async (event, { title = 'Confirm', message = 'Are you sure?' }) => {
+ipcMain.handle('show-confirm', async (
+	event, 
+	{ title = 'Confirm', message = 'Are you sure?' }
+) => {
 	const win =
 		BrowserWindow.fromWebContents(event.sender) ||
 		BrowserWindow.getFocusedWindow();

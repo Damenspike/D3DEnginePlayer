@@ -430,19 +430,10 @@ function addGridHelper() {
 	return grid;
 }
 
-ipcRenderer.on('d3dproj-load', async (_, uri) => {
-	try {
-		await loadD3DProj(uri);
-	}catch(e) {
-		throw e;
-		showError({
-			title: 'Could not open project',
-			message: `There was an error trying to open this project. ${e}`,
-			closeEditorWhenDone: true
-		});
-	}
-});
 ipcRenderer.once('show-error-closed', (_, closeEditorWhenDone) => {
 	if(closeEditorWhenDone)
 		closeEditor();
+});
+ipcRenderer.on('delete', () => {
+	_editor.onDeleteKey();
 });

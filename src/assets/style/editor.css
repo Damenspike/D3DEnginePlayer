@@ -443,15 +443,12 @@ body.dark {
 }
 .scene-objects-list {
 	max-height: 250px;
-	padding: 5px;
 	overflow-x: hidden;
 	overflow-y: scroll;
-	border-radius: 10px;
+	border-radius: 7px;
 	
 	.object-row {
 		padding: 7px;
-		border-radius: 5px;
-		margin: 5px;
 		cursor: pointer;
 		font-size: 14px;
 		
@@ -467,6 +464,9 @@ body.dark {
 	.object-row--selected {
 		background: #0099ff !important;
 		color: white;
+	}
+	.object-row:last-child {
+		margin-bottom: 0;
 	}
 }
 .no-label {

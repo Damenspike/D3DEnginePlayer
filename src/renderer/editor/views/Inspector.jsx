@@ -4,6 +4,7 @@ import InspectorCell from './InspectorCell.jsx';
 import ComponentCell from './ComponentCell.jsx';
 import VectorInput from './VectorInput.jsx';
 import AssetExplorerDialog from './AssetExplorerDialog.jsx';
+import ObjectRow from './ObjectRow.jsx';
 
 import { 
 	MdDelete, 
@@ -18,6 +19,11 @@ import {
 	MdUpload, MdCreateNewFolder, MdRefresh, MdDeleteForever
 } from "react-icons/md";
 
+import {
+	renameZipFile,
+	renameZipDirectory
+} from '../../../engine/d3dutility.js';
+
 const autoBlur = (e) => {
 	if (e.key === 'Enter') {
 		e.preventDefault();   // stop form submit
@@ -29,6 +35,7 @@ let onSelectFile;
 export default function Inspector() {
 	const _editor = window._editor;
 	const _root = window._root;
+	const zip = _root?.zip;
 	const THREE = window.THREE;
 	
 	const [object, setObject] = useState();
@@ -39,6 +46,7 @@ export default function Inspector() {
 	const [assetExplorerSelected, setAssetExplorerSelected] = useState();
 	const [sceneInspectorExpanded, setSceneInspectorExpanded] = useState(false);
 	const [objectInspectorExpanded, setObjectInspectorExpanded] = useState(false);
+	const [assetsInspectorExpanded, setAssetsInspectorExpanded] = useState(false);
 	
 	// Scene config states
 	const [bgType, setBgType] = useState('none');
@@ -73,6 +81,10 @@ export default function Inspector() {
 		}
 	}, [dummyObject]);
 	
+	useEffect(() => {
+		_editor.onDeleteKey = () => deleteSelectedObjects();
+	}, [_editor.selectedObjects, selectedAssetPaths]);
+	
 	const update = () => {
 		setDummyObject({...dummyObject});
 		setDummyProject({...dummyProject});
@@ -83,6 +95,22 @@ export default function Inspector() {
 		setAssetExplorerSelected(selectedAsset);
 		onSelectFile = onSelect;
 	}
+	const deleteSelectedObjects = () => {
+		if(_editor.selectedObjects.length > 0) {
+			_editor.selectedObjects.forEach(d3dobject => {
+				d3dobject.delete();
+			});
+			_editor.selectedObjects = [];
+			setObject(null);
+		}else
+		if(selectedAssetPaths.size > 0) {
+			console.log('Delete assets');
+			_editor.deleteSelectedAssets();
+			setObject(null);
+		}
+	
+		update();
+	};
 	
 	const drawObjectInspector = () => {
 		return (
@@ -261,15 +289,6 @@ export default function Inspector() {
 								min={field.min}
 								max={field.max}
 								onChange={e => {
-									let val = Number(e.target.value) || 0;
-									
-									if(field.convert)
-										val = field.covert(val);
-										
-									dummyComponent.properties[fieldId] = val;
-									update();
-								}}
-								onBlur={e => {
 									let val = Number(e.target.value) || 0;
 									
 									if(field.min !== undefined && val < field.min)
@@ -614,6 +633,7 @@ export default function Inspector() {
 	}
 	const drawSceneInspector = () => {
 		const scene = _root.object3d;
+		const canDelete = _editor.selectedObjects.length > 0;
 		
 		const drawPath = () => {
 			const path = [];
@@ -701,9 +721,18 @@ export default function Inspector() {
 				}
 				
 				rows.push(
-					<div 
+					<ObjectRow
 						key={rows.length}
-						className={`object-row ${selected ? 'object-row--selected' : ''}`}
+						icon={drawIcon()}
+						name={object.name}
+						selected={selected}
+						onRename={(newName) => {
+							if(!object.isValidName(newName))
+								return;
+							
+							object.name = newName;
+							update();
+						}}
 						onClick={e => {
 							if(e.shiftKey) {
 								const anchor = _editor.selectedObjects[0];
@@ -733,19 +762,9 @@ export default function Inspector() {
 									)
 								}
 							}else{
-								if(_editor.selectedObjects.length <= 1) {
-									if(!_editor.selectedObjects.includes(object))
-										_editor.selectedObjects = [object];
-									else {
-										_editor.selectedObjects.splice(
-											_editor.selectedObjects.indexOf(object),
-											1
-										)
-									}
-								}else{
-									_editor.selectedObjects = [object];
-								}
+								_editor.selectedObjects = [object];
 							}
+							setSelectedAssetPaths(new Set());
 							_editor.onObjectSelected(_editor.selectedObjects);
 						}}
 						onDoubleClick={() => {
@@ -753,9 +772,7 @@ export default function Inspector() {
 							_editor.selectedObjects = [];
 							_editor.onObjectSelected(_editor.selectedObjects);
 						}}
-					>
-						{drawIcon()} {object.name}
-					</div>
+					/>
 				)
 			})
 			
@@ -920,6 +937,21 @@ export default function Inspector() {
 				expanded={sceneInspectorExpanded}
 				onExpand={() => setSceneInspectorExpanded(!sceneInspectorExpanded)}
 			>
+				{sceneInspectorExpanded && (
+					<div className="tools-section assets-insp-tools">
+						<button onClick={() => null}>
+							<MdAdd /> New Object
+						</button>
+				
+						<button
+							className="btn-small"
+							onClick={deleteSelectedObjects}
+							disabled={!canDelete}
+						>
+							<MdDeleteForever />
+						</button>
+					</div>
+				)}
 				<div className="path-container">
 					{drawPath()}
 				</div>
@@ -933,7 +965,6 @@ export default function Inspector() {
 		)
 	}
 	const drawAssetInspector = () => {
-		const zip = _root.zip;
 		if (!zip)
 			return <div className="no-label">No project file mounted</div>;
 	
@@ -1028,12 +1059,14 @@ export default function Inspector() {
 		const setSingleSelection = (p) => {
 			const next = new Set();
 			if (p) next.add(p);
+			_editor.selectedObjects = []; // reset selected scene objects
 			setSelectedAssetPaths(next);
 			setLastSelectedPath(p || null);
 		};
 		const toggleSelection = (p) => {
 			const next = new Set(selectedAssetPaths);
 			if (next.has(p)) next.delete(p); else next.add(p);
+			_editor.selectedObjects = []; // reset selected scene objects
 			setSelectedAssetPaths(next);
 			setLastSelectedPath(p);
 		};
@@ -1055,6 +1088,7 @@ export default function Inspector() {
 			const end = Math.max(idxA, idxB);
 			const next = new Set(selectedAssetPaths);
 			for (let i = start; i <= end; i++) next.add(filesOnly[i].path);
+			_editor.selectedObjects = []; // reset selected scene objects
 			setSelectedAssetPaths(next);
 			setLastSelectedPath(toPath);
 		};
@@ -1080,6 +1114,8 @@ export default function Inspector() {
 				});
 			}
 		};
+		
+		_editor.deleteSelectedAssets = deleteSelectedConfirm;
 	
 		const deleteSelected = () => {
 			// Delete files if any selected
@@ -1110,10 +1146,22 @@ export default function Inspector() {
 			if (node.type === 'file') {
 				const selected = isFileSelected(node.path);
 				return (
-					<div
+					<ObjectRow
 						key={node.path}
-						className={`object-row ${selected ? 'object-row--selected' : ''}`}
+						icon={<MdInsertDriveFile />}
+						name={node.name}
+						selected={selected}
 						style={{ paddingLeft: 6 + depth * 24 }}
+						onRename={async (newName) => {
+							try {
+								const newPath = await renameZipFile(zip, node.path, newName);
+						
+								setSingleSelection(newPath);
+								setCurrentFolderTo(newPath);
+							} catch (err) {
+								console.warn('Rename failed:', err);
+							}
+						}}
 						title={node.path}
 						onClick={(e) => {
 							// selection rules: Shift = range, Ctrl/Cmd = toggle, else single
@@ -1130,9 +1178,7 @@ export default function Inspector() {
 							// Open file via OS if you want; for now we just single-select
 							setSingleSelection(node.path);
 						}}
-					>
-						<MdInsertDriveFile /> {node.name}
-					</div>
+					/>
 				);
 			}
 	
@@ -1140,10 +1186,23 @@ export default function Inspector() {
 			const open = isExpanded(node.path);
 			return (
 				<React.Fragment key={node.path || 'assets'}>
-					<div
-						className="object-row"
-						style={{ paddingLeft: 6 + depth * 14 }}
+					<ObjectRow
+						icon={(
+							<>{open ? <MdExpandMore /> : <MdChevronRight />} <MdFolder /></>
+						)}
+						name={node.name}
 						title={node.path || '/'}
+						style={{ paddingLeft: 6 + depth * 14 }}
+						onRename={async (newName) => {
+							try {
+								const newPath = await renameZipDirectory(zip, node.path, newName);
+						
+								setSingleSelection(newPath);
+								setCurrentFolderTo(newPath);
+							} catch (err) {
+								console.warn('Rename failed:', err);
+							}
+						}}
 						onClick={(e) => {
 							// Clicking a folder: toggle expand on simple click; don't mix into file selection set
 							toggleExpanded(node.path);
@@ -1155,9 +1214,7 @@ export default function Inspector() {
 							toggleExpanded(node.path);
 							setCurrentFolderTo(node.path);
 						}}
-					>
-						{open ? <MdExpandMore /> : <MdChevronRight />} <MdFolder /> {node.name || '(assets)'}
-					</div>
+					/>
 					{open && node.children?.map(child => (
 						<React.Fragment key={child.path}>
 							{renderNode(child, depth + 1, node.children)}
@@ -1172,62 +1229,68 @@ export default function Inspector() {
 		if (assetTree !== tree) setAssetTree(tree); // prime state once
 	
 		return (
-			<InspectorCell id="insp-cell-assets" title="Assets">
-				{/* Toolbar */}
-				<div className="tools-section assets-insp-tools">
-					<button onClick={() => assetFileInputRef.current?.click()} title="Import here">
-						<MdUpload /> Import
-					</button>
-	
-					{!newFolderOpen ? (
-						<button onClick={() => setNewFolderOpen(true)} title="Create folder">
-							<MdCreateNewFolder /> Folder
+			<InspectorCell 
+				id="insp-cell-assets" 
+				title="Assets"
+				expanded={assetsInspectorExpanded}
+				onExpand={() => setAssetsInspectorExpanded(!assetsInspectorExpanded)}
+			>
+				{assetsInspectorExpanded && (
+					<div className="tools-section assets-insp-tools">
+						<button onClick={() => assetFileInputRef.current?.click()} title="Import here">
+							<MdUpload /> Import
 						</button>
-					) : (
-						<span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-							<input
-								className="tf"
-								type="text"
-								placeholder="New folder name"
-								autoFocus
-								value={newFolderName}
-								onChange={e => setNewFolderName(e.target.value)}
-								onKeyDown={(e) => {
-									if (e.key === 'Enter') onNewFolder(newFolderName);
-									else if (e.key === 'Escape') { setNewFolderOpen(false); setNewFolderName(''); }
-								}}
-								style={{ width: 160 }}
-							/>
-							<button onClick={() => onNewFolder(newFolderName)}>Add</button>
-							<button onClick={() => { setNewFolderOpen(false); setNewFolderName(''); }}>Cancel</button>
-						</span>
-					)}
-	
-					<button className="btn-small" onClick={() => setAssetTree(buildTree())} title="Refresh">
-						<MdRefresh />
-					</button>
-	
-					<button
-						className="btn-small"
-						onClick={deleteSelectedConfirm}
-						title={selectedAssetPaths.size > 0 ? `Delete selected` : `Delete folder`}
-						disabled={!canDelete}
-					>
-						<MdDeleteForever />
-					</button>
-	
-					<input
-						ref={assetFileInputRef}
-						type="file"
-						multiple
-						style={{ display: 'none' }}
-						onChange={async (e) => {
-							const files = Array.from(e.target.files || []);
-							e.target.value = '';
-							await onImportFiles(files);
-						}}
-					/>
-				</div>
+		
+						{!newFolderOpen ? (
+							<button onClick={() => setNewFolderOpen(true)} title="Create folder">
+								<MdCreateNewFolder /> Folder
+							</button>
+						) : (
+							<span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+								<input
+									className="tf"
+									type="text"
+									placeholder="New folder name"
+									autoFocus
+									value={newFolderName}
+									onChange={e => setNewFolderName(e.target.value)}
+									onKeyDown={(e) => {
+										if (e.key === 'Enter') onNewFolder(newFolderName);
+										else if (e.key === 'Escape') { setNewFolderOpen(false); setNewFolderName(''); }
+									}}
+									style={{ width: 160 }}
+								/>
+								<button onClick={() => onNewFolder(newFolderName)}>Add</button>
+								<button onClick={() => { setNewFolderOpen(false); setNewFolderName(''); }}>Cancel</button>
+							</span>
+						)}
+		
+						<button className="btn-small" onClick={() => setAssetTree(buildTree())} title="Refresh">
+							<MdRefresh />
+						</button>
+		
+						<button
+							className="btn-small"
+							onClick={deleteSelectedConfirm}
+							title={selectedAssetPaths.size > 0 ? `Delete selected` : `Delete folder`}
+							disabled={!canDelete}
+						>
+							<MdDeleteForever />
+						</button>
+		
+						<input
+							ref={assetFileInputRef}
+							type="file"
+							multiple
+							style={{ display: 'none' }}
+							onChange={async (e) => {
+								const files = Array.from(e.target.files || []);
+								e.target.value = '';
+								await onImportFiles(files);
+							}}
+						/>
+					</div>
+				)}
 	
 				<div className="scene-objects-list shade">
 					{tree.children && tree.children.length

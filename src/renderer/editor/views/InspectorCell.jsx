@@ -40,7 +40,7 @@ export default function InspectorCell({
 							e.preventDefault();
 						}}
 					>
-						<HiPlus />
+						<MdMoreHoriz />
 					</button>
 				)}
 			</div>
