@@ -360,12 +360,10 @@ function setupSelection(renderer, camera) {
 		}
 
 		if (_input.getKeyDown('shift')) {
-			_editor.selectedObjects.push(...selectedObjects);
+			_editor.addSelection(selectedObjects);
 		} else {
-			_editor.selectedObjects = selectedObjects;
+			_editor.setSelection(selectedObjects);
 		}
-		
-		_editor.onObjectSelected?.(_editor.selectedObjects);
 	});
 
 	// --- Helper: single click select ---
@@ -391,17 +389,15 @@ function setupSelection(renderer, camera) {
 			});
 
 			const selectedObject = d3dobjects.shift();
-			if (selectedObject) {
-				if (_input.getKeyDown('shift')) _editor.selectedObjects.push(selectedObject);
-				else _editor.selectedObjects = [selectedObject];
-			} else {
-				_editor.selectedObjects = [];
-			}
-		}else{
-			_editor.selectedObjects = [];
-		}
-		
-		_editor.onObjectSelected?.(_editor.selectedObjects);
+			if(selectedObject) {
+				if (_input.getKeyDown('shift')) 
+					_editor.addSelection([selectedObject]);
+				else 
+					_editor.setSelection([selectedObject]);
+			}else
+				_editor.setSelection([]);
+		}else
+			_editor.setSelection([]);
 	}
 }
 

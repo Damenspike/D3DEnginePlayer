@@ -104,7 +104,7 @@ export default function Inspector() {
 			_editor.selectedObjects.forEach(d3dobject => {
 				d3dobject.delete();
 			});
-			_editor.selectedObjects = [];
+			_editor.setSelection([]);
 			setObject(null);
 		}else
 		if(selectedAssetPaths.size > 0) {
@@ -177,18 +177,14 @@ export default function Inspector() {
 							_editor.addStep({
 								name: 'Update position',
 								undo: () => {
-									object.position.set(oldPosition);
+									object.position.copy(oldPosition);
 								},
 								redo: () => {
-									object.position.set(newPosition);
+									object.position.copy(newPosition);
 								}
 							});
 							
-							object.position.set(
-								vector.x, 
-								vector.y, 
-								vector.z
-							);
+							object.position.copy(newPosition);
 						}} 
 					/>
 				</div>
@@ -210,18 +206,14 @@ export default function Inspector() {
 							_editor.addStep({
 								name: 'Update rotation',
 								undo: () => {
-									object.rotation.set(oldRotation);
+									object.rotation.copy(oldRotation);
 								},
 								redo: () => {
-									object.rotation.set(newRotation);
+									object.rotation.copy(newRotation);
 								}
 							});
 							
-							object.rotation.set(
-								THREE.MathUtils.degToRad(vector.x), 
-								THREE.MathUtils.degToRad(vector.y), 
-								THREE.MathUtils.degToRad(vector.z)
-							);
+							object.rotation.copy(newRotation);
 						}} 
 					/>
 				</div>
@@ -235,18 +227,14 @@ export default function Inspector() {
 							_editor.addStep({
 								name: 'Update scale',
 								undo: () => {
-									object.position.set(oldScale);
+									object.position.copy(oldScale);
 								},
 								redo: () => {
-									object.position.set(newScale);
+									object.position.copy(newScale);
 								}
 							});
 							
-							object.scale.set(
-								vector.x, 
-								vector.y, 
-								vector.z
-							);
+							object.scale.copy(newScale);
 						}} 
 					/>
 				</div>
@@ -260,6 +248,20 @@ export default function Inspector() {
 									type="checkbox" 
 									checked={object.visible} 
 									onChange={e => {
+										const oldVisible = object.visible;
+										const newVisible = e.target.checked;
+										_editor.addStep({
+											name: 'Update scale',
+											undo: () => {
+												object.visible = oldVisible;
+												update();
+											},
+											redo: () => {
+												object.visible = newVisible;
+												update();
+											}
+										});
+										
 										object.visible = e.target.checked;
 										update();
 									}} 
@@ -274,7 +276,23 @@ export default function Inspector() {
 									step={0.01}
 									value={object.opacity} 
 									onChange={e => {
-										object.opacity = Number(e.target.value);
+										const val = Number(e.target.value);
+										
+										const oldOpacity = object.opacity;
+										const newOpacity = val;
+										_editor.addStep({
+											name: 'Update scale',
+											undo: () => {
+												object.opacity = oldOpacity;
+												update();
+											},
+											redo: () => {
+												object.opacity = newOpacity;
+												update();
+											}
+										});
+										
+										object.opacity = val;
 										update();
 									}}
 								/>
@@ -306,6 +324,38 @@ export default function Inspector() {
 			for(let fieldId in schema.fields) {
 				const field = schema.fields[fieldId];
 				const current = dummyComponent.properties[fieldId];
+				const addStep = (val) => {
+					const oldValue = component.properties[fieldId];
+					const newValue = val;
+					_editor.addStep({
+						name: 'Update property',
+						undo: () => {
+							component.properties[fieldId] = oldValue;
+							object.updateComponents();
+							update();
+						},
+						redo: () => {
+							component.properties[fieldId] = newValue;
+							object.updateComponents();
+							update();
+						}
+					});
+				}
+				const addStepManual = (oldValue, newValue) => {
+					_editor.addStep({
+						name: 'Update property',
+						undo: () => {
+							component.properties[fieldId] = oldValue;
+							object.updateComponents();
+							update();
+						},
+						redo: () => {
+							component.properties[fieldId] = newValue;
+							object.updateComponents();
+							update();
+						}
+					});
+				}
 				
 				let fieldContent;
 				
@@ -331,7 +381,10 @@ export default function Inspector() {
 									
 									if(field.convert)
 										val = field.covert(val);
+										
+									addStep(val);
 									
+									dummyComponent.properties[fieldId] = val;
 									component.properties[fieldId] = val;
 									object.updateComponents();
 									update();
@@ -360,7 +413,10 @@ export default function Inspector() {
 									
 									if(field.convert)
 										val = field.covert(val);
+										
+									addStep(val);
 									
+									dummyComponent.properties[fieldId] = val;
 									component.properties[fieldId] = val;
 									object.updateComponents();
 									update();
@@ -389,6 +445,8 @@ export default function Inspector() {
 											
 										if(field.convert)
 											val = field.covert(val);
+											
+										addStep(val);
 										
 										dummyComponent.properties[fieldId] = val;
 										component.properties[fieldId] = val;
@@ -412,6 +470,8 @@ export default function Inspector() {
 								onChange={e => {
 									const val = !!e.target.checked;
 									
+									addStep(val);
+									
 									dummyComponent.properties[fieldId] = val;
 									component.properties[fieldId] = val;
 									object.updateComponents();
@@ -427,6 +487,11 @@ export default function Inspector() {
 								type="color" 
 								value={current.replace('0x', '#')}
 								onKeyDown={autoBlur}
+								onClick={e => {
+									const val = (e.target.value || '#ffffff').replace('#', '0x');
+									
+									e.target.oldValue = val;
+								}}
 								onChange={e => {
 									const val = (e.target.value || '#ffffff').replace('#', '0x');
 									
@@ -434,6 +499,12 @@ export default function Inspector() {
 									component.properties[fieldId] = val;
 									object.updateComponents();
 									update();
+								}}
+								onBlur={e => {
+									const val = (e.target.value || '#ffffff').replace('#', '0x');
+									
+									addStepManual(e.target.oldValue, val);
+									e.target.oldValue = val;
 								}}
 							/>
 						);
@@ -445,6 +516,8 @@ export default function Inspector() {
 							format: field.format,
 							selectedAsset: current,
 							onSelect: (assetName) => {
+								addStep(assetName);
+								
 								dummyComponent.properties[fieldId] = assetName;
 								component.properties[fieldId] = assetName;
 								object.updateComponents();
@@ -497,6 +570,9 @@ export default function Inspector() {
 												onSelect: (assetPath) => {
 													const updated = [...current];
 													updated[idx] = assetPath;
+													
+													addStep(updated);
+													
 													dummyComponent.properties[fieldId] = updated;
 													component.properties[fieldId] = updated;
 													object.updateComponents();
@@ -525,6 +601,9 @@ export default function Inspector() {
 													title="Remove"
 													onClick={() => {
 														const updated = current.filter((_, i) => i !== idx);
+														
+														addStep(updated);
+														
 														dummyComponent.properties[fieldId] = updated;
 														component.properties[fieldId] = updated;
 														object.updateComponents();
@@ -736,11 +815,9 @@ export default function Inspector() {
 								_editor.parent = object;
 								
 								if(object == (oldParent.parent ?? _root))
-									_editor.selectedObjects = [oldParent];
+									_editor.setSelection([oldParent]);
 								else
-									_editor.selectedObjects = [];
-									
-								_editor.onObjectSelected(_editor.selectedObjects);
+									_editor.setSelection([]);
 							}}
 						>
 							{object.name}
@@ -811,30 +888,23 @@ export default function Inspector() {
 								
 								for (let i = start; i <= end; i++) {
 									const o = objects[i];
-									if (!_editor.selectedObjects.includes(o)) {
-										_editor.selectedObjects.push(o);
-									}
+									if (!_editor.isSelected(o))
+										_editor.addSelection([o]);
 								}
 							}else
 							if(e.metaKey || e.ctrlKey) {
-								if(!_editor.selectedObjects.includes(object))
-									_editor.selectedObjects.push(object);
-								else {
-									_editor.selectedObjects.splice(
-										_editor.selectedObjects.indexOf(object),
-										1
-									)
-								}
-							}else{
-								_editor.selectedObjects = [object];
-							}
+								if(!_editor.isSelected(object))
+									_editor.addSelection([object]);
+								else 
+									_editor.removeSelection([object]);
+							}else
+								_editor.setSelection([object]);
+							
 							setSelectedAssetPaths(new Set());
-							_editor.onObjectSelected(_editor.selectedObjects);
 						}}
 						onDoubleClick={() => {
 							_editor.parent = object;
-							_editor.selectedObjects = [];
-							_editor.onObjectSelected(_editor.selectedObjects);
+							_editor.setSelection([]);
 						}}
 					/>
 				)
@@ -1123,14 +1193,14 @@ export default function Inspector() {
 		const setSingleSelection = (p) => {
 			const next = new Set();
 			if (p) next.add(p);
-			_editor.selectedObjects = []; // reset selected scene objects
+			_editor.setSelection([]); // reset selected scene objects
 			setSelectedAssetPaths(next);
 			setLastSelectedPath(p || null);
 		};
 		const toggleSelection = (p) => {
 			const next = new Set(selectedAssetPaths);
 			if (next.has(p)) next.delete(p); else next.add(p);
-			_editor.selectedObjects = []; // reset selected scene objects
+			_editor.setSelection([]); // reset selected scene objects
 			setSelectedAssetPaths(next);
 			setLastSelectedPath(p);
 		};
@@ -1152,7 +1222,7 @@ export default function Inspector() {
 			const end = Math.max(idxA, idxB);
 			const next = new Set(selectedAssetPaths);
 			for (let i = start; i <= end; i++) next.add(filesOnly[i].path);
-			_editor.selectedObjects = []; // reset selected scene objects
+			_editor.setSelection([]); // reset selected scene objects
 			setSelectedAssetPaths(next);
 			setLastSelectedPath(toPath);
 		};
@@ -1276,7 +1346,8 @@ export default function Inspector() {
 							toggleExpanded(node.path);
 							setCurrentFolderTo(node.path);
 							// Optional: clear file selection when changing folder
-							if (!e.metaKey && !e.ctrlKey && !e.shiftKey) setSelectedAssetPaths(new Set());
+							if (!e.metaKey && !e.ctrlKey && !e.shiftKey) 
+								setSelectedAssetPaths(new Set());
 						}}
 						onDoubleClick={() => {
 							toggleExpanded(node.path);

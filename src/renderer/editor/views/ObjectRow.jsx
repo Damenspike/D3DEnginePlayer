@@ -25,12 +25,11 @@ export default function ObjectRow({
 		
 		if (newName && newName !== name) {
 			let res = onRename?.(newName);
-			console.log('Res', res);
 			if(res !== undefined)
 				setDraftName(res);
 		}
 		
-		setEditing(false);
+		setTimeout(() => setEditing(false), 200);
 	}
 	const cancelRename = () => {
 		setEditing(false);
@@ -49,7 +48,8 @@ export default function ObjectRow({
 					e.preventDefault();
 					return;
 				}
-				if(selected) {
+				if(selected && !e.shiftKey && !e.metaKey && !e.ctrlKey && 
+					_editor.selectedObjects.length == 1) {
 					clearTimeout(renameTimer);
 					renameTimer = setTimeout(
 						() => setEditing(true),

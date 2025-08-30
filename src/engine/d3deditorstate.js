@@ -95,6 +95,51 @@ export default class D3DEditorState {
 		return this.transformTool;
 	}
 	
+	setSelection(objects) {
+		if(!objects || !Array.isArray(objects))
+			objects = [];
+		
+		this.selectedObjects = objects;
+		this.onObjectSelected?.(this.selectedObjects);
+	}
+	addSelection(objects) {
+		if(!objects || !Array.isArray(objects))
+			objects = [];
+		
+		this.selectedObjects.push(...objects);
+		this.onObjectSelected?.(this.selectedObjects);
+	}
+	removeSelection(objects) {
+		objects.forEach(object => {
+			this.selectedObjects.splice(
+				this.selectedObjects.indexOf(object),
+				1
+			);
+		});
+		
+		this.onObjectSelected?.(this.selectedObjects);
+	}
+	isSelected(object) {
+		return this.selectedObjects.includes(object);
+	}
+	
+	addStep({ name, undo, redo }) {
+		// drop future steps if we've undone
+		if(this.currentStep < this.steps.length - 1) {
+			this.steps = this.steps.slice(0, this.currentStep + 1);
+		}
+	
+		this.steps.push({ name, undo, redo });
+		this.currentStep++;
+	
+		// enforce limit
+		if(this.steps.length > stepLimit) {
+			// drop oldest
+			this.steps.shift();
+			this.currentStep--; // adjust index since we removed one at the start
+		}
+	}
+	
 	addStep({ name, undo, redo }) {
 		// drop future steps if we've undone
 		if(this.currentStep < this.steps.length - 1) {
