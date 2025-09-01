@@ -6,6 +6,7 @@ import { OutlinePass } from 'three/examples/jsm/postprocessing/OutlinePass.js';
 import { GammaCorrectionShader } from 'three/examples/jsm/shaders/GammaCorrectionShader.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { arraysEqual } from './d3dutility.js';
+import { GrayscaleShader } from './d3dshaders.js';
 import $ from 'jquery';
 import D3DObject from './d3dobject.js';
 import D3DInput from './d3dinput.js';
@@ -31,6 +32,9 @@ window._editor = new D3DEditorState();
 THREE.Vector3.right = new THREE.Vector3(1, 0, 0);
 THREE.Vector3.up = new THREE.Vector3(0, 1, 0);
 THREE.Vector3.forward = new THREE.Vector3(0, 0, 1);
+
+// All global vars
+global.LAYER_DEFAULT = 0;
 
 // Error handling
 function showError(args) {
@@ -75,9 +79,12 @@ export async function loadD3DProj(uri) {
 	
 	// Configure editor state
 	initEditorConfig(camera);
+	
+	// Init focus overlay
+	initFocusOverlay();
 
 	// Setup composer and passes
-	const { composer, outlinePass } = initComposer(renderer, camera);
+	const { composer, outlinePass, grayPass } = initComposer(renderer, camera);
 
 	// Start update + render loop
 	startAnimationLoop(composer, outlinePass);
@@ -121,10 +128,27 @@ async function initEditorCamera() {
 		scale: { x: 1, y: 1, z: 1 },
 		editorOnly: true,
 		noSelect: true,
+		editorAlwaysVisible: true,
 		engineScript: 'd3deditorcamera.js',
 		uuid: '',
 		components: [{ type: 'Camera', properties: {} }]
 	});
+	const editorLight = await cameraD3DObj.createObject({
+		name: 'Editor Camera Light',
+		position: { x: 0, y: 0, z: 100 },
+		rotation: { x: 0, y: THREE.MathUtils.degToRad(180), z: 0 },
+		scale: { x: 1, y: 1, z: 1 },
+		editorOnly: true,
+		noSelect: true,
+		engineScript: 'd3deditorlight.js',
+		components: [{ type: 'DirectionalLight', properties: {
+			color: '0xffffff',
+			intensity: 2
+		} }]
+	});
+	
+	_editor.editorLight = editorLight;
+	
 	return cameraD3DObj.object3d;
 }
 
@@ -136,27 +160,34 @@ function initComposer(renderer, camera) {
 
 	const renderPass = new RenderPass(scene, camera);
 	composer.addPass(renderPass);
-
-	const outlinePass = new OutlinePass(
-		new THREE.Vector2(_container3d.clientWidth, _container3d.clientHeight),
-		scene,
-		camera
-	);
-	composer.addPass(outlinePass);
 	
 	// Setup transform gizmo
 	setupTransformGizmo();
 
 	const gammaCorrectionPass = new ShaderPass(GammaCorrectionShader);
 	composer.addPass(gammaCorrectionPass);
+	
+	const grayPass = new ShaderPass(GrayscaleShader);
+	grayPass.enabled = false;
+	composer.addPass(grayPass);
+	
+	const outlinePass = new OutlinePass(
+		new THREE.Vector2(_container3d.clientWidth, _container3d.clientHeight),
+		scene,
+		camera
+	);
+	composer.addPass(outlinePass);
 
 	// Outline styling
-	outlinePass.edgeStrength = 6.0;
+	outlinePass.edgeStrength = 12.0;
 	outlinePass.edgeGlow = 0.0;
-	outlinePass.edgeThickness = 4.0;
+	outlinePass.edgeThickness = 8.0;
 	outlinePass.pulsePeriod = 0;
 	outlinePass.visibleEdgeColor.set('#0099ff');
 	outlinePass.hiddenEdgeColor.set('#000000');
+	
+	// Assign values if needed
+	_editor.grayPass = grayPass;
 
 	return { composer, outlinePass };
 }
@@ -175,9 +206,47 @@ function initEditorConfig(camera) {
 	}
 }
 
+function initFocusOverlay() {
+	if (_editor._overlayScene) return;
+	_editor._overlayScene = new THREE.Scene();
+	_editor._overlayCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+	
+	const geo = new THREE.PlaneGeometry(2, 2); // full-screen in NDC
+	const mat = new THREE.MeshBasicMaterial({
+		color: 0xFFFFFF,
+		opacity: 0.35,
+		transparent: true,
+		depthTest: false,
+		depthWrite: false
+	});
+	_editor._overlayQuad = new THREE.Mesh(geo, mat);
+	_editor._overlayScene.add(_editor._overlayQuad);
+}
+
 function updateObject(method, d3dobj) {
 	d3dobj[method]?.();
 	d3dobj.children.forEach(child => updateObject(method, child));
+}
+
+function afterRenderShowObjects() {
+	_root.children.forEach(d3dobject => {
+		if(d3dobject == _editor.focus || d3dobject.__wasVisible === undefined || d3dobject.editorAlwaysVisible)
+			return;
+		
+		d3dobject.visible = d3dobject.__wasVisible;
+		d3dobject.__wasVisible = undefined;
+	});
+}
+function afterRenderHideObjects() {
+	_root.children.forEach(d3dobject => {
+		if(d3dobject == _editor.focus || d3dobject.isLight || d3dobject.editorAlwaysVisible)
+			return;
+		
+		if(d3dobject.__wasVisible === undefined)
+			d3dobject.__wasVisible = d3dobject.visible;
+		
+		d3dobject.visible = false;
+	});
 }
 
 function startAnimationLoop(composer, outlinePass) {
@@ -192,6 +261,26 @@ function startAnimationLoop(composer, outlinePass) {
 
 		outlinePass.selectedObjects = _editor.selectedObjects.map(d3dobj => d3dobj.object3d);
 		composer.render();
+		
+		if (_editor.focus != _root) {
+			afterRenderHideObjects();
+		
+			// 1) draw the screen-space gray layer ABOVE the greyscaled scene
+			_editor.renderer.autoClear = false;
+			_editor.renderer.render(_editor._overlayScene, _editor._overlayCam);
+			
+			// 2) now clear depth so focus redraw can overwrite
+			_editor.renderer.clearDepth();
+			_editor.renderer.render(_root.object3d, _editor.camera);
+		
+			// 3) gizmo on top
+			_editor.renderer.clearDepth();
+			_editor.renderer.render(_editor.gizmo._group, _editor.camera);
+		
+			_editor.renderer.autoClear = true;
+		
+			afterRenderShowObjects();
+		}
 		
 		if(_editor.gizmo)
 			_editor.gizmo.update();
@@ -242,6 +331,7 @@ function setupSelection(renderer, camera) {
 		if (_editor.tool !== 'select' || event.button !== 0) return;
 		if (_input.getKeyDown('alt')) return;
 		if (_editor.gizmo.busy) return;
+		if(!_input.getIsGameInFocus()) return;
 
 		const r = renderer.domElement.getBoundingClientRect();
 		startPoint = {
@@ -280,7 +370,9 @@ function setupSelection(renderer, camera) {
 	});
 
 	renderer.domElement.addEventListener('mouseup', (event) => {
-		if (!startPoint) return;
+		if (!startPoint) 
+			return;
+			
 		selectionBox.style.display = 'none';
 
 		const r = renderer.domElement.getBoundingClientRect();
@@ -426,6 +518,95 @@ function addGridHelper() {
 	scene.add(grid);
 	return grid;
 }
+async function addD3DObjectEditor(type) {
+	let name = type;
+	let n = 1;
+	
+	while(_editor.focus.find(name)) {
+		name = `${type}_${n}`;
+		n++;
+	}
+	
+	const newObject = {
+		name: name,
+		position: { x: 0, y: 0, z: 0 },
+		rotation: { x: 0, y: 0, z: 0 },
+		scale: { x: 1, y: 1, z: 1 },
+		components: []
+	}
+	let supported = true;
+	
+	switch(type) {
+		case 'empty':
+			
+		break;
+		case 'camera':
+			newObject.components.push({
+				type: 'Camera', 
+				properties: {}
+			});
+		break;
+		case 'dirlight':
+			newObject.components.push({
+				type: 'DirectionalLight', 
+				properties: {
+					color: '0xffffff',
+					intensity: 2
+				}
+			});
+		break;
+		case 'pntlight':
+			newObject.components.push({
+				type: 'PointLight', 
+				properties: {
+					color: '0xffffff',
+					intensity: 2
+				}
+			});
+		break;
+		case 'html':
+			newObject.components.push({
+				type: 'HTML', 
+				properties: {
+					source: ''
+				}
+			});
+		break;
+		case 'cube':
+			newObject.components.push({
+				type: 'Mesh', 
+				properties: {
+					mesh: 'Standard/Models/Cube.glb',
+					materials: [
+						'Standard/Materials/Default.mat'
+					]
+				}
+			});
+		break;
+		default:
+			supported = false;
+		break;
+	}
+	
+	if(!supported) {
+		_editor.showError(`Unsupported add object '${type}'`);
+		return;
+	}
+	
+	const newd3dobj = await _editor.focus.createObject(newObject);
+	
+	_editor.setSelection([newd3dobj]);
+}
+
+function __onEditorFocusChanged() {
+	const inFocusMode = _editor.focus != _root;
+	
+	_editor.grayPass.enabled = inFocusMode;
+}
+
+// INTERNAL
+
+_editor.__onEditorFocusChanged = __onEditorFocusChanged;
 
 ipcRenderer.once('show-error-closed', (_, closeEditorWhenDone) => {
 	if(closeEditorWhenDone)
@@ -439,4 +620,7 @@ ipcRenderer.on('undo', () => {
 });
 ipcRenderer.on('redo', () => {
 	_editor.redo();
+});
+ipcRenderer.on('add-object', (_, type) => {
+	addD3DObjectEditor(type);
 });

@@ -178,6 +178,9 @@ function sendUndo() {
 function sendRedo() {
 	editorWindow.webContents.send('redo');
 }
+function sendAddObject(type) {
+	editorWindow.webContents.send('add-object', type);
+}
 
 // --- Menu ---
 const isMac = process.platform === 'darwin';
@@ -191,7 +194,6 @@ const menuTemplate = [
 			{ role: 'quit' }
 		]
 	}] : []),
-
 	{
 		label: 'File',
 		submenu: [
@@ -213,7 +215,6 @@ const menuTemplate = [
 			}
 		]
 	},
-
 	{
 		label: 'Edit',
 		submenu: [
@@ -239,6 +240,73 @@ const menuTemplate = [
 			},
 			{ type: 'separator' },
 			{ role: 'selectall' }
+		]
+	},
+	{
+		label: 'Object',
+		submenu: [
+			{
+				label: 'New Object',
+				submenu: [
+					{
+						label: 'Empty Object',
+						click: () => sendAddObject('empty')
+					},
+					{
+						label: 'Cube',
+						click: () => sendAddObject('cube')
+					},
+					{
+						label: 'Capsule',
+						click: () => sendAddObject('capsule')
+					},
+					{
+						label: 'Sphere',
+						click: () => sendAddObject('sphere')
+					},
+					{
+						label: 'Pyramid',
+						click: () => sendAddObject('pyramid')
+					},
+					{
+						label: 'Plane',
+						click: () => sendAddObject('plane')
+					},
+					{ type: 'separator' },
+					{
+						label: 'Camera',
+						click: () => sendAddObject('camera')
+					},
+					{
+						label: 'Directional Light',
+						click: () => sendAddObject('dirlight')
+					},
+					{
+						label: 'Point Light',
+						click: () => sendAddObject('pntlight')
+					},
+					{
+						label: 'HTML Overlay',
+						click: () => sendAddObject('html')
+					}
+				]
+			},
+			{ type: 'separator' },
+			{
+				label: 'Focus',
+				accelerator: 'F',
+				click: () => null
+			},
+			{
+				label: 'Symbolise',
+				accelerator: 'CmdOrCtrl+Shift+S',
+				click: () => null
+			},
+			{
+				label: 'Desymbolise',
+				accelerator: 'CmdOrCtrl+Shift+D',
+				click: () => null
+			}
 		]
 	},
 	{

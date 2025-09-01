@@ -777,7 +777,7 @@ export default function Inspector() {
 		
 		const drawPath = () => {
 			const path = [];
-			const objectFrame = _editor.parent;
+			const objectFrame = _editor.focus;
 			
 			if(!objectFrame || !objectFrame.parent)
 				return;
@@ -810,9 +810,9 @@ export default function Inspector() {
 							key={path.length}
 							className='object-path-item'
 							onClick={() => {
-								const oldParent = _editor.parent;
+								const oldParent = _editor.focus;
 								
-								_editor.parent = object;
+								_editor.focus = object;
 								
 								if(object == (oldParent.parent ?? _root))
 									_editor.setSelection([oldParent]);
@@ -831,7 +831,7 @@ export default function Inspector() {
 		}
 		const drawObjects = () => {
 			const rows = [];
-			const objects = [..._editor.parent.children];
+			const objects = [..._editor.focus.children];
 			
 			if(objects.length < 1)
 				return <div className='no-label'>No objects</div>
@@ -903,7 +903,7 @@ export default function Inspector() {
 							setSelectedAssetPaths(new Set());
 						}}
 						onDoubleClick={() => {
-							_editor.parent = object;
+							_editor.focus = object;
 							_editor.setSelection([]);
 						}}
 					/>
@@ -1092,7 +1092,7 @@ export default function Inspector() {
 				<div className="scene-objects-list shade">
 					{drawObjects()}
 				</div>
-				{sceneInspectorExpanded && (
+				{sceneInspectorExpanded && _editor.focus == _root && (
 					drawBackgroundSettings()
 				)}
 			</InspectorCell>
@@ -1450,7 +1450,7 @@ export default function Inspector() {
 			{_root && drawSceneInspector()}
 			{object && drawObjectInspector()}
 			{_root && drawAssetInspector()}
-			{_editor.project && _editor.parent == _root && drawProjectInspector()}
+			{_editor.project && _editor.focus == _root && drawProjectInspector()}
 			
 			<div style={{height: 45}} />
 			

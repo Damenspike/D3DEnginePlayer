@@ -35,6 +35,18 @@ export default class D3DObject {
 		}
 	}
 	
+	get worldPosition() {
+		return this.object3d.getWorldPosition(new THREE.Vector3());
+	}
+	set worldPosition({x, y, z}) {
+		const target = new THREE.Vector3(x, y, z);
+	
+		if (this.object3d.parent)
+			this.object3d.parent.worldToLocal(target);
+		
+		this.object3d.position.copy(target);
+	}
+	
 	get position() {
 		return this.object3d.position;
 	}
@@ -47,6 +59,13 @@ export default class D3DObject {
 	}
 	set rotation({x, y, z}) {
 		this.object3d.rotation.set(x, y, z);
+	}
+	
+	get quaternion() {
+		return this.object3d.quaternion;
+	}
+	set quaternion({x, y, z}) {
+		this.object3d.quaternion.set(x, y, z);
 	}
 	
 	get scale() {
@@ -146,7 +165,8 @@ export default class D3DObject {
 		if(protectedNames.includes(name) && global._root)
 			name += '_unsafe';
 		
-		if (!global._root) global._root = this; // root is not defined so this must be root
+		if (!window._root) 
+			window._root = this;
 		
 		this.uuid = global._root != this ? uuidv4() : '';
 		this.parent = parent; // D3DObject or null for root
@@ -187,6 +207,7 @@ export default class D3DObject {
 		child.scale = objData.scale;
 		child.uuid = objData.uuid ?? child.uuid;
 		child.editorOnly = !!objData.editorOnly || false;
+		child.editorAlwaysVisible = !!objData.editorAlwaysVisible || false;
 		child.components = objData.components || [];
 		
 		if(objData.engineScript)
@@ -213,6 +234,9 @@ export default class D3DObject {
 			
 		if(executeScripts)
 			await child.executeScripts();
+			
+		if(window._editor)
+			_editor.updateInspector();
 			
 		return child;
 	}
@@ -343,6 +367,9 @@ export default class D3DObject {
 		for (const component of this.components) {
 			switch (component.type) {
 				case 'HTML': {
+					if(!component.properties.source)
+						break;
+					
 					const elementId = `plate-html-${this.name}`; // no # in id
 					const htmlSource = path.join('assets', component.properties.source);
 					const htmlContent = await this.zip.file(htmlSource)?.async('string') ?? '';
@@ -403,7 +430,7 @@ export default class D3DObject {
 							this.scale.z
 						);
 						
-						this.object3d = camera;
+						this.replaceObject3D(camera);
 						this.cameraSetup = true;
 					}else{
 						const camera = this.object3d;
@@ -421,10 +448,10 @@ export default class D3DObject {
 							parseInt(component.properties.color, 16),
 							component.properties.intensity
 						);
-						this.object3d.add(light);
-						this.light = light;
+						this.isLight = true;
+						this.replaceObject3D(light);
 					}else{
-						const light = this.light;
+						const light = this.object3d;
 						light.color = parseInt(component.properties.color || '0xffffff', 16);
 						light.intensity = component.properties.intensity;
 					}
@@ -436,17 +463,10 @@ export default class D3DObject {
 							parseInt(component.properties.color, 16),
 							component.properties.intensity
 						);
-						if (component.properties.position) {
-							light.position.set(
-								component.properties.position.x, 
-								component.properties.position.y, 
-								component.properties.position.z
-							);
-						}
-						this.object3d.add(light);
-						this.light = light;
+						this.isLight = true;
+						this.replaceObject3D(light);
 					}else{
-						const light = this.light;
+						const light = this.object3d;
 						light.color.set(Number(component.properties.color));
 						light.intensity = component.properties.intensity;
 					}
@@ -496,6 +516,75 @@ export default class D3DObject {
 					console.warn(`Unknown component type: ${component.type}`);
 			}
 		}
+	}
+	
+	setParent(d3dobject) {
+		this.parent = d3dobject;
+		
+	}
+	
+	replaceObject3D(newObject3D, { keepChildren = true } = {}) {
+		const old = this.object3d;
+		if (!old || old === newObject3D) return;
+	
+		// --- cache LOCAL transform (relative to parent) ---
+		const pos = old.position.clone();
+		const quat = old.quaternion.clone();
+		const scl = old.scale.clone();
+	
+		// --- keep scene graph context ---
+		const parent = old.parent || null;
+		const oldIndex = parent ? parent.children.indexOf(old) : -1;
+	
+		// --- carry over useful flags/state ---
+		newObject3D.name = old.name; // so getObjectByName still works
+		newObject3D.visible = old.visible;
+		newObject3D.matrixAutoUpdate = old.matrixAutoUpdate;
+		newObject3D.renderOrder = old.renderOrder;
+		newObject3D.frustumCulled = old.frustumCulled;
+		newObject3D.castShadow = old.castShadow ?? newObject3D.castShadow;
+		newObject3D.receiveShadow = old.receiveShadow ?? newObject3D.receiveShadow;
+	
+		// copy layers bitmask
+		for (let i = 0; i < 32; i++) {
+			if (old.layers.isEnabled(i)) newObject3D.layers.enable(i);
+			else newObject3D.layers.disable(i);
+		}
+	
+		// --- move children if desired ---
+		if (keepChildren && old.children.length) {
+			// clone array to avoid mutation during iteration
+			for (const child of [...old.children]) newObject3D.add(child);
+		}
+	
+		// --- set local transform (relative to SAME parent) ---
+		newObject3D.position.copy(pos);
+		newObject3D.quaternion.copy(quat);
+		newObject3D.scale.copy(scl);
+	
+		// --- reparent into the same spot in the tree ---
+		if (parent) {
+			parent.remove(old);          // detach old
+			parent.add(newObject3D);     // attach new
+	
+			// restore original sibling order
+			if (oldIndex >= 0) {
+				const arr = parent.children;
+				const cur = arr.indexOf(newObject3D);
+				if (cur !== -1 && cur !== oldIndex) {
+					// move newObject3D to oldIndex
+					arr.splice(cur, 1);
+					arr.splice(oldIndex, 0, newObject3D);
+				}
+			}
+		}
+	
+		// --- wire back to D3D ---
+		this.object3d = newObject3D;
+		this.object3d.userData.d3dobject = this;
+	
+		// --- ensure matrices are coherent for anything that reads this frame ---
+		this.object3d.updateMatrixWorld(true);
 	}
 	
 	find(name) {

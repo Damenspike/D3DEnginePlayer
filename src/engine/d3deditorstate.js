@@ -15,12 +15,12 @@ export const TransformTools = Object.freeze({
 const stepLimit = 100;
 
 export default class D3DEditorState {
-	get parent() {
-		return this._parent ?? _root;
+	get focus() {
+		return this._focus ?? _root;
 	}
-	set parent(value) {
-		this._parent = value;
-		_editor.updateInspector();
+	set focus(value) {
+		this._focus = value;
+		this.__onEditorFocusChanged();
 	}
 	
 	constructor() {
@@ -95,21 +95,68 @@ export default class D3DEditorState {
 		return this.transformTool;
 	}
 	
-	setSelection(objects) {
-		if(!objects || !Array.isArray(objects))
-			objects = [];
+	isPartOfFocus(object) {
+		let parent = object.parent;
+		
+		if(object == this.focus)
+			return true;
+		
+		while(parent) {
+			if(parent == this.focus)
+				return true;
+			parent = parent.parent;
+		}
+		
+		return false;
+	}
+	addSelectionStep(oldSelection, newSelection) {
+		this.addStep({
+			name: 'Selection',
+			undo: () => this.setSelection(oldSelection, false),
+			redo: () => this.setSelection(newSelection, false)
+		});
+	}
+	setSelection(selectObjects, addStep = true) {
+		if(!selectObjects || !Array.isArray(selectObjects))
+			selectObjects = [];
+			
+		const objects = [];
+		
+		selectObjects.forEach(object => {
+			if(this.isPartOfFocus(object))
+				objects.push(object);
+		});
+		
+		addStep && this.addSelectionStep(
+			[...this.selectedObjects],
+			[...objects]
+		);
 		
 		this.selectedObjects = objects;
 		this.onObjectSelected?.(this.selectedObjects);
 	}
-	addSelection(objects) {
-		if(!objects || !Array.isArray(objects))
-			objects = [];
+	addSelection(selectObjects, addStep = true) {
+		if(!selectObjects || !Array.isArray(selectObjects))
+			selectObjects = [];
+			
+		const objects = [];
+		
+		selectObjects.forEach(object => {
+			if(this.isPartOfFocus(object))
+				objects.push(object);
+		});
+			
+		addStep && this.addSelectionStep(
+			[...this.selectedObjects],
+			[...this.selectedObjects, ...objects]
+		);
 		
 		this.selectedObjects.push(...objects);
 		this.onObjectSelected?.(this.selectedObjects);
 	}
-	removeSelection(objects) {
+	removeSelection(objects, addStep = true) {
+		const oldSelection = [...this.selectedObjects];
+		
 		objects.forEach(object => {
 			this.selectedObjects.splice(
 				this.selectedObjects.indexOf(object),
@@ -117,27 +164,15 @@ export default class D3DEditorState {
 			);
 		});
 		
+		addStep && this.addSelectionStep(
+			oldSelection,
+			[...this.selectedObjects]
+		);
+		
 		this.onObjectSelected?.(this.selectedObjects);
 	}
 	isSelected(object) {
 		return this.selectedObjects.includes(object);
-	}
-	
-	addStep({ name, undo, redo }) {
-		// drop future steps if we've undone
-		if(this.currentStep < this.steps.length - 1) {
-			this.steps = this.steps.slice(0, this.currentStep + 1);
-		}
-	
-		this.steps.push({ name, undo, redo });
-		this.currentStep++;
-	
-		// enforce limit
-		if(this.steps.length > stepLimit) {
-			// drop oldest
-			this.steps.shift();
-			this.currentStep--; // adjust index since we removed one at the start
-		}
 	}
 	
 	addStep({ name, undo, redo }) {
