@@ -181,6 +181,15 @@ function sendRedo() {
 function sendAddObject(type) {
 	editorWindow.webContents.send('add-object', type);
 }
+function sendSymboliseObject() {
+	editorWindow.webContents.send('symbolise-object');
+}
+function sendDesymboliseObject() {
+	editorWindow.webContents.send('desymbolise-object');
+}
+function sendFocusObject() {
+	editorWindow.webContents.send('focus-object');
+}
 
 // --- Menu ---
 const isMac = process.platform === 'darwin';
@@ -295,17 +304,17 @@ const menuTemplate = [
 			{
 				label: 'Focus',
 				accelerator: 'F',
-				click: () => null
+				click: () => sendFocusObject()
 			},
 			{
 				label: 'Symbolise',
 				accelerator: 'CmdOrCtrl+Shift+S',
-				click: () => null
+				click: () => sendSymboliseObject()
 			},
 			{
 				label: 'Desymbolise',
 				accelerator: 'CmdOrCtrl+Shift+D',
-				click: () => null
+				click: () => sendDesymboliseObject()
 			}
 		]
 	},

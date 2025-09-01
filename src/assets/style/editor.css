@@ -446,11 +446,13 @@ body.dark {
 	overflow-x: hidden;
 	overflow-y: scroll;
 	border-radius: 7px;
+	min-height: 100px;
 	
 	.object-row {
-		padding: 7px;
+		padding: 5px;
 		cursor: pointer;
 		font-size: 14px;
+		border: 2px solid rgba(0, 0, 0, 0);
 		
 		svg {
 			vertical-align: middle;
@@ -465,8 +467,10 @@ body.dark {
 		background: #0099ff !important;
 		color: white;
 	}
-	.object-row:last-child {
-		margin-bottom: 0;
+	.object-row--dragover {
+		border: 2px solid #0099ff;
+		border-radius: 5px;
+		background: rgba(0, 153, 255, 0.08);
 	}
 }
 .no-label {
@@ -493,6 +497,7 @@ body.dark {
 	margin-top: 15px;
 }
 .assets-insp-tools {
+	width: 100%;
 	margin-bottom: 3px;
 	
 	.btn-small {
@@ -502,4 +507,33 @@ body.dark {
 		margin-right: 5px;
 		margin-bottom: 5px;
 	}
+}
+.assets-new-folder {
+	margin-top: 10px;
+	margin-bottom: 10px;
+	display: flex;
+	gap: 6px;
+	alignItems: center;
+	
+	input {
+		height: 100%;
+		min-width: 0;
+		flex-grow: 1;
+	}
+	button {
+		min-width: 30px;
+		margin: 0px;
+	}
+}
+.folder-expand-icon {
+	position: relative;
+	display: inline-block;
+}
+.folder-expand-icon::before {
+	content: "";
+	position: absolute;
+	top: -10px;
+	left: -10px;
+	right: -10px;
+	bottom: -10px;
 }

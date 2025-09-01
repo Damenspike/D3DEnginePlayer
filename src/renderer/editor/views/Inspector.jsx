@@ -20,8 +20,15 @@ import {
 } from "react-icons/md";
 
 import {
+	moveZipFile,
 	renameZipFile,
-	renameZipDirectory
+	renameZipDirectory,
+	uniqueDirPath,
+	pathExists,
+	makeSafeFilename,
+	isDirPath,
+	parentDir,
+	MIME_D3D_ROW
 } from '../../../engine/d3dutility.js';
 
 const autoBlur = (e) => {
@@ -87,7 +94,15 @@ export default function Inspector() {
 	
 	useEffect(() => {
 		_editor.onDeleteKey = () => deleteSelectedObjects();
+		_editor.selectNoAssets = () => setSelectedAssetPaths(new Set());
 	}, [_editor.selectedObjects, selectedAssetPaths]);
+	
+	useEffect(() => {
+		_editor.onAssetsUpdated = () => {
+			if(_editor.__buildTree)
+				setAssetTree(_editor.__buildTree());
+		}
+	}, [assetTree]);
 	
 	const update = () => {
 		setDummyObject({...dummyObject});
@@ -864,6 +879,7 @@ export default function Inspector() {
 						icon={drawIcon()}
 						name={object.name}
 						selected={selected}
+						isInstance={true}
 						onRename={(newName) => {
 							if(!object.isValidName(newName))
 								return object.name;
@@ -899,8 +915,6 @@ export default function Inspector() {
 									_editor.removeSelection([object]);
 							}else
 								_editor.setSelection([object]);
-							
-							setSelectedAssetPaths(new Set());
 						}}
 						onDoubleClick={() => {
 							_editor.focus = object;
@@ -1099,32 +1113,35 @@ export default function Inspector() {
 		)
 	}
 	const drawAssetInspector = () => {
-		if (!zip)
+		if(!zip)
 			return <div className="no-label">No project file mounted</div>;
 	
-		// --- helpers ---
+		// --- helpers (tree) ---
 		const buildTree = () => {
-			const root = { name: 'assets', path: 'assets', type: 'dir', children: new Map() };
+			const root = { name: "assets", path: "assets", type: "dir", children: new Map() };
 	
 			zip.forEach((rel, file) => {
-				if (!rel.startsWith('assets/')) return;
-				if (rel.startsWith('assets/Standard/')) return;
+				if(!rel.startsWith("assets/"))
+					return;
+				if(rel.startsWith("assets/Standard/"))
+					return;
 	
-				const stripped = rel.slice('assets/'.length);
-				if (!stripped) return;
+				const stripped = rel.slice("assets/".length);
+				if(!stripped)
+					return;
 	
-				const parts = stripped.split('/').filter(Boolean);
+				const parts = stripped.split("/").filter(Boolean);
 				let node = root;
-				for (let i = 0; i < parts.length; i++) {
+				for(let i = 0; i < parts.length; i++) {
 					const part = parts[i];
 					const isLast = i === parts.length - 1;
-					const keyPath = (node.path ? node.path + '/' : '') + part;
+					const keyPath = (node.path ? node.path + "/" : "") + part;
 	
-					if (isLast && !file.dir) {
-						node.children.set(part, { name: part, path: keyPath, type: 'file' });
+					if(isLast && !file.dir) {
+						node.children.set(part, { name: part, path: keyPath, type: "file" });
 					} else {
-						if (!node.children.has(part)) {
-							node.children.set(part, { name: part, path: keyPath, type: 'dir', children: new Map() });
+						if(!node.children.has(part)) {
+							node.children.set(part, { name: part, path: keyPath, type: "dir", children: new Map() });
 						}
 						node = node.children.get(part);
 					}
@@ -1132,10 +1149,11 @@ export default function Inspector() {
 			});
 	
 			const normalize = (n) => {
-				if (n.type === 'dir') {
+				if(n.type === "dir") {
 					const arr = Array.from(n.children.values());
 					arr.sort((a, b) => {
-						if (a.type !== b.type) return a.type === 'dir' ? -1 : 1;
+						if(a.type !== b.type)
+							return a.type === "dir" ? -1 : 1;
 						return a.name.localeCompare(b.name);
 					});
 					n.children = arr;
@@ -1146,139 +1164,168 @@ export default function Inspector() {
 			return root;
 		};
 	
+		// expanded state
 		const isExpanded = (p) => assetExpanded.has(p);
 		const toggleExpanded = (p) => {
 			const next = new Set(assetExpanded);
-			if (next.has(p)) next.delete(p); else next.add(p);
+			if(next.has(p))
+				next.delete(p);
+			else
+				next.add(p);
 			setAssetExpanded(next);
 		};
 	
-		const setCurrentFolderTo = (path) => {
-			if (!path) return setCurrentAssetFolder('assets');
-			const f = zip.file(path);
-			const isFile = f && !f.dir;
-			if (isFile) {
-				const idx = path.lastIndexOf('/');
-				setCurrentAssetFolder(idx >= 0 ? path.slice(0, idx) : 'assets');
-			} else {
-				setCurrentAssetFolder(path);
-			}
-		};
+		// derive "current folder" from unified selection
+		const selectedArr = Array.from(selectedAssetPaths);
+		const primarySel = selectedArr.length ? selectedArr[selectedArr.length - 1] : "assets";
+		const currentFolder = isDirPath(zip, primarySel) ? primarySel.replace(/\/$/, "") : parentDir(primarySel);
 	
+		// import files → drop into currentFolder
 		const onImportFiles = async (files) => {
-			if (!files || files.length === 0) return;
-			for (const file of files) {
-				const buf = await file.arrayBuffer();
-				const base = currentAssetFolder || 'assets';
-				const target = (base ? base + '/' : '') + file.name;
+			if(!files || !files.length)
+				return;
+			for(const f of files) {
+				const buf = await f.arrayBuffer();
+				const target = `${currentFolder}/${f.name}`;
 				zip.file(target, buf);
 			}
 			setAssetTree(buildTree());
+			setAssetExpanded(prev => new Set(prev).add(currentFolder));
+			setSelectedAssetPaths(new Set([`${currentFolder}/${files[0].name}`]));
+			setLastSelectedPath(`${currentFolder}/${files[0].name}`);
 		};
 	
+		// new folder in currentFolder
 		const onNewFolder = (name) => {
-			const base = currentAssetFolder || 'assets';
-			const safe = (name || '').replace(/[\\:*?"<>|]/g, '_').trim();
-			if (!safe) return;
-			const path = base + '/' + safe + '/';
-			zip.folder(path);
+			const safe = makeSafeFilename(name);
+			if(!safe)
+				return;
+			const dirPath = uniqueDirPath(zip, currentFolder, safe);
+			zip.folder(dirPath);
 			setAssetTree(buildTree());
-			setAssetExpanded(new Set(assetExpanded).add(base));
+			setAssetExpanded(prev => new Set(prev).add(currentFolder));
+			setSelectedAssetPaths(new Set([dirPath.replace(/\/$/, "")]));
+			setLastSelectedPath(dirPath.replace(/\/$/, ""));
 			setNewFolderOpen(false);
-			setNewFolderName('');
+			setNewFolderName("");
 		};
 	
-		// --- multi-select helpers ---
-		const isFileSelected = (p) => selectedAssetPaths.has(p);
+		// new file in currentFolder (zero-byte)
+		const addNewFile = () => {
+			const path = uniqueFilePath(zip, currentFolder, "New asset");
+			zip.file(path, new Uint8Array());
+			setAssetTree(buildTree());
+			setAssetExpanded(prev => new Set(prev).add(currentFolder));
+			setSelectedAssetPaths(new Set([path]));
+			setLastSelectedPath(path);
+		};
+	
+		// DnD helpers
+		const MIME = MIME_D3D_ROW || "application/x-d3d-objectrow";
+		const canAccept = (e) => {
+			const t = e.dataTransfer?.types;
+			if(!t)
+				return false;
+			return Array.from(t).includes(MIME);
+		};
+		const unpack = (e) => {
+			try {
+				return JSON.parse(e.dataTransfer.getData(MIME) || "{}");
+			} catch {
+				return null;
+			}
+		};
+	
+		// selection helpers (unified)
+		const isSelected = (p) => selectedAssetPaths.has(p);
 		const setSingleSelection = (p) => {
 			const next = new Set();
-			if (p) next.add(p);
-			_editor.setSelection([]); // reset selected scene objects
+			if(p)
+				next.add(p);
+			_editor.setSelection([]);
 			setSelectedAssetPaths(next);
 			setLastSelectedPath(p || null);
 		};
 		const toggleSelection = (p) => {
 			const next = new Set(selectedAssetPaths);
-			if (next.has(p)) next.delete(p); else next.add(p);
-			_editor.setSelection([]); // reset selected scene objects
+			if(next.has(p))
+				next.delete(p);
+			else
+				next.add(p);
+			_editor.setSelection([]);
 			setSelectedAssetPaths(next);
 			setLastSelectedPath(p);
 		};
-	
-		// Select range within one folder (siblings is the array for that folder)
 		const selectRange = (siblings, fromPath, toPath) => {
-			if (!fromPath || !toPath) {
+			if(!fromPath || !toPath) {
 				setSingleSelection(toPath);
 				return;
 			}
-			const filesOnly = siblings.filter(n => n.type === 'file');
+			// range over displayed siblings (files only to keep behavior consistent)
+			const filesOnly = siblings.filter(n => n.type === "file");
 			const idxA = filesOnly.findIndex(n => n.path === fromPath);
 			const idxB = filesOnly.findIndex(n => n.path === toPath);
-			if (idxA === -1 || idxB === -1) {
+			if(idxA === -1 || idxB === -1) {
 				setSingleSelection(toPath);
 				return;
 			}
 			const start = Math.min(idxA, idxB);
 			const end = Math.max(idxA, idxB);
 			const next = new Set(selectedAssetPaths);
-			for (let i = start; i <= end; i++) next.add(filesOnly[i].path);
-			_editor.setSelection([]); // reset selected scene objects
+			for(let i = start; i <= end; i++)
+				next.add(filesOnly[i].path);
+			_editor.setSelection([]);
 			setSelectedAssetPaths(next);
 			setLastSelectedPath(toPath);
 		};
 	
-		const filename = (p) => p.split('/').pop();
+		const filename = (p) => p.split("/").pop();
 	
-		// --- delete (multi) ---
-		const canDelete = selectedAssetPaths.size > 0 || (currentAssetFolder && currentAssetFolder !== 'assets');
-	
+		// delete selected (files + folders)
+		const canDelete = selectedAssetPaths.size > 0;
 		const deleteSelectedConfirm = async () => {
-			if (selectedAssetPaths.size > 0) {
-				const count = selectedAssetPaths.size;
-				const label = count === 1 ? filename([...selectedAssetPaths][0]) : `${count} files`;
-				_editor.showConfirm({
-					message: `Delete ${label}? This action cannot be undone.`,
-					onConfirm: deleteSelected
-				});
-			} else if (currentAssetFolder && currentAssetFolder !== 'assets') {
-				const label = currentAssetFolder.slice('assets/'.length);
-				_editor.showConfirm({
-					message: `Delete folder “${label}” and all its contents? This cannot be undone.`,
-					onConfirm: deleteSelected
-				});
-			}
+			if(!selectedAssetPaths.size)
+				return;
+			const count = selectedAssetPaths.size;
+			const label = count === 1 ? filename([...selectedAssetPaths][0]) : `${count} items`;
+			_editor.showConfirm({
+				message: `Delete ${label}? This action cannot be undone.`,
+				onConfirm: deleteSelected
+			});
 		};
-		
 		_editor.deleteSelectedAssets = deleteSelectedConfirm;
 	
 		const deleteSelected = () => {
-			// Delete files if any selected
-			if (selectedAssetPaths.size > 0) {
-				for (const p of selectedAssetPaths) zip.remove(p);
-				setSelectedAssetPaths(new Set());
-			} else if (currentAssetFolder && currentAssetFolder !== 'assets') {
-				// Delete the whole folder recursively
-				const target = currentAssetFolder.endsWith('/') ? currentAssetFolder : currentAssetFolder + '/';
+			if(!selectedAssetPaths.size)
+				return;
+	
+			// remove files directly, remove folders recursively
+			for(const p of selectedAssetPaths) {
+				const file = zip.file(p);
+				if(file) {
+					zip.remove(p);
+					continue;
+				}
+				const dir = p.endsWith("/") ? p : p + "/";
 				const toRemove = [];
 				zip.forEach((rel) => {
-					if (rel.startsWith(target)) toRemove.push(rel);
+					if(rel.startsWith(dir))
+						toRemove.push(rel);
 				});
-				toRemove.push(target);
-				toRemove.forEach(p => zip.remove(p));
-	
-				// move selection to parent
-				const up = target.replace(/\/$/, '');
-				const idx = up.lastIndexOf('/');
-				const parent = idx >= 0 ? up.slice(0, idx) : 'assets';
-				setCurrentAssetFolder(parent || 'assets');
+				toRemove.forEach(rel => zip.remove(rel));
+				zip.remove(dir);
 			}
+	
+			setSelectedAssetPaths(new Set());
+			setLastSelectedPath(null);
 			setAssetTree(buildTree());
 		};
 	
-		// --- rendering ---
+		// render a node
 		const renderNode = (node, depth = 0, siblings = []) => {
-			if (node.type === 'file') {
-				const selected = isFileSelected(node.path);
+			const selected = isSelected(node.path);
+	
+			if(node.type === "file") {
 				return (
 					<ObjectRow
 						key={node.path}
@@ -1286,32 +1333,29 @@ export default function Inspector() {
 						name={node.name}
 						selected={selected}
 						style={{ paddingLeft: 6 + depth * 24 }}
+						draggable
+						dragData={{ kind: "asset", path: node.path }}
 						onRename={async (newName) => {
 							try {
 								const newPath = await renameZipFile(zip, node.path, newName);
-						
+								setAssetTree(buildTree());
 								setSingleSelection(newPath);
-								setCurrentFolderTo(newPath);
-							} catch (err) {
-								console.warn('Rename failed:', err);
+							} catch(err) {
+								console.warn("Rename failed:", err);
 							}
-							
 							return newName;
 						}}
 						title={node.path}
 						onClick={(e) => {
-							// selection rules: Shift = range, Ctrl/Cmd = toggle, else single
-							if (e.shiftKey) {
+							if(e.shiftKey) {
 								selectRange(siblings, lastSelectedPath, node.path);
-							} else if (e.metaKey || e.ctrlKey) {
+							} else if(e.metaKey || e.ctrlKey) {
 								toggleSelection(node.path);
 							} else {
 								setSingleSelection(node.path);
 							}
-							setCurrentFolderTo(node.path);
 						}}
 						onDoubleClick={() => {
-							// Open file via OS if you want; for now we just single-select
 							setSingleSelection(node.path);
 						}}
 					/>
@@ -1321,37 +1365,69 @@ export default function Inspector() {
 			// directory
 			const open = isExpanded(node.path);
 			return (
-				<React.Fragment key={node.path || 'assets'}>
+				<React.Fragment key={node.path || "assets"}>
 					<ObjectRow
 						icon={(
-							<>{open ? <MdExpandMore /> : <MdChevronRight />} <MdFolder /></>
+							<>
+								<div
+									className="folder-expand-icon"
+									onClick={(e) => {
+										toggleExpanded(node.path);
+										e.stopPropagation();
+										e.preventDefault();
+									}}
+								>
+									{open ? <MdExpandMore /> : <MdChevronRight />}
+								</div>
+								<MdFolder />
+							</>
 						)}
 						name={node.name}
-						title={node.path || '/'}
+						selected={selected}
+						title={node.path || "/"}
 						style={{ paddingLeft: 6 + depth * 14 }}
+						droppable
+						draggable
+						dragData={{ kind: "folder", path: node.path }}
+						onDrop={async (e, payload) => {
+							try {
+								if(!payload?.path)
+									return;
+								// prevent moving into itself or its descendants
+								const destDir = node.path.endsWith("/") ? node.path : (node.path + "/");
+								const src = payload.path.endsWith("/") ? payload.path : payload.path + "/";
+								if(payload.kind === "folder" && (destDir === src || destDir.startsWith(src)))
+									return;
+	
+								const movedTo = await moveZipFile(zip, payload.path, node.path);
+								setAssetTree(buildTree());
+								setSingleSelection((movedTo || "").replace(/\/$/, ""));
+								setAssetExpanded(prev => new Set(prev).add(node.path));
+							} catch(err) {
+								console.error("Move failed", err);
+							}
+						}}
 						onRename={async (newName) => {
 							try {
 								const newPath = await renameZipDirectory(zip, node.path, newName);
-						
-								setSingleSelection(newPath);
-								setCurrentFolderTo(newPath);
-							} catch (err) {
-								console.warn('Rename failed:', err);
+								setAssetTree(buildTree());
+								setSingleSelection(newPath.replace(/\/$/, ""));
+							} catch(err) {
+								console.warn("Rename failed:", err);
 							}
-							
 							return newName;
 						}}
 						onClick={(e) => {
-							// Clicking a folder: toggle expand on simple click; don't mix into file selection set
-							toggleExpanded(node.path);
-							setCurrentFolderTo(node.path);
-							// Optional: clear file selection when changing folder
-							if (!e.metaKey && !e.ctrlKey && !e.shiftKey) 
-								setSelectedAssetPaths(new Set());
+							if(e.shiftKey) {
+								selectRange(siblings, lastSelectedPath, node.path);
+							} else if(e.metaKey || e.ctrlKey) {
+								toggleSelection(node.path);
+							} else {
+								setSingleSelection(node.path);
+							}
 						}}
 						onDoubleClick={() => {
 							toggleExpanded(node.path);
-							setCurrentFolderTo(node.path);
 						}}
 					/>
 					{open && node.children?.map(child => (
@@ -1365,27 +1441,83 @@ export default function Inspector() {
 	
 		// Build once (or after refresh)
 		const tree = assetTree ?? buildTree();
-		if (assetTree !== tree) setAssetTree(tree); // prime state once
+		_editor.__buildTree = buildTree;
+		if(assetTree !== tree)
+			setAssetTree(tree);
 	
 		return (
-			<InspectorCell 
-				id="insp-cell-assets" 
+			<InspectorCell
+				id="insp-cell-assets"
 				title="Assets"
 				expanded={assetsInspectorExpanded}
 				onExpand={() => setAssetsInspectorExpanded(!assetsInspectorExpanded)}
+				onDragOver={(e) => {
+					if(!canAccept(e))
+						return;
+					e.preventDefault();
+					e.dataTransfer.dropEffect = "copy";
+				}}
+				onDrop={async (e) => {
+					if(!canAccept(e))
+						return;
+					e.preventDefault();
+					const payload = unpack(e);
+					if(!payload?.path)
+						return;
+					// Drop to root if list catches it
+					await moveZipFile(zip, payload.path, "assets");
+					setAssetTree(buildTree());
+					setSelectedAssetPaths(new Set(["assets"]));
+					setLastSelectedPath("assets");
+					setAssetExpanded(prev => new Set(prev).add("assets"));
+				}}
 			>
 				{assetsInspectorExpanded && (
 					<div className="tools-section assets-insp-tools">
-						<button onClick={() => assetFileInputRef.current?.click()} title="Import here">
+						<button onClick={addNewFile} title="Create file">
+							<MdAdd /> New File
+						</button>
+	
+						<button
+							onClick={() => assetFileInputRef.current?.click()}
+							title={`Import into ${currentFolder}`}
+						>
 							<MdUpload /> Import
 						</button>
-		
-						{!newFolderOpen ? (
-							<button onClick={() => setNewFolderOpen(true)} title="Create folder">
-								<MdCreateNewFolder /> Folder
+	
+						{!newFolderOpen && (
+							<button
+								className="btn-small"
+								onClick={() => setNewFolderOpen(true)}
+								title={`Create folder in ${currentFolder}`}
+							>
+								<MdCreateNewFolder />
 							</button>
-						) : (
-							<span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+						)}
+	
+						<button
+							className="btn-small"
+							onClick={deleteSelectedConfirm}
+							title={selectedAssetPaths.size > 0 ? "Delete selected" : "Delete"}
+							disabled={!canDelete}
+						>
+							<MdDeleteForever />
+						</button>
+	
+						<input
+							ref={assetFileInputRef}
+							type="file"
+							multiple
+							style={{ display: "none" }}
+							onChange={async (e) => {
+								const files = Array.from(e.target.files || []);
+								e.target.value = "";
+								await onImportFiles(files);
+							}}
+						/>
+	
+						{newFolderOpen && (
+							<div className="assets-new-folder">
 								<input
 									className="tf"
 									type="text"
@@ -1394,40 +1526,28 @@ export default function Inspector() {
 									value={newFolderName}
 									onChange={e => setNewFolderName(e.target.value)}
 									onKeyDown={(e) => {
-										if (e.key === 'Enter') onNewFolder(newFolderName);
-										else if (e.key === 'Escape') { setNewFolderOpen(false); setNewFolderName(''); }
+										if(e.key === "Enter")
+											onNewFolder(newFolderName);
+										else if(e.key === "Escape") {
+											setNewFolderOpen(false);
+											setNewFolderName("");
+										}
 									}}
 									style={{ width: 160 }}
 								/>
-								<button onClick={() => onNewFolder(newFolderName)}>Add</button>
-								<button onClick={() => { setNewFolderOpen(false); setNewFolderName(''); }}>Cancel</button>
-							</span>
+								<button onClick={() => onNewFolder(newFolderName)}>
+									Okay
+								</button>
+								<button
+									onClick={() => {
+										setNewFolderOpen(false);
+										setNewFolderName("");
+									}}
+								>
+									Cancel
+								</button>
+							</div>
 						)}
-		
-						<button className="btn-small" onClick={() => setAssetTree(buildTree())} title="Refresh">
-							<MdRefresh />
-						</button>
-		
-						<button
-							className="btn-small"
-							onClick={deleteSelectedConfirm}
-							title={selectedAssetPaths.size > 0 ? `Delete selected` : `Delete folder`}
-							disabled={!canDelete}
-						>
-							<MdDeleteForever />
-						</button>
-		
-						<input
-							ref={assetFileInputRef}
-							type="file"
-							multiple
-							style={{ display: 'none' }}
-							onChange={async (e) => {
-								const files = Array.from(e.target.files || []);
-								e.target.value = '';
-								await onImportFiles(files);
-							}}
-						/>
 					</div>
 				)}
 	

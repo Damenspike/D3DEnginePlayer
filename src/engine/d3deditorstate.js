@@ -20,7 +20,7 @@ export default class D3DEditorState {
 	}
 	set focus(value) {
 		this._focus = value;
-		this.__onEditorFocusChanged();
+		this.onEditorFocusChanged();
 	}
 	
 	constructor() {
@@ -134,6 +134,7 @@ export default class D3DEditorState {
 		
 		this.selectedObjects = objects;
 		this.onObjectSelected?.(this.selectedObjects);
+		this.selectNoAssets?.();
 	}
 	addSelection(selectObjects, addStep = true) {
 		if(!selectObjects || !Array.isArray(selectObjects))
@@ -153,6 +154,7 @@ export default class D3DEditorState {
 		
 		this.selectedObjects.push(...objects);
 		this.onObjectSelected?.(this.selectedObjects);
+		this.selectNoAssets?.();
 	}
 	removeSelection(objects, addStep = true) {
 		const oldSelection = [...this.selectedObjects];

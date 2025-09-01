@@ -5,8 +5,12 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { OutlinePass } from 'three/examples/jsm/postprocessing/OutlinePass.js';
 import { GammaCorrectionShader } from 'three/examples/jsm/shaders/GammaCorrectionShader.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
-import { arraysEqual } from './d3dutility.js';
 import { GrayscaleShader } from './d3dshaders.js';
+import { 
+	arraysEqual,
+	uniqueFilePath
+} from './d3dutility.js';
+
 import $ from 'jquery';
 import D3DObject from './d3dobject.js';
 import D3DInput from './d3dinput.js';
@@ -611,16 +615,66 @@ async function addD3DObjectEditor(type) {
 	
 	_editor.setSelection([newd3dobj]);
 }
+function addNewFile({name, dir, data}) {
+	const zip = _root.zip;
+	const base = dir || 'assets';
+	const path = uniqueFilePath(zip, base, name);
+	zip.file(path, data || new Uint8Array());
+	
+	_editor.onAssetsUpdated();
+	
+	return path;
+}
+function symboliseSelectedObject() {
+	if(_editor.selectedObjects.length < 1)
+		return;
+	
+	_editor.selectedObjects.forEach(d3dobject => 
+		symboliseObject(d3dobject));
+}
+function desymboliseSelectedObject() {
+	if(_editor.selectedObjects.length < 1)
+		return;
+	
+	// do it here
+}
+async function symboliseObject(d3dobject) {
+	if(d3dobject.symbol) {
+		const e = `${d3dobject.name} is already a symbol`;
+		_editor.showError(e);
+		console.error(e);
+		return;
+	}
+	
+	const serializedData = d3dobject.serialize();
+	
+	_editor.addNewFile({
+		name: `${d3dobject.name}.d3dsymbol`,
+		data: serializedData
+	});
+	await _root.updateSymbolStore();
+	
+	d3dobject.symbol = _root.__symbols[d3dobject.uuid];
+	d3dobject.syncToSymbol();
+}
 
-function __onEditorFocusChanged() {
+// Editor events
+function onEditorFocusChanged() {
 	const inFocusMode = _editor.focus != _root;
 	
 	_editor.grayPass.enabled = inFocusMode;
 }
+function onAssetDroppedIntoGameView(path, screenPos) {
+	const { sx, sy } = screenPos;
+	
+	console.log('Asset dropped in!', path, screenPos);
+}
 
 // INTERNAL
 
-_editor.__onEditorFocusChanged = __onEditorFocusChanged;
+_editor.onEditorFocusChanged = onEditorFocusChanged;
+_editor.onAssetDroppedIntoGameView = onAssetDroppedIntoGameView;
+_editor.addNewFile = addNewFile;
 
 ipcRenderer.once('show-error-closed', (_, closeEditorWhenDone) => {
 	if(closeEditorWhenDone)
@@ -635,6 +689,9 @@ ipcRenderer.on('undo', () => {
 ipcRenderer.on('redo', () => {
 	_editor.redo();
 });
-ipcRenderer.on('add-object', (_, type) => {
-	addD3DObjectEditor(type);
-});
+ipcRenderer.on('add-object', 
+	(_, type) => addD3DObjectEditor(type));
+ipcRenderer.on('symbolise-object', 
+	(_, type) => symboliseSelectedObject());
+ipcRenderer.on('desymbolise-object', 
+	(_, type) => desymboliseSelectedObject());

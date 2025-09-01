@@ -4,7 +4,7 @@ import { HiPlus } from "react-icons/hi";
 
 export default function InspectorCell({ 
 	id, title, defaultOpen = true, children,
-	expanded = false, onExpand = null
+	expanded = false, onExpand = null, onDragOver = null, onDrop = null
 }) {
 	const key = 'insp-collapsed:' + (id || '');
 	const [open, setOpen] = useState(defaultOpen);
@@ -44,7 +44,15 @@ export default function InspectorCell({
 					</button>
 				)}
 			</div>
-			{open && <div className="insp-body">{children}</div>}
+			{open && (
+				<div 
+					className="insp-body"
+					onDragOver={onDragOver}
+					onDrop={onDrop}
+				>
+					{children}
+				</div>
+			)}
 		</div>
 	);
 }

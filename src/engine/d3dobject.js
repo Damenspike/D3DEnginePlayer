@@ -3,8 +3,11 @@ import axios from 'axios';
 import JSZip from 'jszip';
 import { v4 as uuidv4 } from 'uuid';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import {
+	getExtension
+} from './d3dutility.js';
 const protectedNames = [
-	'_root', 'Input', 'position', 'rotation', 'scale', 'name', 'parent', 'children', 'threeObj', 'scenes', 'zip', 'forward', 'right', 'up', 'quaternion', 'beforeRenderFrame', 'onAddedToScene'
+	'_root', 'Input', 'position', 'rotation', 'scale', 'name', 'parent', 'children', 'threeObj', 'scenes', 'zip', 'forward', 'right', 'up', 'quaternion', 'beforeRenderFrame', 'onAddedToScene', '__symbols', '__origin'
 ]
 
 const fs = window.require('fs').promises;
@@ -12,6 +15,31 @@ const path = window.require('path');
 const vm = window.require('vm');
 
 export default class D3DObject {
+	constructor(name = 'object', parent = null) {
+		if(!this.isValidName(name))
+			name = `object${(parent?.children?.length ?? Math.floor(Math.random() * 10000000000))}`;
+		
+		if(protectedNames.includes(name) && window._root)
+			name += '_unsafe';
+		
+		if (!window._root) 
+			window._root = this;
+		
+		if(!_root.__symbols)
+			_root.__symbols = {}; // initialise symbol store on _root
+		
+		this.uuid = window._root != this ? uuidv4() : '';
+		this.parent = parent; // D3DObject or null for root
+		this.name = name;
+		this.children = [];
+		this.object3d = this.parent ? new THREE.Object3D() : new THREE.Scene();
+		this.object3d.userData.d3dobject = this;
+		this.scenes = [];
+		this.components = [];
+		
+		this.setupDefaultMethods();
+	}
+	
 	///////////////////////////////
 	// Getters and setters only
 	///////////////////////////////
@@ -158,27 +186,6 @@ export default class D3DObject {
 		return this.object3d.quaternion;
 	}
 	
-	constructor(name = 'object', parent = null) {
-		if(!this.isValidName(name))
-			name = `object${(parent?.children?.length ?? Math.floor(Math.random() * 10000000000))}`;
-		
-		if(protectedNames.includes(name) && global._root)
-			name += '_unsafe';
-		
-		if (!window._root) 
-			window._root = this;
-		
-		this.uuid = global._root != this ? uuidv4() : '';
-		this.parent = parent; // D3DObject or null for root
-		this.name = name;
-		this.children = [];
-		this.object3d = this.parent ? new THREE.Object3D() : new THREE.Scene();
-		this.object3d.userData.d3dobject = this;
-		this.scenes = [];
-		this.components = [];
-		
-		this.setupDefaultMethods();
-	}
 	setupDefaultMethods() {
 		if(window._editor) {
 			this.__beforeEditorRenderFrame = () => {
@@ -192,6 +199,9 @@ export default class D3DObject {
 					_editor.updateInspector?.();
 				}
 				
+				if(this.symbol)
+					this.syncToSymbol(!!this.isSymbolChild);
+				
 				this.lastMatrixWorld = new THREE.Matrix4().copy(this.object3d.matrixWorld);
 			}
 		}
@@ -199,6 +209,21 @@ export default class D3DObject {
 	
 	async createObject(objData, executeScripts = true) {
 		const child = new D3DObject(objData.name, this);
+		
+		if(objData.symbol) {
+			if(typeof objData.symbol !== 'string')
+				return;
+			
+			const symbol = _root.__symbols[objData.symbol];
+			
+			if(!symbol) {
+				console.warn('Missing symbol for ', objData.symbol);
+				return;
+			}
+			
+			objData = symbol;
+			child.symbol = symbol;
+		}
 		
 		// Apply transforms
 		child.zip = this.zip;
@@ -244,6 +269,8 @@ export default class D3DObject {
 	async load(uri) {
 		let buffer;
 		
+		this.__origin = uri;
+		
 		if (uri.startsWith('http://') || uri.startsWith('https://')) {
 			// Remote URL
 			console.log('Fetching remote .d3d from URL...');
@@ -257,7 +284,7 @@ export default class D3DObject {
 		
 		if(buffer) {
 			// Pass buffer to your next step
-			await this.loadFromBuffer(buffer);
+			await this.loadFromZip(buffer);
 			
 			console.log('File loaded, size:', buffer.length, 'bytes');
 		}
@@ -265,7 +292,7 @@ export default class D3DObject {
 		return buffer;
 	}
 	
-	async loadFromBuffer(buffer) {
+	async loadFromZip(buffer) {
 		// No need for await import, using required modules
 		const zip = await new JSZip().loadAsync(buffer);
 		this.zip = zip;
@@ -279,7 +306,7 @@ export default class D3DObject {
 		console.log('Manifest loaded:', this.manifest);
 	
 		// Configure Electron window based on manifest only for root
-		if (this === global._root) {
+		if (this === window._root) {
 			const { ipcRenderer } = require('electron');
 			ipcRenderer.send('update-window', {
 				width: this.manifest.width,
@@ -287,6 +314,9 @@ export default class D3DObject {
 				title: this.manifest.name
 			});
 		}
+		
+		// Find all the symbols and store them
+		await this.updateSymbolStore();
 
 		// Parse scenes.json for scene graph
 		const scenesStr = await zip.file('scenes.json')?.async('string');
@@ -518,9 +548,41 @@ export default class D3DObject {
 		}
 	}
 	
+	async updateSymbolStore() {
+		const zip = this.zip;
+		const promises = [];
+	
+		zip.forEach((rel, file) => {
+			const ext = getExtension(rel);
+			
+			if(ext != 'd3dsymbol') 
+				return;
+			
+			const p = file.async('string').then(serializedData => {
+				try {
+					const objData = JSON.parse(serializedData);
+					const uuid = objData.uuid;
+					
+					if (!uuid || typeof uuid !== 'string') {
+						console.warn('Invalid UUID in', rel);
+						return;
+					}
+					
+					_root.__symbols[uuid] = { uuid, file, rel, objData };
+				} catch(e) {
+					console.warn('Failed to parse', rel, e);
+				}
+			});
+			
+			promises.push(p);
+		});
+	
+		await Promise.all(promises);
+	}
+	
 	setParent(d3dobject) {
 		this.parent = d3dobject;
-		
+		d3dobject.object3d.add(this.object3d);
 	}
 	
 	replaceObject3D(newObject3D, { keepChildren = true } = {}) {
@@ -585,6 +647,78 @@ export default class D3DObject {
 	
 		// --- ensure matrices are coherent for anything that reads this frame ---
 		this.object3d.updateMatrixWorld(true);
+	}
+	
+	syncToSymbol(syncTransform = false) {
+		const symbol = this.symbol;
+		
+		if(!this.symbol) {
+			console.error("Can't sync to symbol because there is no symbol");
+			return;
+		}
+		
+		if(syncTransform) {
+			this.position.x = symbol.position.x;
+			this.position.y = symbol.position.y;
+			this.position.z = symbol.position.z;
+			
+			this.rotation.x = symbol.rotation.x;
+			this.rotation.y = symbol.rotation.y;
+			this.rotation.z = symbol.rotation.z;
+			
+			this.scale.x = symbol.scale.x;
+			this.scale.y = symbol.scale.y;
+			this.scale.z = symbol.scale.z;
+			
+			this.opacity = symbol.opacity;
+			this.visible = symbol.visible;
+		}
+		
+		this.components = structuredClone(symbol.objData.components);
+		
+		symbol.objData.children.forEach(schild => {
+			const child = this.children.find(child => child.uuid == schild.uuid);
+			
+			if(!child) {
+				console.warn('Missing d3d child in symbol sync. Sync child: ', schild);
+				return;
+			}
+			
+			child.symbol = { objData: schild };
+			child.isSymbolChild = true;
+			child.syncToSymbol(true);
+		});
+	}
+	
+	serialize() {
+		return JSON.stringify(this.getSerializableObject());
+	}
+	
+	getSerializableObject() {
+		return {
+			uuid: this.uuid,
+			name: this.name,
+			position: {
+				x: this.position.x, 
+				y: this.position.y, 
+				z: this.position.z
+			},
+			rotation: {
+				x: this.rotation.x,
+				y: this.rotation.y,
+				z: this.rotation.z
+			},
+			scale: {
+				x: this.scale.x,
+				y: this.scale.y,
+				z: this.scale.z
+			},
+			components: this.components.map(component => ({
+				type: component.type,
+				properties: component.properties
+			})),
+			children: this.children.map(child => child.getSerializableObject())
+		}
 	}
 	
 	find(name) {
