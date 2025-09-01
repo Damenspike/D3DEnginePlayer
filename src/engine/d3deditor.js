@@ -8,7 +8,8 @@ import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { GrayscaleShader } from './d3dshaders.js';
 import { 
 	arraysEqual,
-	uniqueFilePath
+	uniqueFilePath,
+	getExtension
 } from './d3dutility.js';
 
 import $ from 'jquery';
@@ -666,8 +667,22 @@ function onEditorFocusChanged() {
 }
 function onAssetDroppedIntoGameView(path, screenPos) {
 	const { sx, sy } = screenPos;
+	const ext = getExtension(path);
 	
-	console.log('Asset dropped in!', path, screenPos);
+	switch(ext) {
+		case 'd3dsymbol': {
+			const symbol = Object.values(_root.__symbols)
+				.find(symbol => symbol.rel == path);
+			
+			if(!symbol) {
+				console.warn('Could not find symbol by path', path);
+				break;
+			}
+			
+			console.log(symbol);
+			break;
+		}
+	}
 }
 
 // INTERNAL

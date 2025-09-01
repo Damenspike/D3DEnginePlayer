@@ -16,7 +16,8 @@ import {
 	MdPhotoCamera,
 	MdHtml,
 	MdFolder, MdInsertDriveFile, MdExpandMore, MdChevronRight,
-	MdUpload, MdCreateNewFolder, MdRefresh, MdDeleteForever
+	MdUpload, MdCreateNewFolder, MdRefresh, MdDeleteForever,
+	MdOutlineInterests
 } from "react-icons/md";
 
 import {
@@ -28,6 +29,8 @@ import {
 	makeSafeFilename,
 	isDirPath,
 	parentDir,
+	uniqueFilePath,
+	getExtension,
 	MIME_D3D_ROW
 } from '../../../engine/d3dutility.js';
 
@@ -123,7 +126,6 @@ export default function Inspector() {
 			setObject(null);
 		}else
 		if(selectedAssetPaths.size > 0) {
-			console.log('Delete assets');
 			_editor.deleteSelectedAssets();
 			setObject(null);
 		}
@@ -1193,6 +1195,9 @@ export default function Inspector() {
 			setAssetExpanded(prev => new Set(prev).add(currentFolder));
 			setSelectedAssetPaths(new Set([`${currentFolder}/${files[0].name}`]));
 			setLastSelectedPath(`${currentFolder}/${files[0].name}`);
+			
+			// important after any asset change
+			_root.updateSymbolStore();
 		};
 	
 		// new folder in currentFolder
@@ -1208,6 +1213,9 @@ export default function Inspector() {
 			setLastSelectedPath(dirPath.replace(/\/$/, ""));
 			setNewFolderOpen(false);
 			setNewFolderName("");
+			
+			// important after any asset change
+			_root.updateSymbolStore();
 		};
 	
 		// new file in currentFolder (zero-byte)
@@ -1218,6 +1226,9 @@ export default function Inspector() {
 			setAssetExpanded(prev => new Set(prev).add(currentFolder));
 			setSelectedAssetPaths(new Set([path]));
 			setLastSelectedPath(path);
+			
+			// important after any asset change
+			_root.updateSymbolStore();
 		};
 	
 		// DnD helpers
@@ -1319,6 +1330,9 @@ export default function Inspector() {
 			setSelectedAssetPaths(new Set());
 			setLastSelectedPath(null);
 			setAssetTree(buildTree());
+			
+			// important after any asset change
+			_root.updateSymbolStore();
 		};
 	
 		// render a node
@@ -1326,11 +1340,26 @@ export default function Inspector() {
 			const selected = isSelected(node.path);
 	
 			if(node.type === "file") {
+				const ext = getExtension(node.name);
+				const displayName = node.name.split('.')[0];
+				
+				const drawIcon = () => {
+					switch(ext) {
+						case 'd3dsymbol':
+							return <MdOutlineInterests />;
+						case 'glb':
+							return <MdViewInAr />;
+						default: 
+							return <MdInsertDriveFile />;
+					}
+				}
+				
 				return (
 					<ObjectRow
 						key={node.path}
-						icon={<MdInsertDriveFile />}
+						icon={drawIcon()}
 						name={node.name}
+						displayName={displayName}
 						selected={selected}
 						style={{ paddingLeft: 6 + depth * 24 }}
 						draggable
@@ -1340,6 +1369,9 @@ export default function Inspector() {
 								const newPath = await renameZipFile(zip, node.path, newName);
 								setAssetTree(buildTree());
 								setSingleSelection(newPath);
+								
+								// important after any asset change
+								_root.updateSymbolStore();
 							} catch(err) {
 								console.warn("Rename failed:", err);
 							}
@@ -1403,6 +1435,9 @@ export default function Inspector() {
 								setAssetTree(buildTree());
 								setSingleSelection((movedTo || "").replace(/\/$/, ""));
 								setAssetExpanded(prev => new Set(prev).add(node.path));
+								
+								// important after any asset change
+								_root.updateSymbolStore();
 							} catch(err) {
 								console.error("Move failed", err);
 							}
@@ -1412,6 +1447,9 @@ export default function Inspector() {
 								const newPath = await renameZipDirectory(zip, node.path, newName);
 								setAssetTree(buildTree());
 								setSingleSelection(newPath.replace(/\/$/, ""));
+								
+								// important after any asset change
+								_root.updateSymbolStore();
 							} catch(err) {
 								console.warn("Rename failed:", err);
 							}
@@ -1470,6 +1508,9 @@ export default function Inspector() {
 					setSelectedAssetPaths(new Set(["assets"]));
 					setLastSelectedPath("assets");
 					setAssetExpanded(prev => new Set(prev).add("assets"));
+					
+					// important after any asset change
+					_root.updateSymbolStore();
 				}}
 			>
 				{assetsInspectorExpanded && (

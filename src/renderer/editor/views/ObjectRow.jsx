@@ -5,7 +5,10 @@ let renameTimer;
 export default function ObjectRow({
 	style, title, icon, name, selected,
 	onClick, onDoubleClick, onRename, isInstance, children,
-
+	
+	// Other
+	displayName = '',
+	
 	// Drag & Drop
 	draggable = false,
 	droppable = false,
@@ -180,7 +183,7 @@ export default function ObjectRow({
 					style={{ font: 'inherit', padding: 2 }}
 				/>
 			) : (
-				name
+				displayName || name
 			)}
 			{children}
 		</div>
