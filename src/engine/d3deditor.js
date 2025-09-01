@@ -402,15 +402,20 @@ function setupSelection(renderer, camera) {
 		const owners = [];
 		scene.traverse((obj) => {
 			if (!obj.isMesh) return;
-		
-			// walk up until we find the node that actually carries the d3dobject ref
+			
 			let owner = obj;
-			while (owner && !owner.userData?.d3dobject && owner.parent) owner = owner.parent;
+			while (owner && !owner.userData?.d3dobject && owner.parent) 
+				owner = owner.parent;
 		
-			const d3dobj = owner?.userData?.d3dobject;
-			if (!d3dobj || d3dobj === _root || d3dobj.noSelect) return;
+			let d3dobj = owner?.userData?.d3dobject;
+			if (!d3dobj || d3dobj === _root || d3dobj.noSelect) 
+				return;
+			
+			// Get the object thats child of _editor.focus
+			while(d3dobj.parent != _editor.focus)
+				d3dobj = d3dobj.parent;
 		
-			const key = d3dobj.uuid || d3dobj; // stable key if you have one
+			const key = d3dobj.uuid || d3dobj;
 			if (!seen.has(key)) {
 				seen.add(key);
 				owners.push({ owner, d3dobj });
@@ -447,7 +452,8 @@ function setupSelection(renderer, camera) {
 						break;
 					}
 				}
-				if (anyInside) selectedObjects.push(d3dobj);
+				if (anyInside) 
+					selectedObjects.push(d3dobj);
 			}
 		}
 
@@ -473,11 +479,19 @@ function setupSelection(renderer, camera) {
 
 			intersects.forEach(intersect => {
 				let parent = intersect.object;
-				while (!parent.userData.d3dobject && parent.parent) parent = parent.parent;
+				while (!parent.userData.d3dobject && parent.parent) 
+					parent = parent.parent;
 
-				const d3dobj = parent.userData.d3dobject;
-				if (!d3dobj || d3dobj == _root || d3dobj.noSelect) return;
-				d3dobjects.push(d3dobj);
+				let d3dobj = parent.userData.d3dobject;
+				if (!d3dobj || d3dobj == _root || d3dobj.noSelect) 
+					return;
+				
+				// Get the object thats child of _editor.focus
+				while(d3dobj.parent != _editor.focus)
+					d3dobj = d3dobj.parent;
+				
+				if(!d3dobjects.includes(d3dobj))
+					d3dobjects.push(d3dobj);
 			});
 
 			const selectedObject = d3dobjects.shift();

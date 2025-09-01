@@ -56,11 +56,9 @@ export default class D3DTransformGizmo {
 				o.material = Array.isArray(o.material)
 					? o.material.map(m => m && m.clone())
 					: o.material.clone();
-				// remember the base color per-mesh
 				if (o.material && o.material.color) {
 					o.userData.baseColor = o.material.color.clone();
 				}
-				// overlay flags
 				o.material.depthTest = false;
 				o.material.depthWrite = false;
 				o.material.transparent = true;
@@ -71,7 +69,6 @@ export default class D3DTransformGizmo {
 			o.frustumCulled = false;
 		});
 	
-		// ensure overlay-friendly materials + flags on all children
 		const setMat = (m) => {
 			if (!m) return;
 			m.depthTest = false;
@@ -133,7 +130,6 @@ export default class D3DTransformGizmo {
 	}
 
 	update() {
-		// keep attached to selected if a getter is provided
 		const sel = this.getSelected();
 		if (sel !== this.d3dobject) {
 			if(!sel) {
@@ -145,11 +141,9 @@ export default class D3DTransformGizmo {
 		
 		if (!this.object) return;
 
-		// position at target & face camera scale
 		this._syncPose();
 		this._scaleToCamera();
 
-		// hover + drag
 		if (!this._dragging) {
 			this._updateHover();
 			if (this._shouldBeginDrag()) this._beginDrag();
@@ -172,7 +166,6 @@ export default class D3DTransformGizmo {
 		this._handles = {};
 		const g = this._group;
 	
-		// materials (kept simple)
 		this._mat = {
 			X: new THREE.MeshBasicMaterial({ color: 0xff5555 }),
 			Y: new THREE.MeshBasicMaterial({ color: 0x55ff55 }),
@@ -180,17 +173,14 @@ export default class D3DTransformGizmo {
 			P: new THREE.MeshBasicMaterial({ color: 0xffff55, opacity: 0.15, transparent: true })
 		};
 	
-		// groups by mode
 		this._grpT = new THREE.Group(); this._grpT.name = 'translate';
 		this._grpR = new THREE.Group(); this._grpR.name = 'rotate';
 		this._grpS = new THREE.Group(); this._grpS.name = 'scale';
 	
-		// build handles
 		this._buildTranslateHandles(this._grpT);
 		this._buildRotateHandles(this._grpR);
 		this._buildScaleHandles(this._grpS);
 	
-		// add and register
 		g.add(this._grpT, this._grpR, this._grpS);
 		[...this._grpT.children, ...this._grpR.children, ...this._grpS.children].forEach(h => this._registerHandle(h));
 	
@@ -198,7 +188,6 @@ export default class D3DTransformGizmo {
 	}
 	
 	_buildTranslateHandles(group) {
-		// common geoms
 		const shaftLen = 1.0, shaftRad = 0.02, headLen = 0.2, headRad = 0.12;
 		const cyl = new THREE.CylinderGeometry(shaftRad, shaftRad, shaftLen, 16);
 		const cone = new THREE.ConeGeometry(headRad, headLen, 24);
@@ -236,20 +225,13 @@ export default class D3DTransformGizmo {
 			return grp;
 		};
 	
-		// arrows
 		const tx = buildAxisArrow('x', this._mat.X, 'tX');
 		const ty = buildAxisArrow('y', this._mat.Y, 'tY');
 		const tz = buildAxisArrow('z', this._mat.Z, 'tZ');
 	
-		// planes
 		const txy = new THREE.Mesh(quad, this._mat.P.clone()); txy.name = 'tXY'; txy.position.set(0.25, 0.25, 0.0);
 		const txz = new THREE.Mesh(quad, this._mat.P.clone()); txz.name = 'tXZ'; txz.rotation.x = -Math.PI / 2; txz.position.set(0.25, 0.0, 0.25);
 		const tyz = new THREE.Mesh(quad, this._mat.P.clone()); tyz.name = 'tYZ'; tyz.rotation.y =  Math.PI / 2; tyz.position.set(0.0, 0.25, 0.25);
-	
-		[txy, txz, tyz].forEach(m => {
-			m.material.depthTest = false; m.material.depthWrite = false; m.material.transparent = true;
-			m.material.fog = false; m.material.toneMapped = false;
-		});
 	
 		group.add(tx, ty, tz, txy, txz, tyz);
 	}
@@ -257,7 +239,7 @@ export default class D3DTransformGizmo {
 	_buildRotateHandles(group) {
 		const cloneMat = (m) => (m ? m.clone() : m);
 		const makeRing = (r) => new THREE.TorusGeometry(r, 0.02, 16, 64);
-		const makePick = (r) => new THREE.TorusGeometry(r, 0.10, 8, 48); // fat invisible hit area
+		const makePick = (r) => new THREE.TorusGeometry(r, 0.10, 8, 48);
 	
 		const orientToAxis = (mesh, axis) => {
 			const q = new THREE.Quaternion().setFromUnitVectors(
@@ -289,16 +271,14 @@ export default class D3DTransformGizmo {
 			group.add(g);
 		};
 	
-		// stagger radii so they don't fully overpaint each other with depthTest=false
-		addRingWithCollider('rX', this._mat.X, 0.88, new THREE.Vector3(1, 0, 0)); // plane YZ
-		addRingWithCollider('rY', this._mat.Y, 0.90, new THREE.Vector3(0, 1, 0)); // plane XZ
-		addRingWithCollider('rZ', this._mat.Z, 0.92, new THREE.Vector3(0, 0, 1)); // plane XY
+		addRingWithCollider('rX', this._mat.X, 0.88, new THREE.Vector3(1, 0, 0));
+		addRingWithCollider('rY', this._mat.Y, 0.90, new THREE.Vector3(0, 1, 0));
+		addRingWithCollider('rZ', this._mat.Z, 0.92, new THREE.Vector3(0, 0, 1));
 	}
 	
 	_buildScaleHandles(group) {
-		// ----- shared geometry -----
-		const box = new THREE.BoxGeometry(0.14, 0.14, 0.14);           // end cubes
-		const shaftGeom = new THREE.CylinderGeometry(0.02, 0.02, 1.0, 12); // center→end shaft
+		const box = new THREE.BoxGeometry(0.14, 0.14, 0.14);
+		const shaftGeom = new THREE.CylinderGeometry(0.02, 0.02, 1.0, 12);
 		const pickCapsule = (len = 1.2, r = 0.18) => new THREE.CylinderGeometry(r, r, len, 8);
 		const mkMat = (m) => {
 			const x = m.clone();
@@ -307,40 +287,34 @@ export default class D3DTransformGizmo {
 			return x;
 		};
 	
-		// ----- axis builder (sX / sY / sZ) -----
 		const makeAxis = (name, axis, mat) => {
 			const g = new THREE.Group(); g.name = name;
 	
-			// visible shaft (from center to the end cube)
 			const shaft = new THREE.Mesh(shaftGeom, mkMat(mat));
 			if (axis === 'x') { shaft.rotation.z = -Math.PI / 2; shaft.position.x = 0.5; }
 			else if (axis === 'y') { shaft.position.y = 0.5; }
 			else { shaft.rotation.x = Math.PI / 2; shaft.position.z = 0.5; }
 	
-			// end cube
 			const end = new THREE.Mesh(box, mkMat(mat));
 			if (axis === 'x') end.position.x = 1.0;
 			if (axis === 'y') end.position.y = 1.0;
 			if (axis === 'z') end.position.z = 1.0;
 	
-			// big invisible collider (easy picking)
 			const pick = new THREE.Mesh(pickCapsule(1.2, 0.18), new THREE.MeshBasicMaterial({ visible: false }));
 			if (axis === 'x') { pick.rotation.z = -Math.PI / 2; pick.position.x = 0.6; }
 			if (axis === 'y') { pick.position.y = 0.6; }
 			if (axis === 'z') { pick.rotation.x =  Math.PI / 2; pick.position.z = 0.6; }
-			pick.userData.handle = name;          // 'sX' / 'sY' / 'sZ'
-			pick.userData.pickPriority = 1;       // lower than center
+			pick.userData.handle = name;
+			pick.userData.pickPriority = 1;
 	
 			g.add(shaft, end, pick);
 			return g;
 		};
 	
-		// build axis handles
 		const sx = makeAxis('sX', 'x', this._mat.X);
 		const sy = makeAxis('sY', 'y', this._mat.Y);
 		const sz = makeAxis('sZ', 'z', this._mat.Z);
 	
-		// ----- uniform scale in center -----
 		const su = new THREE.Mesh(
 			new THREE.IcosahedronGeometry(0.12, 1),
 			new THREE.MeshBasicMaterial({ color: 0xffffff })
@@ -352,15 +326,13 @@ export default class D3DTransformGizmo {
 		su.material.fog = false;
 		su.material.toneMapped = false;
 	
-		// large invisible sphere collider so clicks prefer center
 		const suPick = new THREE.Mesh(
 			new THREE.SphereGeometry(0.6, 16, 12),
 			new THREE.MeshBasicMaterial({ visible: false })
 		);
 		suPick.userData.handle = 'sU';
-		suPick.userData.pickPriority = 10; // dominates over arm colliders
+		suPick.userData.pickPriority = 10;
 	
-		// add to group
 		group.add(sx, sy, sz, su, suPick);
 	}
 	
@@ -387,8 +359,8 @@ export default class D3DTransformGizmo {
 	_registerHandle(obj) {
 		this._handles[obj.name] = obj;
 		obj.userData.handle = obj.name;
-		obj.traverse(o => { o.userData.handle = obj.name; }); // children inherit
-		obj.raycast = THREE.Mesh.prototype.raycast; // ensure raycast works for groups’ children
+		obj.traverse(o => { o.userData.handle = obj.name; });
+		obj.raycast = THREE.Mesh.prototype.raycast;
 	}
 
 	_refreshVisibility() {
@@ -414,7 +386,7 @@ export default class D3DTransformGizmo {
 		const cam = this.camera;
 		this._tmpV.copy(this._group.position).project(cam);
 		const dist = this.camera.getWorldPosition(this._tmpV2).distanceTo(this._group.position);
-		const scale = Math.max(0.001, dist * 0.15); // tune scalar for your FOV
+		const scale = Math.max(0.001, dist * 0.15);
 		this._group.scale.setScalar(scale);
 	}
 
@@ -430,7 +402,6 @@ export default class D3DTransformGizmo {
 		const ny = -((mouse.y - rect.top) / rect.height) * 2 + 1;
 		this._raycaster.setFromCamera({ x: nx, y: ny }, this.camera);
 	
-		// collect pickables by current mode
 		const pickables = [];
 		if (this.mode === 'translate') this._grpT.traverseVisible(o => { if (o.userData.handle) pickables.push(o); });
 		if (this.mode === 'rotate') this._grpR.traverseVisible(o => { if (o.userData.handle) pickables.push(o); });
@@ -439,20 +410,17 @@ export default class D3DTransformGizmo {
 		const hits = this._raycaster.intersectObjects(pickables, true);
 		if (!hits.length) { this._setHover(null); return; }
 	
-		// center preference + dead-zone around center for scale arms
 		const gizCenter = this._group.getWorldPosition(new THREE.Vector3());
-		const centerRadius = 0.32; // must be ≤ suPick radius 0.35
+		const centerRadius = 0.32;
 	
-		// filter: if close to center, ignore arm hits (sX/sY/sZ), let sU win
 		const filtered = hits.filter(h => {
 			const handle = h.object.userData.handle || '';
 			if (this.mode === 'scale' && /^s[XYZ]$/.test(handle)) {
-				if (h.point.distanceTo(gizCenter) < centerRadius) return false; // dead-zone near center
+				if (h.point.distanceTo(gizCenter) < centerRadius) return false;
 			}
 			return true;
 		});
 	
-		// choose by highest pickPriority, then by ray distance
 		let best = null, bestPrio = -1;
 		for (const h of filtered.length ? filtered : hits) {
 			const prio = h.object.userData.pickPriority ?? 0;
@@ -463,7 +431,6 @@ export default class D3DTransformGizmo {
 
 	_setHover(id) {
 		if (id === this._hover) return;
-		// restore previous materials
 		if (this._hover && this._handles[this._hover]) this._setHandleHot(this._handles[this._hover], false);
 		this._hover = id;
 		if (id && this._handles[id]) this._setHandleHot(this._handles[id], true);
@@ -487,35 +454,26 @@ export default class D3DTransformGizmo {
 		const worldPos = this._group.getWorldPosition(new THREE.Vector3());
 		const worldQuat = this._group.getWorldQuaternion(new THREE.Quaternion());
 	
-		// World-space axes
 		const axX = new THREE.Vector3(1, 0, 0).applyQuaternion(worldQuat);
 		const axY = new THREE.Vector3(0, 1, 0).applyQuaternion(worldQuat);
 		const axZ = new THREE.Vector3(0, 0, 1).applyQuaternion(worldQuat);
 	
 		let kind = null, axis = null, plane = null, startPoint = null, t0 = null;
 	
-		// --- Translate axis (arrows) ---
 		if (id === 'tX' || id === 'tY' || id === 'tZ') {
 			kind = 'translate-axis';
 			axis = (id === 'tX') ? axX : (id === 'tY') ? axY : axZ;
 			plane = new THREE.Plane().setFromNormalAndCoplanarPoint(this._viewNormal(worldPos), worldPos);
-	
-			// Project ray to axis → scalar t0
 			this._raycaster.setFromCamera(this._getMouseNDC(), this.camera);
 			t0 = this._projectRayToAxis(this._raycaster.ray, worldPos, axis);
 		}
-	
-		// --- Translate plane (squares) ---
 		else if (id === 'tXY' || id === 'tXZ' || id === 'tYZ') {
 			kind = 'translate-plane';
 			if (id === 'tXY') plane = new THREE.Plane(axZ.clone(), -worldPos.dot(axZ));
 			if (id === 'tXZ') plane = new THREE.Plane(axY.clone(), -worldPos.dot(axY));
 			if (id === 'tYZ') plane = new THREE.Plane(axX.clone(), -worldPos.dot(axX));
-	
 			startPoint = this._raycastToPlane(plane);
 		}
-	
-		// --- Rotate axis (pixel-driven like uniform scale) ---
 		else if (id === 'rX' || id === 'rY' || id === 'rZ') {
 			const worldPos = this._group.getWorldPosition(new THREE.Vector3());
 			const worldQuat = this._group.getWorldQuaternion(new THREE.Quaternion());
@@ -524,39 +482,35 @@ export default class D3DTransformGizmo {
 			const axZ = new THREE.Vector3(0, 0, 1).applyQuaternion(worldQuat);
 			const axisWorld = (id === 'rX') ? axX : (id === 'rY') ? axY : axZ;
 		
-			// screen-space “natural” spin direction for this axis: axis × viewDir
 			const viewDir = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.getWorldQuaternion(new THREE.Quaternion())).normalize();
 			let tangent3D = new THREE.Vector3().crossVectors(axisWorld, viewDir);
 			if (tangent3D.lengthSq() < 1e-10) {
-				// fallback if axis ≈ view
 				const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(this.camera.getWorldQuaternion(new THREE.Quaternion()));
 				tangent3D.copy(camRight.sub(axisWorld.clone().multiplyScalar(camRight.dot(axisWorld)))).normalize();
 			}
 			const p0 = this._worldToScreenPx(worldPos);
 			const p1 = this._worldToScreenPx(worldPos.clone().add(tangent3D.clone().multiplyScalar(0.5)));
-			const tan2D = new THREE.Vector2(p1.x - p0.x, p1.y - p0.y).normalize(); // natural 2D spin
+			const tan2D = new THREE.Vector2(p1.x - p0.x, p1.y - p0.y).normalize();
 		
 			this._dragData = {
 				kind: 'rotate-axis-px-locked',
 				axisWorld,
-				startMouse: this._mousePx(),		// where the drag started
-				dir2D: null,						// will lock to your initial motion (unit 2D)
-				natural2D: tan2D,					// for initial sign alignment only
+				startMouse: this._mousePx(),
+				dir2D: null,
+				natural2D: tan2D,
+				startObjPos: this.object.getWorldPosition(new THREE.Vector3()),			// added
 				startObjQuat: this.object.getWorldQuaternion(new THREE.Quaternion()),
+				startObjScale: this.object.getWorldScale(new THREE.Vector3()),			// added
 				sensitivity: this.rotatePixelSensitivity
 			};
 			return;
 		}
-	
-		// --- Scale axis (boxes) ---
 		else if (id === 'sX' || id === 'sY' || id === 'sZ') {
 			kind = 'scale-axis';
-			axis = (id === 'sX') ? axX : (id === 'sY') ? axY : axZ; // world axis for ray math
+			axis = (id === 'sX') ? axX : (id === 'sY') ? axY : axZ;
 			plane = new THREE.Plane().setFromNormalAndCoplanarPoint(this._viewNormal(worldPos), worldPos);
 			this._raycaster.setFromCamera(this._getMouseNDC(), this.camera);
 			t0 = this._projectRayToAxis(this._raycaster.ray, worldPos, axis);
-		
-			// store which local component to scale
 			const axisIndex = (id === 'sX') ? 0 : (id === 'sY') ? 1 : 2;
 		
 			this._dragData = {
@@ -564,22 +518,20 @@ export default class D3DTransformGizmo {
 				startPoint: null, t0,
 				startObjPos: this.object.getWorldPosition(new THREE.Vector3()),
 				startObjQuat: this.object.getWorldQuaternion(new THREE.Quaternion()),
-				startObjScale: this.object.getWorldScale(new THREE.Vector3()), // world, for ref if you need
-				startLocalScale: this.object.scale.clone(), // <-- local scale we will modify
+				startObjScale: this.object.getWorldScale(new THREE.Vector3()),
+				startLocalScale: this.object.scale.clone(),
 				axisIndex
 			};
 			return;
 		}
-	
-		// --- Scale uniform (center ball) ---
 		else if (id === 'sU') {
 			kind = 'scale-uniform';
 			this._dragData = {
 				kind,
-				startMouse: this._mousePx(),          // starting mouse (px)
+				startMouse: this._mousePx(),
 				startLocalScale: this.object.scale.clone(),
-				dir2D: null,                          // unit 2D direction set after a small move
-				activated: false                      // becomes true after deadband
+				dir2D: null,
+				activated: false
 			};
 			return;
 		}
@@ -623,128 +575,82 @@ export default class D3DTransformGizmo {
 		this._raycaster.setFromCamera(this._getMouseNDC(), this.camera);
 		const ray = this._raycaster.ray;
 	
-		// --- Translate axis ---
 		if (d.kind === 'translate-axis') {
 			const tNow = this._projectRayToAxis(ray, d.worldPos, d.axis);
 			if (tNow == null || d.t0 == null) return;
 			const delta = d.t0 - tNow;
 			const offset = d.axis.clone().multiplyScalar(delta);
-			this.object.position.copy(d.startObjPos.clone().add(offset));
-			this.object.updateMatrixWorld();
+			const targetPosW = d.startObjPos.clone().add(offset);
+			_applyWorldTRS(this.object, targetPosW, d.startObjQuat, d.startObjScale);
 		}
-	
-		// --- Translate plane ---
 		else if (d.kind === 'translate-plane') {
 			const hit = this._raycastToPlane(d.plane);
 			if (!hit || !d.startPoint) return;
 			const delta = hit.clone().sub(d.startPoint);
-			this.object.position.copy(d.startObjPos.clone().add(delta));
-			this.object.updateMatrixWorld();
+			const targetPosW = d.startObjPos.clone().add(delta);
+			_applyWorldTRS(this.object, targetPosW, d.startObjQuat, d.startObjScale);
 		}
-	
-		// --- Rotate axis (pixel-driven with locked direction) ---
 		else if (d.kind === 'rotate-axis-px-locked') {
 			const cur = this._mousePx();
 			const dx = cur.x - d.startMouse.x;
 			const dy = cur.y - d.startMouse.y;
 		
-			// lock direction after a tiny deadband so we follow *your* initial motion
 			if (!d.dir2D) {
-				const dead = 3; // px
+				const dead = 3;
 				if (Math.hypot(dx, dy) < dead) return;
-		
-				// initial movement vector in screen space (y inverted so up is +)
 				let mv = new THREE.Vector2(dx, -dy).normalize();
-		
-				// align sign to the axis’ natural screen spin so it doesn’t feel backwards
 				if (mv.dot(d.natural2D) < 0) mv.multiplyScalar(-1);
-		
 				d.dir2D = mv;
 			}
 		
-			// signed pixels along locked direction (works for any drag path)
 			let along = dx * d.dir2D.x + (-dy) * d.dir2D.y;
-		
-			// global invert toggle
 			if (this.rotateInvert) along = -along;
-		
-			// absolute mapping from start → angle (no re-clicks needed)
 			let angle = along * (d.sensitivity ?? 0.006);
-		
-			// optional snapping
 			if (this.snap?.rotate) {
 				const step = THREE.MathUtils.degToRad(this.snap.rotate);
 				angle = Math.round(angle / step) * step;
 			}
-		
-			// flip sign for Y and Z to match expected drag direction
-			const flip =
-				Math.abs(d.axisWorld.x) > 0.9 ? 1 :   // X (red) → normal
-				-1;                                    // Y (green) & Z (blue) → flipped
-			
-			const q = new THREE.Quaternion().setFromAxisAngle(d.axisWorld, angle * flip);
-			this.object.quaternion.copy(d.startObjQuat).premultiply(q);
-			this.object.updateMatrixWorld();
+			const flip = Math.abs(d.axisWorld.x) > 0.9 ? 1 : -1;
+			const qDelta = new THREE.Quaternion().setFromAxisAngle(d.axisWorld, angle * flip);
+			const quatW = qDelta.clone().multiply(d.startObjQuat);
+			_applyWorldTRS(this.object, d.startObjPos, quatW, d.startObjScale);
 		}
-	
-		// --- Scale axis ---
 		else if (d.kind === 'scale-axis') {
 			const tNow = this._projectRayToAxis(ray, d.worldPos, d.axis);
 			if (tNow == null || d.t0 == null) return;
-		
-			// factor from movement along axis (1 unit drag → 2× size feels too strong; keep 1+Δ)
 			let s = 1 + (d.t0 - tNow);
-		
-			// optional snapping
 			if (this.snap.scale) {
 				const step = this.snap.scale;
 				s = Math.max(1e-4, Math.round(s / step) * step);
 			}
-		
-			// apply on a SINGLE local component, no cross-axis bleed
 			const newScale = d.startLocalScale.clone();
 			const i = d.axisIndex;
 			newScale.setComponent(i, Math.max(1e-4, d.startLocalScale.getComponent(i) * s));
 			this.object.scale.copy(newScale);
 			this.object.updateMatrixWorld();
 		}
-		
-		// --- Scale uniform ---
 		else if (d.kind === 'scale-uniform') {
 			const cur = this._mousePx();
 			let dx = cur.x - d.startMouse.x;
 			let dy = cur.y - d.startMouse.y;
-		
-			// deadband to avoid tiny jitter choosing a bad direction
-			const deadband = 3; // pixels
+			const deadband = 3;
 			const dist = Math.hypot(dx, dy);
-		
-			// pick a fixed 2D direction from the initial movement, once
 			if (!d.dir2D) {
-				if (dist <= deadband) return; // not enough motion yet
-				// use screen-space up as positive scale; include horizontal too
-				// we want "up/right = grow" and "down/left = shrink"
-				const vx = dx, vy = -dy; // invert y so up is positive
+				if (dist <= deadband) return;
+				const vx = dx, vy = -dy;
 				const len = Math.hypot(vx, vy) || 1;
-				d.dir2D = { x: vx / len, y: vy / len }; // unit vector
-				d.activated = true;
-				// recompute along-axis delta after activation so we don't jump
+				d.dir2D = { x: vx / len, y: vy / len };
 				dx = cur.x - d.startMouse.x;
 				dy = cur.y - d.startMouse.y;
 			}
-		
-			// signed pixels along fixed direction (continuous, no axis flip)
-			const along = (dx * d.dir2D.x) + ((-dy) * d.dir2D.y); // -dy so up is positive
+			const along = (dx * d.dir2D.x) + ((-dy) * d.dir2D.y);
 			const sens = this.uniformScaleSensitivity ?? 0.0015;
 			let s = Math.exp(along * sens);
-		
-			// optional geometric snapping (comment out if you don’t want any snap)
 			if (this.snap?.scale) {
 				const step = this.snap.scale;
 				const k = (step > 0 && step < 1) ? (1 + step) : Math.max(step, 1e-6);
 				s = Math.exp(Math.round(Math.log(Math.max(1e-6, s)) / Math.log(k)) * Math.log(k));
 			}
-		
 			this.object.scale.copy(d.startLocalScale.clone().multiplyScalar(Math.max(1e-4, s)));
 			this.object.updateMatrixWorld();
 		}
@@ -753,10 +659,8 @@ export default class D3DTransformGizmo {
 	// Apply ops -------------------------------------------------------
 
 	_applyTranslation(d, vWorld) {
-		// move object in world, respecting space (local/world)
 		const obj = this.object;
 		if (this.space === 'local') {
-			// convert world delta into object parent space
 			const parent = obj.parent || this.scene;
 			parent.worldToLocal(this._tmpV.copy(d.startObjPos).add(vWorld));
 			obj.position.copy(parent.worldToLocal(this._tmpV2.copy(obj.getWorldPosition(new THREE.Vector3())).add(vWorld)));
@@ -769,7 +673,6 @@ export default class D3DTransformGizmo {
 	_applyRotation(d, axisWorld, angle) {
 		const obj = this.object;
 		if (this.space === 'local') {
-			// convert axis to local
 			obj.worldToLocal(this._tmpV.copy(obj.getWorldPosition(new THREE.Vector3())).add(axisWorld)).sub(obj.position).normalize();
 			const q = new THREE.Quaternion().setFromAxisAngle(this._tmpV, angle);
 			obj.quaternion.copy(d.startObjQuat).premultiply(q);
@@ -795,7 +698,6 @@ export default class D3DTransformGizmo {
 	// Utils -----------------------------------------------------------
 
 	_viewNormal(pointWorld) {
-		// camera forward in world space
 		const f = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.getWorldQuaternion(new THREE.Quaternion()));
 		return f.normalize();
 	}
@@ -828,7 +730,6 @@ export default class D3DTransformGizmo {
 		return s ? Math.round(v / s) * s : v;
 	}
 	
-	// return scalar t along axis for closest point to ray
 	_projectRayToAxis(ray, linePoint, lineDir) {
 		const v = linePoint.clone().sub(ray.origin);
 		const d1 = lineDir.clone();
@@ -841,21 +742,17 @@ export default class D3DTransformGizmo {
 		const e = d2.dot(v);
 	
 		const denom = a * c - b * b;
-		if (Math.abs(denom) < 1e-6) return 0; // ray almost parallel
+		if (Math.abs(denom) < 1e-6) return 0;
 	
 		return (d * c - b * e) / denom;
 	}
 	
 	_setActiveVisibility() {
 		if (this.mode !== 'rotate') return;
-	
-		// If no active ring → show all
 		if (!this._active) {
 			this._grpR.children.forEach(r => r.visible = true);
 			return;
 		}
-	
-		// Only show the active ring
 		this._grpR.children.forEach(r => {
 			r.visible = (r.name === this._active);
 		});
@@ -886,17 +783,19 @@ export default class D3DTransformGizmo {
 
 function applyWorld(obj, worldMatrix) {
 	const Matrix4 = window.THREE.Matrix4;
-	
-	// parent^-1 * world -> local
 	const parentWorldInv = obj.parent
 		? new Matrix4().copy(obj.parent.matrixWorld).invert()
 		: new Matrix4().identity();
-
 	const local = new Matrix4().multiplyMatrices(parentWorldInv, worldMatrix);
-
-	// write into local TRS
 	local.decompose(obj.position, obj.quaternion, obj.scale);
-
-	// ensure world matrices update
 	obj.updateMatrixWorld(true);
+}
+
+function _applyWorldTRS(obj, posW, quatW, scaleW) {
+	if (!posW) posW = obj.getWorldPosition(new THREE.Vector3());
+	if (!quatW) quatW = obj.getWorldQuaternion(new THREE.Quaternion());
+	if (!scaleW) scaleW = obj.getWorldScale(new THREE.Vector3());
+	const _M = new window.THREE.Matrix4();
+	_M.compose(posW, quatW, scaleW);
+	applyWorld(obj, _M);
 }
