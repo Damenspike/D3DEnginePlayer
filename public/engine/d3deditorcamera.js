@@ -250,11 +250,15 @@ self.beforeEditorRenderFrame = () => {
 		updateMotion();
 	}
 	
-	if(_input.getKeyDown('f') && !inputFieldInFocus && _editor.selectedObjects.length > 0 && !self._focusTween)
-		focusOn(_editor.selectedObjects);
-	
 	if(isCursorOverGame)
 		updateZoom();
 	
 	updateTween();
+};
+
+_editor.focusOnSelectedObjects = () => {
+	const inputFieldInFocus = _input.getInputFieldInFocus();
+	
+	if(!inputFieldInFocus && _editor.selectedObjects.length > 0 && !self._focusTween)
+		focusOn(_editor.selectedObjects)
 };

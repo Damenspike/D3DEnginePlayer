@@ -9,7 +9,9 @@ import { GrayscaleShader } from './d3dshaders.js';
 import { 
 	arraysEqual,
 	uniqueFilePath,
-	getExtension
+	getExtension,
+	pickWorldPointAtScreen,
+	dropToGroundIfPossible
 } from './d3dutility.js';
 
 import $ from 'jquery';
@@ -238,7 +240,7 @@ function afterRenderShowObjects() {
 		if(d3dobject == _editor.focus || d3dobject.__wasVisible === undefined || d3dobject.editorAlwaysVisible)
 			return;
 		
-		d3dobject.visible = d3dobject.__wasVisible;
+		d3dobject.__visible = d3dobject.__wasVisible;
 		d3dobject.__wasVisible = undefined;
 	});
 }
@@ -248,9 +250,9 @@ function afterRenderHideObjects() {
 			return;
 		
 		if(d3dobject.__wasVisible === undefined)
-			d3dobject.__wasVisible = d3dobject.visible;
+			d3dobject.__wasVisible = d3dobject.__visible;
 		
-		d3dobject.visible = false;
+		d3dobject.__visible = false;
 	});
 }
 
@@ -413,12 +415,18 @@ function setupSelection(renderer, camera) {
 				owner = owner.parent;
 		
 			let d3dobj = owner?.userData?.d3dobject;
-			if (!d3dobj || d3dobj === _root || d3dobj.noSelect) 
+			if (!d3dobj || d3dobj === _root || d3dobj == _editor.focus || d3dobj.noSelect) 
 				return;
 			
 			// Get the object thats child of _editor.focus
-			while(d3dobj.parent != _editor.focus)
+			while(d3dobj.parent != _editor.focus) {
 				d3dobj = d3dobj.parent;
+				if(!d3dobj)
+					break;
+			}
+			
+			if(!d3dobj)
+				return;
 		
 			const key = d3dobj.uuid || d3dobj;
 			if (!seen.has(key)) {
@@ -488,12 +496,19 @@ function setupSelection(renderer, camera) {
 					parent = parent.parent;
 
 				let d3dobj = parent.userData.d3dobject;
-				if (!d3dobj || d3dobj == _root || d3dobj.noSelect) 
+				if (!d3dobj || d3dobj == _root || d3dobj == _editor.focus || d3dobj.noSelect) 
 					return;
 				
 				// Get the object thats child of _editor.focus
-				while(d3dobj.parent != _editor.focus)
+				while(d3dobj.parent != _editor.focus) {
 					d3dobj = d3dobj.parent;
+					
+					if(!d3dobj)
+						break;
+				}
+				
+				if(!d3dobj)
+					return;
 				
 				if(!d3dobjects.includes(d3dobj))
 					d3dobjects.push(d3dobj);
@@ -539,12 +554,6 @@ function addGridHelper() {
 }
 async function addD3DObjectEditor(type) {
 	let name = type;
-	let n = 1;
-	
-	while(_editor.focus.find(name)) {
-		name = `${type}_${n}`;
-		n++;
-	}
 	
 	const newObject = {
 		name: name,
@@ -656,7 +665,18 @@ async function symboliseObject(d3dobject) {
 	await _root.updateSymbolStore();
 	
 	d3dobject.symbol = _root.__symbols[d3dobject.uuid];
+	d3dobject.symbolRoot = d3dobject.symbol;
 	d3dobject.syncToSymbol();
+}
+function moveObjectToCameraView(d3dobject, distance = 5) {
+	const cameraWorldPos = new THREE.Vector3();
+	_editor.camera.getWorldPosition(cameraWorldPos);
+	
+	const forward = new THREE.Vector3(0, 0, -1)
+		.applyQuaternion(_editor.camera.quaternion).normalize();
+	const spawnPos = cameraWorldPos.clone().add(forward.multiplyScalar(distance));
+	
+	d3dobject.worldPosition = { x: spawnPos.x, y: spawnPos.y, z: spawnPos.z };
 }
 
 // Editor events
@@ -665,7 +685,7 @@ function onEditorFocusChanged() {
 	
 	_editor.grayPass.enabled = inFocusMode;
 }
-function onAssetDroppedIntoGameView(path, screenPos) {
+async function onAssetDroppedIntoGameView(path, screenPos) {
 	const { sx, sy } = screenPos;
 	const ext = getExtension(path);
 	
@@ -679,7 +699,13 @@ function onAssetDroppedIntoGameView(path, screenPos) {
 				break;
 			}
 			
-			console.log(symbol);
+			const d3dobject = await _editor.focus.createObject({
+				symbolId: symbol.uuid
+			});
+			
+			moveObjectToCameraView(d3dobject);
+			
+			_editor.setSelection([d3dobject]);
 			break;
 		}
 	}
@@ -695,18 +721,15 @@ ipcRenderer.once('show-error-closed', (_, closeEditorWhenDone) => {
 	if(closeEditorWhenDone)
 		closeEditor();
 });
-ipcRenderer.on('delete', () => {
-	_editor.onDeleteKey();
-});
-ipcRenderer.on('undo', () => {
-	_editor.undo();
-});
-ipcRenderer.on('redo', () => {
-	_editor.redo();
-});
+ipcRenderer.on('delete', () => _editor.onDeleteKey());
+ipcRenderer.on('undo', () => _editor.undo());
+ipcRenderer.on('redo', () => _editor.redo());
+
 ipcRenderer.on('add-object', 
 	(_, type) => addD3DObjectEditor(type));
 ipcRenderer.on('symbolise-object', 
 	(_, type) => symboliseSelectedObject());
 ipcRenderer.on('desymbolise-object', 
 	(_, type) => desymboliseSelectedObject());
+ipcRenderer.on('focus-object', 
+	(_, type) => _editor.focusOnSelectedObjects?.());

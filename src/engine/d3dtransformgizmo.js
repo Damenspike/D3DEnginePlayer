@@ -437,7 +437,7 @@ export default class D3DTransformGizmo {
 	}
 
 	_shouldBeginDrag() {
-		return this._hover && _input.getLeftMouseButtonDown();
+		return this._hover && _input.getLeftMouseButtonDown() && !_input.getKeyDown('alt') && !_input.getRightMouseButtonDown();
 	}
 
 	_shouldEndDrag() {
@@ -552,16 +552,18 @@ export default class D3DTransformGizmo {
 		this._setActiveVisibility();
 		
 		if(this.beginMatrixWorld) {
-			const oldMatrixWorld = this.beginMatrixWorld.clone();
-			const newMatrixWorld = this.object.matrixWorld.clone();
-			const object = this.object;
-			
-			if (!oldMatrixWorld.equals(newMatrixWorld)) {
-				_editor.addStep({
-					name: 'Transformation',
-					undo: () => applyWorld(object, oldMatrixWorld),
-					redo: () => applyWorld(object, newMatrixWorld),
-				});
+			if(this.object) {
+				const oldMatrixWorld = this.beginMatrixWorld.clone();
+				const newMatrixWorld = this.object.matrixWorld.clone();
+				const object = this.object;
+				
+				if (!oldMatrixWorld.equals(newMatrixWorld)) {
+					_editor.addStep({
+						name: 'Transformation',
+						undo: () => applyWorld(object, oldMatrixWorld),
+						redo: () => applyWorld(object, newMatrixWorld),
+					});
+				}
 			}
 			
 			this.beginMatrixWorld = null;

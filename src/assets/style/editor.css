@@ -446,7 +446,6 @@ body.dark {
 	overflow-x: hidden;
 	overflow-y: scroll;
 	border-radius: 7px;
-	min-height: 100px;
 	
 	.object-row {
 		padding: 5px;

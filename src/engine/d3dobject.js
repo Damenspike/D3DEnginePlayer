@@ -7,7 +7,7 @@ import {
 	getExtension
 } from './d3dutility.js';
 const protectedNames = [
-	'_root', 'Input', 'position', 'rotation', 'scale', 'name', 'parent', 'children', 'threeObj', 'scenes', 'zip', 'forward', 'right', 'up', 'quaternion', 'beforeRenderFrame', 'onAddedToScene', '__symbols', '__origin'
+	'_root', 'Input', 'position', 'rotation', 'scale', 'name', 'parent', 'children', 'threeObj', 'scenes', 'zip', 'forward', 'right', 'up', 'quaternion', 'beforeRenderFrame', 'onAddedToScene', '__symbols', '__origin', 'symbol'
 ]
 
 const fs = window.require('fs').promises;
@@ -16,26 +16,23 @@ const vm = window.require('vm');
 
 export default class D3DObject {
 	constructor(name = 'object', parent = null) {
-		if(!this.isValidName(name))
-			name = `object${(parent?.children?.length ?? Math.floor(Math.random() * 10000000000))}`;
-		
-		if(protectedNames.includes(name) && window._root)
-			name += '_unsafe';
-		
 		if (!window._root) 
 			window._root = this;
 		
 		if(!_root.__symbols)
 			_root.__symbols = {}; // initialise symbol store on _root
 		
+		// Must come first
+		this.scenes = [];
+		this.components = [];
+		this.children = [];
+		
 		this.uuid = window._root != this ? uuidv4() : '';
 		this.parent = parent; // D3DObject or null for root
 		this.name = name;
-		this.children = [];
+		
 		this.object3d = this.parent ? new THREE.Object3D() : new THREE.Scene();
 		this.object3d.userData.d3dobject = this;
-		this.scenes = [];
-		this.components = [];
 		
 		this.setupDefaultMethods();
 	}
@@ -52,6 +49,19 @@ export default class D3DObject {
 		
 		if(this == window._root && this.name == '_root')
 			throw new Error('Can not rename root');
+			
+		if(!this.isValidName(value))
+			value = `object${(parent?.children?.length ?? Math.floor(Math.random() * 10000000000))}`;
+		
+		if(protectedNames.includes(value) && window._root != this)
+			value += '_unsafe';
+		
+		const originValue = value;
+		let copyNum = 2;
+		while(this.parent && this.parent[value] && this.parent[value] != this) {
+			value = `${originValue}_${copyNum}`;
+			copyNum++;
+		}
 		
 		const oldName = this._name;
 		
@@ -61,24 +71,35 @@ export default class D3DObject {
 			delete this.parent[oldName];
 			this.parent[this._name] = this;
 		}
+		
+		this.checkSymbols();
 	}
 	
 	get worldPosition() {
 		return this.object3d.getWorldPosition(new THREE.Vector3());
 	}
-	set worldPosition({x, y, z}) {
-		const target = new THREE.Vector3(x, y, z);
-	
-		if (this.object3d.parent)
-			this.object3d.parent.worldToLocal(target);
+	set worldPosition({ x, y, z }) {
+		if (Number.isNaN(x) || Number.isNaN(y) || Number.isNaN(z))
+			return;
 		
-		this.object3d.position.copy(target);
+		// ensure ancestors are up to date
+		if (this.parent)
+			this.parent.object3d.updateWorldMatrix(true, false);
+			
+		const targetW = new THREE.Vector3(x, y, z);
+		if (this.parent)
+			this.parent.object3d.worldToLocal(targetW);
+		
+		this.object3d.position.copy(targetW);
+		this.object3d.updateMatrixWorld(true);
 	}
 	
 	get position() {
 		return this.object3d.position;
 	}
 	set position({x, y, z}) {
+		if (Number.isNaN(x) || Number.isNaN(y) || Number.isNaN(z))
+			return;
 		this.object3d.position.set(x, y, z);
 	}
 	
@@ -86,6 +107,8 @@ export default class D3DObject {
 		return this.object3d.rotation;
 	}
 	set rotation({x, y, z}) {
+		if (Number.isNaN(x) || Number.isNaN(y) || Number.isNaN(z))
+			return;
 		this.object3d.rotation.set(x, y, z);
 	}
 	
@@ -93,6 +116,8 @@ export default class D3DObject {
 		return this.object3d.quaternion;
 	}
 	set quaternion({x, y, z}) {
+		if (Number.isNaN(x) || Number.isNaN(y) || Number.isNaN(z))
+			return;
 		this.object3d.quaternion.set(x, y, z);
 	}
 	
@@ -100,6 +125,8 @@ export default class D3DObject {
 		return this.object3d.scale;
 	}
 	set scale({x, y, z}) {
+		if (Number.isNaN(x) || Number.isNaN(y) || Number.isNaN(z))
+			return;
 		this.object3d.scale.set(x, y, z);
 	}
 	
@@ -110,6 +137,18 @@ export default class D3DObject {
 		this.object3d.visible = !!value;
 		this.onVisibilityChanged?.();
 		this._onVisibilityChanged?.();
+		this.checkSymbols();
+	}
+	
+	get __visible() {
+		return this.object3d.visible;
+	}
+	set __visible(value) {
+		if(!window._editor)
+			return;
+		
+		this.object3d.visible = !!value;
+		// Editor use only
 	}
 	
 	get opacity() {
@@ -162,11 +201,15 @@ export default class D3DObject {
 		}
 		
 		applyOpacity(this.object3d);
+		this.checkSymbols();
 	}
 	
 	///////////////////////////////
 	// Getters only
 	///////////////////////////////
+	get suuid() {
+		return this.__objData.uuid;
+	}
 	get forward() {
 		const fwd = THREE.Vector3.forward.clone();
 		fwd.applyQuaternion(this.quaternion);
@@ -195,45 +238,63 @@ export default class D3DObject {
 				}
 				
 				if(!this.object3d.matrixWorld.equals(this.lastMatrixWorld)) {
+					this.__onTransformationChange();
 					this.onTransformationChange?.();
 					_editor.updateInspector?.();
 				}
 				
-				if(this.symbol)
-					this.syncToSymbol(!!this.isSymbolChild);
-				
 				this.lastMatrixWorld = new THREE.Matrix4().copy(this.object3d.matrixWorld);
+			}
+			this.__onTransformationChange = () => {
+				this.checkSymbols();
 			}
 		}
 	}
 	
 	async createObject(objData, executeScripts = true) {
 		const child = new D3DObject(objData.name, this);
+		let uuid = objData.uuid;
 		
-		if(objData.symbol) {
-			if(typeof objData.symbol !== 'string')
+		if(objData.symbolId) {
+			if(typeof objData.symbolId !== 'string')
 				return;
 			
-			const symbol = _root.__symbols[objData.symbol];
+			const symbol = _root.__symbols[objData.symbolId];
 			
 			if(!symbol) {
-				console.warn('Missing symbol for ', objData.symbol);
+				console.warn('Missing symbol for ', objData.symbolId);
 				return;
 			}
 			
-			objData = symbol;
+			objData = {...symbol.objData};
+			
+			child.name = objData.name;
 			child.symbol = symbol;
+			
+			uuid = null; // assign new one
 		}
 		
-		// Apply transforms
 		child.zip = this.zip;
 		child.position = objData.position;
 		child.rotation = objData.rotation;
 		child.scale = objData.scale;
-		child.uuid = objData.uuid ?? child.uuid;
 		child.editorOnly = !!objData.editorOnly || false;
 		child.editorAlwaysVisible = !!objData.editorAlwaysVisible || false;
 		child.components = objData.components || [];
+		
+		// Ensure uuid is unique
+		if(_root.superIndex?.[uuid])
+			uuid = null;
+		
+		// Assign truly unique uuid
+		child.uuid = uuid ?? child.uuid;
+		
+		// Assign objdata reference
+		child.__objData = objData;
+		
+		// must contain a UUID for SUUID to work on origin objects
+		if(child.__objData.uuid === undefined)
+			child.__objData.uuid = child.uuid; 
 		
 		if(objData.engineScript)
 			child.engineScript = objData.engineScript;
@@ -254,15 +315,20 @@ export default class D3DObject {
 		child.visible = true; // invoke visibility events
 		
 		// Recurse for nested objects if any
-		if (objData.children && objData.children.length > 0)
-			await child.buildScene({ objects: objData.children });
+		if (objData.children && objData.children.length > 0) {
+			await child.buildScene({ 
+				objects: objData.children
+			});
+		}
 			
 		if(executeScripts)
 			await child.executeScripts();
 			
 		if(window._editor)
 			_editor.updateInspector();
-			
+		
+		child.checkSymbols();
+		
 		return child;
 	}
 	
@@ -649,45 +715,87 @@ export default class D3DObject {
 		this.object3d.updateMatrixWorld(true);
 	}
 	
-	syncToSymbol(syncTransform = false) {
+	checkSymbols() {
+		const treeSymbolUpdate = (d3dobject) => {
+			d3dobject.symbol && d3dobject.updateSymbol();
+			
+			if(d3dobject.parent)
+				treeSymbolUpdate(d3dobject.parent);
+		}
+		treeSymbolUpdate(this);
+	}
+	
+	updateSymbol() {
 		const symbol = this.symbol;
 		
-		if(!this.symbol) {
+		if(!symbol) {
+			console.error('No symbol');
+			return;
+		}
+		
+		if(symbol.__updatingSymbol)
+			return;
+			
+		symbol.__updatingSymbol = true;
+		
+		symbol.objData = this.getSerializableObject();
+		
+		for(let uuid in _root.superIndex) {
+			const d3dobject = _root.superIndex[uuid];
+			
+			if(d3dobject == this)
+				continue;
+			
+			if(d3dobject.symbol == symbol)
+				d3dobject.syncToSymbol();
+		}
+		
+		symbol.__updatingSymbol = false;
+	}
+	
+	syncToSymbol() {
+		const symbol = this.symbol;
+		
+		if(!symbol) {
 			console.error("Can't sync to symbol because there is no symbol");
 			return;
 		}
 		
-		if(syncTransform) {
-			this.position.x = symbol.position.x;
-			this.position.y = symbol.position.y;
-			this.position.z = symbol.position.z;
-			
-			this.rotation.x = symbol.rotation.x;
-			this.rotation.y = symbol.rotation.y;
-			this.rotation.z = symbol.rotation.z;
-			
-			this.scale.x = symbol.scale.x;
-			this.scale.y = symbol.scale.y;
-			this.scale.z = symbol.scale.z;
-			
-			this.opacity = symbol.opacity;
-			this.visible = symbol.visible;
-		}
-		
-		this.components = structuredClone(symbol.objData.components);
-		
-		symbol.objData.children.forEach(schild => {
-			const child = this.children.find(child => child.uuid == schild.uuid);
-			
-			if(!child) {
-				console.warn('Missing d3d child in symbol sync. Sync child: ', schild);
-				return;
+		const syncWithObjData = (d3dobject, objData, syncTransform = false) => {
+			if(syncTransform) {
+				d3dobject.position.x = objData.position.x;
+				d3dobject.position.y = objData.position.y;
+				d3dobject.position.z = objData.position.z;
+				
+				d3dobject.rotation.x = objData.rotation.x;
+				d3dobject.rotation.y = objData.rotation.y;
+				d3dobject.rotation.z = objData.rotation.z;
+				
+				d3dobject.scale.x = objData.scale.x;
+				d3dobject.scale.y = objData.scale.y;
+				d3dobject.scale.z = objData.scale.z;
+				
+				d3dobject.opacity = objData.opacity;
+				d3dobject.visible = objData.visible;
 			}
 			
-			child.symbol = { objData: schild };
-			child.isSymbolChild = true;
-			child.syncToSymbol(true);
-		});
+			d3dobject.components = structuredClone(objData.components);
+			
+			objData.children.forEach(schild => {
+				const child = d3dobject.children.find(
+					child => child.suuid == schild.suuid
+				);
+				
+				if(!child) {
+					console.warn('Missing d3d child in symbol sync. Sync child: ', schild);
+					return;
+				}
+				
+				syncWithObjData(child, schild, true);
+			});
+		}
+		
+		syncWithObjData(this, symbol.objData);
 	}
 	
 	serialize() {
@@ -697,6 +805,7 @@ export default class D3DObject {
 	getSerializableObject() {
 		return {
 			uuid: this.uuid,
+			suuid: this.suuid,
 			name: this.name,
 			position: {
 				x: this.position.x, 
@@ -713,6 +822,8 @@ export default class D3DObject {
 				y: this.scale.y,
 				z: this.scale.z
 			},
+			opacity: this.opacity,
+			visible: this.visible,
 			components: this.components.map(component => ({
 				type: component.type,
 				properties: component.properties
@@ -736,6 +847,7 @@ export default class D3DObject {
 			
 		this.parent.children.splice(idx, 1);
 		this.parent.object3d.remove(this.object3d);
+		this.checkSymbols();
 	}
 	
 	isValidName(str) {

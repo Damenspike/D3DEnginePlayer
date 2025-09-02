@@ -227,3 +227,63 @@ export function parentDir(path) {
 		return "assets";
 	return norm.slice(0, idx) || "assets";
 }
+export function pickWorldPointAtScreen(sx, sy, camera, scene) {
+	const rect = _container3d.getBoundingClientRect();
+	const ndc = new THREE.Vector2(
+		(sx / rect.width) * 2 - 1,
+		-(sy / rect.height) * 2 + 1
+	);
+
+	const raycaster = new THREE.Raycaster();
+	raycaster.setFromCamera(ndc, camera);
+
+	// A) try real scene meshes (skip editor-only helpers/gizmo/camera)
+	const pickables = [];
+	scene.traverse(o => {
+		if (!o.isMesh) return;
+		if (o.userData?.editorOnly) return;
+		if (o === _editor.gizmo?._group) return;
+		pickables.push(o);
+	});
+
+	const hits = raycaster.intersectObjects(pickables, true);
+	if (hits.length) {
+		return hits[0].point.clone();
+	}
+
+	// B) fallback: intersect ground plane Y=0
+	const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0); // y=0
+	const line = new THREE.Line3(
+		raycaster.ray.origin,
+		raycaster.ray.origin.clone().add(raycaster.ray.direction.clone().multiplyScalar(10_000))
+	);
+	const out = new THREE.Vector3();
+	if (plane.intersectLine(line, out)) {
+		return out;
+	}
+
+	// C) last resort: some distance in front of the camera
+	return camera.getWorldPosition(new THREE.Vector3())
+		.add(new THREE.Vector3(0, 0, -1).applyQuaternion(camera.getWorldQuaternion(new THREE.Quaternion())).multiplyScalar(5));
+}
+export function dropToGroundIfPossible(obj3d) {
+	const box = new THREE.Box3().setFromObject(obj3d);
+	if (box.isEmpty()) {
+		return;
+	}
+	const height = box.max.y - box.min.y;
+	// move so its bottom touches y=0
+	const worldPos = new THREE.Vector3();
+	obj3d.getWorldPosition(worldPos);
+	const deltaY = -box.min.y; // how much to lift/lower to bring bottom to 0
+	// convert delta to local (parent space)
+	const parent = obj3d.parent;
+	if (parent) {
+		const worldTarget = worldPos.clone().add(new THREE.Vector3(0, deltaY, 0));
+		parent.worldToLocal(worldTarget);
+		obj3d.position.copy(worldTarget);
+	} else {
+		obj3d.position.y += deltaY;
+	}
+	obj3d.updateMatrixWorld(true);
+}
