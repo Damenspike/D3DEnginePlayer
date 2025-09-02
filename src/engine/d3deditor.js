@@ -635,6 +635,26 @@ function addNewFile({name, dir, data}) {
 	
 	return path;
 }
+function writeFileByName({ name, dir, data }) {
+	const zip = _root.zip;
+	const base = dir || 'assets';
+	const path = `${base.replace(/\/$/, '')}/${name}`;
+	
+	// Always overwrite (or create) this file
+	zip.file(path, data || new Uint8Array());
+
+	_editor.onAssetsUpdated();
+
+	return path;
+}
+function writeFile({ path, data }) {
+	const zip = _root.zip;
+	zip.file(path, data || new Uint8Array());
+
+	_editor.onAssetsUpdated();
+
+	return path;
+}
 function symboliseSelectedObject() {
 	if(_editor.selectedObjects.length < 1)
 		return;
@@ -648,6 +668,25 @@ function desymboliseSelectedObject() {
 	
 	// do it here
 }
+function saveSymbols() {
+	Object.values(_root.__symbols)
+	.forEach(symbol => {
+		if(!symbol || !symbol.file || !symbol.file.name || !symbol.objData) {
+			console.warn('Save symbols. Something is wrong with ', symbol);
+			return;
+		}
+		
+		console.log('Save symbols. Writing file', symbol.file.name);
+		writeFile({path: symbol.file.name, data: JSON.stringify(symbol.objData)});
+	});
+}
+async function updateSymbols() {
+	// Save all symbols first to keep them in sync
+	saveSymbols();
+	
+	// Now update the root symbol store
+	await _root.updateSymbolStore();
+}
 async function symboliseObject(d3dobject) {
 	if(d3dobject.symbol) {
 		const e = `${d3dobject.name} is already a symbol`;
@@ -656,17 +695,29 @@ async function symboliseObject(d3dobject) {
 		return;
 	}
 	
+	const objData = d3dobject.getSerializableObject();
 	const serializedData = d3dobject.serialize();
 	
-	_editor.addNewFile({
-		name: `${d3dobject.name}.d3dsymbol`,
-		data: serializedData
-	});
-	console.log(serializedData);
-	await _root.updateSymbolStore();
+	// Force give it the uuid of this symbol
+	objData.symbolId = d3dobject.uuid;
+	
+	// Initial object just for saving
+	d3dobject.symbol = {
+		uuid: d3dobject.uuid,
+		objData: objData,
+		file: {
+			name: `assets/${d3dobject.name}.d3dsymbol`
+		}
+	};
+	_root.__symbols[d3dobject.uuid] = d3dobject.symbol;
+	
+	// Update the tree from this object upwards first
+	d3dobject.checkSymbols();
+	
+	// Save will actually make the file and then load the 'proper' symbol data
+	await _editor.updateSymbols();
 	
 	d3dobject.symbol = _root.__symbols[d3dobject.uuid];
-	d3dobject.symbolRoot = d3dobject.symbol;
 	d3dobject.syncToSymbol();
 	
 	_editor.updateInspector();
@@ -719,6 +770,7 @@ async function onAssetDroppedIntoGameView(path, screenPos) {
 _editor.onEditorFocusChanged = onEditorFocusChanged;
 _editor.onAssetDroppedIntoGameView = onAssetDroppedIntoGameView;
 _editor.addNewFile = addNewFile;
+_editor.updateSymbols = updateSymbols;
 
 ipcRenderer.once('show-error-closed', (_, closeEditorWhenDone) => {
 	if(closeEditorWhenDone)

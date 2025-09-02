@@ -26,23 +26,25 @@ export default class D3DInput {
 		this._onMouseMove = this._onMouseMove.bind(this);
 		this._onPointerLockChange = this._onPointerLockChange.bind(this);
 		this._onWheel = this._onWheel.bind(this);
+		this._onBlur = this._onBlur.bind(this);
+		this._onVisibility = this._onVisibility.bind(this);
 
 		// Add event listeners
-		window.addEventListener('keydown', this._onKeyDown);
+		window.addEventListener('keydown', this._onKeyDown, { passive: false });
 		window.addEventListener('keyup', this._onKeyUp);
 		window.addEventListener('mousedown', this._onMouseDown);
 		window.addEventListener('mouseup', this._onMouseUp);
 		window.addEventListener('mousemove', this._onMouseMove);
 		window.addEventListener('wheel', this._onWheel, { passive: true });
-		
-		// Pointer lock event
+
 		document.addEventListener('pointerlockchange', this._onPointerLockChange);
+		window.addEventListener('blur', this._onBlur);
+		document.addEventListener('visibilitychange', this._onVisibility);
 	}
 
 	// --- Freeze/unfreeze mouse ---
 	freezeMouse() {
 		this._mouseFrozen = true;
-		// clear state so clicks aren't "stuck"
 		this.mouse.buttons = {};
 		this._mouseDelta = { x: 0, y: 0 };
 	}
@@ -57,10 +59,14 @@ export default class D3DInput {
 
 	// --- Keyboard ---
 	_onKeyDown(e) {
-		if(this.getKeyDown('control') || this.getKeyDown('meta'))
-			return; // stop other inputs getting stuck
-		
+		// record state first
 		this._keys[e.code] = true;
+
+		// prevent page from scrolling with space/arrows (optional but handy)
+		if (e.code === 'Space' || e.code.startsWith('Arrow')) {
+			e.preventDefault();
+		}
+
 		this._listenersDown.forEach(listener => listener(e));
 	}
 
@@ -68,84 +74,99 @@ export default class D3DInput {
 		this._keys[e.code] = false;
 		this._listenersUp.forEach(listener => listener(e));
 	}
-	
+
 	_onPointerLockChange(e) {
-		this._pointerLockListeners.forEach(listener => listener(
-			{...e, pressedEsc: document.pointerLockElement === null})
-		);
+		const exited = (document.pointerLockElement === null);
+		if (exited) this._clearKeyState();
+		this._pointerLockListeners.forEach(listener => listener({ ...e, pressedEsc: exited }));
 	}
 
-	_keyNameToCode(key) {
-		// letters a-z
-		if (key.length === 1 && /^[a-z]$/i.test(key)) return 'Key' + key.toUpperCase();
-	
-		// digits
-		if (key.length === 1 && /^[0-9]$/.test(key)) return 'Digit' + key;
-	
-		// modifiers
-		switch (key.toLowerCase()) {
-			case 'shift': return 'ShiftLeft';   // or maybe check both ShiftLeft/ShiftRight
-			case 'ctrl': return 'ControlLeft';
-			case 'space': return 'Space';
-			case 'control': return 'ControlLeft';
-			case 'alt': return 'AltLeft';
-			case 'meta': return 'MetaLeft';     // command key on Mac
-			case 'arrowup': return 'ArrowUp';
-			case 'arrowdown': return 'ArrowDown';
-			case 'arrowleft': return 'ArrowLeft';
-			case 'arrowright': return 'ArrowRight';
-			default: return key;                // fallback to whatever string
+	_onBlur() {
+		this._clearKeyState();
+	}
+
+	_onVisibility() {
+		if (document.hidden) this._clearKeyState();
+	}
+
+	_clearKeyState() {
+		this._keys = {};
+		this.mouse.buttons = {};
+	}
+
+	_keyNamesToCodes(key) {
+		const k = key.toLowerCase();
+		if (key.length === 1 && /^[a-z]$/i.test(key)) return ['Key' + key.toUpperCase()];
+		if (key.length === 1 && /^[0-9]$/.test(key)) return ['Digit' + key];
+
+		switch (k) {
+			case 'shift': return ['ShiftLeft','ShiftRight'];
+			case 'ctrl':
+			case 'control': return ['ControlLeft','ControlRight'];
+			case 'alt': return ['AltLeft','AltRight'];
+			case 'meta': return ['MetaLeft','MetaRight'];
+			case 'space': return ['Space'];
+			case 'arrowup': return ['ArrowUp'];
+			case 'arrowdown': return ['ArrowDown'];
+			case 'arrowleft': return ['ArrowLeft'];
+			case 'arrowright': return ['ArrowRight'];
+			default: return [key]; // fallback to whatever was passed
 		}
 	}
 
 	getKeyDown(key) {
-		const code = this._keyNameToCode(key);
-		return this._keys[code] === true;
+		const codes = this._keyNamesToCodes(key);
+		for (const code of codes) {
+			if (this._keys[code] === true) return true;
+		}
+		return false;
 	}
 
 	getControllerAxis(wasd = true) {
 		let x = 0, y = 0;
-		
-		if(this.getKeyDown('control') || this.getKeyDown('meta'))
-			return { x, y };
-		
-		if(wasd) {
+
+		// ignore when typing in inputs
+		if (this.getInputFieldInFocus()) return { x: 0, y: 0 };
+
+		// if you want to block gameplay while modifiers held, do it here (not in keydown)
+		if (this.getKeyDown('control') || this.getKeyDown('meta')) return { x, y };
+
+		if (wasd) {
 			if (this.getKeyDown('d')) x += 1;
 			if (this.getKeyDown('a')) x -= 1;
 			if (this.getKeyDown('s')) y += 1;
 			if (this.getKeyDown('w')) y -= 1;
 		}
-		
+
 		if (this.getKeyDown('arrowright')) x += 1;
 		if (this.getKeyDown('arrowleft')) x -= 1;
 		if (this.getKeyDown('arrowdown')) y += 1;
 		if (this.getKeyDown('arrowup')) y -= 1;
+
 		return { x, y };
 	}
-	
+
 	getControllerAxisArrowsOnly() {
 		return this.getControllerAxis(false);
 	}
-	
+
 	getIsGameInFocus() {
-		return _container3d.matches(':focus');
+		return _container3d?.matches?.(':focus') === true;
 	}
-	
+
 	getCursorOverGame() {
 		const pos = this.getMousePosition();
 		const rect = _container3d.getBoundingClientRect();
-		
 		return (
 			pos.x >= rect.left &&
 			pos.x <= rect.right &&
 			pos.y >= rect.top &&
 			pos.y <= rect.bottom
-		)
+		);
 	}
-	
+
 	getInputFieldInFocus() {
-		return document.activeElement && 
-			document.activeElement.tagName === "INPUT";
+		return document.activeElement && document.activeElement.tagName === 'INPUT';
 	}
 
 	// --- Mouse ---
@@ -156,31 +177,30 @@ export default class D3DInput {
 		this._wheelDelta.y = 0;
 		this._wheelDelta.z = 0;
 	}
-	
+
 	_onMouseDown(e) {
-		if (this._mouseFrozen) return;   // <-- NEW
+		if (this._mouseFrozen) return;
 		this.mouse.buttons[e.button] = true;
 		this._mouseDownListeners.forEach(listener => listener(e));
 	}
 
 	_onMouseUp(e) {
-		if (this._mouseFrozen) return;   // <-- NEW
+		if (this._mouseFrozen) return;
 		this.mouse.buttons[e.button] = false;
 		this._mouseUpListeners.forEach(listener => listener(e));
 	}
 
 	_onMouseMove(e) {
-		if (this._mouseFrozen) return;   // <-- NEW
+		if (this._mouseFrozen) return;
 		const x = e.clientX;
 		const y = e.clientY;
-		
-		// update positions
+
 		this.mouse.x = x;
 		this.mouse.y = y;
-		
+
 		this._mouseDelta.x = e.movementX;
 		this._mouseDelta.y = e.movementY;
-		
+
 		this._mouseMoveListeners.forEach(listener => listener(e));
 	}
 
@@ -195,10 +215,11 @@ export default class D3DInput {
 	getMousePosition() {
 		return { x: this.mouse.x, y: this.mouse.y };
 	}
+
 	getMouseDelta() {
 		return { ...this._mouseDelta };
 	}
-	
+
 	// --- Wheel (scroll) ---
 	_onWheel(e) {
 		if (this._mouseFrozen) return;
@@ -207,9 +228,8 @@ export default class D3DInput {
 		this._wheelDelta.z += e.deltaZ;
 		this._wheelListeners.forEach(listener => listener(e));
 	}
-	
+
 	getWheelDelta() {
-		// Return copy so external code doesn’t mutate state
 		return { ...this._wheelDelta };
 	}
 
@@ -251,6 +271,8 @@ export default class D3DInput {
 		window.removeEventListener('mousemove', this._onMouseMove);
 		window.removeEventListener('wheel', this._onWheel);
 		document.removeEventListener('pointerlockchange', this._onPointerLockChange);
+		window.removeEventListener('blur', this._onBlur);
+		document.removeEventListener('visibilitychange', this._onVisibility);
 
 		this._listenersDown = [];
 		this._listenersUp = [];

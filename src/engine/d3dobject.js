@@ -56,12 +56,14 @@ export default class D3DObject {
 		if(protectedNames.includes(value) && window._root != this)
 			value += '_unsafe';
 		
-		const originValue = value;
+		const baseName = value.replace(/_\d+$/, '');
 		let copyNum = 2;
-		while(this.parent && this.parent[value] && this.parent[value] != this) {
-			value = `${originValue}_${copyNum}`;
+		let newName = value;
+		while(this.parent && this.parent[newName] && this.parent[newName] !== this) {
+			newName = `${baseName}_${copyNum}`;
 			copyNum++;
 		}
+		value = newName;
 		
 		const oldName = this._name;
 		
@@ -292,9 +294,9 @@ export default class D3DObject {
 		// Assign objdata reference
 		child.__objData = objData;
 		
-		// must contain a UUID for SUUID to work on origin objects
-		if(child.__objData.uuid === undefined)
-			child.__objData.uuid = child.uuid; 
+		// Always ensure there's a uuid property in __objData
+		if(!child.__objData.uuid)
+			child.__objData.uuid = child.uuid;
 		
 		if(objData.engineScript)
 			child.engineScript = objData.engineScript;
@@ -715,17 +717,18 @@ export default class D3DObject {
 		this.object3d.updateMatrixWorld(true);
 	}
 	
-	checkSymbols() {
-		const treeSymbolUpdate = (d3dobject) => {
-			d3dobject.symbol && d3dobject.updateSymbol();
+	async checkSymbols() {
+		const treeSymbolUpdate = async (d3dobject) => {
+			if(d3dobject.symbol)
+				await d3dobject.updateSymbol();
 			
 			if(d3dobject.parent)
-				treeSymbolUpdate(d3dobject.parent);
+				await treeSymbolUpdate(d3dobject.parent);
 		}
-		treeSymbolUpdate(this);
+		await treeSymbolUpdate(this);
 	}
 	
-	updateSymbol() {
+	async updateSymbol() {
 		const symbol = this.symbol;
 		
 		if(!symbol) {
@@ -747,13 +750,13 @@ export default class D3DObject {
 				continue;
 			
 			if(d3dobject.symbol == symbol)
-				d3dobject.syncToSymbol();
+				await d3dobject.syncToSymbol();
 		}
 		
 		symbol.__updatingSymbol = false;
 	}
 	
-	syncToSymbol() {
+	async syncToSymbol() {
 		const symbol = this.symbol;
 		
 		if(!symbol) {
@@ -761,7 +764,7 @@ export default class D3DObject {
 			return;
 		}
 		
-		const syncWithObjData = (d3dobject, objData, syncTransform = false) => {
+		const syncWithObjData = async (d3dobject, objData, syncTransform = false) => {
 			if(syncTransform) {
 				d3dobject.position.x = objData.position.x;
 				d3dobject.position.y = objData.position.y;
@@ -781,21 +784,31 @@ export default class D3DObject {
 			
 			d3dobject.components = structuredClone(objData.components);
 			
-			objData.children.forEach(schild => {
-				const child = d3dobject.children.find(
-					child => child.suuid == schild.suuid
-				);
+			const childrenSynced = [];
+			
+			for(let i in objData.children) {
+				const schild = objData.children[i];
+				let child = d3dobject.children.find(c => c.suuid == schild.uuid);
 				
-				if(!child) {
-					console.warn('Missing d3d child in symbol sync. Sync child: ', schild);
-					return;
+				if(!child)
+					child = await d3dobject.createObject(schild);
+				
+				childrenSynced.push(child);
+				
+				await syncWithObjData(child, schild, true);
+			}
+			
+			const childrenToCheck = [...d3dobject.children];
+			
+			childrenToCheck.forEach(child => {
+				if(!childrenSynced.includes(child)) {
+					// Must no longer be needed
+					child.delete();
 				}
-				
-				syncWithObjData(child, schild, true);
-			});
+			})
 		}
 		
-		syncWithObjData(this, symbol.objData);
+		await syncWithObjData(this, symbol.objData);
 	}
 	
 	serialize() {
@@ -803,9 +816,8 @@ export default class D3DObject {
 	}
 	
 	getSerializableObject() {
-		return {
-			uuid: this.uuid,
-			suuid: this.suuid,
+		const obj = {
+			uuid: this.suuid ?? this.uuid,
 			name: this.name,
 			position: {
 				x: this.position.x, 
@@ -830,6 +842,11 @@ export default class D3DObject {
 			})),
 			children: this.children.map(child => child.getSerializableObject())
 		}
+		
+		if(this.symbol)
+			obj.symbolId = this.symbol.uuid;
+		
+		return obj;
 	}
 	
 	find(name) {

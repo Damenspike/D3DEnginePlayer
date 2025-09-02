@@ -1199,7 +1199,7 @@ export default function Inspector() {
 			setLastSelectedPath(`${currentFolder}/${files[0].name}`);
 			
 			// important after any asset change
-			_root.updateSymbolStore();
+			_editor.updateSymbols();
 		};
 	
 		// new folder in currentFolder
@@ -1217,7 +1217,7 @@ export default function Inspector() {
 			setNewFolderName("");
 			
 			// important after any asset change
-			_root.updateSymbolStore();
+			_editor.updateSymbols();
 		};
 	
 		// new file in currentFolder (zero-byte)
@@ -1230,7 +1230,7 @@ export default function Inspector() {
 			setLastSelectedPath(path);
 			
 			// important after any asset change
-			_root.updateSymbolStore();
+			_editor.updateSymbols();
 		};
 	
 		// DnD helpers
@@ -1334,7 +1334,7 @@ export default function Inspector() {
 			setAssetTree(buildTree());
 			
 			// important after any asset change
-			_root.updateSymbolStore();
+			_editor.updateSymbols();
 		};
 	
 		// render a node
@@ -1373,7 +1373,7 @@ export default function Inspector() {
 								setSingleSelection(newPath);
 								
 								// important after any asset change
-								_root.updateSymbolStore();
+								_editor.updateSymbols();
 							} catch(err) {
 								console.warn("Rename failed:", err);
 							}
@@ -1439,7 +1439,7 @@ export default function Inspector() {
 								setAssetExpanded(prev => new Set(prev).add(node.path));
 								
 								// important after any asset change
-								_root.updateSymbolStore();
+								_editor.updateSymbols();
 							} catch(err) {
 								console.error("Move failed", err);
 							}
@@ -1451,7 +1451,7 @@ export default function Inspector() {
 								setSingleSelection(newPath.replace(/\/$/, ""));
 								
 								// important after any asset change
-								_root.updateSymbolStore();
+								_editor.updateSymbols();
 							} catch(err) {
 								console.warn("Rename failed:", err);
 							}
@@ -1512,7 +1512,7 @@ export default function Inspector() {
 					setAssetExpanded(prev => new Set(prev).add("assets"));
 					
 					// important after any asset change
-					_root.updateSymbolStore();
+					_editor.updateSymbols();
 				}}
 			>
 				{assetsInspectorExpanded && (
