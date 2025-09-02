@@ -860,6 +860,8 @@ export default function Inspector() {
 					return;
 				
 				const drawIcon = () => {
+					if(object.symbol)
+						return <MdOutlineInterests />;
 					if(object.components.find(c => c.type == 'Mesh'))
 						return <MdViewInAr />;
 					else

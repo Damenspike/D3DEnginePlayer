@@ -848,6 +848,9 @@ export default class D3DObject {
 		this.parent.children.splice(idx, 1);
 		this.parent.object3d.remove(this.object3d);
 		this.checkSymbols();
+		
+		delete this.parent[this.name];
+		delete _root.superIndex[this.uuid];
 	}
 	
 	isValidName(str) {

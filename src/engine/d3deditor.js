@@ -662,11 +662,14 @@ async function symboliseObject(d3dobject) {
 		name: `${d3dobject.name}.d3dsymbol`,
 		data: serializedData
 	});
+	console.log(serializedData);
 	await _root.updateSymbolStore();
 	
 	d3dobject.symbol = _root.__symbols[d3dobject.uuid];
 	d3dobject.symbolRoot = d3dobject.symbol;
 	d3dobject.syncToSymbol();
+	
+	_editor.updateInspector();
 }
 function moveObjectToCameraView(d3dobject, distance = 5) {
 	const cameraWorldPos = new THREE.Vector3();
