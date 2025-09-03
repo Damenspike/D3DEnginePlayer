@@ -328,6 +328,9 @@ export default function Inspector() {
 		const rows = [];
 		
 		object.components.forEach(component => {
+			if(!dummyObject.components)
+				return;
+			
 			const fields = [];
 			const schema = D3DComponents[component.type];
 			const idx = object.components.indexOf(component);

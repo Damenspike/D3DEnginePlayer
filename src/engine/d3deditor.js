@@ -6,6 +6,7 @@ import { OutlinePass } from 'three/examples/jsm/postprocessing/OutlinePass.js';
 import { GammaCorrectionShader } from 'three/examples/jsm/shaders/GammaCorrectionShader.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { GrayscaleShader } from './d3dshaders.js';
+import { v4 as uuidv4 } from 'uuid';
 import { 
 	arraysEqual,
 	uniqueFilePath,
@@ -293,6 +294,7 @@ function startAnimationLoop(composer, outlinePass) {
 			_editor.gizmo.update();
 		
 		updateObject('afterEditorRenderFrame', _root);
+		updateObject('__afterEditorRenderFrame', _root);
 		_input._afterRenderFrame?.();
 	}
 
@@ -668,25 +670,6 @@ function desymboliseSelectedObject() {
 	
 	// do it here
 }
-function saveSymbols() {
-	Object.values(_root.__symbols)
-	.forEach(symbol => {
-		if(!symbol || !symbol.file || !symbol.file.name || !symbol.objData) {
-			console.warn('Save symbols. Something is wrong with ', symbol);
-			return;
-		}
-		
-		console.log('Save symbols. Writing file', symbol.file.name);
-		writeFile({path: symbol.file.name, data: JSON.stringify(symbol.objData)});
-	});
-}
-async function updateSymbols() {
-	// Save all symbols first to keep them in sync
-	saveSymbols();
-	
-	// Now update the root symbol store
-	await _root.updateSymbolStore();
-}
 async function symboliseObject(d3dobject) {
 	if(d3dobject.symbol) {
 		const e = `${d3dobject.name} is already a symbol`;
@@ -695,31 +678,27 @@ async function symboliseObject(d3dobject) {
 		return;
 	}
 	
-	const objData = d3dobject.getSerializableObject();
-	const serializedData = d3dobject.serialize();
+	const symbolId = uuidv4();
+	const serializableObject = d3dobject.getSerializableObject();
+	const symbol = {
+		symbolId: symbolId,
+		objData: {...serializableObject, symbolId: symbolId}
+	}
 	
-	// Force give it the uuid of this symbol
-	objData.symbolId = d3dobject.uuid;
+	_root.__symbols[symbolId] = symbol;
 	
-	// Initial object just for saving
-	d3dobject.symbol = {
-		uuid: d3dobject.uuid,
-		objData: objData,
-		file: {
-			name: `assets/${d3dobject.name}.d3dsymbol`
-		}
-	};
-	_root.__symbols[d3dobject.uuid] = d3dobject.symbol;
+	d3dobject.symbolId = symbolId;
 	
-	// Update the tree from this object upwards first
-	d3dobject.checkSymbols();
+	const path = _editor.addNewFile({
+		name: `${d3dobject.name}.d3dsymbol`,
+		data: JSON.stringify(symbol)
+	});
 	
-	// Save will actually make the file and then load the 'proper' symbol data
-	await _editor.updateSymbols();
+	symbol.file = _root.zip.file(path);
 	
-	d3dobject.symbol = _root.__symbols[d3dobject.uuid];
-	d3dobject.syncToSymbol();
+	console.log('Created symbol', symbol);
 	
+	d3dobject.checkSymbols(); // Ensure other instances understand this is now a symbol
 	_editor.updateInspector();
 }
 function moveObjectToCameraView(d3dobject, distance = 5) {
@@ -746,7 +725,7 @@ async function onAssetDroppedIntoGameView(path, screenPos) {
 	switch(ext) {
 		case 'd3dsymbol': {
 			const symbol = Object.values(_root.__symbols)
-				.find(symbol => symbol.rel == path);
+				.find(symbol => symbol.file.name == path);
 			
 			if(!symbol) {
 				console.warn('Could not find symbol by path', path);
@@ -754,7 +733,7 @@ async function onAssetDroppedIntoGameView(path, screenPos) {
 			}
 			
 			const d3dobject = await _editor.focus.createObject({
-				symbolId: symbol.uuid
+				symbolId: symbol.symbolId
 			});
 			
 			moveObjectToCameraView(d3dobject);
@@ -770,7 +749,6 @@ async function onAssetDroppedIntoGameView(path, screenPos) {
 _editor.onEditorFocusChanged = onEditorFocusChanged;
 _editor.onAssetDroppedIntoGameView = onAssetDroppedIntoGameView;
 _editor.addNewFile = addNewFile;
-_editor.updateSymbols = updateSymbols;
 
 ipcRenderer.once('show-error-closed', (_, closeEditorWhenDone) => {
 	if(closeEditorWhenDone)

@@ -7,7 +7,7 @@ import {
 	getExtension
 } from './d3dutility.js';
 const protectedNames = [
-	'_root', 'Input', 'position', 'rotation', 'scale', 'name', 'parent', 'children', 'threeObj', 'scenes', 'zip', 'forward', 'right', 'up', 'quaternion', 'beforeRenderFrame', 'onAddedToScene', '__symbols', '__origin', 'symbol'
+	'_root', 'Input', 'position', 'rotation', 'scale', 'name', 'parent', 'children', 'threeObj', 'scenes', 'zip', 'forward', 'right', 'up', 'quaternion', 'beforeRenderFrame', 'onAddedToScene'
 ]
 
 const fs = window.require('fs').promises;
@@ -28,6 +28,7 @@ export default class D3DObject {
 		this.children = [];
 		
 		this.uuid = window._root != this ? uuidv4() : '';
+		this.suuid = uuidv4();
 		this.parent = parent; // D3DObject or null for root
 		this.name = name;
 		
@@ -209,8 +210,11 @@ export default class D3DObject {
 	///////////////////////////////
 	// Getters only
 	///////////////////////////////
-	get suuid() {
-		return this.__objData.uuid;
+	get symbol() {
+		if(!this.symbolId)
+			return;
+		
+		return _root.__symbols[this.symbolId];
 	}
 	get forward() {
 		const fwd = THREE.Vector3.forward.clone();
@@ -246,6 +250,15 @@ export default class D3DObject {
 				}
 				
 				this.lastMatrixWorld = new THREE.Matrix4().copy(this.object3d.matrixWorld);
+				
+				if(this.__finishedSyncing) {
+					this.__syncing = false;
+					this.__finishedSyncing = false;
+				}
+				if(this.symbol && this.__dirtySymbol && !this.__syncing) {
+					this.syncToSymbol();
+					this.__dirtySymbol = false;
+				}
 			}
 			this.__onTransformationChange = () => {
 				this.checkSymbols();
@@ -254,27 +267,47 @@ export default class D3DObject {
 	}
 	
 	async createObject(objData, executeScripts = true) {
-		const child = new D3DObject(objData.name, this);
-		let uuid = objData.uuid;
-		
+		if(!objData) {
+			throw new Error('No object data provided to create object from!');
+		}
 		if(objData.symbolId) {
-			if(typeof objData.symbolId !== 'string')
-				return;
-			
+			// Load objData from symbol instead
 			const symbol = _root.__symbols[objData.symbolId];
 			
 			if(!symbol) {
-				console.warn('Missing symbol for ', objData.symbolId);
-				return;
+				throw new Error(`Symbol doesn't exist ${objData.symbolId}`)
+			}
+			if(!symbol.objData) {
+				throw new Error(`Symbol data is missing ${objData.symbolId}`)
 			}
 			
-			objData = {...symbol.objData};
+			objData.children = symbol.objData.children;
+			objData.components = symbol.objData.components;
+			objData.suuid = symbol.objData.suuid;
 			
-			child.name = objData.name;
-			child.symbol = symbol;
+			/*
+				Override-able properties
+			*/
+			if(!objData.name)
+				objData.name = symbol.objData.name;
 			
-			uuid = null; // assign new one
+			if(!objData.position)
+				objData.position = symbol.objData.position;
+				
+			if(!objData.rotation)
+				objData.rotation = symbol.objData.rotation;
+				
+			if(!objData.scale)
+				objData.scale = symbol.objData.scale;
+				
+			if(!objData.visible)
+				objData.visible = symbol.objData.visible;
+			
+			if(!objData.opacity)
+				objData.opacity = symbol.objData.opacity;
 		}
+		
+		const child = new D3DObject(objData.name, this);
 		
 		child.zip = this.zip;
 		child.position = objData.position;
@@ -284,6 +317,17 @@ export default class D3DObject {
 		child.editorAlwaysVisible = !!objData.editorAlwaysVisible || false;
 		child.components = objData.components || [];
 		
+		// Assign symbol ID
+		if(objData.symbolId)
+			child.symbolId = objData.symbolId;
+		
+		////////////////////////
+		// ----- UUID ----- //
+		////////////////////////
+		
+		// Nominal uuid
+		let uuid = objData.uuid;
+		
 		// Ensure uuid is unique
 		if(_root.superIndex?.[uuid])
 			uuid = null;
@@ -291,12 +335,12 @@ export default class D3DObject {
 		// Assign truly unique uuid
 		child.uuid = uuid ?? child.uuid;
 		
-		// Assign objdata reference
-		child.__objData = objData;
+		// Assign SUUID
+		child.suuid = objData.suuid ?? child.suuid;
 		
-		// Always ensure there's a uuid property in __objData
-		if(!child.__objData.uuid)
-			child.__objData.uuid = child.uuid;
+		////////////////////////
+		// ----- UUID ----- //
+		////////////////////////
 		
 		if(objData.engineScript)
 			child.engineScript = objData.engineScript;
@@ -329,7 +373,7 @@ export default class D3DObject {
 		if(window._editor)
 			_editor.updateInspector();
 		
-		child.checkSymbols();
+		await this.checkSymbols();
 		
 		return child;
 	}
@@ -628,15 +672,20 @@ export default class D3DObject {
 			
 			const p = file.async('string').then(serializedData => {
 				try {
-					const objData = JSON.parse(serializedData);
-					const uuid = objData.uuid;
+					const symbolData = JSON.parse(serializedData);
+					const symbolId = symbolData.symbolId;
 					
-					if (!uuid || typeof uuid !== 'string') {
-						console.warn('Invalid UUID in', rel);
+					if (!symbolId || typeof symbolId !== 'string') {
+						console.warn('Invalid symbolId in', rel);
 						return;
 					}
 					
-					_root.__symbols[uuid] = { uuid, file, rel, objData };
+					const symbol = { symbolId, file, objData };
+					
+					if(!_root.__symbols[symbolId])
+						_root.__symbols[symbolId] = symbol;
+					else
+						Object.assign(_root.__symbols[symbolId], symbol);
 				} catch(e) {
 					console.warn('Failed to parse', rel, e);
 				}
@@ -646,6 +695,118 @@ export default class D3DObject {
 		});
 	
 		await Promise.all(promises);
+	}
+	
+	checkSymbols() {
+		if(!window._editor)
+			return;
+		
+		if(this.__syncing)
+			return;
+		
+		const treeSymbolUpdate = (d3dobject) => {
+			if(d3dobject.symbol)
+				d3dobject.updateSymbol();
+			
+			if(d3dobject.parent)
+				treeSymbolUpdate(d3dobject.parent);
+		}
+		treeSymbolUpdate(this);
+	}
+	
+	updateSymbol() {
+		const symbol = this.symbol;
+		
+		if(!symbol) {
+			console.error('No symbol');
+			return;
+		}
+		
+		symbol.objData = this.getSerializableObject();
+		
+		for(let i in _root.superIndex) {
+			const d3dobject = _root.superIndex[i];
+			
+			if(d3dobject != this && d3dobject.symbol == symbol)
+				d3dobject.__dirtySymbol = true;
+		}
+	}
+	
+	async syncToSymbol() {
+		const symbol = this.symbol;
+		
+		if(!symbol) {
+			console.error("Can't sync to symbol because there is no symbol");
+			return;
+		}
+		
+		const syncWithObjData = async (d3dobject, objData, syncTransform = false, updateChildren = true) => {
+			d3dobject.__syncing = true;
+			
+			if(syncTransform) {
+				d3dobject.position.x = objData.position.x;
+				d3dobject.position.y = objData.position.y;
+				d3dobject.position.z = objData.position.z;
+				
+				d3dobject.rotation.x = objData.rotation.x;
+				d3dobject.rotation.y = objData.rotation.y;
+				d3dobject.rotation.z = objData.rotation.z;
+				
+				d3dobject.scale.x = objData.scale.x;
+				d3dobject.scale.y = objData.scale.y;
+				d3dobject.scale.z = objData.scale.z;
+				
+				d3dobject.opacity = objData.opacity;
+				d3dobject.visible = objData.visible;
+			}
+			
+			d3dobject.components = structuredClone(objData.components);
+			
+			if(updateChildren) {
+				const childrenSynced = [];
+				
+				for(let i in objData.children) {
+					const schild = objData.children[i];
+					let child = d3dobject.children.find(c => c.suuid == schild.suuid);
+					
+					if(!child)
+						child = await d3dobject.createObject(schild);
+					
+					// Sync names
+					if(child.name != schild.name)
+						child.name = schild.name;
+						
+					// Sync symbol status
+					if(child.symbolId != schild.symbolId)
+						child.symbolId = schild.symbolId;
+					
+					childrenSynced.push(child);
+					
+					// will be handled via its own updateSymbol route
+					const shouldUpdateNextChildren = !child.symbol;
+					const shouldUpdateNextTransform = true;
+					
+					await syncWithObjData(
+						child, schild,
+						shouldUpdateNextTransform,
+						shouldUpdateNextChildren
+					); 
+				}
+				
+				const childrenToCheck = [...d3dobject.children];
+				
+				childrenToCheck.forEach(child => {
+					if(!childrenSynced.includes(child)) {
+						// Must no longer be needed
+						child.delete();
+					}
+				})
+			}
+			
+			d3dobject.__finishedSyncing = true;
+		}
+		
+		await syncWithObjData(this, symbol.objData);
 	}
 	
 	setParent(d3dobject) {
@@ -717,107 +878,14 @@ export default class D3DObject {
 		this.object3d.updateMatrixWorld(true);
 	}
 	
-	async checkSymbols() {
-		const treeSymbolUpdate = async (d3dobject) => {
-			if(d3dobject.symbol)
-				await d3dobject.updateSymbol();
-			
-			if(d3dobject.parent)
-				await treeSymbolUpdate(d3dobject.parent);
-		}
-		await treeSymbolUpdate(this);
-	}
-	
-	async updateSymbol() {
-		const symbol = this.symbol;
-		
-		if(!symbol) {
-			console.error('No symbol');
-			return;
-		}
-		
-		if(symbol.__updatingSymbol)
-			return;
-			
-		symbol.__updatingSymbol = true;
-		
-		symbol.objData = this.getSerializableObject();
-		
-		for(let uuid in _root.superIndex) {
-			const d3dobject = _root.superIndex[uuid];
-			
-			if(d3dobject == this)
-				continue;
-			
-			if(d3dobject.symbol == symbol)
-				await d3dobject.syncToSymbol();
-		}
-		
-		symbol.__updatingSymbol = false;
-	}
-	
-	async syncToSymbol() {
-		const symbol = this.symbol;
-		
-		if(!symbol) {
-			console.error("Can't sync to symbol because there is no symbol");
-			return;
-		}
-		
-		const syncWithObjData = async (d3dobject, objData, syncTransform = false) => {
-			if(syncTransform) {
-				d3dobject.position.x = objData.position.x;
-				d3dobject.position.y = objData.position.y;
-				d3dobject.position.z = objData.position.z;
-				
-				d3dobject.rotation.x = objData.rotation.x;
-				d3dobject.rotation.y = objData.rotation.y;
-				d3dobject.rotation.z = objData.rotation.z;
-				
-				d3dobject.scale.x = objData.scale.x;
-				d3dobject.scale.y = objData.scale.y;
-				d3dobject.scale.z = objData.scale.z;
-				
-				d3dobject.opacity = objData.opacity;
-				d3dobject.visible = objData.visible;
-			}
-			
-			d3dobject.components = structuredClone(objData.components);
-			
-			const childrenSynced = [];
-			
-			for(let i in objData.children) {
-				const schild = objData.children[i];
-				let child = d3dobject.children.find(c => c.suuid == schild.uuid);
-				
-				if(!child)
-					child = await d3dobject.createObject(schild);
-				
-				childrenSynced.push(child);
-				
-				await syncWithObjData(child, schild, true);
-			}
-			
-			const childrenToCheck = [...d3dobject.children];
-			
-			childrenToCheck.forEach(child => {
-				if(!childrenSynced.includes(child)) {
-					// Must no longer be needed
-					child.delete();
-				}
-			})
-		}
-		
-		await syncWithObjData(this, symbol.objData);
-	}
-	
 	serialize() {
 		return JSON.stringify(this.getSerializableObject());
 	}
 	
 	getSerializableObject() {
 		const obj = {
-			uuid: this.suuid ?? this.uuid,
+			uuid: this.uuid,
+			suuid: this.suuid,
 			name: this.name,
 			position: {
 				x: this.position.x, 
@@ -843,8 +911,8 @@ export default class D3DObject {
 			children: this.children.map(child => child.getSerializableObject())
 		}
 		
-		if(this.symbol)
-			obj.symbolId = this.symbol.uuid;
+		if(this.symbolId)
+			obj.symbolId = this.symbolId;
 		
 		return obj;
 	}
@@ -864,10 +932,11 @@ export default class D3DObject {
 			
 		this.parent.children.splice(idx, 1);
 		this.parent.object3d.remove(this.object3d);
-		this.checkSymbols();
 		
 		delete this.parent[this.name];
 		delete _root.superIndex[this.uuid];
+		
+		this.checkSymbols();
 	}
 	
 	isValidName(str) {

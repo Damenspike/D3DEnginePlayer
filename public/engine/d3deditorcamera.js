@@ -14,12 +14,14 @@ function updateMotion() {
 	if(_input.getKeyDown('alt')) // keyboard rotate mode
 		return;
 	
+	/*
 	if(_input.getKeyDown('shift')) {
 		self.object3d.translateY(-1 * speed);
 	}else
 	if(_input.getKeyDown('space')) {
 		self.object3d.translateY(1 * speed);
 	}
+	*/
 	
 	self.object3d.translateX(axis.x * speed);
 	moveForward(-axis.y * speed);
