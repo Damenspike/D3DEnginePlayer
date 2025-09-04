@@ -1200,9 +1200,6 @@ export default function Inspector() {
 			setAssetExpanded(prev => new Set(prev).add(currentFolder));
 			setSelectedAssetPaths(new Set([`${currentFolder}/${files[0].name}`]));
 			setLastSelectedPath(`${currentFolder}/${files[0].name}`);
-			
-			// important after any asset change
-			_editor.updateSymbols();
 		};
 	
 		// new folder in currentFolder
@@ -1218,9 +1215,6 @@ export default function Inspector() {
 			setLastSelectedPath(dirPath.replace(/\/$/, ""));
 			setNewFolderOpen(false);
 			setNewFolderName("");
-			
-			// important after any asset change
-			_editor.updateSymbols();
 		};
 	
 		// new file in currentFolder (zero-byte)
@@ -1231,9 +1225,6 @@ export default function Inspector() {
 			setAssetExpanded(prev => new Set(prev).add(currentFolder));
 			setSelectedAssetPaths(new Set([path]));
 			setLastSelectedPath(path);
-			
-			// important after any asset change
-			_editor.updateSymbols();
 		};
 	
 		// DnD helpers
@@ -1320,6 +1311,7 @@ export default function Inspector() {
 				const file = zip.file(p);
 				if(file) {
 					zip.remove(p);
+					_editor.onAssetDeleted(p);
 					continue;
 				}
 				const dir = p.endsWith("/") ? p : p + "/";
@@ -1329,15 +1321,13 @@ export default function Inspector() {
 						toRemove.push(rel);
 				});
 				toRemove.forEach(rel => zip.remove(rel));
+				
 				zip.remove(dir);
 			}
 	
 			setSelectedAssetPaths(new Set());
 			setLastSelectedPath(null);
 			setAssetTree(buildTree());
-			
-			// important after any asset change
-			_editor.updateSymbols();
 		};
 	
 		// render a node
@@ -1374,9 +1364,6 @@ export default function Inspector() {
 								const newPath = await renameZipFile(zip, node.path, newName);
 								setAssetTree(buildTree());
 								setSingleSelection(newPath);
-								
-								// important after any asset change
-								_editor.updateSymbols();
 							} catch(err) {
 								console.warn("Rename failed:", err);
 							}
@@ -1440,9 +1427,6 @@ export default function Inspector() {
 								setAssetTree(buildTree());
 								setSingleSelection((movedTo || "").replace(/\/$/, ""));
 								setAssetExpanded(prev => new Set(prev).add(node.path));
-								
-								// important after any asset change
-								_editor.updateSymbols();
 							} catch(err) {
 								console.error("Move failed", err);
 							}
@@ -1452,9 +1436,6 @@ export default function Inspector() {
 								const newPath = await renameZipDirectory(zip, node.path, newName);
 								setAssetTree(buildTree());
 								setSingleSelection(newPath.replace(/\/$/, ""));
-								
-								// important after any asset change
-								_editor.updateSymbols();
 							} catch(err) {
 								console.warn("Rename failed:", err);
 							}
@@ -1513,9 +1494,6 @@ export default function Inspector() {
 					setSelectedAssetPaths(new Set(["assets"]));
 					setLastSelectedPath("assets");
 					setAssetExpanded(prev => new Set(prev).add("assets"));
-					
-					// important after any asset change
-					_editor.updateSymbols();
 				}}
 			>
 				{assetsInspectorExpanded && (

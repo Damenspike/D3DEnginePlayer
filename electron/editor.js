@@ -190,6 +190,9 @@ function sendDesymboliseObject() {
 function sendFocusObject() {
 	editorWindow.webContents.send('focus-object');
 }
+function sendSaveProject() {
+	editorWindow.webContents.send('save-project');
+}
 
 // --- Menu ---
 const isMac = process.platform === 'darwin';
@@ -220,7 +223,7 @@ const menuTemplate = [
 			{
 				label: 'Save',
 				accelerator: 'CmdOrCtrl+S',
-				click: () => null
+				click: () => sendSaveProject()
 			}
 		]
 	},
@@ -261,6 +264,7 @@ const menuTemplate = [
 						label: 'Empty Object',
 						click: () => sendAddObject('empty')
 					},
+					{ type: 'separator' },
 					{
 						label: 'Cube',
 						click: () => sendAddObject('cube')

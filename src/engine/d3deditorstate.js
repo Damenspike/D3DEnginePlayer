@@ -234,4 +234,37 @@ export default class D3DEditorState {
 	setDirty(dirty) {
 		ipcRenderer.send('set-dirty', dirty);
 	}
+	
+	save() {
+		const zip = _root?.zip;
+		
+		if(!zip)
+			throw new Error("No project to save");
+			
+		console.log('Saving project');
+		
+		// Save scene graph
+		for(let i in _root.superIndex) {
+			const d3dobject = _root.superIndex[i];
+			d3dobject.saveToScene();
+		}
+		
+		const scenesData = JSON.stringify(_root.scenes);
+		_editor.writeFile({
+			path: 'scenes.json',
+			data: scenesData
+		});
+		
+		console.log(scenesData);
+		
+		return;
+		
+		// Save symbols
+		Object.values(_root.__symbols).forEach(symbol => {
+			_editor.writeFile({
+				path: symbol.file.name,
+				data: JSON.stringify(symbol.objData)
+			});
+		});
+	}
 }

@@ -32,6 +32,10 @@ body {
 p, label {
 	font-size: 14px;
 }
+*:focus {
+	outline: 2px solid #0099ff;
+	outline-offset: 2px;
+}
 
 body.light {
 	background: #eee;
@@ -83,6 +87,7 @@ body.dark {
 	font-size: 14px;
 }
 .tf:focus {
+	outline: none !important;
 	border: 2px solid #0099ff;
 }
 .tf--num {

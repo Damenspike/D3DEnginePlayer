@@ -571,12 +571,14 @@ async function addD3DObjectEditor(type) {
 			
 		break;
 		case 'camera':
+			newObject.name = 'Camera';
 			newObject.components.push({
 				type: 'Camera', 
 				properties: {}
 			});
 		break;
 		case 'dirlight':
+			newObject.name = 'Directional Light';
 			newObject.components.push({
 				type: 'DirectionalLight', 
 				properties: {
@@ -586,6 +588,7 @@ async function addD3DObjectEditor(type) {
 			});
 		break;
 		case 'pntlight':
+			newObject.name = 'Point Light';
 			newObject.components.push({
 				type: 'PointLight', 
 				properties: {
@@ -595,6 +598,7 @@ async function addD3DObjectEditor(type) {
 			});
 		break;
 		case 'html':
+			newObject.name = 'HTML Overlay';
 			newObject.components.push({
 				type: 'HTML', 
 				properties: {
@@ -603,6 +607,7 @@ async function addD3DObjectEditor(type) {
 			});
 		break;
 		case 'cube':
+			newObject.name = 'Cube';
 			newObject.components.push({
 				type: 'Mesh', 
 				properties: {
@@ -668,7 +673,8 @@ function desymboliseSelectedObject() {
 	if(_editor.selectedObjects.length < 1)
 		return;
 	
-	// do it here
+	_editor.selectedObjects.forEach(d3dobject => 
+		desymboliseObject(d3dobject));
 }
 async function symboliseObject(d3dobject) {
 	if(d3dobject.symbol) {
@@ -699,6 +705,18 @@ async function symboliseObject(d3dobject) {
 	console.log('Created symbol', symbol);
 	
 	d3dobject.checkSymbols(); // Ensure other instances understand this is now a symbol
+	_editor.updateInspector();
+}
+async function desymboliseObject(d3dobject) {
+	if(!d3dobject.symbol) {
+		const e = `${d3dobject.name} is not a symbol`;
+		_editor.showError(e);
+		console.error(e);
+		return;
+	}
+	
+	d3dobject.symbolId = null;
+	d3dobject.checkSymbols();
 	_editor.updateInspector();
 }
 function moveObjectToCameraView(d3dobject, distance = 5) {
@@ -743,12 +761,39 @@ async function onAssetDroppedIntoGameView(path, screenPos) {
 		}
 	}
 }
+function onAssetDeleted(path) {
+	const ext = getExtension(path);
+	
+	if(ext == 'd3dsymbol') {
+		// Desymbolise all instances of this symbol file
+		let desymbolised = 0;
+		const objectsToDelete = [];
+		for(let uuid in _root.superIndex) {
+			const d3dobject = _root.superIndex[uuid];
+			
+			if(!d3dobject.symbol)
+				continue;
+			
+			if(d3dobject.symbol.file?.name == path) {
+				//desymboliseObject(d3dobject);
+				desymbolised++;
+				objectsToDelete.push(d3dobject);
+			}
+		}
+		objectsToDelete.forEach(d3dobject => d3dobject.delete());
+		
+		//console.log(`Desymbolised ${desymbolised} instance(s) of ${path}`);
+		console.log(`Deleted ${desymbolised} instance(s) of ${path}`);
+	}
+}
 
 // INTERNAL
 
 _editor.onEditorFocusChanged = onEditorFocusChanged;
 _editor.onAssetDroppedIntoGameView = onAssetDroppedIntoGameView;
+_editor.onAssetDeleted = onAssetDeleted;
 _editor.addNewFile = addNewFile;
+_editor.writeFile = writeFile;
 
 ipcRenderer.once('show-error-closed', (_, closeEditorWhenDone) => {
 	if(closeEditorWhenDone)
@@ -757,6 +802,7 @@ ipcRenderer.once('show-error-closed', (_, closeEditorWhenDone) => {
 ipcRenderer.on('delete', () => _editor.onDeleteKey());
 ipcRenderer.on('undo', () => _editor.undo());
 ipcRenderer.on('redo', () => _editor.redo());
+ipcRenderer.on('save-project', () => _editor.save());
 
 ipcRenderer.on('add-object', 
 	(_, type) => addD3DObjectEditor(type));

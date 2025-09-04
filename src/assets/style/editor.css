@@ -117,6 +117,7 @@ body.dark {
 	background: black;
 	border: 2px solid rgba(0, 0, 0, 0);
 }
+
 .game:focus {
 	outline: none;
 	border: 2px solid #0099ff;
@@ -196,6 +197,7 @@ body.dark {
 	border-radius: 10px;
 	
 	.insp-title {
+		outline: none;
 		position: relative;
 		padding: 5px;
 		padding-left: 0px;
@@ -238,10 +240,6 @@ body.dark {
 			background: rgba(0, 0, 0, 0.658);
 		}
 	}
-}
-.inspector-cell:focus {
-	outline: 2px solid #0099ff;
-	outline-offset: 2px;
 }
 .inspector-cell.collapsed {
 	.insp-body {

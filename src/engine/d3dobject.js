@@ -7,7 +7,7 @@ import {
 	getExtension
 } from './d3dutility.js';
 const protectedNames = [
-	'_root', 'Input', 'position', 'rotation', 'scale', 'name', 'parent', 'children', 'threeObj', 'scenes', 'zip', 'forward', 'right', 'up', 'quaternion', 'beforeRenderFrame', 'onAddedToScene'
+	'_root', 'Input', 'position', 'rotation', 'scale', 'name', 'parent', 'children', 'threeObj', 'scenes', 'zip', 'forward', 'right', 'up', 'quaternion', 'beforeRenderFrame', 'onAddedToScene', 'manifest', 'scenes'
 ]
 
 const fs = window.require('fs').promises;
@@ -210,6 +210,13 @@ export default class D3DObject {
 	///////////////////////////////
 	// Getters only
 	///////////////////////////////
+	get root() {
+		// root of this object only
+		let r = this;
+		while(r && !r.manifest)
+			r = r.parent;
+		return r;
+	}
 	get symbol() {
 		if(!this.symbolId)
 			return;
@@ -309,6 +316,7 @@ export default class D3DObject {
 		
 		const child = new D3DObject(objData.name, this);
 		
+		child.objData = objData;
 		child.zip = this.zip;
 		child.position = objData.position;
 		child.rotation = objData.rotation;
@@ -440,7 +448,12 @@ export default class D3DObject {
 		// The starting scene
 		const startScene = this.scenes[this.manifest.startScene];
 		
-		await this.buildScene(startScene);
+		await this.loadScene(startScene);
+	}
+	
+	async loadScene(scene) {
+		this.root.scene = scene;
+		await this.buildScene(scene);
 	}
 	
 	async buildScene(scene) {
@@ -937,6 +950,18 @@ export default class D3DObject {
 		delete _root.superIndex[this.uuid];
 		
 		this.checkSymbols();
+	}
+	
+	saveToScene() {
+		const scene = this.root.scene;
+		
+		if(!scene)
+			throw new Error("Unknown current scene");
+		
+		if(this.symbol)
+			return; // symbols save in realtime already
+		
+		Object.assign(this.objData, this.getSerializableObject());
 	}
 	
 	isValidName(str) {
