@@ -16,14 +16,14 @@ function updateMotion() {
 	
 	/*
 	if(_input.getKeyDown('shift')) {
-		self.object3d.translateY(-1 * speed);
+		this.object3d.translateY(-1 * speed);
 	}else
 	if(_input.getKeyDown('space')) {
-		self.object3d.translateY(1 * speed);
+		this.object3d.translateY(1 * speed);
 	}
 	*/
 	
-	self.object3d.translateX(axis.x * speed);
+	this.object3d.translateX(axis.x * speed);
 	moveForward(-axis.y * speed);
 }
 function updateZoom() {
@@ -32,27 +32,27 @@ function updateZoom() {
 	const mult = _input.getKeyDown('control') ? 3 : 1;
 	const speed = zoomSpeed * mult * delta;
 	
-	self.object3d.translateZ(wheelDelta.y * speed);
+	this.object3d.translateZ(wheelDelta.y * speed);
 }
 function moveForward(distance) {
-	const dir = new THREE.Vector3();
-	self.object3d.getWorldDirection(dir);
+	const dir = Vector3();
+	this.object3d.getWorldDirection(dir);
 	
 	// ignore Y so we don't move up/down
 	dir.y = 0;
 	dir.normalize();
 	
 	// move camera
-	self.object3d.position.addScaledVector(dir, distance);
+	this.object3d.position.addScaledVector(dir, distance);
 }
 function focusOn(targets, distance = null, duration = 0.35, padding = 1.15, pointSize = 0.5) {
 	const list = [...targets];
 	if (!list.length) return;
 	
 	// union world-space AABB (includes object scale/children)
-	const box = new THREE.Box3().makeEmpty();
-	const tmpBox = new THREE.Box3();
-	const tmpV = new THREE.Vector3();
+	const box = Box3().makeEmpty();
+	const tmpBox = Box3();
+	const tmpV = Vector3();
 
 	let hadGeometry = false;
 	let hadPoints = false;
@@ -84,25 +84,25 @@ function focusOn(targets, distance = null, duration = 0.35, padding = 1.15, poin
 	if (!hadGeometry && hadPoints) {
 		// Inflate the box so it has some extents (centered on points union)
 		const half = pointSize * 0.5;
-		const c = box.getCenter(new THREE.Vector3());
+		const c = box.getCenter(Vector3());
 		box.min.set(c.x - half, c.y - half, c.z - half);
 		box.max.set(c.x + half, c.y + half, c.z + half);
 	}
 
 	// center & size
-	const target = new THREE.Vector3();
+	const target = Vector3();
 	box.getCenter(target);
-	const size = box.getSize(new THREE.Vector3()).multiplyScalar(padding);
+	const size = box.getSize(Vector3()).multiplyScalar(padding);
 
 	// current camera data
-	const cam = self.object3d; // perspective editor cam
+	const cam = this.object3d; // perspective editor cam
 	const from = cam.position.clone();
 
 	// compute framing distance if not provided
 	let dist = distance;
 	if (dist == null) {
 		if (cam.isPerspectiveCamera) {
-			const vFov = THREE.MathUtils.degToRad(cam.fov);
+			const vFov = MathUtils.degToRad(cam.fov);
 			const hFov = 2 * Math.atan(Math.tan(vFov * 0.5) * cam.aspect);
 
 			// guard against zero size
@@ -125,17 +125,17 @@ function focusOn(targets, distance = null, duration = 0.35, padding = 1.15, poin
 	}
 
 	// camera forward
-	const forward = new THREE.Vector3();
+	const forward = Vector3();
 	cam.getWorldDirection(forward); // unit -Z for typical cams
 
 	// destination so that target sits 'dist' along forward
 	const to = target.clone().sub(forward.clone().multiplyScalar(dist));
 
 	// set new orbit pivot for your editor controls
-	self._orbit = target.clone();
+	this._orbit = target.clone();
 
 	// tween state (advanced elsewhere)
-	self._focusTween = {
+	this._focusTween = {
 		from,
 		to,
 		elapsed: 0,
@@ -144,48 +144,48 @@ function focusOn(targets, distance = null, duration = 0.35, padding = 1.15, poin
 	};
 }
 function updateTween() {
-	if(!self._focusTween)
+	if(!this._focusTween)
 		return;
 	
-	const tw = self._focusTween;
+	const tw = this._focusTween;
 	tw.elapsed = Math.min(tw.duration, tw.elapsed + _time.delta);
 	const k = tw.elapsed / tw.duration;
 	const e = tw.ease(k);
 	
-	self.object3d.position.lerpVectors(tw.from, tw.to, e);
+	this.object3d.position.lerpVectors(tw.from, tw.to, e);
 	
 	if (k >= 1) 
-		self._focusTween = null;
+		this._focusTween = null;
 }
 function updateOrbit(usePivot) {
 	const defaultRadius = 5;
-	const up = new THREE.Vector3(0, 1, 0);
+	const up = Vector3(0, 1, 0);
 
 	// Detect mode switches
-	if (self.__lastUsePivot === undefined) self.__lastUsePivot = usePivot;
+	if (this.__lastUsePivot === undefined) this.__lastUsePivot = usePivot;
 
 	// Choose pivot
 	let pivot;
-	if (usePivot && self._orbit) {
-		pivot = self._orbit.clone();
+	if (usePivot && this._orbit) {
+		pivot = this._orbit.clone();
 
 		// HANDOFF: if we just came from rotate-in-place, slide the pivot to the current view ray
-		if (self.__lastUsePivot === false) {
-			const fwd = new THREE.Vector3();
-			self.object3d.getWorldDirection(fwd);
-			const dist = self.object3d.position.distanceTo(pivot);
-			pivot = self.object3d.position.clone().addScaledVector(fwd, dist);
-			self._orbit = pivot.clone(); // commit the slid pivot
+		if (this.__lastUsePivot === false) {
+			const fwd = Vector3();
+			this.object3d.getWorldDirection(fwd);
+			const dist = this.object3d.position.distanceTo(pivot);
+			pivot = this.object3d.position.clone().addScaledVector(fwd, dist);
+			this._orbit = pivot.clone(); // commit the slid pivot
 		}
 	} else {
 		// tiny pivot ahead so it feels like rotate-in-place
-		const fwd = new THREE.Vector3();
-		self.object3d.getWorldDirection(fwd);
-		pivot = self.object3d.position.clone().addScaledVector(fwd, 0.01);
+		const fwd = Vector3();
+		this.object3d.getWorldDirection(fwd);
+		pivot = this.object3d.position.clone().addScaledVector(fwd, 0.01);
 	}
 
 	// Current offset and radius
-	const offset = self.object3d.position.clone().sub(pivot);
+	const offset = this.object3d.position.clone().sub(pivot);
 	let r = offset.length();
 	if (!isFinite(r) || r < 1e-6) { r = defaultRadius; offset.set(0, 0, r); }
 
@@ -200,7 +200,7 @@ function updateOrbit(usePivot) {
 
 	// Vertical around camera right (derived from current look dir)
 	const forward = offset.clone().negate().normalize();
-	let right = new THREE.Vector3().crossVectors(forward, up).normalize();
+	let right = Vector3().crossVectors(forward, up).normalize();
 	if (right.lengthSq() < 1e-8) right.set(1, 0, 0);
 
 	// Simple vertical clamp
@@ -218,14 +218,14 @@ function updateOrbit(usePivot) {
 
 	// Apply position & orientation
 	offset.setLength(r);
-	self.object3d.position.copy(pivot).add(offset);
-	self.object3d.lookAt(pivot);
+	this.object3d.position.copy(pivot).add(offset);
+	this.object3d.lookAt(pivot);
 
 	// Remember last mode
-	self.__lastUsePivot = usePivot;
+	this.__lastUsePivot = usePivot;
 }
 
-self.beforeEditorRenderFrame = () => {
+this.beforeEditorRenderFrame = () => {
 	const isGameInFocus = _input.getIsGameInFocus();
 	const isCursorOverGame = _input.getCursorOverGame();
 	const inputFieldInFocus = _input.getInputFieldInFocus();
@@ -260,7 +260,6 @@ self.beforeEditorRenderFrame = () => {
 _editor.focusOnSelectedObjects = () => {
 	const inputFieldInFocus = _input.getInputFieldInFocus();
 	
-	if(!inputFieldInFocus && _editor.selectedObjects.length > 0 && !self._focusTween)
+	if(!inputFieldInFocus && _editor.selectedObjects.length > 0 && !this._focusTween)
 		focusOn(_editor.selectedObjects)
 };
-console.log(D3D, window);

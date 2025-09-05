@@ -1,12 +1,14 @@
 // d3dobject.js
 import axios from 'axios';
 import JSZip from 'jszip';
+import DamenScript from './damenscript.js';
 import { v4 as uuidv4 } from 'uuid';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import {
 	getExtension
 } from './d3dutility.js';
 const { path } = D3D;
+
 const protectedNames = [
 	'_root', 'Input', 'position', 'rotation', 'scale', 'name', 'parent', 'children', 'threeObj', 'scenes', 'zip', 'forward', 'right', 'up', 'quaternion', 'beforeRenderFrame', 'onAddedToScene', 'manifest', 'scenes', '__origin'
 ]
@@ -484,9 +486,14 @@ export default class D3DObject {
 			script = await this.zip.file(scriptName)?.async('string');
 		}
 		
-		if (script && (!window._editor || this.editorOnly)) {
-			this.runInSandbox(script);
-			console.log(`${scriptName} executed in sandbox`);
+		try {
+			if (script && (!window._editor || this.editorOnly)) {
+				this.runInSandbox(script);
+				console.log(`${scriptName} executed in DamenScript sandbox`);
+			}
+		}catch(e) {
+			console.error(e);
+			// send this to editor console too at some point
 		}
 		
 		if (this.children && this.children.length > 0) {
@@ -496,47 +503,25 @@ export default class D3DObject {
 		}
 	}
 	runInSandbox(script) {
-		const THREE_SAFE = Object.freeze({
-			Vector3: THREE.Vector3,
-			Quaternion: THREE.Quaternion,
-			Box3: THREE.Box3,
-			MathUtils: THREE.MathUtils,
-		});
-	
-		const CONSOLE_SAFE = Object.freeze({
-			log:  (...a) => console.log(`[${this.name}]`, ...a),
-			warn: (...a) => console.warn(`[${this.name}]`, ...a),
-			error:(...a) => console.error(`[${this.name}]`, ...a),
-			assert:(...a) => console.assert(...a),
-		});
-	
-		// Build a factory that shadows dangerous globals and binds `this === self`
-		const factory = new Function(
-			`return function(THREE, _root, _input, _time, _editor, self, console) {
-				// Shadow common globals so free-name lookups hit these first.
-				const window = undefined;
-				const document = undefined;
-				const global = undefined;
-				const globalThis = undefined;
-				const D3D = undefined;
-				const require = undefined;
-				const process = undefined;
-				const eval = undefined;
-				const Function = undefined;
-				const fetch = undefined;
-				const XMLHttpRequest = undefined;
-				const WebSocket = undefined;
-				const setTimeout = undefined;
-				const setInterval = undefined;
-				const requestAnimationFrame = undefined;
-				
-				// User code (strict mode)
-				${script}
-			};`
-		);
-	
-		const fn = factory();
-		fn.call(this, THREE_SAFE, _root, _input, _time, _editor, this, CONSOLE_SAFE);
+		const sandbox = {
+			_root,
+			_input,
+			_time,
+			_editor,
+			self: this,
+			console: {
+				log: (...args) => console.log(`[${this.name}]`, ...args),
+				warn: (...args) => console.warn(`[${this.name}]`, ...args),
+				error: (...args) => console.error(`[${this.name}]`, ...args),
+				assert: (...args) => console.assert(...args)
+			},
+			Vector3: (...args) => new THREE.Vector3(...args),
+			Quaternion: (...args) => new THREE.Quaternion(...args),
+			Box3: (...args) => new THREE.Box3(...args),
+			MathUtils: THREE.MathUtils
+		};
+		
+		DamenScript.run(script, sandbox);
 	}
 	async updateComponents() {
 		for (const component of this.components) {
