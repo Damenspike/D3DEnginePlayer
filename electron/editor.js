@@ -333,6 +333,27 @@ const menuTemplate = [
 				}
 			}
 		]
+	},
+	{
+		label: 'Window',
+		role: 'window',
+		submenu: [
+			{ role: 'minimize' },
+			{ role: 'zoom' },
+			...(isMac
+				? [
+					{ type: 'separator' },
+					{ role: 'front' },
+					{ type: 'separator' },
+					{ role: 'window' }
+				]
+				: []),
+			{
+				label: 'Close',
+				accelerator: 'CmdOrCtrl+W',
+				click: () => editorWindow.close()
+			}
+		]
 	}
 ];
 

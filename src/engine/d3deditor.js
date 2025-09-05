@@ -29,8 +29,6 @@ const path = window.require('path');
 const vm = window.require('vm');
 const { ipcRenderer } = window.electron;
 
-let rootContext;
-
 window.THREE = three;
 window._input = new D3DInput();
 window._time = new D3DTime();
@@ -110,9 +108,9 @@ export async function loadD3DProj(uri) {
 /* ---------------- Helper Functions ---------------- */
 
 async function initRoot(uri) {
-	rootContext = new D3DObject('_root', null);
-	window._root = rootContext;
-	await rootContext.load(uri);
+	const root = new D3DObject('_root', null);
+	window._root = root;
+	await root.load(uri);
 }
 
 function initRenderer() {
@@ -571,14 +569,14 @@ async function addD3DObjectEditor(type) {
 			
 		break;
 		case 'camera':
-			newObject.name = 'Camera';
+			newObject.name = 'camera';
 			newObject.components.push({
 				type: 'Camera', 
 				properties: {}
 			});
 		break;
 		case 'dirlight':
-			newObject.name = 'Directional Light';
+			newObject.name = 'directional light';
 			newObject.components.push({
 				type: 'DirectionalLight', 
 				properties: {
@@ -588,7 +586,7 @@ async function addD3DObjectEditor(type) {
 			});
 		break;
 		case 'pntlight':
-			newObject.name = 'Point Light';
+			newObject.name = 'point light';
 			newObject.components.push({
 				type: 'PointLight', 
 				properties: {
@@ -598,7 +596,7 @@ async function addD3DObjectEditor(type) {
 			});
 		break;
 		case 'html':
-			newObject.name = 'HTML Overlay';
+			newObject.name = 'html overlay';
 			newObject.components.push({
 				type: 'HTML', 
 				properties: {
@@ -607,7 +605,7 @@ async function addD3DObjectEditor(type) {
 			});
 		break;
 		case 'cube':
-			newObject.name = 'Cube';
+			newObject.name = 'cube';
 			newObject.components.push({
 				type: 'Mesh', 
 				properties: {
@@ -729,6 +727,17 @@ function moveObjectToCameraView(d3dobject, distance = 5) {
 	
 	d3dobject.worldPosition = { x: spawnPos.x, y: spawnPos.y, z: spawnPos.z };
 }
+async function saveProject() {
+	try {
+		await _editor.save();
+	}catch(e) {
+		_editor.showError({
+			message: `Error saving project. ${e}`
+		});
+	}
+	
+	_editor.setDirty(false);
+}
 
 // Editor events
 function onEditorFocusChanged() {
@@ -765,22 +774,22 @@ function onAssetDeleted(path) {
 	const ext = getExtension(path);
 	
 	if(ext == 'd3dsymbol') {
+		const symbol = Object.values(_root.__symbols).find(s => s.file?.name == path);
+		
 		// Desymbolise all instances of this symbol file
 		let desymbolised = 0;
 		const objectsToDelete = [];
 		for(let uuid in _root.superIndex) {
 			const d3dobject = _root.superIndex[uuid];
 			
-			if(!d3dobject.symbol)
-				continue;
-			
-			if(d3dobject.symbol.file?.name == path) {
-				//desymboliseObject(d3dobject);
+			if(d3dobject.symbol == symbol) {
 				desymbolised++;
 				objectsToDelete.push(d3dobject);
 			}
 		}
 		objectsToDelete.forEach(d3dobject => d3dobject.delete());
+		
+		delete _root.__symbols[symbol.symbolId];
 		
 		//console.log(`Desymbolised ${desymbolised} instance(s) of ${path}`);
 		console.log(`Deleted ${desymbolised} instance(s) of ${path}`);
@@ -802,7 +811,7 @@ ipcRenderer.once('show-error-closed', (_, closeEditorWhenDone) => {
 ipcRenderer.on('delete', () => _editor.onDeleteKey());
 ipcRenderer.on('undo', () => _editor.undo());
 ipcRenderer.on('redo', () => _editor.redo());
-ipcRenderer.on('save-project', () => _editor.save());
+ipcRenderer.on('save-project', () => saveProject());
 
 ipcRenderer.on('add-object', 
 	(_, type) => addD3DObjectEditor(type));

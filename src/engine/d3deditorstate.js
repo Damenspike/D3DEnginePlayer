@@ -1,3 +1,6 @@
+const fs = window.require('fs');
+const path = window.require('path');
+
 const { ipcRenderer } = window.electron;
 
 // Tool enum
@@ -235,29 +238,33 @@ export default class D3DEditorState {
 		ipcRenderer.send('set-dirty', dirty);
 	}
 	
-	save() {
+	async save() {
 		const zip = _root?.zip;
 		
 		if(!zip)
 			throw new Error("No project to save");
-			
-		console.log('Saving project');
+		
+		// Save manifest
+		_editor.writeFile({
+			path: 'manifest.json',
+			data: JSON.stringify(_root.manifest)
+		});
 		
 		// Save scene graph
-		for(let i in _root.superIndex) {
-			const d3dobject = _root.superIndex[i];
-			d3dobject.saveToScene();
-		}
+		_root.scene.objects = [];
+		
+		_root.children.forEach(child => {
+			if(child.editorOnly)
+				return;
+			
+			_root.scene.objects.push(child.getSerializableObject());
+		});
 		
 		const scenesData = JSON.stringify(_root.scenes);
 		_editor.writeFile({
 			path: 'scenes.json',
 			data: scenesData
 		});
-		
-		console.log(scenesData);
-		
-		return;
 		
 		// Save symbols
 		Object.values(_root.__symbols).forEach(symbol => {
@@ -266,5 +273,19 @@ export default class D3DEditorState {
 				data: JSON.stringify(symbol.objData)
 			});
 		});
+		
+		// Save to the zip location
+		const targetPath = _root.__origin;
+		const zipdata = await zip.generateAsync({ type: 'nodebuffer' });
+		
+		const dir = path.dirname(targetPath);
+		const exists = fs.existsSync(dir);
+		if (!exists) {
+			throw new Error(`Save failed: directory does not exist: ${dir}`);
+		}
+		
+		fs.writeFileSync(targetPath, zipdata);
+		
+		console.log('Project saved!');
 	}
 }
