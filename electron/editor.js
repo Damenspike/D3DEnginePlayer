@@ -26,9 +26,11 @@ function createStartWindow() {
 		resizable: false,
 		titleBarStyle: 'hidden',
 		webPreferences: {
-			preload: path.join(__dirname, 'preload.js'),
-			nodeIntegration: true,
-			contextIsolation: false
+			preload: path.join(__dirname, 'preload-editor.cjs'),
+			contextIsolation: true,
+			nodeIntegration: false,
+			enableRemoteModule: false,
+			sandbox: false
 		}
 	});
 
@@ -36,6 +38,9 @@ function createStartWindow() {
 
 	startWindow.on('closed', () => {
 		startWindow = null;
+	});
+	startWindow.webContents.on('preload-error', (_event, preloadPath, error) => {
+		console.error('❌ Preload failed:', preloadPath, error);
 	});
 	
 	setupTheme(startWindow);
@@ -52,9 +57,11 @@ function createNewProjectWindow() {
 		height: 400,
 		resizable: false,
 		webPreferences: {
-			preload: path.join(__dirname, 'preload.js'),
-			nodeIntegration: true,
-			contextIsolation: false
+			preload: path.join(__dirname, 'preload-editor.cjs'),
+			contextIsolation: true,
+			nodeIntegration: false,
+			enableRemoteModule: false,
+			sandbox: false
 		}
 	});
 
@@ -83,9 +90,11 @@ async function createEditorWindow() {
 		height,
 		resizable: true,
 		webPreferences: {
-			preload: path.join(__dirname, 'preload.js'),
-			contextIsolation: false,
-			nodeIntegration: true
+			preload: path.join(__dirname, 'preload-editor.cjs'),
+			contextIsolation: true,
+			nodeIntegration: false,
+			enableRemoteModule: false,
+			sandbox: false
 		}
 	});
 	
@@ -399,7 +408,7 @@ ipcMain.handle('get-current-project-uri', () => lastOpenedProjectUri);
 ipcMain.on('close-editor', () => closeEditorWindow());
 
 // Show error dialog
-ipcMain.on('show-error', async (event, { title, message, closeEditorWhenDone }) => {
+ipcMain.on('show-error', async (_, { title, message, closeEditorWhenDone }) => {
 	const focused = BrowserWindow.getFocusedWindow();
 	if (!focused) return;
 	await dialog.showMessageBox(focused, {
@@ -409,7 +418,8 @@ ipcMain.on('show-error', async (event, { title, message, closeEditorWhenDone }) 
 		buttons: ['OK']
 	});
 	
-	event.reply('show-error-closed', closeEditorWhenDone);
+	if(closeEditorWhenDone)
+		closeEditorWindow();
 });
 
 // Show error dialog

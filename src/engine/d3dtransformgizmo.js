@@ -1,4 +1,4 @@
-const { RenderPass } = require('three/examples/jsm/postprocessing/RenderPass.js');
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 
 export default class D3DTransformGizmo {
 	get busy() {

@@ -1,20 +1,29 @@
 // src/hooks/useSystemTheme.js
 import { useEffect, useState } from 'react';
-const { ipcRenderer } = require('electron');
 
 export default function useSystemTheme() {
 	const [theme, setTheme] = useState('light');
 
 	useEffect(() => {
-		// Initial theme
-		ipcRenderer.invoke('get-theme').then((t) => setTheme(t));
+		let unsubscribe = null;
+		let mounted = true;
 
-		// Subscribe to changes
-		const handler = (_, t) => setTheme(t);
-		ipcRenderer.on('theme-changed', handler);
+		(async () => {
+			try {
+				const t = await D3D.theme.get();
+				mounted && setTheme(t);
+			} catch (err) {
+				console.warn('[useSystemTheme] failed to get theme:', err);
+			}
+
+			unsubscribe = D3D.theme.onChange((t) => {
+				mounted && setTheme(t);
+			});
+		})();
 
 		return () => {
-			ipcRenderer.removeListener('theme-changed', handler);
+			mounted = false;
+			unsubscribe && unsubscribe();
 		};
 	}, []);
 

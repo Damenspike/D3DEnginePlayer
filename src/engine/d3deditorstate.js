@@ -1,8 +1,3 @@
-const fs = window.require('fs');
-const path = window.require('path');
-
-const { ipcRenderer } = window.electron;
-
 // Tool enum
 export const Tools = Object.freeze({
 	Select: 'select',
@@ -235,7 +230,7 @@ export default class D3DEditorState {
 	}
 	
 	setDirty(dirty) {
-		ipcRenderer.send('set-dirty', dirty);
+		D3D.setDirty(true);
 	}
 	
 	async save() {
@@ -275,16 +270,10 @@ export default class D3DEditorState {
 		});
 		
 		// Save to the zip location
-		const targetPath = _root.__origin;
+		const uri = _root.__origin;
 		const zipdata = await zip.generateAsync({ type: 'nodebuffer' });
 		
-		const dir = path.dirname(targetPath);
-		const exists = fs.existsSync(dir);
-		if (!exists) {
-			throw new Error(`Save failed: directory does not exist: ${dir}`);
-		}
-		
-		fs.writeFileSync(targetPath, zipdata);
+		await D3D.writeFile(uri, zipdata);
 		
 		console.log('Project saved!');
 	}

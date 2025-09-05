@@ -48,7 +48,7 @@ function moveForward(distance) {
 function focusOn(targets, distance = null, duration = 0.35, padding = 1.15, pointSize = 0.5) {
 	const list = [...targets];
 	if (!list.length) return;
-
+	
 	// union world-space AABB (includes object scale/children)
 	const box = new THREE.Box3().makeEmpty();
 	const tmpBox = new THREE.Box3();
@@ -257,10 +257,10 @@ self.beforeEditorRenderFrame = () => {
 	
 	updateTween();
 };
-
 _editor.focusOnSelectedObjects = () => {
 	const inputFieldInFocus = _input.getInputFieldInFocus();
 	
 	if(!inputFieldInFocus && _editor.selectedObjects.length > 0 && !self._focusTween)
 		focusOn(_editor.selectedObjects)
 };
+console.log(D3D, window);

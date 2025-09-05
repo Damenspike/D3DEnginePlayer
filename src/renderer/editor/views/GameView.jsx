@@ -1,6 +1,5 @@
 // GameView.jsx
 import React, { useEffect, useRef, useCallback } from 'react';
-const { ipcRenderer } = require('electron');
 import { loadD3DProj } from '../../../engine/d3deditor.js';
 
 const MIME = 'application/x-d3d-objectrow';
@@ -79,7 +78,7 @@ export default function GameView() {
 		});
 		observer.observe(element);
 
-		ipcRenderer.invoke('get-current-project-uri').then(uri => {
+		D3D.getCurrentProjectURI().then(uri => {
 			loadD3DProj(uri);
 		});
 

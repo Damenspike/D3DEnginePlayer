@@ -6,13 +6,10 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import {
 	getExtension
 } from './d3dutility.js';
+const { path } = D3D;
 const protectedNames = [
 	'_root', 'Input', 'position', 'rotation', 'scale', 'name', 'parent', 'children', 'threeObj', 'scenes', 'zip', 'forward', 'right', 'up', 'quaternion', 'beforeRenderFrame', 'onAddedToScene', 'manifest', 'scenes', '__origin'
 ]
-
-const fs = window.require('fs').promises;
-const path = window.require('path');
-const vm = window.require('vm');
 
 export default class D3DObject {
 	constructor(name = 'object', parent = null) {
@@ -27,7 +24,7 @@ export default class D3DObject {
 		this.components = [];
 		this.children = [];
 		
-		this.uuid = window._root != this ? uuidv4() : '';
+		this.uuid = _root != this ? uuidv4() : '';
 		this.suuid = uuidv4();
 		this.parent = parent; // D3DObject or null for root
 		this.name = name;
@@ -48,13 +45,13 @@ export default class D3DObject {
 		if(!this.isValidName(value))
 			throw new Error(`Invalid name ${value} for object`);
 		
-		if(this == window._root && this.name == '_root')
+		if(this == _root && this.name == '_root')
 			throw new Error('Can not rename root');
 			
 		if(!this.isValidName(value))
 			value = `object${(parent?.children?.length ?? Math.floor(Math.random() * 10000000000))}`;
 		
-		if(protectedNames.includes(value) && window._root != this)
+		if(protectedNames.includes(value) && _root != this)
 			value += '_unsafe';
 		
 		const baseName = value.replace(/_\d+$/, '');
@@ -399,7 +396,7 @@ export default class D3DObject {
 		} else {
 			// Local file
 			console.log('Reading local .d3d file...');
-			buffer = await fs.readFile(uri);
+			buffer = await D3D.readFile(uri);
 		}
 		
 		if(buffer) {
@@ -426,9 +423,8 @@ export default class D3DObject {
 		console.log('Manifest loaded:', this.manifest);
 	
 		// Configure Electron window based on manifest only for root
-		if (this === window._root) {
-			const { ipcRenderer } = require('electron');
-			ipcRenderer.send('update-window', {
+		if (this === _root) {
+			D3D.updateWindow({
 				width: this.manifest.width,
 				height: this.manifest.height,
 				title: this.manifest.name
@@ -500,25 +496,47 @@ export default class D3DObject {
 		}
 	}
 	runInSandbox(script) {
-		const sandbox = {
-			THREE,
-			_root,
-			_input,
-			_time,
-			_editor,
-			self: this,
-			console: {
-				log: (...args) => console.log(`[${this.name}]`, ...args),
-				warn: (...args) => console.warn(`[${this.name}]`, ...args),
-				error: (...args) => console.error(`[${this.name}]`, ...args),
-				assert: (...args) => console.assert(...args)
-			},
+		const THREE_SAFE = Object.freeze({
 			Vector3: THREE.Vector3,
-			Quaternion: THREE.Quaternion
-		};
-		
-		const wrappedScript = `(function() { ${script} }).call(self)`;
-		vm.runInNewContext(wrappedScript, sandbox);
+			Quaternion: THREE.Quaternion,
+			Box3: THREE.Box3,
+			MathUtils: THREE.MathUtils,
+		});
+	
+		const CONSOLE_SAFE = Object.freeze({
+			log:  (...a) => console.log(`[${this.name}]`, ...a),
+			warn: (...a) => console.warn(`[${this.name}]`, ...a),
+			error:(...a) => console.error(`[${this.name}]`, ...a),
+			assert:(...a) => console.assert(...a),
+		});
+	
+		// Build a factory that shadows dangerous globals and binds `this === self`
+		const factory = new Function(
+			`return function(THREE, _root, _input, _time, _editor, self, console) {
+				// Shadow common globals so free-name lookups hit these first.
+				const window = undefined;
+				const document = undefined;
+				const global = undefined;
+				const globalThis = undefined;
+				const D3D = undefined;
+				const require = undefined;
+				const process = undefined;
+				const eval = undefined;
+				const Function = undefined;
+				const fetch = undefined;
+				const XMLHttpRequest = undefined;
+				const WebSocket = undefined;
+				const setTimeout = undefined;
+				const setInterval = undefined;
+				const requestAnimationFrame = undefined;
+				
+				// User code (strict mode)
+				${script}
+			};`
+		);
+	
+		const fn = factory();
+		fn.call(this, THREE_SAFE, _root, _input, _time, _editor, this, CONSOLE_SAFE);
 	}
 	async updateComponents() {
 		for (const component of this.components) {

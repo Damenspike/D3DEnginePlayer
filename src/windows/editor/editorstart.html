@@ -4,8 +4,7 @@
 	<meta charset="UTF-8">
 	<link rel="stylesheet" type="text/css" 
 		href="../../assets/style/main.css">
-	<script type="text/javascript" 
-		src="../../assets/scripts/theme.js"></script>
+	<script src="../../assets/scripts/theme.js"></script>
 </head>
 <body>
 	<center>
@@ -15,7 +14,7 @@
 		<p>
 			<button 
 				id="loadBtn"
-				onclick="ipcRenderer.invoke('new-project')"
+				onclick="D3D.startNewProject()"
 			>
 				New Project
 			</button>
@@ -23,7 +22,7 @@
 		<p>
 			<button 
 				id="loadBtn"
-				onclick="ipcRenderer.invoke('open-project')"
+				onclick="D3D.openProjectDialog()"
 			>
 				Open Project
 			</button>

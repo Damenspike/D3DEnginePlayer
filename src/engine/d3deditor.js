@@ -1,5 +1,5 @@
 // d3deditor.js
-import * as three from 'three';
+import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { OutlinePass } from 'three/examples/jsm/postprocessing/OutlinePass.js';
@@ -24,12 +24,7 @@ import D3DInfiniteGrid from './d3dinfinitegrid.js';
 import D3DTransformGizmo from './d3dtransformgizmo.js';
 import D3DComponents from './d3dcomponents.js';
 
-const fs = window.require('fs').promises;
-const path = window.require('path');
-const vm = window.require('vm');
-const { ipcRenderer } = window.electron;
-
-window.THREE = three;
+window.THREE = THREE;
 window._input = new D3DInput();
 window._time = new D3DTime();
 window._editor = new D3DEditorState();
@@ -38,9 +33,6 @@ window._editor = new D3DEditorState();
 THREE.Vector3.right = new THREE.Vector3(1, 0, 0);
 THREE.Vector3.up = new THREE.Vector3(0, 1, 0);
 THREE.Vector3.forward = new THREE.Vector3(0, 0, 1);
-
-// All global vars
-global.LAYER_DEFAULT = 0;
 
 // Error handling
 function showError(args) {
@@ -54,7 +46,7 @@ function showError(args) {
 		closeEditorWhenDone = args.closeEditorWhenDone;
 	}
 	
-	ipcRenderer.send('show-error', {title, message, closeEditorWhenDone});
+	D3D.showError({title, message, closeEditorWhenDone});
 }
 async function showConfirm({title = '', message = '', onDeny = null, onConfirm}) {
 	const confirm = await ipcRenderer.invoke('show-confirm', {title, message});
@@ -65,7 +57,7 @@ async function showConfirm({title = '', message = '', onDeny = null, onConfirm})
 		onDeny?.();
 }
 function closeEditor() {
-	ipcRenderer.send('close-editor');
+	D3D.closeEditor();
 }
 
 _editor.showError = showError;
@@ -99,7 +91,7 @@ export async function loadD3DProj(uri) {
 	setupResize(renderer, camera);
 
 	// Update editor window title
-	ipcRenderer.send('update-editor-window', { title: _root.manifest.name });
+	D3D.updateEditorWindow({ title: _root.manifest.name });
 
 	// Enable object selection via raycasting
 	setupSelection(renderer, camera);
@@ -804,20 +796,12 @@ _editor.onAssetDeleted = onAssetDeleted;
 _editor.addNewFile = addNewFile;
 _editor.writeFile = writeFile;
 
-ipcRenderer.once('show-error-closed', (_, closeEditorWhenDone) => {
-	if(closeEditorWhenDone)
-		closeEditor();
-});
-ipcRenderer.on('delete', () => _editor.onDeleteKey());
-ipcRenderer.on('undo', () => _editor.undo());
-ipcRenderer.on('redo', () => _editor.redo());
-ipcRenderer.on('save-project', () => saveProject());
+D3D.setEventListener('delete', () => _editor.onDeleteKey());
+D3D.setEventListener('undo', () => _editor.undo());
+D3D.setEventListener('redo', () => _editor.redo());
+D3D.setEventListener('save-project', () => saveProject());
 
-ipcRenderer.on('add-object', 
-	(_, type) => addD3DObjectEditor(type));
-ipcRenderer.on('symbolise-object', 
-	(_, type) => symboliseSelectedObject());
-ipcRenderer.on('desymbolise-object', 
-	(_, type) => desymboliseSelectedObject());
-ipcRenderer.on('focus-object', 
-	(_, type) => _editor.focusOnSelectedObjects?.());
+D3D.setEventListener('add-object', (type) => addD3DObjectEditor(type));
+D3D.setEventListener('symbolise-object', (type) => symboliseSelectedObject(type));
+D3D.setEventListener('desymbolise-object', (type) => desymboliseSelectedObject(type));
+D3D.setEventListener('focus-object', (type) => _editor.focusOnSelectedObjects?.());
