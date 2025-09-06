@@ -126,6 +126,7 @@ async function initEditorCamera() {
 		scale: { x: 1, y: 1, z: 1 },
 		editorOnly: true,
 		noSelect: true,
+		no3DGizmos: true,
 		editorAlwaysVisible: true,
 		engineScript: 'd3deditorcamera.js',
 		uuid: '',
@@ -138,6 +139,7 @@ async function initEditorCamera() {
 		scale: { x: 1, y: 1, z: 1 },
 		editorOnly: true,
 		noSelect: true,
+		no3DGizmos: true,
 		engineScript: 'd3deditorlight.js',
 		components: [{ type: 'DirectionalLight', properties: {
 			color: '0xffffff',

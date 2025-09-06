@@ -321,9 +321,11 @@ export default class D3DObject {
 		child.position = objData.position;
 		child.rotation = objData.rotation;
 		child.scale = objData.scale;
+		child.components = objData.components || [];
+		
 		child.editorOnly = !!objData.editorOnly || false;
 		child.editorAlwaysVisible = !!objData.editorAlwaysVisible || false;
-		child.components = objData.components || [];
+		child.no3DGizmos = !!objData.no3DGizmos;
 		
 		// Assign symbol ID
 		if(objData.symbolId)
@@ -527,11 +529,11 @@ export default class D3DObject {
 	async updateComponents() {
 		const components = [...this.components];
 		
-		if(_editor && !this.editorOnly) {
+		if(_editor && !this.no3DGizmos) {
 			// Add any gizmo related mesh components
 			components.forEach(component => {
 				const schema = D3DComponents[component.type];
-				const gizmo3d = schema.fields.gizmo3d;
+				const gizmo3d = schema.gizmo3d;
 				
 				if(gizmo3d) {
 					components.push({

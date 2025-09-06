@@ -39,14 +39,14 @@ const D3DComponents = {
 				min: 1,
 				max: 10000000,
 				def: 100000
-			},
-			'gizmo3d': {
-				hidden: true,
-				mesh: 'Standard/Models/Camera.glb',
-				materials: [
-					'Standard/Materials/Gizmo3D.mat'
-				]
 			}
+		},
+		gizmo3d: {
+			hidden: true,
+			mesh: 'Standard/Models/Camera.glb',
+			materials: [
+				'Standard/Materials/Gizmo3D.mat'
+			]
 		}
 	},
 	AmbientLight: {
@@ -57,6 +57,13 @@ const D3DComponents = {
 				type: 'color',
 				def: '#ffffff'
 			}
+		},
+		gizmo3d: {
+			hidden: true,
+			mesh: 'Standard/Models/Light.glb',
+			materials: [
+				'Standard/Materials/GizmoLight3D.mat'
+			]
 		}
 	},
 	DirectionalLight: {
@@ -78,6 +85,13 @@ const D3DComponents = {
 				type: 'boolean',
 				def: true
 			}
+		},
+		gizmo3d: {
+			hidden: true,
+			mesh: 'Standard/Models/Light.glb',
+			materials: [
+				'Standard/Materials/GizmoLight3D.mat'
+			]
 		}
 	},
 	PointLight: {
@@ -111,6 +125,13 @@ const D3DComponents = {
 				type: 'boolean',
 				def: true
 			}
+		},
+		gizmo3d: {
+			hidden: true,
+			mesh: 'Standard/Models/Light.glb',
+			materials: [
+				'Standard/Materials/GizmoLight3D.mat'
+			]
 		}
 	},
 	SpotLight: {
@@ -146,6 +167,13 @@ const D3DComponents = {
 				type: 'boolean',
 				def: true
 			}
+		},
+		gizmo3d: {
+			hidden: true,
+			mesh: 'Standard/Models/Light.glb',
+			materials: [
+				'Standard/Materials/GizmoLight3D.mat'
+			]
 		}
 	},
 	HTML: {

@@ -1,7 +1,7 @@
 {
 	"name": "Gizmo3D Material",
 	"type": "MeshBasicMaterial",
-	"color": 39423,
+	"color": 16776960,
 	"transparent": true,
 	"opacity": 0.4,
 	"depthWrite": false,
