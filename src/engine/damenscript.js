@@ -19,9 +19,12 @@ const DamenScript = (() => {
 	// 'this' is allowed (maps to 'self')
   ]);
   const SAFE_MATH = Object.freeze({
-	pow: Math.pow, min: Math.min, max: Math.max, abs: Math.abs,
-	sin: Math.sin, cos: Math.cos, tan: Math.tan, sqrt: Math.sqrt,
-	floor: Math.floor, ceil: Math.ceil, round: Math.round, PI: Math.PI,
+	// angles
+	tan: Math.tan, atan: Math.atan, degToRad: (d) => d * Math.PI / 180,
+	// general
+	PI: Math.PI, abs: Math.abs, min: Math.min, max: Math.max,
+	sqrt: Math.sqrt, floor: Math.floor, ceil: Math.ceil, round: Math.round,
+	sin: Math.sin, cos: Math.cos, pow: Math.pow
   });
   const BASIC_ENV = Object.freeze({
   	isFinite, Math: SAFE_MATH
@@ -612,7 +615,7 @@ const DamenScript = (() => {
 			  const key = calleeNode.property.name;
 			  fn = getProp(obj, key, false);
 			}
-			if (typeof fn !== 'function') throw new Error('Attempt to call non-function');
+			if (typeof fn !== 'function') throw new Error('Attempt to call non-function ' + calleeNode.property.name);
 			return fn.apply(obj, args);         // <-- bind `this` to obj
 		  }
 		

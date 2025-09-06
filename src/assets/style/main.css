@@ -179,6 +179,12 @@ body.dark {
 	padding: 3px;
 	font-size: 14px;
 }
+.btn-destructive {
+	background: #db4848;
+}
+.btn-destructive:hover {
+	background: #9d3434;
+}
 
 button {
 	background: #0099ff;

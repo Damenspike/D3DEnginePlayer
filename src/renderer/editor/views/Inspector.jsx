@@ -119,11 +119,47 @@ export default function Inspector() {
 	}
 	const deleteSelectedObjects = () => {
 		if(_editor.selectedObjects.length > 0) {
+			const restorableObjects = [];
+			const deleteUUIDs = [];
+			
 			_editor.selectedObjects.forEach(d3dobject => {
+				const d3dobjectRestore = d3dobject.getSerializableObject();
+				d3dobjectRestore.__parent = d3dobject.parent;
+				
+				restorableObjects.push(d3dobjectRestore);
+				deleteUUIDs.push(d3dobject.uuid);
+				
 				d3dobject.delete();
 			});
 			_editor.setSelection([]);
 			setObject(null);
+			
+			_editor.addStep({
+				name: 'Delete object(s)',
+				undo: async () => {
+					console.log('undo delete');
+					const restoredObjs = [];
+					
+					for(let i in restorableObjects) {
+						const objData = {...restorableObjects[i]};
+						const parent = objData.__parent;
+						delete objData.__parent;
+						
+						if(!parent)
+							continue;
+						
+						const restoredd3dobj = await parent.createObject(objData);
+						restoredObjs.push(restoredd3dobj);
+					}
+					
+					_editor.setSelection(restoredObjs);
+				},
+				redo: () => {
+					// re-delete them by UUID
+					deleteUUIDs.forEach(uuid => _root.superIndex[uuid]?.delete?.());
+					_editor.setSelection([]);
+				}
+			});
 		}else
 		if(selectedAssetPaths.size > 0) {
 			_editor.deleteSelectedAssets();
@@ -344,6 +380,10 @@ export default function Inspector() {
 			for(let fieldId in schema.fields) {
 				const field = schema.fields[fieldId];
 				const current = dummyComponent.properties[fieldId];
+				
+				if(field.hidden)
+					continue;
+				
 				const addStep = (val) => {
 					const oldValue = component.properties[fieldId];
 					const newValue = val;
@@ -1094,12 +1134,8 @@ export default function Inspector() {
 			>
 				{sceneInspectorExpanded && (
 					<div className="tools-section assets-insp-tools">
-						<button onClick={() => null}>
-							<MdAdd /> New Object
-						</button>
-				
 						<button
-							className="btn-small"
+							className="btn-small btn-destructive"
 							onClick={deleteSelectedObjects}
 							disabled={!canDelete}
 						>

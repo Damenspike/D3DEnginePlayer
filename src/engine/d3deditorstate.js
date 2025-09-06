@@ -176,53 +176,61 @@ export default class D3DEditorState {
 	}
 	
 	addStep({ name, undo, redo }) {
+		if (this._isReplaying) return; // don't record steps caused by undo/redo
+	
 		// drop future steps if we've undone
-		if(this.currentStep < this.steps.length - 1) {
+		if (this.currentStep < this.steps.length - 1) {
 			this.steps = this.steps.slice(0, this.currentStep + 1);
 		}
 	
 		this.steps.push({ name, undo, redo });
-		this.currentStep++;
+		this.currentStep = this.steps.length - 1;
 	
 		// enforce limit
-		if(this.steps.length > stepLimit) {
-			// drop oldest
-			this.steps.shift();
-			this.currentStep--; // adjust index since we removed one at the start
+		if (this.steps.length > stepLimit) {
+			const drop = this.steps.length - stepLimit;
+			this.steps.splice(0, drop);
+			this.currentStep -= drop;
+			if (this.currentStep < -1) this.currentStep = -1;
 		}
 	}
 	
-	undo() {
-		if(this.currentStep < 0 || this.steps.length < 1) {
+	async undo() {
+		if (!this.canUndo()) {
 			console.log('Nothing to undo');
 			return;
 		}
-	
 		const step = this.steps[this.currentStep];
+		this._isReplaying = true;
 		this.currentStep--;
-		
 		try {
-			step.undo();
-		}catch(e) {
+			await step.undo?.();
+		} catch (e) {
 			console.error('D3DEditor error executing undo', e);
+		} finally {
+			this._isReplaying = false;
 		}
 	}
 	
-	redo() {
-		if(this.steps.length < 1 || this.currentStep >= this.steps.length - 1) {
+	async redo() {
+		if (!this.canRedo()) {
 			console.log('Nothing to redo');
 			return;
 		}
-	
 		const step = this.steps[this.currentStep + 1];
+		this._isReplaying = true;
 		this.currentStep++;
-		
 		try {
-			step.redo();
-		}catch(e) {
+			await step.redo?.();
+		} catch (e) {
 			console.error('D3DEditor error executing redo', e);
+		} finally {
+			this._isReplaying = false;
 		}
 	}
+	
+	canUndo() { return this.currentStep >= 0; }
+	canRedo() { return this.currentStep < this.steps.length - 1; }
 	
 	resetSteps() {
 		this.steps = [];
@@ -230,7 +238,7 @@ export default class D3DEditorState {
 	}
 	
 	setDirty(dirty) {
-		D3D.setDirty(true);
+		D3D.setDirty(dirty);
 	}
 	
 	async save() {
@@ -269,11 +277,9 @@ export default class D3DEditorState {
 			});
 		});
 		
-		// Save to the zip location
-		const uri = _root.__origin;
-		const zipdata = await zip.generateAsync({ type: 'nodebuffer' });
+		const zipData = await zip.generateAsync({ type: 'uint8array' });
 		
-		await D3D.writeFile(uri, zipdata);
+		await D3D.saveProjectFile(zipData);
 		
 		console.log('Project saved!');
 	}

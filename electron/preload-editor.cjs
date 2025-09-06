@@ -39,10 +39,34 @@ contextBridge.exposeInMainWorld('D3D', {
 	updateEditorWindow: (options) => ipcRenderer.send('update-editor-window', options),
 	
 	readFile: async (filePath) => {
+		const ext = getExtension(filePath);
+		
+		if(ext != 'd3dproj')
+			throw new Error('Could not read file of this type');
+		
 		const b64 = await fs.readFile(filePath);
 		return Uint8Array.from(Buffer.from(b64, 'base64'));
 	},
-	writeFile: async (filePath, data) => {
+	saveProjectFile: async (uint8array) => {
+		const projectURI = await ipcRenderer.invoke('get-current-project-uri');
+		
+		if(!projectURI)
+			throw new Error('Unknown project URI');
+		
+		const ext = getExtension(projectURI);
+		
+		if(ext != 'd3dproj')
+			throw new Error(`Could not write project file of type ${ext}`);
+		
+		const buffer = Buffer.from(uint8array);
+		const dir = path.dirname(projectURI);
+		const { existsSync } = require('fs');
+		if (!existsSync(dir)) {
+			throw new Error(`Save failed: directory does not exist: ${dir}`);
+		}
+		await fs.writeFile(projectURI, buffer);
+	},
+	/*writeFile: async (filePath, data) => {
 		const dir = path.dirname(filePath);
 		const { existsSync } = require('fs');
 		if (!existsSync(dir)) {
@@ -50,7 +74,7 @@ contextBridge.exposeInMainWorld('D3D', {
 		}
 		
 		await fs.writeFile(filePath, data);
-	},
+	},*/
 	
 	theme: {
 		get: () => ipcRenderer.invoke('get-theme'),
@@ -64,6 +88,14 @@ contextBridge.exposeInMainWorld('D3D', {
 	updateWindow: () => null, // player only
 });
 
+function getExtension(path) {
+	const lastDot = path.lastIndexOf('.');
+	if (lastDot === -1) 
+		return '';
+	
+	return path.slice(lastDot + 1).toLowerCase();
+}
+
 addIPCListener('delete');
 addIPCListener('undo');
 addIPCListener('redo');
@@ -72,3 +104,5 @@ addIPCListener('add-object');
 addIPCListener('symbolise-object');
 addIPCListener('desymbolise-object');
 addIPCListener('focus-object');
+addIPCListener('set-tool');
+addIPCListener('set-transform-tool');

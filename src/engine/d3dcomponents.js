@@ -6,12 +6,14 @@ const D3DComponents = {
 			'mesh': {
 				label: 'Model',
 				type: 'file',
-				format: 'mat'
+				format: 'mat',
+				def: ''
 			},
 			'materials': { 
 				label: 'Materials', 
 				type: 'file[]',
-				format: 'mat'
+				format: 'mat',
+				def: []
 			}
 		}
 	},
@@ -21,19 +23,29 @@ const D3DComponents = {
 				label: 'Field of view',
 				type: 'slider',
 				min: 1,
-				max: 179
+				max: 179,
+				def: 75
 			},
 			'clipNear': { 
 				label: 'Minimum distance', 
 				type: 'number',
 				min: 0,
-				max: 10000000
+				max: 10000000,
+				def: 100
 			},
 			'clipFar': { 
 				label: 'Maximum distance', 
 				type: 'number',
 				min: 1,
-				max: 10000000
+				max: 10000000,
+				def: 100000
+			},
+			'gizmo3d': {
+				hidden: true,
+				mesh: 'Standard/Models/Camera.glb',
+				materials: [
+					'Standard/Materials/Gizmo3D.mat'
+				]
 			}
 		}
 	},
@@ -42,7 +54,8 @@ const D3DComponents = {
 		fields: {
 			'color': {
 				label: 'Color',
-				type: 'color'
+				type: 'color',
+				def: '#ffffff'
 			}
 		}
 	},
@@ -51,16 +64,19 @@ const D3DComponents = {
 		fields: {
 			'color': {
 				label: 'Color',
-				type: 'color'
+				type: 'color',
+				def: '#ffffff'
 			},
 			'intensity': { 
 				label: 'Intensity', 
 				type: 'number',
-				min: 0
+				min: 0,
+				def: 1
 			},
 			'castShadow': { 
 				label: 'Casts shadows', 
-				type: 'boolean'
+				type: 'boolean',
+				def: true
 			}
 		}
 	},
@@ -69,26 +85,31 @@ const D3DComponents = {
 		fields: {
 			'color': {
 				label: 'Color',
-				type: 'color'
+				type: 'color',
+				def: '#ffffff'
 			},
 			'intensity': { 
 				label: 'Intensity', 
 				type: 'number',
-				min: 0
+				min: 0,
+				def: 1
 			},
 			'power': { 
 				label: 'Power', 
 				type: 'number',
-				min: 0
+				min: 0,
+				def: 0
 			},
 			'distance': { 
 				label: 'Distance', 
 				type: 'number',
-				min: 0
+				min: 0,
+				def: 0 // no limit
 			},
 			'castShadow': { 
 				label: 'Casts shadows', 
-				type: 'boolean'
+				type: 'boolean',
+				def: true
 			}
 		}
 	},
@@ -97,28 +118,33 @@ const D3DComponents = {
 		fields: {
 			'color': {
 				label: 'Color',
-				type: 'color'
+				type: 'color',
+				def: '#ffffff'
 			},
 			'intensity': { 
 				label: 'Intensity', 
 				type: 'number',
-				min: 0
+				min: 0,
+				def: 1
 			},
 			'distance': { 
 				label: 'Distance', 
 				type: 'number',
-				min: 0
+				min: 0,
+				def: 0
 			},
 			'angle': { 
 				label: 'Distance', 
 				type: 'slider',
 				min: 0,
 				max: 360,
+				def: 0,
 				convert: (val) => THREE.MathUtils.degToRad(val)
 			},
 			'castShadow': { 
 				label: 'Casts shadows', 
-				type: 'boolean'
+				type: 'boolean',
+				def: true
 			}
 		}
 	},
@@ -128,7 +154,8 @@ const D3DComponents = {
 			'source': {
 				label: 'Source',
 				type: 'file',
-				format: 'html'
+				format: 'html',
+				def: ''
 			}
 		}
 	}

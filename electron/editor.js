@@ -202,6 +202,12 @@ function sendFocusObject() {
 function sendSaveProject() {
 	editorWindow.webContents.send('save-project');
 }
+function sendSetTool(type) {
+	editorWindow.webContents.send('set-tool', type);
+}
+function sendSetTransformTool(type) {
+	editorWindow.webContents.send('set-transform-tool', type);
+}
 
 // --- Menu ---
 const isMac = process.platform === 'darwin';
@@ -328,6 +334,39 @@ const menuTemplate = [
 				label: 'Desymbolise',
 				accelerator: 'CmdOrCtrl+Shift+D',
 				click: () => sendDesymboliseObject()
+			}
+		]
+	},
+	{
+		label: 'Tools',
+		submenu: [
+			{
+				label: 'Select',
+				accelerator: 'v',
+				click: () => {
+					sendSetTool('select')
+					sendSetTransformTool('translate')
+				}
+			},
+			{
+				label: 'Pan',
+				accelerator: 'p',
+				click: () => sendSetTool('pan')
+			},
+			{ type: 'separator' },
+			{
+				label: 'Translate',
+				click: () => sendSetTransformTool('translate')
+			},
+			{
+				label: 'Rotate',
+				accelerator: 'r',
+				click: () => sendSetTransformTool('rotate')
+			},
+			{
+				label: 'Scale',
+				accelerator: 's',
+				click: () => sendSetTransformTool('scale')
 			}
 		]
 	},

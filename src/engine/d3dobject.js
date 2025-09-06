@@ -2,6 +2,7 @@
 import axios from 'axios';
 import JSZip from 'jszip';
 import DamenScript from './damenscript.js';
+import D3DComponents from './d3dcomponents.js';
 import { v4 as uuidv4 } from 'uuid';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import {
@@ -524,7 +525,27 @@ export default class D3DObject {
 		DamenScript.run(script, sandbox);
 	}
 	async updateComponents() {
-		for (const component of this.components) {
+		const components = [...this.components];
+		
+		if(_editor && !this.editorOnly) {
+			// Add any gizmo related mesh components
+			components.forEach(component => {
+				const schema = D3DComponents[component.type];
+				const gizmo3d = schema.fields.gizmo3d;
+				
+				if(gizmo3d) {
+					components.push({
+						type: 'Mesh',
+						properties: {
+							'mesh': gizmo3d.mesh,
+							'materials': gizmo3d.materials
+						}
+					});
+				}
+			})
+		}
+		
+		for (const component of components) {
 			switch (component.type) {
 				case 'HTML': {
 					if(!component.properties.source)
@@ -638,37 +659,79 @@ export default class D3DObject {
 						const modelData = await _root.zip.file(modelPath)?.async('arraybuffer');
 						if (!modelData) {
 							console.warn(`Model file not found: ${modelPath}`);
-							break;
-						}
-						const loader = new GLTFLoader();
-						const gltf = await loader.parseAsync(modelData, '');
-						this.object3d.add(gltf.scene);
-						
-						if(this.modelScene)
-							this.object3d.remove(this.modelScene);
-						
-						this.modelScene = gltf.scene;
-					}
-					if (component.properties.materials && component.properties.materials.length > 0) {
-						const matPath = path.join('assets', component.properties.materials[0]);
-						const matStr = await this.zip.file(matPath)?.async('string');
-						
-						if (!matStr) {
-							console.warn(`Material file not found: ${matPath}`);
-							break;
-						}
-						const matParams = JSON.parse(matStr);
-						if (!THREE[matParams.type]) {
-							console.warn(`Unknown material type: ${matParams.type}`);
-							break;
-						}
-						const material = new THREE[matParams.type](matParams);
-						if (this.object3d.children.length > 0) {
-							this.object3d.children[0].material = material;
 						} else {
-							console.warn(`No mesh renderer found for material`);
-						break;
+							const loader = new GLTFLoader();
+							const gltf = await loader.parseAsync(modelData, '');
+					
+							// remove previous model root BEFORE adding the new one
+							if (this.modelScene && this.modelScene.parent) {
+								this.modelScene.parent.remove(this.modelScene);
+							}
+					
+							this.object3d.add(gltf.scene);
+							this.modelScene = gltf.scene;
 						}
+					}
+					if (component.properties.materials && component.properties.materials.length > 0 && this.modelScene) {
+						const matPaths = component.properties.materials.map(p => path.join('assets', p));
+						const matJsons = await Promise.all(matPaths.map(p => this.zip.file(p)?.async('string')));
+					
+						const materials = matJsons.map((matStr, i) => {
+							if (!matStr) {
+								console.warn(`Material file not found: ${matPaths[i]}`);
+								return null;
+							}
+							const params = JSON.parse(matStr);
+					
+							const Ctor = THREE[params.type];
+							if (!Ctor) {
+								console.warn(`Unknown material type: ${params.type}`);
+								return null;
+							}
+					
+							// make transparency actually work if opacity < 1
+							if (params.opacity !== undefined && params.opacity < 1 && params.transparent !== true) {
+								params.transparent = true;
+							}
+							const m = new Ctor(params);
+					
+							// helpful for gizmos / UI materials so they don't get greyed by post/ACES
+							if ('toneMapped' in m) m.toneMapped = false;
+					
+							m.needsUpdate = true;
+							return m;
+						});
+					
+						const root = this.modelScene; // always apply under the GLTF root
+					
+						root.traverse(n => {
+							if (!n.isMesh) return;
+					
+							const groups = n.geometry?.groups ?? [];
+					
+							// Multi-submesh (indexed by geometry.groups[*].materialIndex)
+							if (groups.length > 1) {
+								const maxIdx = groups.reduce((m, g) => Math.max(m, g.materialIndex ?? 0), 0);
+					
+								// Start from existing materials so we don't nuke ones you didn't supply
+								const current = Array.isArray(n.material) ? n.material : [n.material];
+								const arr = new Array(Math.max(current.length, maxIdx + 1));
+					
+								for (let i = 0; i < arr.length; i++) {
+									arr[i] = materials[i] ?? current[i] ?? current[0] ?? materials[0] ?? current[0] ?? null;
+								}
+					
+								n.material = arr;
+								arr.forEach(m => m && (m.needsUpdate = true));
+								return;
+							}
+					
+							// Single-submesh → use first provided material if present
+							if (materials[0]) {
+								n.material = materials[0];
+								n.material.needsUpdate = true;
+							}
+						});
 					}
 					break;
 				}

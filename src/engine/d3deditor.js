@@ -571,29 +571,21 @@ async function addD3DObjectEditor(type) {
 			newObject.name = 'directional light';
 			newObject.components.push({
 				type: 'DirectionalLight', 
-				properties: {
-					color: '0xffffff',
-					intensity: 2
-				}
+				properties: {}
 			});
 		break;
 		case 'pntlight':
 			newObject.name = 'point light';
 			newObject.components.push({
 				type: 'PointLight', 
-				properties: {
-					color: '0xffffff',
-					intensity: 2
-				}
+				properties: {}
 			});
 		break;
 		case 'html':
 			newObject.name = 'html overlay';
 			newObject.components.push({
 				type: 'HTML', 
-				properties: {
-					source: ''
-				}
+				properties: {}
 			});
 		break;
 		case 'cube':
@@ -617,6 +609,22 @@ async function addD3DObjectEditor(type) {
 		_editor.showError(`Unsupported add object '${type}'`);
 		return;
 	}
+	
+	newObject.components.forEach(component => {
+		const schema = D3DComponents[component.type];
+		
+		if(!schema) {
+			console.warn('Unknown schema for ', component.type);
+			return;
+		}
+		
+		for(let prop in schema.fields) {
+			if(component.properties[prop] !== undefined)
+				continue;
+			
+			component.properties[prop] = schema.fields[prop].def;
+		}
+	});
 	
 	const newd3dobj = await _editor.focus.createObject(newObject);
 	
@@ -805,3 +813,5 @@ D3D.setEventListener('add-object', (type) => addD3DObjectEditor(type));
 D3D.setEventListener('symbolise-object', (type) => symboliseSelectedObject(type));
 D3D.setEventListener('desymbolise-object', (type) => desymboliseSelectedObject(type));
 D3D.setEventListener('focus-object', (type) => _editor.focusOnSelectedObjects?.());
+D3D.setEventListener('set-tool', (type) => _editor.setTool(type));
+D3D.setEventListener('set-transform-tool', (type) => _editor.setTransformTool(type));
