@@ -5,6 +5,7 @@ import ComponentCell from './ComponentCell.jsx';
 import VectorInput from './VectorInput.jsx';
 import AssetExplorerDialog from './AssetExplorerDialog.jsx';
 import ObjectRow from './ObjectRow.jsx';
+import MaterialEditor from './MaterialEditor.jsx';
 
 import { 
 	MdDelete, 
@@ -33,6 +34,8 @@ import {
 	getExtension,
 	MIME_D3D_ROW
 } from '../../../engine/d3dutility.js';
+
+const { path } = D3D;
 
 const autoBlur = (e) => {
 	if (e.key === 'Enter') {
@@ -363,6 +366,12 @@ export default function Inspector() {
 	const drawComponentsEditor = () => {
 		const rows = [];
 		
+		async function writeAndRefresh(uri, json) {
+			_editor.writeFile({ path: uri, data: json });
+			await object.updateComponents();
+			update();
+		}
+		
 		object.components.forEach(component => {
 			if(!dummyObject.components)
 				return;
@@ -382,6 +391,10 @@ export default function Inspector() {
 				const current = dummyComponent.properties[fieldId];
 				
 				if(field.hidden)
+					continue;
+					
+				if(field.name == 'materials' && 
+					dummyComponent.properties['minimaterial']?.enabled)
 					continue;
 				
 				const addStep = (val) => {
@@ -570,44 +583,12 @@ export default function Inspector() {
 						);
 						break;
 					}
-					case 'file': {
-						const current = dummyComponent.properties[fieldId] ?? '';
-						const open = () => openAssetExplorer({
-							format: field.format,
-							selectedAsset: current,
-							onSelect: (assetName) => {
-								addStep(assetName);
-								
-								dummyComponent.properties[fieldId] = assetName;
-								component.properties[fieldId] = assetName;
-								object.updateComponents();
-								update();
-							}
-						});
-						fieldContent = (
-							<div className="file-field">
-								<input
-									className="tf"
-									type="text"
-									readOnly
-									value={current}
-									placeholder="No asset selected"
-									onClick={open}
-								/>
-								<button 
-									onClick={open}
-								>
-									<MdFolderOpen />
-								</button>
-							</div>
-						);
-						break;
-					}
+					case 'file':
 					case 'file[]': {
 						const current = Array.isArray(dummyComponent.properties[fieldId])
 							? dummyComponent.properties[fieldId]
-							: [];
-					
+							: [dummyComponent.properties[fieldId]];
+						
 						const browseAndAppend = () => openAssetExplorer({
 							format: field.format,
 							selectedAsset: '',
@@ -615,9 +596,58 @@ export default function Inspector() {
 								const updated = [...current, assetPath];
 								dummyComponent.properties[fieldId] = updated;
 								component.properties[fieldId] = updated;
+								object.updateComponents();
 								update();
 							}
 						});
+						
+						const drawExtra = () => {
+							if(field.label == 'Materials') {
+								const uris = component.properties['materials'];
+								return drawMaterials(uris);
+							}
+						}
+						const drawMaterials = (uris) => {
+							const mrows = [];
+							
+							uris.forEach(uri => {
+								const originURI = uri;
+								
+								uri = path.join('assets', uri);
+								if(uri.split('/')[1] == 'Standard')
+									return;
+								
+								mrows.push(
+									<ComponentCell 
+										title={originURI}
+										key={mrows.length} 
+									>
+										<MaterialEditor
+											uri={uri}
+											onSave={async (prev, next) => {
+												const before = JSON.stringify(prev);
+												const after  = JSON.stringify(next);
+												
+												await writeAndRefresh(uri, after);
+												
+												_editor.addStep({
+													name: `Edit material: ${uri}`,
+													undo: () => writeAndRefresh(uri, before),
+													redo: () => writeAndRefresh(uri, after),
+												});
+											}}
+											openAsset={openAssetExplorer}
+										/>
+									</ComponentCell>
+								)
+							});
+							
+							return (
+								<div className='mt'>
+									{mrows}
+								</div>
+							);
+						}
 					
 						fieldContent = (
 							<div className="file-array-field">
@@ -625,11 +655,18 @@ export default function Inspector() {
 									{current.map((filePath, idx) => {
 										const browse = () => {
 											openAssetExplorer({
-												format: 'material',
+												format: field.format,
 												selectedAsset: filePath,
 												onSelect: (assetPath) => {
-													const updated = [...current];
-													updated[idx] = assetPath;
+													let updated;
+													
+													if(field.type == 'file[]') {
+														updated = [...current];
+														updated[idx] = assetPath;
+													}else
+													if(field.type == 'file') {
+														updated = assetPath;
+													}
 													
 													addStep(updated);
 													
@@ -657,35 +694,40 @@ export default function Inspector() {
 												>
 													<MdFolderOpen />
 												</button>
-												<button
-													title="Remove"
-													onClick={() => {
-														const updated = current.filter((_, i) => i !== idx);
-														
-														addStep(updated);
-														
-														dummyComponent.properties[fieldId] = updated;
-														component.properties[fieldId] = updated;
-														object.updateComponents();
-														update();
-													}}
-												>
-													<MdDelete />
-												</button>
+												{field.type == 'file[]' && (
+													<button
+														title="Remove"
+														onClick={() => {
+															const updated = current.filter((_, i) => i !== idx);
+															
+															addStep(updated);
+															
+															dummyComponent.properties[fieldId] = updated;
+															component.properties[fieldId] = updated;
+															object.updateComponents();
+															update();
+														}}
+													>
+														<MdDelete />
+													</button>
+												)}
 											</div>
 										)
 									})}
 								</div>
 					
-								{/* add button */}
-								<div className="file-array-actions">
-									<button
-										title="Add"
-										onClick={browseAndAppend}
-									>
-										<MdAdd />
-									</button>
-								</div>
+								{field.type == 'file[]' && (
+									<div className="file-array-actions">
+										<button
+											title="Add"
+											onClick={browseAndAppend}
+										>
+											<MdAdd />
+										</button>
+									</div>
+								)}
+								
+								{drawExtra()}
 							</div>
 						);
 						break;
@@ -1628,8 +1670,8 @@ export default function Inspector() {
 	return (
 		<>
 			{_root && drawSceneInspector()}
-			{object && drawObjectInspector()}
 			{_root && drawAssetInspector()}
+			{object && drawObjectInspector()}
 			{_editor.project && _editor.focus == _root && drawProjectInspector()}
 			
 			<div style={{height: 45}} />

@@ -534,3 +534,12 @@ body.dark {
 	right: -10px;
 	bottom: -10px;
 }
+.material-editor {
+	.material-editor-material { display: grid; gap: 8px; }
+	.material-editor-row {height: 40px; display: grid; grid-template-columns: 120px 1fr; align-items: center; gap: 8px; }
+	.material-editor-label { opacity: 0.7; font-size: 12px; }
+	.material-editor-slider { display: flex; gap: 8px; align-items: center; }
+	.slider-value { min-width: 48px; text-align: right; opacity: 0.7; }
+	.file-field { display: flex; gap: 6px; align-items: center; }
+	.file-field .tf { flex: 1; }
+}

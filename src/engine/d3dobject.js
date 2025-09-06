@@ -679,9 +679,21 @@ export default class D3DObject {
 						const matJsons = await Promise.all(matPaths.map(p => this.zip.file(p)?.async('string')));
 					
 						const materials = matJsons.map((matStr, i) => {
-							if (!matStr) {
+							if (matStr === undefined) {
 								console.warn(`Material file not found: ${matPaths[i]}`);
 								return null;
+							}
+							if(!matStr) {
+								matStr = JSON.stringify({
+									"name": "Fallback Material",
+									"type": "MeshStandardMaterial",
+									"color": 0xFF00FF,
+									"metalness": 0.0,
+									"roughness": 0.5,
+									"emissive": 0,
+									"wireframe": false
+								})
+								console.log('Using fallback material as ', matPaths[i], ' not valid');
 							}
 							const params = JSON.parse(matStr);
 					

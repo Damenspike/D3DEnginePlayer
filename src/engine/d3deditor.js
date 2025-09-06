@@ -656,11 +656,19 @@ function writeFileByName({ name, dir, data }) {
 }
 function writeFile({ path, data }) {
 	const zip = _root.zip;
-	zip.file(path, data || new Uint8Array());
+	zip.file(path, data ?? new Uint8Array());
 
 	_editor.onAssetsUpdated();
 
 	return path;
+}
+async function readFile(path) {
+	const zip = _root.zip;
+	const file = zip.file(path);
+	if (!file) 
+		return null;
+
+	return await file.async("string");
 }
 function symboliseSelectedObject() {
 	if(_editor.selectedObjects.length < 1)
@@ -805,6 +813,7 @@ _editor.onAssetDroppedIntoGameView = onAssetDroppedIntoGameView;
 _editor.onAssetDeleted = onAssetDeleted;
 _editor.addNewFile = addNewFile;
 _editor.writeFile = writeFile;
+_editor.readFile = readFile;
 
 D3D.setEventListener('delete', () => _editor.onDeleteKey());
 D3D.setEventListener('undo', () => _editor.undo());

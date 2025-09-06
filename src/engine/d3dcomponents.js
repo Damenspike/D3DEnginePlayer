@@ -6,13 +6,13 @@ const D3DComponents = {
 			'mesh': {
 				label: 'Model',
 				type: 'file',
-				format: 'mat',
+				format: 'model',
 				def: ''
 			},
 			'materials': { 
 				label: 'Materials', 
 				type: 'file[]',
-				format: 'mat',
+				format: 'material',
 				def: []
 			}
 		}

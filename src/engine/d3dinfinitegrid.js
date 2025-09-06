@@ -13,6 +13,7 @@ export default class D3DInfiniteGrid extends THREE.Object3D {
 		grid.position.y = 0;
 		grid.material.transparent = true;
 		grid.material.depthWrite = false; // so objects appear over the grid
+		grid.renderOrder = -1000; 
 		
 		this.add(grid);
 
