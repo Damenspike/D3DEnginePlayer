@@ -18,7 +18,7 @@ import {
 	MdHtml,
 	MdFolder, MdInsertDriveFile, MdExpandMore, MdChevronRight,
 	MdUpload, MdCreateNewFolder, MdRefresh, MdDeleteForever,
-	MdOutlineInterests
+	MdOutlineInterests, MdTexture
 } from "react-icons/md";
 
 import {
@@ -104,7 +104,7 @@ export default function Inspector() {
 	}, [_editor.selectedObjects, selectedAssetPaths]);
 	
 	useEffect(() => {
-		_editor.onAssetsUpdated = () => {
+		_editor.onAssetsUpdatedInspector = () => {
 			if(_editor.__buildTree)
 				setAssetTree(_editor.__buildTree());
 		}
@@ -366,9 +366,8 @@ export default function Inspector() {
 	const drawComponentsEditor = () => {
 		const rows = [];
 		
-		async function writeAndRefresh(uri, json) {
+		function writeAsset(uri, json) {
 			_editor.writeFile({ path: uri, data: json });
-			await object.updateComponents();
 			update();
 		}
 		
@@ -593,7 +592,8 @@ export default function Inspector() {
 							format: field.format,
 							selectedAsset: '',
 							onSelect: (assetPath) => {
-								const updated = [...current, assetPath];
+								const uuid = _root.resolveAssetId(assetPath);
+								const updated = [...current, uuid];
 								dummyComponent.properties[fieldId] = updated;
 								component.properties[fieldId] = updated;
 								object.updateComponents();
@@ -603,8 +603,10 @@ export default function Inspector() {
 						
 						const drawExtra = () => {
 							if(field.label == 'Materials') {
-								const uris = component.properties['materials'];
-								return drawMaterials(uris);
+								const ids = component.properties['materials'];
+								return drawMaterials(
+									ids.map(id => _root.resolveAssetPath(id))
+								);
 							}
 						}
 						const drawMaterials = (uris) => {
@@ -628,13 +630,16 @@ export default function Inspector() {
 												const before = JSON.stringify(prev);
 												const after  = JSON.stringify(next);
 												
-												await writeAndRefresh(uri, after);
+												writeAsset(uri, after);
 												
 												_editor.addStep({
 													name: `Edit material: ${uri}`,
 													undo: () => writeAndRefresh(uri, before),
 													redo: () => writeAndRefresh(uri, after),
 												});
+												
+												// apply to all other objects using this material
+												await _root.refreshObjectsWithResource(uri);
 											}}
 											openAsset={openAssetExplorer}
 										/>
@@ -652,20 +657,23 @@ export default function Inspector() {
 						fieldContent = (
 							<div className="file-array-field">
 								<div className="file-array-list">
-									{current.map((filePath, idx) => {
+									{current.map((uuid, idx) => {
+										const filePath = _root.resolveAssetPath(uuid);
+										
 										const browse = () => {
 											openAssetExplorer({
 												format: field.format,
 												selectedAsset: filePath,
 												onSelect: (assetPath) => {
+													const uuid = _root.resolveAssetId(assetPath);
 													let updated;
 													
 													if(field.type == 'file[]') {
 														updated = [...current];
-														updated[idx] = assetPath;
+														updated[idx] = uuid;
 													}else
 													if(field.type == 'file') {
-														updated = assetPath;
+														updated = uuid;
 													}
 													
 													addStep(updated);
@@ -1201,6 +1209,11 @@ export default function Inspector() {
 		if(!zip)
 			return <div className="no-label">No project file mounted</div>;
 	
+		const updateIndex = (oldRel, newRel) => {
+			const a = _root.findAssetByPath(oldRel);
+			if (a) a.rel = newRel;
+		};
+		
 		// --- helpers (tree) ---
 		const buildTree = () => {
 			const root = { name: "assets", path: "assets", type: "dir", children: new Map() };
@@ -1278,6 +1291,7 @@ export default function Inspector() {
 			setAssetExpanded(prev => new Set(prev).add(currentFolder));
 			setSelectedAssetPaths(new Set([`${currentFolder}/${files[0].name}`]));
 			setLastSelectedPath(`${currentFolder}/${files[0].name}`);
+			_editor.onAssetsUpdated();
 		};
 	
 		// new folder in currentFolder
@@ -1293,6 +1307,7 @@ export default function Inspector() {
 			setLastSelectedPath(dirPath.replace(/\/$/, ""));
 			setNewFolderOpen(false);
 			setNewFolderName("");
+			_editor.onAssetsUpdated();
 		};
 	
 		// new file in currentFolder (zero-byte)
@@ -1303,6 +1318,7 @@ export default function Inspector() {
 			setAssetExpanded(prev => new Set(prev).add(currentFolder));
 			setSelectedAssetPaths(new Set([path]));
 			setLastSelectedPath(path);
+			_editor.onAssetsUpdated();
 		};
 	
 		// DnD helpers
@@ -1390,6 +1406,7 @@ export default function Inspector() {
 				if(file) {
 					zip.remove(p);
 					_editor.onAssetDeleted(p);
+					_editor.onAssetsUpdated();
 					continue;
 				}
 				const dir = p.endsWith("/") ? p : p + "/";
@@ -1406,6 +1423,7 @@ export default function Inspector() {
 			setSelectedAssetPaths(new Set());
 			setLastSelectedPath(null);
 			setAssetTree(buildTree());
+			_editor.onAssetsUpdated();
 		};
 	
 		// render a node
@@ -1422,6 +1440,10 @@ export default function Inspector() {
 							return <MdOutlineInterests />;
 						case 'glb':
 							return <MdViewInAr />;
+						case 'mat':
+							return <MdTexture />;
+						case 'html':
+							return <MdHtml />;
 						default: 
 							return <MdInsertDriveFile />;
 					}
@@ -1442,6 +1464,7 @@ export default function Inspector() {
 								const newPath = await renameZipFile(zip, node.path, newName);
 								setAssetTree(buildTree());
 								setSingleSelection(newPath);
+								_editor.onAssetsUpdated();
 							} catch(err) {
 								console.warn("Rename failed:", err);
 							}
@@ -1501,10 +1524,11 @@ export default function Inspector() {
 								if(payload.kind === "folder" && (destDir === src || destDir.startsWith(src)))
 									return;
 	
-								const movedTo = await moveZipFile(zip, payload.path, node.path);
+								const movedTo = await moveZipFile(zip, payload.path, node.path, { updateIndex });
 								setAssetTree(buildTree());
-								setSingleSelection((movedTo || "").replace(/\/$/, ""));
+								//setSingleSelection((movedTo || "").replace(/\/$/, ""));
 								setAssetExpanded(prev => new Set(prev).add(node.path));
+								_editor.onAssetsUpdated();
 							} catch(err) {
 								console.error("Move failed", err);
 							}
@@ -1514,6 +1538,7 @@ export default function Inspector() {
 								const newPath = await renameZipDirectory(zip, node.path, newName);
 								setAssetTree(buildTree());
 								setSingleSelection(newPath.replace(/\/$/, ""));
+								_editor.onAssetsUpdated();
 							} catch(err) {
 								console.warn("Rename failed:", err);
 							}
@@ -1567,19 +1592,16 @@ export default function Inspector() {
 					if(!payload?.path)
 						return;
 					// Drop to root if list catches it
-					await moveZipFile(zip, payload.path, "assets");
+					await moveZipFile(zip, payload.path, "assets", { updateIndex });
 					setAssetTree(buildTree());
 					setSelectedAssetPaths(new Set(["assets"]));
 					setLastSelectedPath("assets");
 					setAssetExpanded(prev => new Set(prev).add("assets"));
+					_editor.onAssetsUpdated();
 				}}
 			>
 				{assetsInspectorExpanded && (
 					<div className="tools-section assets-insp-tools">
-						<button onClick={addNewFile} title="Create file">
-							<MdAdd /> New File
-						</button>
-	
 						<button
 							onClick={() => assetFileInputRef.current?.click()}
 							title={`Import into ${currentFolder}`}

@@ -269,6 +269,13 @@ export default class D3DEditorState {
 			data: scenesData
 		});
 		
+		// Save asset index
+		const assetIndexData = JSON.stringify(_root.assetIndex);
+		_editor.writeFile({
+			path: 'asset-index.json',
+			data: assetIndexData
+		});
+		
 		// Save symbols
 		Object.values(_root.__symbols).forEach(symbol => {
 			_editor.writeFile({

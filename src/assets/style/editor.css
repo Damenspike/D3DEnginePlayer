@@ -258,6 +258,14 @@ body.dark {
 		padding-top: 5px;
 	}
 }
+.material-editor-cell {
+	margin: 0px !important;
+	margin-bottom: 5px !important;
+	
+	.insp-body {
+		padding-top: 5px;
+	}
+}
 .vector-input {
 	display: flex;
 	align-items: center;

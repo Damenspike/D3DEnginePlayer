@@ -49,7 +49,7 @@ function showError(args) {
 	D3D.showError({title, message, closeEditorWhenDone});
 }
 async function showConfirm({title = '', message = '', onDeny = null, onConfirm}) {
-	const confirm = await ipcRenderer.invoke('show-confirm', {title, message});
+	const confirm = await D3D.showConfirm({title, message});
 	
 	if(confirm)
 		onConfirm();
@@ -595,9 +595,13 @@ async function addD3DObjectEditor(type) {
 			newObject.components.push({
 				type: 'Mesh', 
 				properties: {
-					mesh: 'Standard/Models/Cube.glb',
+					mesh: _root.resolveAssetId(
+						'Standard/Models/Cube.glb'
+					),
 					materials: [
-						'Standard/Materials/Default.mat'
+						_root.resolveAssetId(
+							'Standard/Materials/Default.mat'
+						)
 					]
 				}
 			});
@@ -631,6 +635,22 @@ async function addD3DObjectEditor(type) {
 	const newd3dobj = await _editor.focus.createObject(newObject);
 	
 	_editor.setSelection([newd3dobj]);
+}
+function newAsset(extension) {
+	const ext = !!extension ? `.${extension}` : '';
+	let name = 'File';
+	switch(extension) {
+		case 'mat':
+			name = 'Material';
+		break;
+		case 'html':
+			name = 'HTML';
+		break;
+	}
+	
+	addNewFile({
+		name: `${name}${ext}`
+	})
 }
 function addNewFile({name, dir, data}) {
 	const zip = _root.zip;
@@ -755,6 +775,10 @@ function onEditorFocusChanged() {
 	
 	_editor.grayPass.enabled = inFocusMode;
 }
+function onAssetsUpdated() {
+	_editor.onAssetsUpdatedInspector?.();
+	_root.updateAssetIndex();
+}
 async function onAssetDroppedIntoGameView(path, screenPos) {
 	const { sx, sy } = screenPos;
 	const ext = getExtension(path);
@@ -811,9 +835,11 @@ function onAssetDeleted(path) {
 _editor.onEditorFocusChanged = onEditorFocusChanged;
 _editor.onAssetDroppedIntoGameView = onAssetDroppedIntoGameView;
 _editor.onAssetDeleted = onAssetDeleted;
+_editor.onAssetsUpdated = onAssetsUpdated;
 _editor.addNewFile = addNewFile;
 _editor.writeFile = writeFile;
 _editor.readFile = readFile;
+_editor.newAsset = newAsset;
 
 D3D.setEventListener('delete', () => _editor.onDeleteKey());
 D3D.setEventListener('undo', () => _editor.undo());
@@ -826,3 +852,4 @@ D3D.setEventListener('desymbolise-object', (type) => desymboliseSelectedObject(t
 D3D.setEventListener('focus-object', (type) => _editor.focusOnSelectedObjects?.());
 D3D.setEventListener('set-tool', (type) => _editor.setTool(type));
 D3D.setEventListener('set-transform-tool', (type) => _editor.setTransformTool(type));
+D3D.setEventListener('new-asset', (extension) => _editor.newAsset(extension));

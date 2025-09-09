@@ -208,6 +208,9 @@ function sendSetTool(type) {
 function sendSetTransformTool(type) {
 	editorWindow.webContents.send('set-transform-tool', type);
 }
+function sendNewFile(extension) {
+	editorWindow.webContents.send('new-asset', extension);
+}
 
 // --- Menu ---
 const isMac = process.platform === 'darwin';
@@ -270,7 +273,7 @@ const menuTemplate = [
 		]
 	},
 	{
-		label: 'Object',
+		label: 'Objects',
 		submenu: [
 			{
 				label: 'New Object',
@@ -335,6 +338,33 @@ const menuTemplate = [
 				accelerator: 'CmdOrCtrl+Shift+D',
 				click: () => sendDesymboliseObject()
 			}
+		]
+	},
+	{
+		label: 'Assets',
+		submenu: [
+			{
+				label: 'New Asset',
+				submenu: [
+					{
+						label: 'Empty File',
+						click: () => sendNewFile()
+					},
+					{ type: 'separator' },
+					{
+						label: 'Material',
+						click: () => sendNewFile('mat')
+					},
+					{
+						label: 'HTML File',
+						click: () => sendNewFile('html')
+					}
+				]
+			},
+			{
+				label: 'Import Asset',
+				click: () => null
+			},
 		]
 	},
 	{

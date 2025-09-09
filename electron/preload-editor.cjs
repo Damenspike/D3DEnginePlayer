@@ -28,6 +28,12 @@ contextBridge.exposeInMainWorld('D3D', {
 			closeEditorWhenDone: !!closeEditorWhenDone
 		});
 	},
+	showConfirm: ({title, message}) => {
+		return ipcRenderer.invoke('show-confirm', {
+			title: String(title),
+			message: String(message)
+		});
+	},
 	saveProject: async (targetPath, buffer) => {
 		const b64 = Buffer.from(buffer).toString('base64');
 		return ipcRenderer.invoke('project:save', { targetPath, bufferBase64: b64 });
@@ -106,3 +112,4 @@ addIPCListener('desymbolise-object');
 addIPCListener('focus-object');
 addIPCListener('set-tool');
 addIPCListener('set-transform-tool');
+addIPCListener('new-asset');

@@ -3,9 +3,18 @@ export const MIME_D3D_ROW = "application/x-d3d-objectrow";
 export function arraysEqual(a, b) {
 	return a.length === b.length && a.every((value, index) => value === b[index]);
 }
-export async function moveZipFile(zip, oldPath, newDir) {
-	if(!newDir.endsWith('/'))
-		newDir += '/';
+export async function moveZipFile(zip, oldPath, newDir, opts = {}) {
+	const updateIndex = opts.updateIndex || null;
+
+	function ensureDirSlash(p) {
+		return p.endsWith('/') ? p : p + '/';
+	}
+	function parentDir(p) {
+		const i = p.lastIndexOf('/');
+		return i >= 0 ? p.slice(0, i + 1) : 'assets/';
+	}
+
+	if (!newDir.endsWith('/')) newDir += '/';
 
 	const oldFile = zip.file(oldPath);
 	const isFile = !!oldFile;
@@ -13,59 +22,76 @@ export async function moveZipFile(zip, oldPath, newDir) {
 		p.startsWith(oldPath.endsWith('/') ? oldPath : oldPath + '/')
 	);
 
-	if(!isFile && !isDir)
+	if (!isFile && !isDir)
 		throw new Error(`Path not found: ${oldPath}`);
 
-	const baseName = oldPath.split('/').pop()?.replace(/\/$/, '') || '';
+	const baseName = (oldPath.split('/').pop() || '').replace(/\/$/, '');
 	const targetBase = newDir + baseName;
 
 	// prevent same-folder move
-	const lastSlash = oldPath.lastIndexOf('/');
-	const oldParent = lastSlash >= 0 ? oldPath.slice(0, lastSlash + 1) : 'assets/';
-	if(newDir === oldParent)
+	const oldParent = parentDir(oldPath);
+	if (newDir === oldParent)
 		return oldPath;
 
-	if(isFile) {
-		if(targetBase === oldPath)
+	// Collect all rel changes to update the asset index after the move
+	const renames = [];
+
+	if (isFile) {
+		if (targetBase === oldPath)
 			return oldPath;
 
 		const buf = await oldFile.async('arraybuffer');
 		zip.file(targetBase, buf);
 		zip.remove(oldPath);
+
+		renames.push([oldPath, targetBase]);
+
+		// apply index updates at the end
+		if (updateIndex) {
+			for (const [from, to] of renames) updateIndex(from, to);
+		}
 		return targetBase;
 	}
 
-	// directory
-	const oldDirPath = oldPath.endsWith('/') ? oldPath : oldPath + '/';
-	let newDirPath = targetBase.endsWith('/') ? targetBase : targetBase + '/';
+	// Directory move
+	const oldDirPath = ensureDirSlash(oldPath);
+	let newDirPath = ensureDirSlash(targetBase);
 
-	if(newDirPath.startsWith(oldDirPath))
+	// prevent moving folder into itself/descendant
+	if (newDirPath.startsWith(oldDirPath))
 		throw new Error('Cannot move a folder into itself or its descendant.');
 
-	if(newDirPath === oldDirPath)
+	if (newDirPath === oldDirPath)
 		return oldDirPath;
 
 	const toRemove = [];
 	const copyJobs = [];
 
 	zip.forEach((rel, file) => {
-		if(!rel.startsWith(oldDirPath))
-			return;
+		if (!rel.startsWith(oldDirPath)) return;
 
 		const suffix = rel.slice(oldDirPath.length);
 		const target = newDirPath + suffix;
 
-		if(file.dir) {
+		if (file.dir) {
 			zip.folder(target);
 		} else {
 			copyJobs.push(file.async('arraybuffer').then(buf => zip.file(target, buf)));
 		}
+
+		// Record every file/dir path change so the asset index can be updated
+		renames.push([rel, target]);
 		toRemove.push(rel);
 	});
 
 	await Promise.all(copyJobs);
 	toRemove.forEach(p => zip.remove(p));
 	zip.remove(oldDirPath);
+
+	// Index updates
+	if (updateIndex) {
+		for (const [from, to] of renames) updateIndex(from, to);
+	}
 
 	return newDirPath;
 }

@@ -317,7 +317,6 @@ export default class D3DObject {
 		const child = new D3DObject(objData.name, this);
 		
 		child.objData = objData;
-		child.zip = this.zip;
 		child.position = objData.position;
 		child.rotation = objData.rotation;
 		child.scale = objData.scale;
@@ -426,6 +425,15 @@ export default class D3DObject {
 		}
 		this.manifest = JSON.parse(manifestStr);
 		console.log('Manifest loaded:', this.manifest);
+		
+		// Parse asset-index.json for asset metadata
+		const assetIndexStr = await zip.file('asset-index.json')?.async('string');
+		if (!assetIndexStr) {
+			throw new Error('asset-index.json not found in .d3d file');
+		}
+		this.assetIndex = JSON.parse(assetIndexStr);
+		console.log('Asset index loaded:', this.assetIndex);
+		this.updateAssetIndex();
 	
 		// Configure Electron window based on manifest only for root
 		if (this === _root) {
@@ -475,6 +483,8 @@ export default class D3DObject {
 	}
 	
 	async executeScripts() {
+		const zip = this.root.zip;
+		
 		let script;
 		let scriptName = path.join('scripts', `object_${this.name}_${this.uuid}.js`);
 		
@@ -486,7 +496,7 @@ export default class D3DObject {
 			script = await res.text();
 			scriptName = this.engineScript;
 		}else{
-			script = await this.zip.file(scriptName)?.async('string');
+			script = await zip.file(scriptName)?.async('string');
 		}
 		
 		try {
@@ -527,6 +537,7 @@ export default class D3DObject {
 		DamenScript.run(script, sandbox);
 	}
 	async updateComponents() {
+		const zip = this.root.zip;
 		const components = [...this.components];
 		
 		if(_editor && !this.no3DGizmos) {
@@ -554,8 +565,8 @@ export default class D3DObject {
 						break;
 					
 					const elementId = `plate-html-${this.name}`; // no # in id
-					const htmlSource = path.join('assets', component.properties.source);
-					const htmlContent = await this.zip.file(htmlSource)?.async('string') ?? '';
+					const htmlSource = this.resolvePath(component.properties.source);
+					const htmlContent = await zip.file(htmlSource)?.async('string') ?? '';
 					
 					// Remove old container if exists
 					let htmlContainer = document.getElementById(elementId);
@@ -657,8 +668,8 @@ export default class D3DObject {
 				}
 				case 'Mesh': {
 					if (component.properties.mesh) {
-						const modelPath = path.join('assets', component.properties.mesh);
-						const modelData = await _root.zip.file(modelPath)?.async('arraybuffer');
+						const modelPath = this.resolvePath(component.properties.mesh);
+						const modelData = await zip.file(modelPath)?.async('arraybuffer');
 						if (!modelData) {
 							console.warn(`Model file not found: ${modelPath}`);
 						} else {
@@ -675,8 +686,8 @@ export default class D3DObject {
 						}
 					}
 					if (component.properties.materials && component.properties.materials.length > 0 && this.modelScene) {
-						const matPaths = component.properties.materials.map(p => path.join('assets', p));
-						const matJsons = await Promise.all(matPaths.map(p => this.zip.file(p)?.async('string')));
+						const matPaths = component.properties.materials.map(p => this.resolvePath(p));
+						const matJsons = await Promise.all(matPaths.map(p => zip.file(p)?.async('string')));
 					
 						const materials = matJsons.map((matStr, i) => {
 							if (matStr === undefined) {
@@ -755,8 +766,30 @@ export default class D3DObject {
 		}
 	}
 	
+	updateAssetIndex() {
+		const zip = this.root.zip;
+		
+		if(!this.assetIndex)
+			return;
+		
+		const newAssetIndex = [];
+		
+		zip.forEach((rel, file) => {
+			if(rel.split('/')[0] != 'assets' || rel == 'assets/')
+				return;
+			
+			const a = this.assetIndex.find(a => a.rel == rel);
+			
+			newAssetIndex.push({
+				rel: rel,
+				uuid: a?.uuid ?? uuidv4()
+			})
+		});
+		
+		this.assetIndex = newAssetIndex;
+	}
 	async updateSymbolStore() {
-		const zip = this.zip;
+		const zip = this.root.zip;
 		const promises = [];
 	
 		zip.forEach((rel, file) => {
@@ -825,6 +858,44 @@ export default class D3DObject {
 			if(d3dobject != this && d3dobject.symbol == symbol)
 				d3dobject.__dirtySymbol = true;
 		}
+	}
+	
+	findAssetById(uuid) {
+		const assetIndex = this.root.assetIndex;
+		
+		return assetIndex.find(a => a.uuid == uuid);
+	}
+	findAssetByPath(path) {
+		const assetIndex = this.root.assetIndex;
+		
+		return assetIndex.find(a => a.rel == path);
+	}
+	resolvePath(uuid) {
+		const a = this.findAssetById(uuid);
+		
+		if(!a)
+			console.warn(`Can't resolve asset path for UUID ${uuid}`);
+		
+		return a?.rel || '';
+	}
+	resolveAssetPath(uuid) {
+		const path = this.resolvePath(uuid);
+		
+		if(!path.startsWith('assets/'))
+			return path;
+		else
+			return path.substr(7, path.length);
+	}
+	resolveAssetId(path) {
+		if(!path.startsWith('assets/'))
+			path = 'assets/' + path;
+		
+		const a = this.findAssetByPath(path);
+		
+		if(!a)
+			console.warn(`Can't resolve asset id for path ${path}`);
+		
+		return a?.uuid || '';
 	}
 	
 	async syncToSymbol() {
@@ -973,6 +1044,28 @@ export default class D3DObject {
 		this.object3d.updateMatrixWorld(true);
 	}
 	
+	async refreshObjectsWithResource(uri) {
+		const uuid = this.resolveAssetId(uri);
+		
+		const checkObject = async (d3dobject) => {
+			const serializedComponents = JSON.stringify(
+				d3dobject.getSerializedComponents()
+			);
+			
+			if (serializedComponents.includes(`"${uuid}"`)) {
+				// refresh this child
+				await d3dobject.updateComponents();
+			}
+		}
+		
+		await checkObject(this);
+		
+		for (const child of this.children) {
+			await checkObject(child);
+			await child.refreshObjectsWithResource(uri);
+		}
+	}
+	
 	serialize() {
 		return JSON.stringify(this.getSerializableObject());
 	}
@@ -999,10 +1092,7 @@ export default class D3DObject {
 			},
 			opacity: this.opacity,
 			visible: this.visible,
-			components: this.components.map(component => ({
-				type: component.type,
-				properties: component.properties
-			})),
+			components: this.getSerializedComponents(),
 			children: this.children.map(child => child.getSerializableObject())
 		}
 		
@@ -1010,6 +1100,12 @@ export default class D3DObject {
 			obj.symbolId = this.symbolId;
 		
 		return obj;
+	}
+	getSerializedComponents() {
+		return this.components.map(component => ({
+			type: component.type,
+			properties: component.properties
+		}))
 	}
 	
 	find(name) {
