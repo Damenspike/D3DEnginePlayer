@@ -17,6 +17,8 @@ let newProjectWindow;
 let editorWindow;
 
 let lastOpenedProjectUri;
+let projectOpen = false;
+let editorBusy = false;
 
 function createStartWindow() {
 	startWindow = new BrowserWindow({
@@ -109,7 +111,7 @@ async function createEditorWindow() {
 			buttons: ['Save', "Don’t Save", 'Cancel'],
 			defaultId: 0,
 			cancelId: 2,
-			message: 'Save changes before closing?',
+			message: 'Do you want to save your changes before closing this project?',
 		});
 	
 		if(response === 0) {
@@ -171,7 +173,9 @@ async function openBrowse() {
 async function openProject(uri) {
 	console.log('Open project', uri);
 	lastOpenedProjectUri = uri;
+	projectOpen = true;
 	
+	updateEditorMenusEnabled();
 	await createEditorWindow();
 }
 function startNewProject() {
@@ -219,26 +223,29 @@ const menuTemplate = [
 	...(isMac ? [{
 		label: app.productName,
 		submenu: [
-			{ role: 'about' },
+			{ role: 'about', id: 'about' },
 			{ type: 'separator' },
-			{ role: 'quit' }
+			{ role: 'quit', id: 'quit' }
 		]
 	}] : []),
 	{
 		label: 'File',
 		submenu: [
 			{
+				id: 'newProject',
 				label: 'New Project',
 				accelerator: 'CmdOrCtrl+N',
 				click: () => startNewProject()
 			},
 			{
+				id: 'openProject',
 				label: 'Open Project',
 				accelerator: 'CmdOrCtrl+O',
 				click: () => openBrowse()
 			},
 			{ type: 'separator' },
 			{
+				id: 'save',
 				label: 'Save',
 				accelerator: 'CmdOrCtrl+S',
 				click: () => sendSaveProject()
@@ -248,92 +255,69 @@ const menuTemplate = [
 	{
 		label: 'Edit',
 		submenu: [
-			{ 
+			{
+				id: 'undo',
 				label: 'Undo',
 				accelerator: 'CmdOrCtrl+Z',
 				click: () => sendUndo()
 			},
-			{ 
+			{
+				id: 'redo',
 				label: 'Redo',
 				accelerator: 'CmdOrCtrl+Shift+Z',
 				click: () => sendRedo()
 			},
 			{ type: 'separator' },
-			{ role: 'cut' },
-			{ role: 'copy' },
-			{ role: 'paste' },
-			{ 
+			{ role: 'cut', id: 'cut' },
+			{ role: 'copy', id: 'copy' },
+			{ role: 'paste', id: 'paste' },
+			{
+				id: 'delete',
 				label: 'Delete',
-				accelerator: process.platform === 'darwin' 
-					? 'Backspace' : 'Delete',
+				accelerator: process.platform === 'darwin' ? 'Backspace' : 'Delete',
 				click: () => sendDelete()
 			},
 			{ type: 'separator' },
-			{ role: 'selectall' }
+			{ role: 'selectall', id: 'selectAll' }
 		]
 	},
 	{
 		label: 'Objects',
+		id: 'objects',
 		submenu: [
 			{
+				id: 'newObject',
 				label: 'New Object',
 				submenu: [
-					{
-						label: 'Empty Object',
-						click: () => sendAddObject('empty')
-					},
+					{ id: 'newObjectEmpty', label: 'Empty Object', click: () => sendAddObject('empty') },
 					{ type: 'separator' },
-					{
-						label: 'Cube',
-						click: () => sendAddObject('cube')
-					},
-					{
-						label: 'Capsule',
-						click: () => sendAddObject('capsule')
-					},
-					{
-						label: 'Sphere',
-						click: () => sendAddObject('sphere')
-					},
-					{
-						label: 'Pyramid',
-						click: () => sendAddObject('pyramid')
-					},
-					{
-						label: 'Plane',
-						click: () => sendAddObject('plane')
-					},
+					{ id: 'newObjectCube', label: 'Cube', click: () => sendAddObject('cube') },
+					{ id: 'newObjectCapsule', label: 'Capsule', click: () => sendAddObject('capsule') },
+					{ id: 'newObjectSphere', label: 'Sphere', click: () => sendAddObject('sphere') },
+					{ id: 'newObjectPyramid', label: 'Pyramid', click: () => sendAddObject('pyramid') },
+					{ id: 'newObjectPlane', label: 'Plane', click: () => sendAddObject('plane') },
 					{ type: 'separator' },
-					{
-						label: 'Camera',
-						click: () => sendAddObject('camera')
-					},
-					{
-						label: 'Directional Light',
-						click: () => sendAddObject('dirlight')
-					},
-					{
-						label: 'Point Light',
-						click: () => sendAddObject('pntlight')
-					},
-					{
-						label: 'HTML Overlay',
-						click: () => sendAddObject('html')
-					}
+					{ id: 'newObjectCamera', label: 'Camera', click: () => sendAddObject('camera') },
+					{ id: 'newObjectDirLight', label: 'Directional Light', click: () => sendAddObject('dirlight') },
+					{ id: 'newObjectPointLight', label: 'Point Light', click: () => sendAddObject('pntlight') },
+					{ id: 'newObjectHtmlOverlay', label: 'HTML Overlay', click: () => sendAddObject('html') }
 				]
 			},
 			{ type: 'separator' },
 			{
+				id: 'focusObject',
 				label: 'Focus',
 				accelerator: 'F',
 				click: () => sendFocusObject()
 			},
 			{
+				id: 'symbolise',
 				label: 'Symbolise',
 				accelerator: 'CmdOrCtrl+Shift+S',
 				click: () => sendSymboliseObject()
 			},
 			{
+				id: 'desymbolise',
 				label: 'Desymbolise',
 				accelerator: 'CmdOrCtrl+Shift+D',
 				click: () => sendDesymboliseObject()
@@ -342,68 +326,55 @@ const menuTemplate = [
 	},
 	{
 		label: 'Assets',
+		id: 'assets',
 		submenu: [
 			{
+				id: 'newAsset',
 				label: 'New Asset',
 				submenu: [
-					{
-						label: 'Empty File',
-						click: () => sendNewFile()
-					},
+					{ id: 'newAssetEmpty', label: 'Empty File', click: () => sendNewFile() },
 					{ type: 'separator' },
-					{
-						label: 'Material',
-						click: () => sendNewFile('mat')
-					},
-					{
-						label: 'HTML File',
-						click: () => sendNewFile('html')
-					}
+					{ id: 'newAssetMat', label: 'Material', click: () => sendNewFile('mat') },
+					{ id: 'newAssetHtml', label: 'HTML File', click: () => sendNewFile('html') }
 				]
 			},
 			{
+				id: 'importAsset',
 				label: 'Import Asset',
 				click: () => null
-			},
+			}
 		]
 	},
 	{
 		label: 'Tools',
+		id: 'tools',
 		submenu: [
 			{
+				id: 'toolSelect',
 				label: 'Select',
 				accelerator: 'v',
 				click: () => {
-					sendSetTool('select')
-					sendSetTransformTool('translate')
+					sendSetTool('select');
+					sendSetTransformTool('translate');
 				}
 			},
 			{
+				id: 'toolPan',
 				label: 'Pan',
 				accelerator: 'p',
 				click: () => sendSetTool('pan')
 			},
 			{ type: 'separator' },
-			{
-				label: 'Translate',
-				click: () => sendSetTransformTool('translate')
-			},
-			{
-				label: 'Rotate',
-				accelerator: 'r',
-				click: () => sendSetTransformTool('rotate')
-			},
-			{
-				label: 'Scale',
-				accelerator: 's',
-				click: () => sendSetTransformTool('scale')
-			}
+			{ id: 'toolTranslate', label: 'Translate', click: () => sendSetTransformTool('translate') },
+			{ id: 'toolRotate', label: 'Rotate', accelerator: 'r', click: () => sendSetTransformTool('rotate') },
+			{ id: 'toolScale', label: 'Scale', accelerator: 's', click: () => sendSetTransformTool('scale') }
 		]
 	},
 	{
 		label: 'View',
 		submenu: [
 			{
+				id: 'toggleDevTools',
 				label: 'Toggle DevTools',
 				accelerator: 'CmdOrCtrl+Shift+I',
 				click: (_, browserWindow) => {
@@ -416,17 +387,18 @@ const menuTemplate = [
 		label: 'Window',
 		role: 'window',
 		submenu: [
-			{ role: 'minimize' },
-			{ role: 'zoom' },
+			{ role: 'minimize', id: 'minimize' },
+			{ role: 'zoom', id: 'zoom' },
 			...(isMac
 				? [
 					{ type: 'separator' },
-					{ role: 'front' },
+					{ role: 'front', id: 'front' },
 					{ type: 'separator' },
-					{ role: 'window' }
+					{ role: 'window', id: 'windowRole' }
 				]
 				: []),
 			{
+				id: 'closeWindow',
 				label: 'Close',
 				accelerator: 'CmdOrCtrl+W',
 				click: () => editorWindow.close()
@@ -435,7 +407,44 @@ const menuTemplate = [
 	}
 ];
 
-Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate));
+const appMenu = Menu.buildFromTemplate(menuTemplate);
+Menu.setApplicationMenu(appMenu);
+updateEditorMenusEnabled();
+
+function setItemEnabledDeep(item, enabled) {
+	if (!item) 
+		return;
+		
+	if (item.type !== 'separator') 
+		item.enabled = enabled;
+		
+	if (item.submenu) {
+		for (const child of item.submenu.items) {
+			setItemEnabledDeep(child, enabled);
+		}
+	}
+}
+function updateEditorMenusEnabled() {
+	const idsToToggle = [
+		'save',
+		'assets',
+		'tools',
+		'objects'
+	];
+	
+	idsToToggle.forEach(id => {
+		const item = appMenu.getMenuItemById(id);
+		
+		if (!item) 
+			return;
+			
+		setItemEnabledDeep(item, projectOpen && !editorBusy);
+	});
+	
+	if (process.platform === 'darwin') {
+		Menu.setApplicationMenu(appMenu);
+	}
+}
 
 // --- Native theme ---
 nativeTheme.on('updated', () => {

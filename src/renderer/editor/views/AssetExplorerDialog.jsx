@@ -1,5 +1,6 @@
 // AssetExplorerDialog.jsx
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import MaterialSphere from './MaterialSphere.jsx';
 import { MdClose } from "react-icons/md";
 
 const EXT_GROUPS = {
@@ -30,6 +31,7 @@ function listAssetsFromZip(zip, folder = 'assets/') {
 	zip.forEach((rel, file) => {
 		if (file.dir) return;
 		if (!rel.startsWith(folder)) return;
+		if(rel.includes('__Editor')) return;
 		const name = rel.slice(folder.length);
 		if (!name) return;
 		out.push({ path: rel, name, compressedSize: file._dataCompressed?.length ?? 0 });
@@ -65,6 +67,8 @@ export default function AssetExplorerDialog({
 
 	// load/reset when opened
 	useEffect(() => {
+		_input.assetExplorerOpen = isOpen;
+		
 		if (!isOpen) return;
 		const items = listAssetsFromZip(zip, folder);
 		setAll(items);
@@ -316,12 +320,19 @@ export default function AssetExplorerDialog({
 /* --- preview --- */
 function PreviewPane({ name, url }) {
 	const lower = (name || '').toLowerCase();
-	const isImg = /\.(png|jpe?g|gif|webp|bmp|svg)$/.test(lower);
-	const isText = /\.(txt|md|csv|json)$/.test(lower);
-	const isAudio = /\.(mp3|ogg|wav|m4a|flac)$/.test(lower);
-
-	if (isImg && url) return <img className="asset-preview__image" src={url} alt={name} />;
-	if (isAudio && url) return <audio className="asset-preview__audio" src={url} controls />;
-	if (isText && url) return <iframe className="asset-preview__text" src={url} title={name} />;
+	const isImg = /\.(png|jpe?g|gif|webp|bmp|svg)$/.test(lower) && url;
+	const isText = /\.(txt|md|csv|json)$/.test(lower) && url;
+	const isAudio = /\.(mp3|ogg|wav|m4a|flac)$/.test(lower) && url;
+	const isMat = /\.mat$/.test(lower) && url;
+	
+	if (isMat) 
+		return <MaterialSphere url={url} />;
+	if (isImg) 
+		return <img className="asset-preview__image" src={url} alt={name} />;
+	if (isAudio) 
+		return <audio className="asset-preview__audio" src={url} controls />;
+	if (isText) 
+		return <iframe className="asset-preview__text" src={url} title={name} />;
+	
 	return <div className="asset-preview__placeholder">No preview</div>;
 }

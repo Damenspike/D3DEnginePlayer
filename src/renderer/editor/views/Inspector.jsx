@@ -978,8 +978,8 @@ export default function Inspector() {
 						selected={selected}
 						isInstance={true}
 						onRename={(newName) => {
-							if(!object.isValidName(newName))
-								return object.name;
+							//if(!object.isValidName(newName))
+								//return object.name;
 							
 							object.name = newName;
 							dummyObject.name = newName;

@@ -1,0 +1,9 @@
+{
+	"name": "Pink",
+	"type": "MeshStandardMaterial",
+	"color": "0xFFC0CB",
+	"metalness": 0.0,
+	"roughness": 0.5,
+	"emissive": 0,
+	"wireframe": false
+}

@@ -45,7 +45,7 @@ const D3DComponents = {
 			hidden: true,
 			mesh: 'Standard/Models/Camera.glb',
 			materials: [
-				'Standard/Materials/Gizmo3D.mat'
+				'Standard/Materials/__Editor/Gizmo3D.mat'
 			]
 		}
 	},
@@ -62,7 +62,7 @@ const D3DComponents = {
 			hidden: true,
 			mesh: 'Standard/Models/Light.glb',
 			materials: [
-				'Standard/Materials/GizmoLight3D.mat'
+				'Standard/Materials/__Editor/GizmoLight3D.mat'
 			]
 		}
 	},

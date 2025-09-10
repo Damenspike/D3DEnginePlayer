@@ -714,10 +714,15 @@ export default class D3DObject {
 								return null;
 							}
 					
+							// fix colors
+							if(params.color)	
+								params.color = Number(params.color);
+							
 							// make transparency actually work if opacity < 1
 							if (params.opacity !== undefined && params.opacity < 1 && params.transparent !== true) {
 								params.transparent = true;
 							}
+							
 							const m = new Ctor(params);
 					
 							// helpful for gizmos / UI materials so they don't get greyed by post/ACES

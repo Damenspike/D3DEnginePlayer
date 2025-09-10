@@ -198,7 +198,7 @@ export function uniqueFilePath(zip, baseDir, desiredName) {
 
 	let i = 2;
 	for (;;) {
-		const candidate = `${base}/${stem} (${i++})${ext}`;
+		const candidate = `${base}/${stem}_${i++}${ext}`;
 		if (!pathExists(zip, candidate)) return candidate;
 	}
 }

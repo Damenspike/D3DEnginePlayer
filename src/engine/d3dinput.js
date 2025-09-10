@@ -4,12 +4,11 @@ export default class D3DInput {
 		this._listenersUp = [];
 		this._keys = {};
 
-		// Mouse state
 		this.mouseLock = false;
 		this.mouse = { x: 0, y: 0, buttons: {} };
 		this._mouseDelta = { x: 0, y: 0 };
 		this._mouseFrozen = false;
-		
+
 		this._wheelDelta = { x: 0, y: 0, z: 0 };
 		this._wheelListeners = [];
 
@@ -18,7 +17,6 @@ export default class D3DInput {
 		this._mouseMoveListeners = [];
 		this._pointerLockListeners = [];
 
-		// Bind methods
 		this._onKeyDown = this._onKeyDown.bind(this);
 		this._onKeyUp = this._onKeyUp.bind(this);
 		this._onMouseDown = this._onMouseDown.bind(this);
@@ -29,7 +27,6 @@ export default class D3DInput {
 		this._onBlur = this._onBlur.bind(this);
 		this._onVisibility = this._onVisibility.bind(this);
 
-		// Add event listeners
 		window.addEventListener('keydown', this._onKeyDown, { passive: false });
 		window.addEventListener('keyup', this._onKeyUp);
 		window.addEventListener('mousedown', this._onMouseDown);
@@ -42,28 +39,45 @@ export default class D3DInput {
 		document.addEventListener('visibilitychange', this._onVisibility);
 	}
 
-	// --- Freeze/unfreeze mouse ---
+	/* --- helpers --- */
+	_isEditableTarget(e) {
+		const el = e?.target;
+		if (!el) return false;
+		if (el.isContentEditable) return !el.hasAttribute('readonly') && !el.hasAttribute('disabled');
+
+		const tag = (el.tagName || '').toUpperCase();
+		if (tag === 'TEXTAREA') return !el.readOnly && !el.disabled;
+		if (tag !== 'INPUT') return false;
+
+		// only treat text-like inputs as editable
+		const type = (el.type || 'text').toLowerCase();
+		const textTypes = ['text','search','url','tel','password','email','number'];
+		return textTypes.includes(type) && !el.readOnly && !el.disabled;
+	}
+
+	/* --- Freeze/unfreeze mouse --- */
 	freezeMouse() {
 		this._mouseFrozen = true;
 		this.mouse.buttons = {};
 		this._mouseDelta = { x: 0, y: 0 };
 	}
+	unfreezeMouse() { this._mouseFrozen = false; }
+	isMouseFrozen() { return this._mouseFrozen; }
 
-	unfreezeMouse() {
-		this._mouseFrozen = false;
-	}
-
-	isMouseFrozen() {
-		return this._mouseFrozen;
-	}
-
-	// --- Keyboard ---
+	/* --- Keyboard --- */
 	_onKeyDown(e) {
-		// record state first
+		const editing = this._isEditableTarget(e);
+
+		// When typing in a field: let the browser handle the key entirely
+		if (editing && !(e.ctrlKey || e.metaKey)) {
+			return; // no tracking, no preventDefault, no gameplay listeners
+		}
+
+		// record state only when not editing (or when using app shortcuts like Ctrl/⌘)
 		this._keys[e.code] = true;
 
-		// prevent page from scrolling with space/arrows (optional but handy)
-		if (e.code === 'Space' || e.code.startsWith('Arrow')) {
+		// prevent page scroll only outside inputs
+		if (!editing && (e.code === 'Space' || e.code.startsWith('Arrow'))) {
 			e.preventDefault();
 		}
 
@@ -71,6 +85,12 @@ export default class D3DInput {
 	}
 
 	_onKeyUp(e) {
+		const editing = this._isEditableTarget(e);
+
+		if (editing && !(e.ctrlKey || e.metaKey)) {
+			return; // ignore key tracking while editing
+		}
+
 		this._keys[e.code] = false;
 		this._listenersUp.forEach(listener => listener(e));
 	}
@@ -81,13 +101,8 @@ export default class D3DInput {
 		this._pointerLockListeners.forEach(listener => listener({ ...e, pressedEsc: exited }));
 	}
 
-	_onBlur() {
-		this._clearKeyState();
-	}
-
-	_onVisibility() {
-		if (document.hidden) this._clearKeyState();
-	}
+	_onBlur() { this._clearKeyState(); }
+	_onVisibility() { if (document.hidden) this._clearKeyState(); }
 
 	_clearKeyState() {
 		this._keys = {};
@@ -110,7 +125,7 @@ export default class D3DInput {
 			case 'arrowdown': return ['ArrowDown'];
 			case 'arrowleft': return ['ArrowLeft'];
 			case 'arrowright': return ['ArrowRight'];
-			default: return [key]; // fallback to whatever was passed
+			default: return [key];
 		}
 	}
 
@@ -125,10 +140,9 @@ export default class D3DInput {
 	getControllerAxis(wasd = true) {
 		let x = 0, y = 0;
 
-		// ignore when typing in inputs
+		// block gameplay when typing
 		if (this.getInputFieldInFocus()) return { x: 0, y: 0 };
 
-		// if you want to block gameplay while modifiers held, do it here (not in keydown)
 		if (this.getKeyDown('control') || this.getKeyDown('meta')) return { x, y };
 
 		if (wasd) {
@@ -137,7 +151,6 @@ export default class D3DInput {
 			if (this.getKeyDown('s')) y += 1;
 			if (this.getKeyDown('w')) y -= 1;
 		}
-
 		if (this.getKeyDown('arrowright')) x += 1;
 		if (this.getKeyDown('arrowleft')) x -= 1;
 		if (this.getKeyDown('arrowdown')) y += 1;
@@ -146,30 +159,30 @@ export default class D3DInput {
 		return { x, y };
 	}
 
-	getControllerAxisArrowsOnly() {
-		return this.getControllerAxis(false);
-	}
+	getControllerAxisArrowsOnly() { return this.getControllerAxis(false); }
 
 	getIsGameInFocus() {
 		return _container3d?.matches?.(':focus') === true;
 	}
 
 	getCursorOverGame() {
+		if(this.assetExplorerOpen)
+			return false;
+			
 		const pos = this.getMousePosition();
 		const rect = _container3d.getBoundingClientRect();
-		return (
-			pos.x >= rect.left &&
-			pos.x <= rect.right &&
-			pos.y >= rect.top &&
-			pos.y <= rect.bottom
-		);
+		return pos.x >= rect.left && pos.x <= rect.right && pos.y >= rect.top && pos.y <= rect.bottom;
 	}
 
 	getInputFieldInFocus() {
-		return document.activeElement && document.activeElement.tagName === 'INPUT';
+		const el = document.activeElement;
+		if (!el) return false;
+		if (el.isContentEditable) return true;
+		const tag = (el.tagName || '').toUpperCase();
+		return tag === 'INPUT' || tag === 'TEXTAREA';
 	}
 
-	// --- Mouse ---
+	/* --- Mouse --- */
 	_afterRenderFrame() {
 		this._mouseDelta.x = 0;
 		this._mouseDelta.y = 0;
@@ -192,35 +205,22 @@ export default class D3DInput {
 
 	_onMouseMove(e) {
 		if (this._mouseFrozen) return;
-		const x = e.clientX;
-		const y = e.clientY;
-
-		this.mouse.x = x;
-		this.mouse.y = y;
-
+		this.mouse.x = e.clientX;
+		this.mouse.y = e.clientY;
 		this._mouseDelta.x = e.movementX;
 		this._mouseDelta.y = e.movementY;
-
 		this._mouseMoveListeners.forEach(listener => listener(e));
 	}
 
-	getMouseButtonDown(button) {
-		return !!this.mouse.buttons[button]; // 0=left, 1=middle, 2=right
-	}
-
+	getMouseButtonDown(button) { return !!this.mouse.buttons[button]; }
 	getLeftMouseButtonDown() { return this.getMouseButtonDown(0); }
 	getMiddleMouseButtonDown() { return this.getMouseButtonDown(1); }
 	getRightMouseButtonDown() { return this.getMouseButtonDown(2); }
 
-	getMousePosition() {
-		return { x: this.mouse.x, y: this.mouse.y };
-	}
+	getMousePosition() { return { x: this.mouse.x, y: this.mouse.y }; }
+	getMouseDelta() { return { ...this._mouseDelta }; }
 
-	getMouseDelta() {
-		return { ...this._mouseDelta };
-	}
-
-	// --- Wheel (scroll) ---
+	/* --- Wheel --- */
 	_onWheel(e) {
 		if (this._mouseFrozen) return;
 		this._wheelDelta.x += e.deltaX;
@@ -229,11 +229,9 @@ export default class D3DInput {
 		this._wheelListeners.forEach(listener => listener(e));
 	}
 
-	getWheelDelta() {
-		return { ...this._wheelDelta };
-	}
+	getWheelDelta() { return { ...this._wheelDelta }; }
 
-	// --- Event listeners ---
+	/* --- Event listeners --- */
 	addEventListener(type, handler) {
 		switch (type) {
 			case 'keydown': this._listenersDown.push(handler); break;
@@ -258,11 +256,11 @@ export default class D3DInput {
 			case 'pointerlockchange': arr = this._pointerLockListeners; break;
 			default: return;
 		}
-		const index = arr.indexOf(handler);
-		if (index !== -1) arr.splice(index, 1);
+		const i = arr.indexOf(handler);
+		if (i !== -1) arr.splice(i, 1);
 	}
 
-	// --- Cleanup ---
+	/* --- Cleanup --- */
 	dispose() {
 		window.removeEventListener('keydown', this._onKeyDown);
 		window.removeEventListener('keyup', this._onKeyUp);

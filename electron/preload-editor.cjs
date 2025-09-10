@@ -113,3 +113,4 @@ addIPCListener('focus-object');
 addIPCListener('set-tool');
 addIPCListener('set-transform-tool');
 addIPCListener('new-asset');
+addIPCListener('request-save-and-close');

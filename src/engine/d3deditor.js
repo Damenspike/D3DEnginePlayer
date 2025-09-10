@@ -768,6 +768,11 @@ async function saveProject() {
 	
 	_editor.setDirty(false);
 }
+async function saveProjectAndClose() {
+	await saveProject();
+	_editor.setDirty(false);
+	_editor.closeEditor();
+}
 
 // Editor events
 function onEditorFocusChanged() {
@@ -845,6 +850,7 @@ D3D.setEventListener('delete', () => _editor.onDeleteKey());
 D3D.setEventListener('undo', () => _editor.undo());
 D3D.setEventListener('redo', () => _editor.redo());
 D3D.setEventListener('save-project', () => saveProject());
+D3D.setEventListener('request-save-and-close', () => saveProjectAndClose());
 
 D3D.setEventListener('add-object', (type) => addD3DObjectEditor(type));
 D3D.setEventListener('symbolise-object', (type) => symboliseSelectedObject(type));
