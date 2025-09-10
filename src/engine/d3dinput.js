@@ -37,6 +37,18 @@ export default class D3DInput {
 		document.addEventListener('pointerlockchange', this._onPointerLockChange);
 		window.addEventListener('blur', this._onBlur);
 		document.addEventListener('visibilitychange', this._onVisibility);
+		
+		window.addEventListener('focusin', () => {
+			D3D.updateEditorStatus({
+				inputFocussed: this.getInputFieldInFocus()
+			});
+		});
+		
+		window.addEventListener('focusout', () => {
+			D3D.updateEditorStatus({
+				inputFocussed: this.getInputFieldInFocus()
+			});
+		});
 	}
 
 	/* --- helpers --- */
@@ -177,12 +189,10 @@ export default class D3DInput {
 	getInputFieldInFocus() {
 		const el = document.activeElement;
 		if (!el) return false;
-		if (el.isContentEditable) return true;
-		const tag = (el.tagName || '').toUpperCase();
-		return tag === 'INPUT' || tag === 'TEXTAREA';
+		return this._isEditableTarget({ target: el });
 	}
 
-	/* --- Mouse --- */
+	/* --- Loop --- */
 	_afterRenderFrame() {
 		this._mouseDelta.x = 0;
 		this._mouseDelta.y = 0;
@@ -230,7 +240,7 @@ export default class D3DInput {
 	}
 
 	getWheelDelta() { return { ...this._wheelDelta }; }
-
+	
 	/* --- Event listeners --- */
 	addEventListener(type, handler) {
 		switch (type) {

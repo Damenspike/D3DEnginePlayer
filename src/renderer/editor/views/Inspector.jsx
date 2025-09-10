@@ -239,7 +239,6 @@ export default function Inspector() {
 									object.position.copy(newPosition);
 								}
 							});
-							
 							object.position.copy(newPosition);
 						}} 
 					/>
@@ -402,13 +401,19 @@ export default function Inspector() {
 					_editor.addStep({
 						name: 'Update property',
 						undo: () => {
-							component.properties[fieldId] = oldValue;
-							object.updateComponents();
+							object.setComponentValue(
+								component.type,
+								fieldId,
+								oldValue
+							);
 							update();
 						},
 						redo: () => {
-							component.properties[fieldId] = newValue;
-							object.updateComponents();
+							object.setComponentValue(
+								component.type,
+								fieldId,
+								newValue
+							);
 							update();
 						}
 					});
@@ -417,13 +422,19 @@ export default function Inspector() {
 					_editor.addStep({
 						name: 'Update property',
 						undo: () => {
-							component.properties[fieldId] = oldValue;
-							object.updateComponents();
+							object.setComponentValue(
+								component.type,
+								fieldId,
+								oldValue
+							);
 							update();
 						},
 						redo: () => {
-							component.properties[fieldId] = newValue;
-							object.updateComponents();
+							object.setComponentValue(
+								component.type,
+								fieldId,
+								newValue
+							);
 							update();
 						}
 					});
@@ -457,8 +468,13 @@ export default function Inspector() {
 									addStep(val);
 									
 									dummyComponent.properties[fieldId] = val;
-									component.properties[fieldId] = val;
-									object.updateComponents();
+									
+									object.setComponentValue(
+										component.type,
+										fieldId,
+										val
+									);
+									
 									update();
 								}}
 							/>
@@ -489,8 +505,13 @@ export default function Inspector() {
 									addStep(val);
 									
 									dummyComponent.properties[fieldId] = val;
-									component.properties[fieldId] = val;
-									object.updateComponents();
+									
+									object.setComponentValue(
+										component.type,
+										fieldId,
+										val
+									);
+									
 									update();
 								}}
 							/>
@@ -521,8 +542,13 @@ export default function Inspector() {
 										addStep(val);
 										
 										dummyComponent.properties[fieldId] = val;
-										component.properties[fieldId] = val;
-										object.updateComponents();
+										
+										object.setComponentValue(
+											component.type,
+											fieldId,
+											val
+										);
+										
 										update();
 									}}
 								/>
@@ -545,8 +571,13 @@ export default function Inspector() {
 									addStep(val);
 									
 									dummyComponent.properties[fieldId] = val;
-									component.properties[fieldId] = val;
-									object.updateComponents();
+									
+									object.setComponentValue(
+										component.type,
+										fieldId,
+										val
+									);
+									
 									update();
 								}}
 							/>
@@ -568,8 +599,13 @@ export default function Inspector() {
 									const val = (e.target.value || '#ffffff').replace('#', '0x');
 									
 									dummyComponent.properties[fieldId] = val;
-									component.properties[fieldId] = val;
-									object.updateComponents();
+									
+									object.setComponentValue(
+										component.type,
+										fieldId,
+										val
+									);
+									
 									update();
 								}}
 								onBlur={e => {
@@ -593,10 +629,17 @@ export default function Inspector() {
 							selectedAsset: '',
 							onSelect: (assetPath) => {
 								const uuid = _root.resolveAssetId(assetPath);
-								const updated = [...current, uuid];
-								dummyComponent.properties[fieldId] = updated;
-								component.properties[fieldId] = updated;
-								object.updateComponents();
+								const val = [...current, uuid];
+								dummyComponent.properties[fieldId] = val;
+								
+								addStep(val);
+								
+								object.setComponentValue(
+									component.type,
+									fieldId,
+									val
+								);
+								
 								update();
 							}
 						});
@@ -666,21 +709,26 @@ export default function Inspector() {
 												selectedAsset: filePath,
 												onSelect: (assetPath) => {
 													const uuid = _root.resolveAssetId(assetPath);
-													let updated;
+													let val;
 													
 													if(field.type == 'file[]') {
-														updated = [...current];
-														updated[idx] = uuid;
+														val = [...current];
+														val[idx] = uuid;
 													}else
 													if(field.type == 'file') {
-														updated = uuid;
+														val = uuid;
 													}
 													
-													addStep(updated);
+													addStep(val);
 													
-													dummyComponent.properties[fieldId] = updated;
-													component.properties[fieldId] = updated;
-													object.updateComponents();
+													dummyComponent.properties[fieldId] = val;
+													
+													object.setComponentValue(
+														component.type,
+														fieldId,
+														val
+													);
+													
 													update();
 												}
 											})
@@ -706,13 +754,18 @@ export default function Inspector() {
 													<button
 														title="Remove"
 														onClick={() => {
-															const updated = current.filter((_, i) => i !== idx);
+															const val = current.filter((_, i) => i !== idx);
 															
-															addStep(updated);
+															addStep(val);
 															
-															dummyComponent.properties[fieldId] = updated;
-															component.properties[fieldId] = updated;
-															object.updateComponents();
+															dummyComponent.properties[fieldId] = val;
+															
+															object.setComponentValue(
+																component.type,
+																fieldId,
+																val
+															);
+															
 															update();
 														}}
 													>
@@ -915,9 +968,8 @@ export default function Inspector() {
 					)
 				}
 				path.push(
-					<>
+					<React.Fragment key={path.length}>
 						<div 
-							key={path.length}
 							className='object-path-item'
 							onClick={() => {
 								const oldParent = _editor.focus;
@@ -933,7 +985,7 @@ export default function Inspector() {
 							{object.name}
 						</div>
 						{drawArrow()}
-					</>
+					</React.Fragment>
 				)
 			});
 			
@@ -941,16 +993,13 @@ export default function Inspector() {
 		}
 		const drawObjects = () => {
 			const rows = [];
-			const objects = [..._editor.focus.children];
+			const objects = _editor.focus.children.filter(c => !c.editorOnly);
 			
 			if(objects.length < 1)
-				return <div className='no-label'>No objects</div>
+				return <div className='no-label'>No objects in scene</div>
 			
 			objects.forEach(object => {
 				const selected = _editor.selectedObjects.includes(object);
-				
-				if(object.editorOnly)
-					return;
 				
 				const drawIcon = () => {
 					if(object.symbol)
@@ -1691,8 +1740,8 @@ export default function Inspector() {
 	
 	return (
 		<>
-			{_root && drawSceneInspector()}
 			{_root && drawAssetInspector()}
+			{_root && drawSceneInspector()}
 			{object && drawObjectInspector()}
 			{_editor.project && _editor.focus == _root && drawProjectInspector()}
 			

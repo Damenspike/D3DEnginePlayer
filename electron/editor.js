@@ -18,7 +18,11 @@ let editorWindow;
 
 let lastOpenedProjectUri;
 let projectOpen = false;
-let editorBusy = false;
+let inputFieldActive = false;
+
+function getEditorBusy() {
+	return inputFieldActive;
+}
 
 function createStartWindow() {
 	startWindow = new BrowserWindow({
@@ -425,21 +429,24 @@ function setItemEnabledDeep(item, enabled) {
 	}
 }
 function updateEditorMenusEnabled() {
-	const idsToToggle = [
-		'save',
-		'assets',
-		'tools',
-		'objects'
-	];
-	
-	idsToToggle.forEach(id => {
-		const item = appMenu.getMenuItemById(id);
-		
-		if (!item) 
-			return;
+	const toggleForSwitch = (ids, toggle) => {
+		ids.forEach(id => {
+			const item = appMenu.getMenuItemById(id);
 			
-		setItemEnabledDeep(item, projectOpen && !editorBusy);
-	});
+			if (!item) 
+				return;
+				
+			setItemEnabledDeep(item, toggle);
+		});
+	}
+	
+	toggleForSwitch(
+		['save', 'assets', 'objects'],
+		projectOpen
+	);
+	
+	if(editorWindow)
+		editorWindow.webContents.setIgnoreMenuShortcuts(inputFieldActive);
 	
 	if (process.platform === 'darwin') {
 		Menu.setApplicationMenu(appMenu);
@@ -481,6 +488,14 @@ ipcMain.handle('open-project', () => openBrowse());
 
 // Get project URI
 ipcMain.handle('get-current-project-uri', () => lastOpenedProjectUri);
+
+// Set editor status
+ipcMain.on('editor-status', (_, { inputFocussed }) => {
+	if(typeof inputFocussed === 'boolean')
+		inputFieldActive = inputFocussed;
+		
+	updateEditorMenusEnabled();
+});
 
 // Close editor
 ipcMain.on('close-editor', () => closeEditorWindow());

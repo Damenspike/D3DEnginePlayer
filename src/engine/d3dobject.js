@@ -536,6 +536,19 @@ export default class D3DObject {
 		
 		DamenScript.run(script, sandbox);
 	}
+	setComponentValue(type, field, value) {
+		const component = this.components.find(c => c.type == type);
+		
+		if(!component) {
+			console.warn(`No component found for type ${type}`);
+			return;
+		}
+		
+		component.properties[field] = value;
+		
+		this.updateComponents();
+		this.checkSymbols();
+	}
 	async updateComponents() {
 		const zip = this.root.zip;
 		const components = [...this.components];
@@ -550,8 +563,8 @@ export default class D3DObject {
 					components.push({
 						type: 'Mesh',
 						properties: {
-							'mesh': gizmo3d.mesh,
-							'materials': gizmo3d.materials
+							'mesh': _root.resolveAssetId(gizmo3d.mesh),
+							'materials': gizmo3d.materials.map(path => _root.resolveAssetId(path))
 						}
 					});
 				}
@@ -637,7 +650,7 @@ export default class D3DObject {
 					break;
 				}
 				case 'AmbientLight': {
-					if(!this.light) {
+					if(!this.isLight) {
 						const light = new THREE.AmbientLight(
 							parseInt(component.properties.color, 16),
 							component.properties.intensity
@@ -652,14 +665,39 @@ export default class D3DObject {
 					break;
 				}
 				case 'DirectionalLight': {
-					if(!this.light) {
-						const light = new THREE.DirectionalLight(
-							parseInt(component.properties.color, 16),
-							component.properties.intensity
-						);
+					if (!this.isLight) {
+						const color = new THREE.Color(Number(component.properties.color));
+						const light = new THREE.DirectionalLight(color, component.properties.intensity);
+						
 						this.isLight = true;
-						this.replaceObject3D(light);
-					}else{
+						this.replaceObject3D(light); // attaches the light to your scene graph
+						
+						const scene = _root.object3d;
+						const target = new THREE.Object3D();
+						target.name = '__dirLightTarget';
+						target.visible = false;
+						
+						scene.add(target);
+						light.target = target;
+						
+						const _pos = new THREE.Vector3();
+						const _dir = new THREE.Vector3();
+						const DIST = 100;
+						
+						const updateTarget = () => {
+							light.updateMatrixWorld(true);
+							light.getWorldPosition(_pos);
+							light.getWorldDirection(_dir);
+							
+							_dir.multiplyScalar(DIST);
+							
+							target.position.copy(_pos).add(_dir);
+							target.updateMatrixWorld(true);
+						};
+						
+						this.beforeEditorRenderFrame = updateTarget;
+						this.beforeRenderFrame = updateTarget;
+					} else {
 						const light = this.object3d;
 						light.color.set(Number(component.properties.color));
 						light.intensity = component.properties.intensity;
@@ -932,6 +970,7 @@ export default class D3DObject {
 			}
 			
 			d3dobject.components = structuredClone(objData.components);
+			d3dobject.updateComponents();
 			
 			if(updateChildren) {
 				const childrenSynced = [];

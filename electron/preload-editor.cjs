@@ -43,6 +43,7 @@ contextBridge.exposeInMainWorld('D3D', {
 	setDirty: (dirty) => ipcRenderer.send('set-dirty', !!dirty),
 	getCurrentProjectURI: () => ipcRenderer.invoke('get-current-project-uri'),
 	updateEditorWindow: (options) => ipcRenderer.send('update-editor-window', options),
+	updateEditorStatus: (options) => ipcRenderer.send('editor-status', options),
 	
 	readFile: async (filePath) => {
 		const ext = getExtension(filePath);

@@ -43,7 +43,7 @@ const D3DComponents = {
 		},
 		gizmo3d: {
 			hidden: true,
-			mesh: 'Standard/Models/Camera.glb',
+			mesh: 'Standard/Models/__Editor/Camera.glb',
 			materials: [
 				'Standard/Materials/__Editor/Gizmo3D.mat'
 			]
@@ -60,7 +60,7 @@ const D3DComponents = {
 		},
 		gizmo3d: {
 			hidden: true,
-			mesh: 'Standard/Models/Light.glb',
+			mesh: 'Standard/Models/__Editor/Light.glb',
 			materials: [
 				'Standard/Materials/__Editor/GizmoLight3D.mat'
 			]
@@ -88,9 +88,9 @@ const D3DComponents = {
 		},
 		gizmo3d: {
 			hidden: true,
-			mesh: 'Standard/Models/Light.glb',
+			mesh: 'Standard/Models/__Editor/Light.glb',
 			materials: [
-				'Standard/Materials/GizmoLight3D.mat'
+				'Standard/Materials/__Editor/GizmoLight3D.mat'
 			]
 		}
 	},
@@ -128,9 +128,9 @@ const D3DComponents = {
 		},
 		gizmo3d: {
 			hidden: true,
-			mesh: 'Standard/Models/Light.glb',
+			mesh: 'Standard/Models/__Editor/Light.glb',
 			materials: [
-				'Standard/Materials/GizmoLight3D.mat'
+				'Standard/Materials/__Editor/GizmoLight3D.mat'
 			]
 		}
 	},
@@ -170,9 +170,9 @@ const D3DComponents = {
 		},
 		gizmo3d: {
 			hidden: true,
-			mesh: 'Standard/Models/Light.glb',
+			mesh: 'Standard/Models/__Editor/Light.glb',
 			materials: [
-				'Standard/Materials/GizmoLight3D.mat'
+				'Standard/Materials/__Editor/GizmoLight3D.mat'
 			]
 		}
 	},
