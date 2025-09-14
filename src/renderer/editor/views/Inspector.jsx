@@ -61,6 +61,7 @@ export default function Inspector() {
 	const [sceneInspectorExpanded, setSceneInspectorExpanded] = useState(false);
 	const [objectInspectorExpanded, setObjectInspectorExpanded] = useState(false);
 	const [assetsInspectorExpanded, setAssetsInspectorExpanded] = useState(false);
+	const [mediaInspectorExpanded, setMediaInspectorExpanded] = useState(false);
 	
 	// Scene config states
 	const [bgType, setBgType] = useState('none');
@@ -138,6 +139,34 @@ export default function Inspector() {
 		update();
 	};
 	
+	const drawMaterialEditor = (uri) => (
+		<MaterialEditor
+			uri={uri}
+			date={new Date()}
+			onSave={async (prev, next) => {
+				const before = JSON.stringify(prev);
+				const after  = JSON.stringify(next);
+				
+				writeAndRefresh(uri, after);
+				
+				_editor.addStep({
+					name: `Edit material: ${uri}`,
+					undo: async () => {
+						writeAndRefresh(uri, before);
+						await _root.refreshObjectsWithResource(uri);
+					},
+					redo: async () => {
+						writeAndRefresh(uri, after);
+						await _root.refreshObjectsWithResource(uri);
+					}
+				});
+				
+				// apply to all other objects using this material
+				await _root.refreshObjectsWithResource(uri);
+			}}
+			openAsset={openAssetExplorer}
+		/>
+	)
 	const drawObjectInspector = () => {
 		return (
 			<InspectorCell 
@@ -628,32 +657,7 @@ export default function Inspector() {
 										title={originURI}
 										key={mrows.length} 
 									>
-										<MaterialEditor
-											uri={uri}
-											date={new Date()}
-											onSave={async (prev, next) => {
-												const before = JSON.stringify(prev);
-												const after  = JSON.stringify(next);
-												
-												writeAndRefresh(uri, after);
-												
-												_editor.addStep({
-													name: `Edit material: ${uri}`,
-													undo: async () => {
-														writeAndRefresh(uri, before);
-														await _root.refreshObjectsWithResource(uri);
-													},
-													redo: async () => {
-														writeAndRefresh(uri, after);
-														await _root.refreshObjectsWithResource(uri);
-													}
-												});
-												
-												// apply to all other objects using this material
-												await _root.refreshObjectsWithResource(uri);
-											}}
-											openAsset={openAssetExplorer}
-										/>
+										{drawMaterialEditor(uri)}
 									</ComponentCell>
 								)
 							});
@@ -1584,10 +1588,120 @@ export default function Inspector() {
 				</React.Fragment>
 			);
 		};
+		
+		const dupeInspector = async () => {
+			if (!selectedAssetPaths.size) return;
+		
+			// --- small helpers (local) ---
+			const ensureDir = (p) => (p.endsWith('/') ? p : p + '/');
+			const parent = (p) => (p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : 'assets');
+			const splitNameExt = (name) => {
+				const i = name.lastIndexOf('.');
+				return i <= 0 ? { base: name, ext: '' } : { base: name.slice(0, i), ext: name.slice(i) };
+			};
+			const basename = (p) => p.split('/').pop();
+			const isDir = (p) => {
+				// JSZip doesn't always store explicit folder entries; treat trailing slash as dir
+				if (p.endsWith('/')) return true;
+				const f = zip.file(p);
+				return f ? f.dir === true : p.endsWith('/');
+			};
+		
+			// Make a unique sibling file path: /dir/foo.png -> /dir/foo copy.png, foo copy 2.png, ...
+			const uniqueSiblingFile = (dir, fileName) => {
+				const { base, ext } = splitNameExt(fileName);
+				let candidate = `${dir}/${base} copy${ext}`;
+				let n = 2;
+				while (zip.file(candidate)) {
+					candidate = `${dir}/${base} copy ${n}${ext}`;
+					n++;
+				}
+				return candidate;
+			};
+		
+			// Make a unique sibling directory path (with trailing slash)
+			// /dir/Folder -> /dir/Folder copy/, Folder copy 2/, ...
+			const uniqueSiblingDir = (dir, folderName) => {
+				let candidate = ensureDir(`${dir}/${folderName} copy`);
+				let n = 2;
+				let exists = false;
+				zip.forEach((rel) => { if (rel.startsWith(candidate)) exists = true; });
+				while (exists) {
+					candidate = ensureDir(`${dir}/${folderName} copy ${n}`);
+					exists = false;
+					zip.forEach((rel) => { if (rel.startsWith(candidate)) exists = true; });
+					n++;
+				}
+				return candidate;
+			};
+		
+			// --- duplicate logic ---
+			const newSelections = new Set();
+		
+			for (const srcPath0 of selectedAssetPaths) {
+				// Normalize: treat folders as trailing-slash paths for iteration
+				const isSourceDir = isDir(srcPath0);
+				if (!isSourceDir) {
+					// FILE
+					const dir = parent(srcPath0);
+					const name = basename(srcPath0);
+					const dstPath = uniqueSiblingFile(dir, name);
+					const file = zip.file(srcPath0);
+					if (!file) continue;
+					const buf = await file.async('arraybuffer');
+					zip.file(dstPath, buf);
+					newSelections.add(dstPath);
+				} else {
+					// FOLDER (recursive)
+					const srcDir = ensureDir(srcPath0);
+					const dirParent = parent(srcDir.slice(0, -1)); // strip trailing slash for parent()
+					const folderName = basename(srcDir.slice(0, -1)); // "Folder"
+					const dstDir = uniqueSiblingDir(dirParent, folderName); // ends with '/'
+		
+					// copy every entry under srcDir to dstDir
+					const copyPromises = [];
+					zip.forEach((rel, file) => {
+						if (!rel.startsWith(srcDir)) return;
+						const tail = rel.slice(srcDir.length); // path inside the folder
+						const outRel = dstDir + tail;
+						if (file.dir) {
+							zip.folder(outRel); // create folder entry (optional; files also create parents)
+						} else {
+							copyPromises.push(
+								file.async('arraybuffer').then((buf) => {
+									zip.file(outRel, buf);
+								})
+							);
+						}
+					});
+					await Promise.all(copyPromises);
+		
+					newSelections.add(dstDir.replace(/\/$/, '')); // select folder by its non-slash path
+				}
+			}
+		
+			// Refresh UI/state
+			const newTree = buildTree();
+			setAssetTree(newTree);
+		
+			// Expand parents for visibility and select new items
+			const expand = new Set(assetExpanded);
+			for (const p of newSelections) {
+				const dir = parent(p);
+				if (dir) expand.add(dir);
+			}
+			setAssetExpanded(expand);
+		
+			setSelectedAssetPaths(newSelections);
+			setLastSelectedPath([...newSelections][newSelections.size - 1] || null);
+		
+			_editor.onAssetsUpdated?.();
+		};
 	
 		// Build once (or after refresh)
 		const tree = assetTree ?? buildTree();
 		_editor.__buildTree = buildTree;
+		_editor.__dupeInspector = dupeInspector;
 		if(assetTree !== tree)
 			setAssetTree(tree);
 	
@@ -1707,12 +1821,42 @@ export default function Inspector() {
 			</InspectorCell>
 		);
 	};
+	const drawMediaInspector = () => {
+		const uri = selectedAssetPaths.values().next().value;
+		const ext = getExtension(uri);
+		
+		const drawInspControls = () => {
+			switch(ext) {
+				case 'mat': {
+					return drawMaterialEditor(uri);
+				}
+				default: return;
+			}
+		}
+		
+		const drawnControls = drawInspControls();
+		
+		if(!drawnControls)
+			return;
+		
+		return (
+			<InspectorCell 
+				id="insp-cell-media" 
+				title="Media" 
+				expanded={mediaInspectorExpanded}
+				onExpand={() => setMediaInspectorExpanded(!mediaInspectorExpanded)}
+			>
+				{drawnControls}
+			</InspectorCell>
+		)
+	}
 	
 	return (
 		<>
 			{_root && drawAssetInspector()}
 			{_root && drawSceneInspector()}
 			{object && drawObjectInspector()}
+			{selectedAssetPaths.size == 1 && drawMediaInspector()}
 			{_editor.project && _editor.focus == _root && drawProjectInspector()}
 			
 			<div style={{height: 45}} />

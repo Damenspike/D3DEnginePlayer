@@ -238,6 +238,14 @@ export default class D3DEditorState {
 		this.currentStep = -1;
 	}
 	
+	async dupe(addStep = true) {
+		if(this.selectedObjects.length < 1) {
+			_editor.__dupeInspector?.(); // inspector handle possible asset duplication
+			return;
+		}
+		return await this.pasteFrom({clip: this.selectedObjects, action: 'Duplicate'});
+	}
+	
 	setDirty(dirty) {
 		D3D.setDirty(dirty);
 	}
@@ -354,7 +362,7 @@ export default class D3DEditorState {
 	async paste() {
 		return await this.pasteFrom({clip: this.clipboard});
 	}
-	async pasteFrom({clip = [], addStep = true, selectResult = true}) {
+	async pasteFrom({clip = [], action = 'Paste', addStep = true, selectResult = true}) {
 		let pastedObjects = [];
 		
 		for(let objData of clip) {
@@ -362,10 +370,10 @@ export default class D3DEditorState {
 			pastedObjects.push(d3dobject);
 		}
 		addStep && this.addStep({
-			name: 'Paste object(s)',
+			name: `${action} ${clip.length} object(s)`,
 			undo: () => this.deleteObjects({objects: pastedObjects, addStep: false}),
 			redo: async () => {
-				pastedObjects = await this.pasteFrom({clip})
+				pastedObjects = await this.pasteFrom({action, clip})
 			}
 		});
 		selectResult && this.setSelection(pastedObjects, false);

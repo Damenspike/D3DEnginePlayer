@@ -218,6 +218,9 @@ function sendUndo() {
 function sendRedo() {
 	editorWindow.webContents.send('redo');
 }
+function sendDupe() {
+	editorWindow.webContents.send('dupe');
+}
 function sendAddObject(type) {
 	editorWindow.webContents.send('add-object', type);
 }
@@ -303,6 +306,12 @@ const menuTemplate = [
 				label: 'Delete',
 				accelerator: process.platform === 'darwin' ? 'Backspace' : 'Delete',
 				click: () => sendDelete()
+			},
+			{
+				id: 'duplicate',
+				label: 'Duplicate',
+				accelerator: 'CmdOrCtrl+D',
+				click: () => sendDupe()
 			},
 			{ type: 'separator' },
 			{ role: 'selectall', id: 'selectAll' }

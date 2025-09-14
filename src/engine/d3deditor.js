@@ -876,6 +876,7 @@ _editor.newAsset = newAsset;
 D3D.setEventListener('delete', () => _editor.onDeleteKey());
 D3D.setEventListener('undo', () => _editor.undo());
 D3D.setEventListener('redo', () => _editor.redo());
+D3D.setEventListener('dupe', () => _editor.dupe());
 D3D.setEventListener('save-project', () => saveProject());
 D3D.setEventListener('request-save-and-close', () => saveProjectAndClose());
 

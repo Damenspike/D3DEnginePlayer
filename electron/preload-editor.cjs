@@ -106,6 +106,7 @@ function getExtension(path) {
 addIPCListener('delete');
 addIPCListener('undo');
 addIPCListener('redo');
+addIPCListener('dupe');
 addIPCListener('save-project');
 addIPCListener('add-object');
 addIPCListener('symbolise-object');
