@@ -1,5 +1,6 @@
 // MaterialEditor.jsx
 import React, { useEffect, useRef, useState } from 'react';
+import { fileName } from '../../../engine/d3dutility.js';
 import { MdFolderOpen, MdDelete } from 'react-icons/md';
 
 const DEFAULTS = {
@@ -14,12 +15,23 @@ const DEFAULTS = {
 	wireframe: false,
 	side: 'FrontSide',
 	map: '',
+	mapOffset: [0, 0],
+	mapRepeat: [1, 1],
 	normalMap: '',
+	normalMapOffset: [0, 0],
+	normalMapRepeat: [1, 1],
 	roughnessMap: '',
 	metalnessMap: '',
 	emissiveMap: '',
 	alphaMap: '',
 	envMapIntensity: 1
+};
+
+const autoBlur = (e) => {
+	if (e.key === 'Enter') {
+		e.preventDefault();
+		e.currentTarget.blur();
+	}
 };
 
 let timer;
@@ -62,6 +74,10 @@ function ensureDefaults(val) {
 	v.emissiveMap = v.emissiveMap || '';
 	v.alphaMap = v.alphaMap || '';
 	v.envMapIntensity = Number.isFinite(+v.envMapIntensity) ? +v.envMapIntensity : DEFAULTS.envMapIntensity;
+	v.mapOffset = Array.isArray(v.mapOffset) ? v.mapOffset : [0, 0];
+	v.mapRepeat = Array.isArray(v.mapRepeat) ? v.mapRepeat : [1, 1];
+	v.normalMapOffset = Array.isArray(v.normalMapOffset) ? v.normalMapOffset : [0, 0];
+	v.normalMapRepeat = Array.isArray(v.normalMapRepeat) ? v.normalMapRepeat : [1, 1];
 	return v;
 }
 function clamp01(v) {
@@ -71,17 +87,16 @@ function clamp01(v) {
 	return v;
 }
 
-export default function MaterialEditor({ uri, onChange, onSave, openAsset }) {
+export default function MaterialEditor({ uri, date, onSave, openAsset }) {
 	const [mat, setMat] = useState(ensureDefaults(null));
-	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState('');
 	const [showAdvanced, setShowAdvanced] = useState(false);
 	const prevRef = useRef(JSON.stringify(ensureDefaults(null)));
 
+	// load material on uri change
 	useEffect(() => {
 		let cancelled = false;
 		(async () => {
-			setLoading(true);
 			setError('');
 			try {
 				const text = await _editor.readFile(uri);
@@ -91,7 +106,6 @@ export default function MaterialEditor({ uri, onChange, onSave, openAsset }) {
 				if (!cancelled) {
 					setMat(withDefaults);
 					prevRef.current = JSON.stringify(withDefaults);
-					onChange?.(withDefaults, null);
 				}
 			} catch (e) {
 				console.error('[MaterialEditor] read fail', uri, e);
@@ -99,26 +113,39 @@ export default function MaterialEditor({ uri, onChange, onSave, openAsset }) {
 					setMat(ensureDefaults(null));
 					setError('Failed to load material');
 				}
-			} finally {
-				if (!cancelled) setLoading(false);
 			}
 		})();
 		return () => { cancelled = true; };
-	}, [uri]);
+	}, [uri, date]);
 
+	// commit single source of truth: updates baseline then calls parent onSave(prev,next)
 	const commit = (next) => {
 		const prev = JSON.parse(prevRef.current || '{}');
 		prevRef.current = JSON.stringify(next);
 		onSave?.(prev, next);
 	};
+
+	// local patch; optionally commit
 	const patch = (patchObj, commitChange = false) => {
 		const next = ensureDefaults({ ...mat, ...patchObj });
 		setMat(next);
-		onChange?.(next, mat);
 		if (commitChange) commit(next);
 	};
-	const fileRow = (label, field, acceptFormat = 'texture') => {
-		const current = mat[field] || '';
+
+	const fileRow = (label, field, acceptFormat = 'img') => {
+		const uuid = mat[field] || '';
+		const filePath = uuid ? _root.resolveAssetPath(uuid) : '';
+		const fname = fileName(filePath);
+
+		const browse = () => openAsset?.({
+			format: acceptFormat,
+			selectedAsset: filePath,
+			onSelect: (assetPath) => {
+				const newUuid = _root.resolveAssetId(assetPath);
+				patch({ [field]: newUuid }, true);
+			}
+		});
+
 		return (
 			<div className="material-editor-row">
 				<label className="material-editor-label">{label}</label>
@@ -127,14 +154,14 @@ export default function MaterialEditor({ uri, onChange, onSave, openAsset }) {
 						className="tf"
 						type="text"
 						readOnly
-						value={current}
+						value={fname}
 						placeholder="No asset"
-						onClick={() => openAsset?.({ format: acceptFormat, field, current })}
+						onClick={browse}
 					/>
-					<button title="Browse" onClick={() => openAsset?.({ format: acceptFormat, field, current })}>
+					<button title="Browse" onClick={browse}>
 						<MdFolderOpen />
 					</button>
-					{current ? (
+					{uuid ? (
 						<button title="Clear" onClick={() => patch({ [field]: '' }, true)}>
 							<MdDelete />
 						</button>
@@ -144,11 +171,13 @@ export default function MaterialEditor({ uri, onChange, onSave, openAsset }) {
 		);
 	};
 
-	if (loading) return <div className="material-editor">Loading material…</div>;
+	const spacer = () => <div style={{ height: 20 }} />;
+
+	if (!mat) return <div className="material-editor">Loading material…</div>;
 	if (error) return <div className="material-editor error">{error}</div>;
 
 	const isBasic = mat.type === 'MeshBasicMaterial';
-	
+
 	return (
 		<div className="material-editor">
 			{/* BASIC */}
@@ -159,19 +188,16 @@ export default function MaterialEditor({ uri, onChange, onSave, openAsset }) {
 					value={numToInput(mat.color)}
 					onClick={(e) => { e.target.oldValueNum = mat.color; }}
 					onChange={(e) => {
-						patch({ color: inputToNum(e.target.value) });
-						
+						const val = inputToNum(e.target.value);
+						patch({ color: val });
 						clearTimeout(timer);
 						timer = setTimeout(() => {
-							const next = { ...mat, color: inputToNum(e.target.value) };
-							const prev = { ...mat, color: e.target.oldValueNum ?? mat.color };
-							onSave?.(prev, next);
+							commit({ ...mat, color: val });
 						}, 100);
 					}}
 					onBlur={(e) => {
-						const next = { ...mat, color: inputToNum(e.target.value) };
-						const prev = { ...mat, color: e.target.oldValueNum ?? mat.color };
-						onSave?.(prev, next);
+						const val = inputToNum(e.target.value);
+						commit({ ...mat, color: val });
 					}}
 				/>
 			</div>
@@ -218,6 +244,8 @@ export default function MaterialEditor({ uri, onChange, onSave, openAsset }) {
 			{/* ADVANCED */}
 			{showAdvanced && (
 				<>
+					{spacer()}
+
 					<div className="material-editor-row">
 						<label className="material-editor-label">Type</label>
 						<select
@@ -232,16 +260,33 @@ export default function MaterialEditor({ uri, onChange, onSave, openAsset }) {
 					</div>
 
 					<div className="material-editor-row">
+						<label className="material-editor-label">Side</label>
+						<select
+							className="tf"
+							value={mat.side}
+							onChange={(e) => patch({ side: e.target.value }, true)}
+						>
+							<option value="FrontSide">Front Side</option>
+							<option value="BackSide">Back Side</option>
+							<option value="DoubleSide">Double Side</option>
+						</select>
+					</div>
+
+					{spacer()}
+
+					<div className="material-editor-row">
 						<label className="material-editor-label">Emissive</label>
 						<input
 							type="color"
 							value={numToInput(mat.emissive)}
 							onClick={(e) => { e.target.oldValueNum = mat.emissive; }}
-							onChange={(e) => patch({ emissive: inputToNum(e.target.value) })}
+							onChange={(e) => {
+								const val = inputToNum(e.target.value);
+								patch({ emissive: val });
+							}}
 							onBlur={(e) => {
-								const next = { ...mat, emissive: inputToNum(e.target.value) };
-								const prev = { ...mat, emissive: e.target.oldValueNum ?? mat.emissive };
-								onSave?.(prev, next);
+								const val = inputToNum(e.target.value);
+								commit({ ...mat, emissive: val });
 							}}
 						/>
 					</div>
@@ -260,14 +305,7 @@ export default function MaterialEditor({ uri, onChange, onSave, openAsset }) {
 						</div>
 					</div>
 
-					<div className="material-editor-row">
-						<label className="material-editor-label">Transparent</label>
-						<input
-							type="checkbox"
-							checked={!!mat.transparent}
-							onChange={(e) => patch({ transparent: !!e.target.checked }, true)}
-						/>
-					</div>
+					{spacer()}
 
 					<div className="material-editor-row">
 						<label className="material-editor-label">Opacity</label>
@@ -292,41 +330,97 @@ export default function MaterialEditor({ uri, onChange, onSave, openAsset }) {
 						/>
 					</div>
 
-					<div className="material-editor-row">
-						<label className="material-editor-label">Side</label>
-						<select
-							className="tf"
-							value={mat.side}
-							onChange={(e) => patch({ side: e.target.value }, true)}
-						>
-							<option value="FrontSide">Front Side</option>
-							<option value="BackSide">Back Side</option>
-							<option value="DoubleSide">Double Side</option>
-						</select>
-					</div>
+					{spacer()}
 
 					{fileRow('Color Map', 'map')}
-					{fileRow('Normal Map', 'normalMap')}
-					{!isBasic && fileRow('Roughness Map', 'roughnessMap')}
-					{!isBasic && fileRow('Metalness Map', 'metalnessMap')}
-					{fileRow('Emissive Map', 'emissiveMap')}
-					{fileRow('Alpha Map', 'alphaMap')}
+					<div className="material-editor-row subrow">
+						<label className="material-editor-label">Offset</label>
+						<input
+							className="tf"
+							type="number"
+							step="0.01"
+							value={mat.mapOffset[0]}
+							onChange={e => patch({ mapOffset: [parseFloat(e.target.value), mat.mapOffset[1]] })}
+							onBlur={() => commit({ ...mat, mapOffset: [...mat.mapOffset] })}
+							onKeyDown={autoBlur}
+						/>
+						<input
+							className="tf"
+							type="number"
+							step="0.01"
+							value={mat.mapOffset[1]}
+							onChange={e => patch({ mapOffset: [mat.mapOffset[0], parseFloat(e.target.value)] })}
+							onBlur={() => commit({ ...mat, mapOffset: [...mat.mapOffset] })}
+							onKeyDown={autoBlur}
+						/>
+					</div>
+					<div className="material-editor-row subrow">
+						<label className="material-editor-label">Scale</label>
+						<input
+							className="tf"
+							type="number"
+							step="0.01"
+							value={mat.mapRepeat[0]}
+							onChange={e => patch({ mapRepeat: [parseFloat(e.target.value), mat.mapRepeat[1]] })}
+							onBlur={() => commit({ ...mat, mapRepeat: [...mat.mapRepeat] })}
+							onKeyDown={autoBlur}
+						/>
+						<input
+							className="tf"
+							type="number"
+							step="0.01"
+							value={mat.mapRepeat[1]}
+							onChange={e => patch({ mapRepeat: [mat.mapRepeat[0], parseFloat(e.target.value)] })}
+							onBlur={() => commit({ ...mat, mapRepeat: [...mat.mapRepeat] })}
+							onKeyDown={autoBlur}
+						/>
+					</div>
 
-					{!isBasic && (
-						<div className="material-editor-row">
-							<label className="material-editor-label">EnvMap Intensity</label>
-							<div className="material-editor-slider">
-								<input
-									type="range" min={0} max={5} step={0.1}
-									value={Number(mat.envMapIntensity) || 1}
-									onChange={(e) => patch({ envMapIntensity: Math.max(0, Number(e.target.value) || 0) })}
-									onMouseUp={(e) => patch({ envMapIntensity: Math.max(0, Number(e.target.value) || 0) }, true)}
-									onTouchEnd={(e) => patch({ envMapIntensity: Math.max(0, Number(e.target.value) || 0) }, true)}
-								/>
-								<div className="slider-value">{(Number(mat.envMapIntensity) || 1).toFixed(1)}</div>
-							</div>
-						</div>
-					)}
+					{spacer()}
+
+					{fileRow('Normal Map', 'normalMap')}
+					<div className="material-editor-row subrow">
+						<label className="material-editor-label">Offset</label>
+						<input
+							className="tf"
+							type="number"
+							step="0.01"
+							value={mat.normalMapOffset[0]}
+							onChange={e => patch({ normalMapOffset: [parseFloat(e.target.value), mat.normalMapOffset[1]] })}
+							onBlur={() => commit({ ...mat, normalMapOffset: [...mat.normalMapOffset] })}
+							onKeyDown={autoBlur}
+						/>
+						<input
+							className="tf"
+							type="number"
+							step="0.01"
+							value={mat.normalMapOffset[1]}
+							onChange={e => patch({ normalMapOffset: [mat.normalMapOffset[0], parseFloat(e.target.value)] })}
+							onBlur={() => commit({ ...mat, normalMapOffset: [...mat.normalMapOffset] })}
+							onKeyDown={autoBlur}
+						/>
+					</div>
+					<div className="material-editor-row subrow">
+						<label className="material-editor-label">Scale</label>
+						<input
+							className="tf"
+							type="number"
+							step="0.01"
+							value={mat.normalMapRepeat[0]}
+							onChange={e => patch({ normalMapRepeat: [parseFloat(e.target.value), mat.normalMapRepeat[1]] })}
+							onBlur={() => commit({ ...mat, normalMapRepeat: [...mat.normalMapRepeat] })}
+							onKeyDown={autoBlur}
+						/>
+						<input
+							className="tf"
+							type="number"
+							step="0.01"
+							value={mat.normalMapRepeat[1]}
+							onChange={e => patch({ normalMapRepeat: [mat.normalMapRepeat[0], parseFloat(e.target.value)] })}
+							onBlur={() => commit({ ...mat, normalMapRepeat: [...mat.normalMapRepeat] })}
+							onKeyDown={autoBlur}
+						/>
+					</div>
 				</>
 			)}
 		</div>

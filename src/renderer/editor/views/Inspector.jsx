@@ -22,6 +22,7 @@ import {
 } from "react-icons/md";
 
 import {
+	MIME_D3D_ROW,
 	moveZipFile,
 	renameZipFile,
 	renameZipDirectory,
@@ -32,7 +33,7 @@ import {
 	parentDir,
 	uniqueFilePath,
 	getExtension,
-	MIME_D3D_ROW
+	fileName
 } from '../../../engine/d3dutility.js';
 
 const { path } = D3D;
@@ -114,6 +115,10 @@ export default function Inspector() {
 		setDummyObject({...dummyObject});
 		setDummyProject({...dummyProject});
 	}
+	const writeAndRefresh = (uri, data) => {
+		_editor.writeFile({ path: uri, data });
+		update();
+	}
 	const openAssetExplorer = ({ format, selectedAsset, onSelect }) => {
 		setAssetExplorerFilter(format);
 		setAssetExplorerOpen(true);
@@ -122,47 +127,8 @@ export default function Inspector() {
 	}
 	const deleteSelectedObjects = () => {
 		if(_editor.selectedObjects.length > 0) {
-			const restorableObjects = [];
-			const deleteUUIDs = [];
-			
-			_editor.selectedObjects.forEach(d3dobject => {
-				const d3dobjectRestore = d3dobject.getSerializableObject();
-				d3dobjectRestore.__parent = d3dobject.parent;
-				
-				restorableObjects.push(d3dobjectRestore);
-				deleteUUIDs.push(d3dobject.uuid);
-				
-				d3dobject.delete();
-			});
-			_editor.setSelection([]);
+			_editor.deleteSelectedObjects();
 			setObject(null);
-			
-			_editor.addStep({
-				name: 'Delete object(s)',
-				undo: async () => {
-					console.log('undo delete');
-					const restoredObjs = [];
-					
-					for(let i in restorableObjects) {
-						const objData = {...restorableObjects[i]};
-						const parent = objData.__parent;
-						delete objData.__parent;
-						
-						if(!parent)
-							continue;
-						
-						const restoredd3dobj = await parent.createObject(objData);
-						restoredObjs.push(restoredd3dobj);
-					}
-					
-					_editor.setSelection(restoredObjs);
-				},
-				redo: () => {
-					// re-delete them by UUID
-					deleteUUIDs.forEach(uuid => _root.superIndex[uuid]?.delete?.());
-					_editor.setSelection([]);
-				}
-			});
 		}else
 		if(selectedAssetPaths.size > 0) {
 			_editor.deleteSelectedAssets();
@@ -364,11 +330,6 @@ export default function Inspector() {
 	}
 	const drawComponentsEditor = () => {
 		const rows = [];
-		
-		function writeAsset(uri, json) {
-			_editor.writeFile({ path: uri, data: json });
-			update();
-		}
 		
 		object.components.forEach(component => {
 			if(!dummyObject.components)
@@ -669,16 +630,23 @@ export default function Inspector() {
 									>
 										<MaterialEditor
 											uri={uri}
+											date={new Date()}
 											onSave={async (prev, next) => {
 												const before = JSON.stringify(prev);
 												const after  = JSON.stringify(next);
 												
-												writeAsset(uri, after);
+												writeAndRefresh(uri, after);
 												
 												_editor.addStep({
 													name: `Edit material: ${uri}`,
-													undo: () => writeAndRefresh(uri, before),
-													redo: () => writeAndRefresh(uri, after),
+													undo: async () => {
+														writeAndRefresh(uri, before);
+														await _root.refreshObjectsWithResource(uri);
+													},
+													redo: async () => {
+														writeAndRefresh(uri, after);
+														await _root.refreshObjectsWithResource(uri);
+													}
 												});
 												
 												// apply to all other objects using this material
@@ -702,6 +670,7 @@ export default function Inspector() {
 								<div className="file-array-list">
 									{current.map((uuid, idx) => {
 										const filePath = _root.resolveAssetPath(uuid);
+										const fname = fileName(filePath);
 										
 										const browse = () => {
 											openAssetExplorer({
@@ -740,7 +709,7 @@ export default function Inspector() {
 													className="tf"
 													type="text"
 													readOnly
-													value={filePath}
+													value={fname}
 													placeholder="No asset selected"
 													onClick={browse}
 												/>
@@ -1064,6 +1033,7 @@ export default function Inspector() {
 						}}
 						onDoubleClick={() => {
 							_editor.focus = object;
+							_editor.focusOnSelectedObjects();
 							_editor.setSelection([]);
 						}}
 					/>

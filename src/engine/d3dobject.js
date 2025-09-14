@@ -651,16 +651,37 @@ export default class D3DObject {
 				}
 				case 'AmbientLight': {
 					if(!this.isLight) {
+						const color = new THREE.Color(Number(component.properties.color));
 						const light = new THREE.AmbientLight(
-							parseInt(component.properties.color, 16),
+							color,
 							component.properties.intensity
 						);
 						this.isLight = true;
 						this.replaceObject3D(light);
 					}else{
 						const light = this.object3d;
-						light.color = parseInt(component.properties.color || '0xffffff', 16);
+						light.color.set(Number(component.properties.color));
 						light.intensity = component.properties.intensity;
+					}
+					break;
+				}
+				case 'PointLight': {
+					if (!this.isLight) {
+						const color = new THREE.Color(Number(component.properties.color));
+						const light = new THREE.PointLight(
+							color,
+							component.properties.intensity ?? 1,
+							component.properties.distance ?? 0, // 0 = infinite
+							component.properties.decay ?? 1     // 1 = physically correct
+						);
+						this.isLight = true;
+						this.replaceObject3D(light);
+					} else {
+						const light = this.object3d;
+						light.color.set(Number(component.properties.color));
+						light.intensity = component.properties.intensity ?? 1;
+						light.distance = component.properties.distance ?? 0;
+						light.decay = component.properties.decay ?? 1;
 					}
 					break;
 				}
@@ -705,6 +726,7 @@ export default class D3DObject {
 					break;
 				}
 				case 'Mesh': {
+					// load model from zip if provided
 					if (component.properties.mesh) {
 						const modelPath = this.resolvePath(component.properties.mesh);
 						const modelData = await zip.file(modelPath)?.async('arraybuffer');
@@ -713,87 +735,192 @@ export default class D3DObject {
 						} else {
 							const loader = new GLTFLoader();
 							const gltf = await loader.parseAsync(modelData, '');
-					
+				
 							// remove previous model root BEFORE adding the new one
 							if (this.modelScene && this.modelScene.parent) {
 								this.modelScene.parent.remove(this.modelScene);
 							}
-					
+				
 							this.object3d.add(gltf.scene);
 							this.modelScene = gltf.scene;
 						}
 					}
+				
+					// helpers (UUID-only)
+					const _mimeFromExt = (p) => {
+						const ext = (p.split('.').pop() || '').toLowerCase();
+						if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+						if (ext === 'png') return 'image/png';
+						if (ext === 'webp') return 'image/webp';
+						if (ext === 'ktx2') return 'image/ktx2';
+						return 'application/octet-stream';
+					};
+				
+					const loadTextureFromUUID = async (uuid) => {
+						if (!uuid) return null;
+						const filePath = this.resolveAssetPath(uuid);
+						const file = zip.file(path.join('assets', filePath));
+						if (!file) return null;
+				
+						const buf = await file.async('arraybuffer');
+						const blob = new Blob([buf], { type: _mimeFromExt(filePath) });
+						const bitmap = await createImageBitmap(blob);
+						const tex = new THREE.Texture(bitmap);
+						tex.needsUpdate = true;
+						return tex;
+					};
+				
+					const setMapUUID = async (mat, key, uuid, isColor = false) => {
+						// only set if the material actually supports this map
+						if (!(key in mat)) return;
+				
+						if (!uuid) {
+							if (mat[key]) {
+								mat[key].dispose?.();
+								mat[key] = null;
+								mat.needsUpdate = true;
+							}
+							return;
+						}
+						const tex = await loadTextureFromUUID(uuid);
+						if (!(tex && tex.isTexture)) {
+							console.warn(`[material] ${key} did not resolve to THREE.Texture`, uuid);
+							return;
+						}
+						if (isColor) {
+							if ('colorSpace' in tex) tex.colorSpace = THREE.SRGBColorSpace;
+							else tex.encoding = THREE.sRGBEncoding;
+						}
+						tex.wrapS = THREE.RepeatWrapping;
+						tex.wrapT = THREE.RepeatWrapping;
+						tex.needsUpdate = true;
+				
+						mat[key] = tex;
+						mat.needsUpdate = true;
+					};
+				
+					// remove params that a given THREE material type doesn't support
+					const stripIncompatibleParams = (params, type) => {
+						// minimal, targeted: avoid Basic warnings
+						if (type === 'MeshBasicMaterial') {
+							delete params.metalness;
+							delete params.roughness;
+							delete params.emissive;
+							delete params.emissiveIntensity;
+							delete params.envMapIntensity;
+							// also don't pass map params in the ctor for Basic
+							delete params.normalMap;
+							delete params.roughnessMap;
+							delete params.metalnessMap;
+							delete params.emissiveMap;
+						}
+						// add more rules here if you introduce other material families
+						return params;
+					};
+				
+					// build & apply materials
 					if (component.properties.materials && component.properties.materials.length > 0 && this.modelScene) {
 						const matPaths = component.properties.materials.map(p => this.resolvePath(p));
 						const matJsons = await Promise.all(matPaths.map(p => zip.file(p)?.async('string')));
-					
-						const materials = matJsons.map((matStr, i) => {
+				
+						const materials = await Promise.all(matJsons.map(async (matStr, i) => {
 							if (matStr === undefined) {
 								console.warn(`Material file not found: ${matPaths[i]}`);
 								return null;
 							}
-							if(!matStr) {
+							if (!matStr) {
 								matStr = JSON.stringify({
 									"name": "Fallback Material",
-									"type": "MeshStandardMaterial",
+									"type": "MeshBasicMaterial",
 									"color": 0xFF00FF,
 									"metalness": 0.0,
 									"roughness": 0.5,
 									"emissive": 0,
 									"wireframe": false
-								})
+								});
 								console.log('Using fallback material as ', matPaths[i], ' not valid');
 							}
+				
 							const params = JSON.parse(matStr);
-					
-							const Ctor = THREE[params.type];
+							const type = params.type;
+							const Ctor = THREE[type];
 							if (!Ctor) {
-								console.warn(`Unknown material type: ${params.type}`);
+								console.warn(`Unknown material type: ${type}`);
 								return null;
 							}
-					
-							// fix colors
-							if(params.color)	
-								params.color = Number(params.color);
-							
-							// make transparency actually work if opacity < 1
+				
+							// normalize numeric colors
+							if (params.color != null) params.color = Number(params.color);
+							if (params.emissive != null) params.emissive = Number(params.emissive);
+				
+							// transparency
 							if (params.opacity !== undefined && params.opacity < 1 && params.transparent !== true) {
 								params.transparent = true;
 							}
 							
-							const m = new Ctor(params);
-					
+							if (typeof params.side === 'string' && THREE[params.side] !== undefined) {
+								params.side = THREE[params.side];
+							}
+				
+							// keep UUIDs to assign after construction
+							const {
+								map, normalMap, roughnessMap, metalnessMap, emissiveMap, alphaMap,
+								...rest
+							} = params;
+				
+							// strip incompatible ctor params
+							const baseParams = stripIncompatibleParams({ ...rest }, type);
+				
+							const m = new Ctor(baseParams);
+				
 							// helpful for gizmos / UI materials so they don't get greyed by post/ACES
 							if ('toneMapped' in m) m.toneMapped = false;
-					
+				
+							// assign textures only if the material supports those props
+							await setMapUUID(m, 'map', map, /*isColor*/ true);
+							await setMapUUID(m, 'normalMap', normalMap);
+							await setMapUUID(m, 'roughnessMap', roughnessMap);
+							await setMapUUID(m, 'metalnessMap', metalnessMap);
+							await setMapUUID(m, 'emissiveMap', emissiveMap, /*isColor*/ true);
+							await setMapUUID(m, 'alphaMap', alphaMap);
+							
+							if (m.map) {
+								m.map.offset.fromArray(params.mapOffset || [0, 0]);
+								m.map.repeat.fromArray(params.mapRepeat || [1, 1]);
+							}
+							if (m.normalMap) {
+								m.normalMap.offset.fromArray(params.normalMapOffset || [0, 0]);
+								m.normalMap.repeat.fromArray(params.normalMapRepeat || [1, 1]);
+							}
+				
 							m.needsUpdate = true;
 							return m;
-						});
-					
-						const root = this.modelScene; // always apply under the GLTF root
-					
+						}));
+				
+						const root = this.modelScene;
+				
 						root.traverse(n => {
 							if (!n.isMesh) return;
-					
+				
 							const groups = n.geometry?.groups ?? [];
-					
+				
 							// Multi-submesh (indexed by geometry.groups[*].materialIndex)
 							if (groups.length > 1) {
 								const maxIdx = groups.reduce((m, g) => Math.max(m, g.materialIndex ?? 0), 0);
-					
+				
 								// Start from existing materials so we don't nuke ones you didn't supply
 								const current = Array.isArray(n.material) ? n.material : [n.material];
 								const arr = new Array(Math.max(current.length, maxIdx + 1));
-					
+				
 								for (let i = 0; i < arr.length; i++) {
 									arr[i] = materials[i] ?? current[i] ?? current[0] ?? materials[0] ?? current[0] ?? null;
 								}
-					
+				
 								n.material = arr;
 								arr.forEach(m => m && (m.needsUpdate = true));
 								return;
 							}
-					
+				
 							// Single-submesh → use first provided material if present
 							if (materials[0]) {
 								n.material = materials[0];

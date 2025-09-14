@@ -108,17 +108,17 @@ const D3DComponents = {
 				min: 0,
 				def: 1
 			},
-			'power': { 
-				label: 'Power', 
-				type: 'number',
-				min: 0,
-				def: 0
-			},
 			'distance': { 
 				label: 'Distance', 
 				type: 'number',
 				min: 0,
 				def: 0 // no limit
+			},
+			'decay': { 
+				label: 'Decay', 
+				type: 'number',
+				min: 0,
+				def: 2
 			},
 			'castShadow': { 
 				label: 'Casts shadows', 

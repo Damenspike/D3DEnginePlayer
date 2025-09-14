@@ -313,3 +313,6 @@ export function dropToGroundIfPossible(obj3d) {
 	}
 	obj3d.updateMatrixWorld(true);
 }
+export function fileName(filePath) {
+	return filePath ? filePath.split(/[\\/]/).pop() : '';
+}

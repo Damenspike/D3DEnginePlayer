@@ -89,6 +89,9 @@ export async function loadD3DProj(uri) {
 
 	// Setup resize handling
 	setupResize(renderer, camera);
+	
+	// Step clipboard
+	setupClipboard();
 
 	// Update editor window title
 	D3D.updateEditorWindow({ title: _root.manifest.name });
@@ -311,6 +314,30 @@ function setupResize(renderer, camera) {
 	const resizeObserver = new ResizeObserver(resizeUpdate);
 	window.addEventListener('resize', resizeUpdate);
 	resizeObserver.observe(_container3d);
+}
+
+function setupClipboard() {
+	
+	window.addEventListener('copy', (e) => {
+		if(_input.getInputFieldInFocus())
+			return;
+		
+		_editor.copy();
+	}, true);
+	
+	window.addEventListener('cut', (e) => {
+		if(_input.getInputFieldInFocus())
+			return;
+			
+		_editor.cut();
+	}, true);
+	
+	window.addEventListener('paste', async (e) => {
+		if(_input.getInputFieldInFocus())
+			return;
+		
+		_editor.paste();
+	}, true);
 }
 
 function setupSelection(renderer, camera) {

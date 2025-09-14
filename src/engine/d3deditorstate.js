@@ -32,6 +32,7 @@ export default class D3DEditorState {
 		this.gizmo = null;
 		this.steps = [];
 		this.currentStep = -1;
+		this.clipboard = null;
 	}
 
 	setTool(tool) {
@@ -248,7 +249,7 @@ export default class D3DEditorState {
 			throw new Error("No project to save");
 		
 		// Save manifest
-		_editor.writeFile({
+		this.writeFile({
 			path: 'manifest.json',
 			data: JSON.stringify(_root.manifest)
 		});
@@ -264,21 +265,21 @@ export default class D3DEditorState {
 		});
 		
 		const scenesData = JSON.stringify(_root.scenes);
-		_editor.writeFile({
+		this.writeFile({
 			path: 'scenes.json',
 			data: scenesData
 		});
 		
 		// Save asset index
 		const assetIndexData = JSON.stringify(_root.assetIndex);
-		_editor.writeFile({
+		this.writeFile({
 			path: 'asset-index.json',
 			data: assetIndexData
 		});
 		
 		// Save symbols
 		Object.values(_root.__symbols).forEach(symbol => {
-			_editor.writeFile({
+			this.writeFile({
 				path: symbol.file.name,
 				data: JSON.stringify(symbol.objData)
 			});
@@ -289,5 +290,86 @@ export default class D3DEditorState {
 		await D3D.saveProjectFile(zipData);
 		
 		console.log('Project saved!');
+	}
+	
+	deleteSelectedObjects(opts) {
+		this.deleteObjects({objects: this.selectedObjects, ...opts});
+	}
+	deleteObjects({objects = [], action = 'Delete', addStep = true} = {}) {
+		if(objects.length < 1)
+			return;
+		
+		const restorableObjects = [];
+		const deleteUUIDs = [];
+		
+		objects.forEach(d3dobject => {
+			const d3dobjectRestore = d3dobject.getSerializableObject();
+			d3dobjectRestore.__parent = d3dobject.parent;
+			
+			restorableObjects.push(d3dobjectRestore);
+			deleteUUIDs.push(d3dobject.uuid);
+			
+			d3dobject.delete();
+		});
+		
+		this.setSelection([], false);
+		
+		addStep && this.addStep({
+			name: `${action} object(s)`,
+			undo: async () => {
+				const restoredObjs = [];
+				
+				for(let i in restorableObjects) {
+					const objData = {...restorableObjects[i]};
+					const parent = objData.__parent;
+					delete objData.__parent;
+					
+					if(!parent)
+						continue;
+					
+					const restoredd3dobj = await parent.createObject(objData);
+					restoredObjs.push(restoredd3dobj);
+				}
+				
+				this.setSelection(restoredObjs, false);
+			},
+			redo: () => {
+				// re-delete them by UUID
+				deleteUUIDs.forEach(uuid => _root.superIndex[uuid]?.delete?.());
+				this.setSelection([], false);
+			}
+		});
+	}
+	copy() {
+		this.clipboard = this.selectedObjects.map(
+			d3dobject => d3dobject.getSerializableObject()
+		);
+	}
+	cut() {
+		this.clipboard = this.selectedObjects.map(
+			d3dobject => d3dobject.getSerializableObject()
+		);
+		this.deleteSelectedObjects({action: 'Cut'});
+	}
+	async paste() {
+		return await this.pasteFrom({clip: this.clipboard});
+	}
+	async pasteFrom({clip = [], addStep = true, selectResult = true}) {
+		let pastedObjects = [];
+		
+		for(let objData of clip) {
+			const d3dobject = await _editor.focus.createObject(objData);
+			pastedObjects.push(d3dobject);
+		}
+		addStep && this.addStep({
+			name: 'Paste object(s)',
+			undo: () => this.deleteObjects({objects: pastedObjects, addStep: false}),
+			redo: async () => {
+				pastedObjects = await this.pasteFrom({clip})
+			}
+		});
+		selectResult && this.setSelection(pastedObjects, false);
+		
+		return pastedObjects;
 	}
 }

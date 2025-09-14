@@ -127,6 +127,28 @@ async function createEditorWindow() {
 		}
 	});
 	
+	editorWindow.webContents.on('before-input-event', (event, input) => {
+		const wc = editorWindow.webContents;
+		
+		if (!inputFieldActive) 
+			return;
+	
+		const mod = (input.meta || input.control) && !input.alt;
+		
+		if (!mod) 
+			return;
+			
+		switch (input.key.toLowerCase()) {
+			case 'c': wc.copy();      event.preventDefault(); return;
+			case 'v': wc.paste();     event.preventDefault(); return;
+			case 'x': wc.cut();       event.preventDefault(); return;
+			case 'a': wc.selectAll(); event.preventDefault(); return;
+			case 'z':
+				if (input.shift) wc.redo(); else wc.undo();
+				event.preventDefault(); return;
+		}
+	});
+	
 	if(isDev)
 		await editorWindow.loadURL('http://localhost:5173');
 	else
@@ -179,8 +201,9 @@ async function openProject(uri) {
 	lastOpenedProjectUri = uri;
 	projectOpen = true;
 	
-	updateEditorMenusEnabled();
 	await createEditorWindow();
+	
+	updateEditorMenusEnabled();
 }
 function startNewProject() {
 	if(!newProjectWindow) createNewProjectWindow()
@@ -380,7 +403,7 @@ const menuTemplate = [
 			{
 				id: 'toggleDevTools',
 				label: 'Toggle DevTools',
-				accelerator: 'CmdOrCtrl+Shift+I',
+				accelerator: 'Alt+Cmd+I',
 				click: (_, browserWindow) => {
 					if (browserWindow) browserWindow.webContents.toggleDevTools();
 				}
@@ -413,7 +436,6 @@ const menuTemplate = [
 
 const appMenu = Menu.buildFromTemplate(menuTemplate);
 Menu.setApplicationMenu(appMenu);
-updateEditorMenusEnabled();
 
 function setItemEnabledDeep(item, enabled) {
 	if (!item) 
@@ -444,9 +466,6 @@ function updateEditorMenusEnabled() {
 		['save', 'assets', 'objects'],
 		projectOpen
 	);
-	
-	if(editorWindow)
-		editorWindow.webContents.setIgnoreMenuShortcuts(inputFieldActive);
 	
 	if (process.platform === 'darwin') {
 		Menu.setApplicationMenu(appMenu);
