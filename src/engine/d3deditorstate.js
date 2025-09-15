@@ -250,7 +250,7 @@ export default class D3DEditorState {
 		D3D.setDirty(dirty);
 	}
 	
-	async save() {
+	async __save() {
 		const zip = _root?.zip;
 		
 		if(!zip)
@@ -293,6 +293,29 @@ export default class D3DEditorState {
 			});
 		});
 		
+		// Save scripts
+		_editor.clearDirectory('scripts');
+		for(let i in _root.superIndex) {
+			const d3dobject = _root.superIndex[i];
+			const script = d3dobject.__script;
+			if(!script)
+				continue;
+				
+			_editor.writeFile({
+				path: d3dobject.__scriptPath, 
+				data: script
+			});
+		}
+		if(_root.__script) {
+			_editor.writeFile({
+				path: _root.__scriptPath, 
+				data: _root.__script
+			});
+		}
+		
+		
+		///////////////////////////////////
+		// -- Save zip itself --
 		const zipData = await zip.generateAsync({ type: 'uint8array' });
 		
 		await D3D.saveProjectFile(zipData);
@@ -379,5 +402,14 @@ export default class D3DEditorState {
 		selectResult && this.setSelection(pastedObjects, false);
 		
 		return pastedObjects;
+	}
+	
+	editCode() {
+		if(this.selectedObjects.length > 1) {
+			this.showError('Just select one object to open the code editor');
+			return;
+		}
+		
+		this.openCodeEditor(this.selectedObjects[0] ?? _root);
 	}
 }

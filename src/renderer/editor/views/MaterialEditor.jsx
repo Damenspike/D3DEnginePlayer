@@ -147,7 +147,7 @@ export default function MaterialEditor({ uri, date, onSave, openAsset }) {
 		});
 
 		return (
-			<div className="material-editor-row">
+			<div className="material-editor-row field">
 				<label className="material-editor-label">{label}</label>
 				<div className="file-field">
 					<input
@@ -181,7 +181,7 @@ export default function MaterialEditor({ uri, date, onSave, openAsset }) {
 	return (
 		<div className="material-editor">
 			{/* BASIC */}
-			<div className="material-editor-row">
+			<div className="material-editor-row field">
 				<label className="material-editor-label">Color</label>
 				<input
 					type="color"
@@ -203,7 +203,7 @@ export default function MaterialEditor({ uri, date, onSave, openAsset }) {
 			</div>
 
 			{!isBasic && (
-				<div className="material-editor-row">
+				<div className="material-editor-row field">
 					<label className="material-editor-label">Metalness</label>
 					<div className="material-editor-slider">
 						<input
@@ -219,7 +219,7 @@ export default function MaterialEditor({ uri, date, onSave, openAsset }) {
 			)}
 
 			{!isBasic && (
-				<div className="material-editor-row">
+				<div className="material-editor-row field">
 					<label className="material-editor-label">Roughness</label>
 					<div className="material-editor-slider">
 						<input
@@ -234,7 +234,7 @@ export default function MaterialEditor({ uri, date, onSave, openAsset }) {
 				</div>
 			)}
 
-			<div className="material-editor-row">
+			<div className="material-editor-row field">
 				<div></div>
 				<button className="btn" type="button" onClick={() => setShowAdvanced(s => !s)}>
 					{showAdvanced ? 'Hide Advanced' : 'Advanced'}
@@ -246,7 +246,7 @@ export default function MaterialEditor({ uri, date, onSave, openAsset }) {
 				<>
 					{spacer()}
 
-					<div className="material-editor-row">
+					<div className="material-editor-row field">
 						<label className="material-editor-label">Type</label>
 						<select
 							className="tf"
@@ -259,7 +259,7 @@ export default function MaterialEditor({ uri, date, onSave, openAsset }) {
 						</select>
 					</div>
 
-					<div className="material-editor-row">
+					<div className="material-editor-row field">
 						<label className="material-editor-label">Side</label>
 						<select
 							className="tf"
@@ -274,7 +274,7 @@ export default function MaterialEditor({ uri, date, onSave, openAsset }) {
 
 					{spacer()}
 
-					<div className="material-editor-row">
+					<div className="material-editor-row field">
 						<label className="material-editor-label">Emissive</label>
 						<input
 							type="color"
@@ -291,7 +291,7 @@ export default function MaterialEditor({ uri, date, onSave, openAsset }) {
 						/>
 					</div>
 
-					<div className="material-editor-row">
+					<div className="material-editor-row field">
 						<label className="material-editor-label">Emissive Intensity</label>
 						<div className="material-editor-slider">
 							<input
@@ -307,7 +307,7 @@ export default function MaterialEditor({ uri, date, onSave, openAsset }) {
 
 					{spacer()}
 
-					<div className="material-editor-row">
+					<div className="material-editor-row field">
 						<label className="material-editor-label">Opacity</label>
 						<div className="material-editor-slider">
 							<input
@@ -321,7 +321,7 @@ export default function MaterialEditor({ uri, date, onSave, openAsset }) {
 						</div>
 					</div>
 
-					<div className="material-editor-row">
+					<div className="material-editor-row field">
 						<label className="material-editor-label">Wireframe</label>
 						<input
 							type="checkbox"
@@ -333,7 +333,7 @@ export default function MaterialEditor({ uri, date, onSave, openAsset }) {
 					{spacer()}
 
 					{fileRow('Color Map', 'map')}
-					<div className="material-editor-row subrow">
+					<div className="material-editor-row field subrow">
 						<label className="material-editor-label">Offset</label>
 						<input
 							className="tf"
@@ -354,7 +354,7 @@ export default function MaterialEditor({ uri, date, onSave, openAsset }) {
 							onKeyDown={autoBlur}
 						/>
 					</div>
-					<div className="material-editor-row subrow">
+					<div className="material-editor-row field subrow">
 						<label className="material-editor-label">Scale</label>
 						<input
 							className="tf"
@@ -379,7 +379,7 @@ export default function MaterialEditor({ uri, date, onSave, openAsset }) {
 					{spacer()}
 
 					{fileRow('Normal Map', 'normalMap')}
-					<div className="material-editor-row subrow">
+					<div className="material-editor-row field subrow">
 						<label className="material-editor-label">Offset</label>
 						<input
 							className="tf"
@@ -400,7 +400,7 @@ export default function MaterialEditor({ uri, date, onSave, openAsset }) {
 							onKeyDown={autoBlur}
 						/>
 					</div>
-					<div className="material-editor-row subrow">
+					<div className="material-editor-row field subrow">
 						<label className="material-editor-label">Scale</label>
 						<input
 							className="tf"

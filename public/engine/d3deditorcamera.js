@@ -225,7 +225,7 @@ function updateOrbit(usePivot) {
 	this.__lastUsePivot = usePivot;
 }
 
-this.beforeEditorRenderFrame = () => {
+this.onEditorEnterFrame = () => {
 	const isGameInFocus = _input.getIsGameInFocus();
 	const isCursorOverGame = _input.getCursorOverGame();
 	const inputFieldInFocus = _input.getInputFieldInFocus();

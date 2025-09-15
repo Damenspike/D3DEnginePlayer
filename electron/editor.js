@@ -19,6 +19,7 @@ let editorWindow;
 let lastOpenedProjectUri;
 let projectOpen = false;
 let inputFieldActive = false;
+let codeEditorActive = false;
 
 function getEditorBusy() {
 	return inputFieldActive;
@@ -245,6 +246,9 @@ function sendSetTransformTool(type) {
 function sendNewFile(extension) {
 	editorWindow.webContents.send('new-asset', extension);
 }
+function sendEditCode() {
+	editorWindow.webContents.send('edit-code');
+}
 
 // --- Menu ---
 const isMac = process.platform === 'darwin';
@@ -357,7 +361,13 @@ const menuTemplate = [
 				label: 'Desymbolise',
 				accelerator: 'CmdOrCtrl+Shift+D',
 				click: () => sendDesymboliseObject()
-			}
+			},
+			{
+				id: 'code',
+				label: 'Code',
+				accelerator: 'CmdOrCtrl+Shift+C',
+				click: () => sendEditCode()
+			},
 		]
 	},
 	{
@@ -518,9 +528,17 @@ ipcMain.handle('open-project', () => openBrowse());
 ipcMain.handle('get-current-project-uri', () => lastOpenedProjectUri);
 
 // Set editor status
-ipcMain.on('editor-status', (_, { inputFocussed }) => {
+ipcMain.on('editor-status', (_, { inputFocussed, codeEditorOpen, activeElement }) => {
 	if(typeof inputFocussed === 'boolean')
 		inputFieldActive = inputFocussed;
+	
+	if(typeof codeEditorOpen === 'boolean')
+		codeEditorActive = codeEditorOpen;
+		
+	editorWindow.webContents.setIgnoreMenuShortcuts(
+		activeElement?.tag == 'TEXTAREA' || 
+		(activeElement?.tag == 'INPUT' && activeElement?.type == 'text')
+	);
 		
 	updateEditorMenusEnabled();
 });

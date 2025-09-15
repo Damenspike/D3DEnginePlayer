@@ -173,6 +173,17 @@ export async function renameZipDirectory(zip, oldDirPath, newBaseName) {
 
 	return newDirPath;
 }
+export function clearDir(zip, dirPath) {
+	// make sure dir ends with slash
+	if (!dirPath.endsWith('/')) dirPath += '/';
+
+	for (const path of Object.keys(zip.files)) {
+		// match only files *inside* the dir
+		if (path.startsWith(dirPath) && path !== dirPath) {
+			zip.remove(path);
+		}
+	}
+}
 export function pathExists(zip, path) {
 	// file?
 	if (zip.file(path)) return true;

@@ -107,6 +107,7 @@ addIPCListener('delete');
 addIPCListener('undo');
 addIPCListener('redo');
 addIPCListener('dupe');
+addIPCListener('edit-code');
 addIPCListener('save-project');
 addIPCListener('add-object');
 addIPCListener('symbolise-object');

@@ -12,7 +12,8 @@ import {
 	uniqueFilePath,
 	getExtension,
 	pickWorldPointAtScreen,
-	dropToGroundIfPossible
+	dropToGroundIfPossible,
+	clearDir
 } from './d3dutility.js';
 
 import $ from 'jquery';
@@ -254,8 +255,8 @@ function afterRenderHideObjects() {
 
 function startAnimationLoop(composer, outlinePass) {
 	function animate() {
-		updateObject('beforeEditorRenderFrame', _root);
-		updateObject('__beforeEditorRenderFrame', _root);
+		updateObject('onEditorEnterFrame', _root);
+		updateObject('__onEditorEnterFrame', _root);
 
 		requestAnimationFrame(animate);
 
@@ -264,6 +265,9 @@ function startAnimationLoop(composer, outlinePass) {
 
 		outlinePass.selectedObjects = _editor.selectedObjects.map(d3dobj => d3dobj.object3d);
 		composer.render();
+		
+		if(_editor.gizmo)
+			_editor.gizmo.update();
 		
 		if (_editor.focus != _root) {
 			afterRenderHideObjects();
@@ -285,11 +289,8 @@ function startAnimationLoop(composer, outlinePass) {
 			afterRenderShowObjects();
 		}
 		
-		if(_editor.gizmo)
-			_editor.gizmo.update();
-		
-		updateObject('afterEditorRenderFrame', _root);
-		updateObject('__afterEditorRenderFrame', _root);
+		updateObject('onEditorExitFrame', _root);
+		updateObject('__onEditorExitFrame', _root);
 		_input._afterRenderFrame?.();
 	}
 
@@ -717,6 +718,10 @@ async function readFile(path) {
 
 	return await file.async("string");
 }
+function clearDirectory(path) {
+	const zip = _root.zip;
+	return clearDir(zip, path);
+}
 function symboliseSelectedObject() {
 	if(_editor.selectedObjects.length < 1)
 		return;
@@ -786,7 +791,7 @@ function moveObjectToCameraView(d3dobject, distance = 5) {
 }
 async function saveProject() {
 	try {
-		await _editor.save();
+		await _editor.__save();
 	}catch(e) {
 		_editor.showError({
 			message: `Error saving project. ${e}`
@@ -872,11 +877,14 @@ _editor.addNewFile = addNewFile;
 _editor.writeFile = writeFile;
 _editor.readFile = readFile;
 _editor.newAsset = newAsset;
+_editor.clearDirectory = clearDirectory;
+_editor.saveProject = saveProject;
 
 D3D.setEventListener('delete', () => _editor.onDeleteKey());
 D3D.setEventListener('undo', () => _editor.undo());
 D3D.setEventListener('redo', () => _editor.redo());
 D3D.setEventListener('dupe', () => _editor.dupe());
+D3D.setEventListener('edit-code', () => _editor.editCode());
 D3D.setEventListener('save-project', () => saveProject());
 D3D.setEventListener('request-save-and-close', () => saveProjectAndClose());
 

@@ -33,7 +33,7 @@ function updateMotion() {
 	self.object3d.translateX(axis.x * speed);  // right/left
 }
 
-self.beforeRenderFrame = () => {
+self.onEnterFrame = () => {
 	updateRotation();
 	updateMotion();
 };

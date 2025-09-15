@@ -11,7 +11,7 @@ import {
 const { path } = D3D;
 
 const protectedNames = [
-	'_root', 'Input', 'position', 'rotation', 'scale', 'name', 'parent', 'children', 'threeObj', 'scenes', 'zip', 'forward', 'right', 'up', 'quaternion', 'beforeRenderFrame', 'onAddedToScene', 'manifest', 'scenes', '__origin'
+	'_root', 'Input', 'position', 'rotation', 'scale', 'name', 'parent', 'children', 'threeObj', 'scenes', 'zip', 'forward', 'right', 'up', 'quaternion', 'onEnterFrame', 'onAddedToScene', 'manifest', 'scenes', '__origin'
 ]
 
 export default class D3DObject {
@@ -96,6 +96,34 @@ export default class D3DObject {
 		this.object3d.position.copy(targetW);
 		this.object3d.updateMatrixWorld(true);
 	}
+	get worldRotation() {
+		// return Euler in radians
+		const q = this.object3d.getWorldQuaternion(new THREE.Quaternion());
+		return new THREE.Euler().setFromQuaternion(q, 'XYZ');
+	}
+	
+	set worldRotation({ x, y, z }) {
+		if (Number.isNaN(x) || Number.isNaN(y) || Number.isNaN(z))
+			return;
+	
+		// ensure ancestors are up to date
+		if (this.parent)
+			this.parent.object3d.updateWorldMatrix(true, false);
+	
+		// target rotation as quaternion in world space
+		const targetEuler = new THREE.Euler(x, y, z, 'XYZ');
+		const targetQ = new THREE.Quaternion().setFromEuler(targetEuler);
+	
+		if (this.parent) {
+			// convert world quaternion into local space relative to parent
+			const parentQ = this.parent.object3d.getWorldQuaternion(new THREE.Quaternion());
+			parentQ.invert();
+			targetQ.multiply(parentQ);
+		}
+	
+		this.object3d.quaternion.copy(targetQ);
+		this.object3d.updateMatrixWorld(true);
+	}
 	
 	get position() {
 		return this.object3d.position;
@@ -152,6 +180,10 @@ export default class D3DObject {
 		
 		this.object3d.visible = !!value;
 		// Editor use only
+	}
+	
+	get __scriptPath() {
+		return path.join('scripts', `object_${this.name}_${this.uuid}.js`)
 	}
 	
 	get opacity() {
@@ -238,13 +270,10 @@ export default class D3DObject {
 		up.applyQuaternion(this.quaternion);
 		return up;
 	}
-	get quaternion() {
-		return this.object3d.quaternion;
-	}
 	
 	setupDefaultMethods() {
 		if(window._editor) {
-			this.__beforeEditorRenderFrame = () => {
+			this.__onEditorEnterFrame = () => {
 				if(!this.lastMatrixWorld) {
 					this.lastMatrixWorld = new THREE.Matrix4().copy(this.object3d.matrixWorld);
 					return;
@@ -486,7 +515,7 @@ export default class D3DObject {
 		const zip = this.root.zip;
 		
 		let script;
-		let scriptName = path.join('scripts', `object_${this.name}_${this.uuid}.js`);
+		let scriptName = this.__scriptPath;
 		
 		if(this.engineScript) {
 			const url = new URL(`/engine/${this.engineScript}`, window.location.origin);
@@ -498,6 +527,8 @@ export default class D3DObject {
 		}else{
 			script = await zip.file(scriptName)?.async('string');
 		}
+		
+		this.__script = script;
 		
 		try {
 			if (script && (!window._editor || this.editorOnly)) {
@@ -521,6 +552,8 @@ export default class D3DObject {
 			_input,
 			_time,
 			_editor,
+			root: this.root,
+			parent: this.parent,
 			self: this,
 			console: {
 				log: (...args) => console.log(`[${this.name}]`, ...args),
@@ -529,6 +562,7 @@ export default class D3DObject {
 				assert: (...args) => console.assert(...args)
 			},
 			Vector3: (...args) => new THREE.Vector3(...args),
+			Vector2: (...args) => new THREE.Vector2(...args),
 			Quaternion: (...args) => new THREE.Quaternion(...args),
 			Box3: (...args) => new THREE.Box3(...args),
 			MathUtils: THREE.MathUtils
@@ -716,8 +750,8 @@ export default class D3DObject {
 							target.updateMatrixWorld(true);
 						};
 						
-						this.beforeEditorRenderFrame = updateTarget;
-						this.beforeRenderFrame = updateTarget;
+						this.onEditorEnterFrame = updateTarget;
+						this.onEnterFrame = updateTarget;
 					} else {
 						const light = this.object3d;
 						light.color.set(Number(component.properties.color));

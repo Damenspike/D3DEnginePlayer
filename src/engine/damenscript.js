@@ -4,20 +4,15 @@
    `this` is an alias of `self` (provide self in env as needed)
 */
 
+import { 
+	FORBIDDEN_KEYWORDS,
+	FORBIDDEN_PROPS
+} from './damenscript-schema.js';
+
 const DamenScript = (() => {
   // ===== Utilities / Guards =====
-  const BLOCKED_PROPS = new Set([
-   'constructor','prototype','__proto__',
-   'caller','callee','arguments',
-   'call','apply','bind'
- ]);
-  const FORBIDDEN_NAMES = new Set([
-	'window','document','globalThis',
-	'require','process',
-	'Function','eval',
-	'import','new'
-	// 'this' is allowed (maps to 'self')
-  ]);
+  const BLOCKED_PROPS = new Set([...FORBIDDEN_PROPS]);
+  const FORBIDDEN_NAMES = new Set([...FORBIDDEN_KEYWORDS]);
   const SAFE_MATH = Object.freeze({
 	// angles
 	tan: Math.tan, atan: Math.atan, degToRad: (d) => d * Math.PI / 180,

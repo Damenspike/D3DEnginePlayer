@@ -73,7 +73,7 @@ async function loadD3D(uri) {
 	}
 
 	function animate() {
-		updateObject('beforeRenderFrame', _root);
+		updateObject('onEnterFrame', _root);
 
 		requestAnimationFrame(animate);
 		if (camera) renderer.render(threeObj, camera);

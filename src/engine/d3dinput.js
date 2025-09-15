@@ -40,13 +40,18 @@ export default class D3DInput {
 		
 		window.addEventListener('focusin', () => {
 			D3D.updateEditorStatus({
-				inputFocussed: this.getInputFieldInFocus()
+				inputFocussed: this.getInputFieldInFocus(),
+				activeElement: {
+					tag: document.activeElement.tagName, 
+					type: document.activeElement.type
+				}
 			});
 		});
 		
 		window.addEventListener('focusout', () => {
 			D3D.updateEditorStatus({
-				inputFocussed: this.getInputFieldInFocus()
+				inputFocussed: this.getInputFieldInFocus(),
+				activeElement: null
 			});
 		});
 	}

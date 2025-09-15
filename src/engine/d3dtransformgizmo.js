@@ -1,4 +1,7 @@
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { Line2 } from 'three/examples/jsm/lines/Line2.js';
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
+import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
 
 export default class D3DTransformGizmo {
 	get busy() {
@@ -52,6 +55,15 @@ export default class D3DTransformGizmo {
 		
 		this._group.traverse(o => {
 			if (!o.isMesh) return;
+		
+			// If a mesh opts into depth (occluder/rings), DON'T override its material.
+			if (o.userData?.useDepth) {
+				o.renderOrder = o.renderOrder ?? 99999;
+				o.frustumCulled = false;
+				return;
+			}
+		
+			// clone and set overlay defaults
 			if (o.material) {
 				o.material = Array.isArray(o.material)
 					? o.material.map(m => m && m.clone())
@@ -143,6 +155,11 @@ export default class D3DTransformGizmo {
 
 		this._syncPose();
 		this._scaleToCamera();
+		
+		if (this.mode == 'rotate') {
+			this._updateRotateArcs();
+			this._updateViewRing();
+		}
 
 		if (!this._dragging) {
 			this._updateHover();
@@ -237,43 +254,111 @@ export default class D3DTransformGizmo {
 	}
 	
 	_buildRotateHandles(group) {
-		const cloneMat = (m) => (m ? m.clone() : m);
-		const makeRing = (r) => new THREE.TorusGeometry(r, 0.02, 16, 64);
-		const makePick = (r) => new THREE.TorusGeometry(r, 0.10, 8, 48);
+		const RX = 0.88, RY = 0.90, RZ = 0.92; // axis ring radii
+		const VIEW_R = 1.06;                    // master (view) ring radius
+		const SEG = 128;
 	
-		const orientToAxis = (mesh, axis) => {
-			const q = new THREE.Quaternion().setFromUnitVectors(
-				new THREE.Vector3(0, 0, 1),
-				axis.clone().normalize()
-			);
-			mesh.quaternion.copy(q);
-		};
+		// -------- Gray shell (Unity vibe) --------
+		// Soft, semi-transparent, no depth write so it never “hides” the arcs.
+		this._rotShell = new THREE.Mesh(
+			new THREE.SphereGeometry(Math.max(RX, RY, RZ) * 0.98, 48, 36),
+			new THREE.MeshBasicMaterial({
+				color: 0x909090,
+				opacity: 0.12,
+				transparent: true,
+				depthTest: false,
+				depthWrite: false,
+				toneMapped: false,
+				fog: false
+			})
+		);
+		this._rotShell.name = 'rShell';
+		this._rotShell.renderOrder = 1;
+		group.add(this._rotShell);
 	
-		const addRingWithCollider = (name, visMat, radius, axis) => {
-			const g = new THREE.Group(); g.name = name;
+		// -------- Line2 material factory --------
+		const mkMat = (hex, alpha = 1) => new LineMaterial({
+			color: hex,
+			linewidth: 3.0,
+			worldUnits: false,
+			transparent: alpha < 1,
+			opacity: alpha,
+			depthTest: false,   // overlay look for the colored rings (we already compute front-half)
+			depthWrite: false,
+			toneMapped: false,
+			fog: false
+		});
 	
-			const vis = new THREE.Mesh(makeRing(radius), cloneMat(visMat));
-			vis.material.side = THREE.DoubleSide;
-			vis.material.depthTest = false;
-			vis.material.depthWrite = false;
-			vis.material.transparent = true;
-			vis.material.fog = false;
-			vis.material.toneMapped = false;
+		// -------- Unit circle geometry (XY plane) --------
+		const unitCircleGeom = (() => {
+			const pts = [];
+			for (let i = 0; i <= SEG; i++) {
+				const a = (i / SEG) * Math.PI * 2;
+				pts.push(Math.cos(a), Math.sin(a), 0);
+			}
+			const g = new LineGeometry();
+			g.setPositions(pts);
+			return g;
+		})();
 	
+		// Helper: make a ring group with unit circle line + pick torus; scale gives radius
+		const makeAxisRing = (name, radius, color, plane) => {
+			const g = new THREE.Group(); g.name = name; g.scale.setScalar(radius);
+	
+			// visible line (will be rewritten to half circle in _updateRotateArcs)
+			const line = new Line2(unitCircleGeom.clone(), mkMat(color));
+			line.userData.handle = name;
+			line.computeLineDistances();
+			// orient XY → plane
+			if (plane === 'YZ')      line.rotation.y =  Math.PI / 2;
+			else if (plane === 'XZ') line.rotation.x = -Math.PI / 2;
+			g.add(line);
+	
+			// invisible pick torus (always full, easy picking)
 			const pick = new THREE.Mesh(
-				makePick(radius),
+				new THREE.TorusGeometry(1, 0.10, 8, 48),
 				new THREE.MeshBasicMaterial({ visible: false })
 			);
 			pick.userData.handle = name;
+			if (plane === 'YZ')      pick.rotation.y =  Math.PI / 2;
+			else if (plane === 'XZ') pick.rotation.x = -Math.PI / 2;
+			g.add(pick);
 	
-			g.add(vis, pick);
-			orientToAxis(g, axis);
-			group.add(g);
+			return g;
 		};
 	
-		addRingWithCollider('rX', this._mat.X, 0.88, new THREE.Vector3(1, 0, 0));
-		addRingWithCollider('rY', this._mat.Y, 0.90, new THREE.Vector3(0, 1, 0));
-		addRingWithCollider('rZ', this._mat.Z, 0.92, new THREE.Vector3(0, 0, 1));
+		// X (red), Y (green), Z (blue)
+		const rX = makeAxisRing('rX', RX, 0xff5555, 'YZ');
+		const rY = makeAxisRing('rY', RY, 0x55ff55, 'XZ');
+		const rZ = makeAxisRing('rZ', RZ, 0x5599ff, 'XY');
+		group.add(rX, rY, rZ);
+		this._rotGroups = [rX, rY, rZ];
+	
+		// -------- View-aligned master ring (white) --------
+		this._viewRing = new THREE.Group(); this._viewRing.name = 'rV';
+		this._viewRing.scale.setScalar(VIEW_R);
+	
+		const vLine = new Line2(unitCircleGeom.clone(), mkMat(0xffffff, 0.5));
+		vLine.userData.handle = 'rV';
+		vLine.computeLineDistances();
+		this._viewRing.add(vLine);
+		
+		this._viewRingLine = vLine;
+	
+		const vPick = new THREE.Mesh(
+			new THREE.TorusGeometry(1, 0.10, 8, 48),
+			new THREE.MeshBasicMaterial({ visible: false })
+		);
+		vPick.userData.handle = 'rV';
+		this._viewRing.add(vPick);
+	
+		group.add(this._viewRing);
+	
+		// cache materials for resolution updates
+		this._rotLineMats = [
+			...this._rotGroups.map(grp => grp.children.find(o => o && o.isLine2)?.material),
+			vLine.material
+		].filter(Boolean);
 	}
 	
 	_buildScaleHandles(group) {
@@ -389,6 +474,123 @@ export default class D3DTransformGizmo {
 		const scale = Math.max(0.001, dist * 0.15);
 		this._group.scale.setScalar(scale);
 	}
+	
+	_updateRotateArcs() {
+		if (!this.object || !this._rotGroups) return;
+	
+		// keep Line2 thickness correct
+		if (this._rotLineMats) {
+			const v = new THREE.Vector2();
+			if (_editor?.renderer?.getDrawingBufferSize) _editor.renderer.getDrawingBufferSize(v);
+			else _editor.renderer.getSize(v);
+			for (const m of this._rotLineMats) m.resolution.set(v.x, v.y);
+		}
+	
+		const camPosW = this.camera.getWorldPosition(new THREE.Vector3());
+	
+		const SEG = 128;
+		const FULL_STEPS = SEG;
+		const HALF_STEPS = SEG >> 1;
+	
+		// Face-on threshold: if |z| of the view ray (in line-local) is high, it's a circle on screen
+		const FACE_ON_Z = 0.95; // 0.90..0.98; higher = stricter (needs to be more face-on)
+	
+		for (const g of this._rotGroups) {
+			const line = g.children.find(o => o && o.isLine2);
+			if (!line) continue;
+	
+			// --- view ray from camera to this ring, in the LINE'S LOCAL frame ---
+			const ringPosW = line.getWorldPosition(new THREE.Vector3());
+			const toRingW  = ringPosW.clone().sub(camPosW).normalize();
+			const invQ     = line.getWorldQuaternion(new THREE.Quaternion()).invert();
+			const toRingL  = toRingW.clone().applyQuaternion(invQ); // normalized
+	
+			if (Math.abs(toRingL.z) >= FACE_ON_Z) {
+				// ---- FACE-ON → FULL CIRCLE ----
+				const pts = [];
+				for (let i = 0; i <= FULL_STEPS; i++) {
+					const th = (i / FULL_STEPS) * Math.PI * 2;
+					pts.push(Math.cos(th), Math.sin(th), 0);
+				}
+				line.geometry.setPositions(pts);
+				line.computeLineDistances();
+				line.visible = true;
+				continue;
+			}
+	
+			// ---- NOT FACE-ON → FRONT HALF ONLY ----
+			// Use camera position in line-local to orient the half
+			const camL = line.worldToLocal(camPosW.clone());
+			let vx = camL.x, vy = camL.y;
+			const len2 = vx*vx + vy*vy;
+	
+			if (len2 < 1e-10) {
+				// degenerate: fall back to full circle
+				const pts = [];
+				for (let i = 0; i <= FULL_STEPS; i++) {
+					const th = (i / FULL_STEPS) * Math.PI * 2;
+					pts.push(Math.cos(th), Math.sin(th), 0);
+				}
+				line.geometry.setPositions(pts);
+				line.computeLineDistances();
+				line.visible = true;
+				continue;
+			}
+	
+			const invLen = 1 / Math.sqrt(len2);
+			vx *= invLen; vy *= invLen;
+	
+			// center angle (in line-local XY). Add +Math.PI if you prefer the opposite hemisphere.
+			const phi = Math.atan2(vy, vx);
+			const a0  = phi - Math.PI * 0.5;
+			const a1  = phi + Math.PI * 0.5;
+	
+			const pts = [];
+			for (let s = 0; s <= HALF_STEPS; s++) {
+				const t  = s / HALF_STEPS;
+				const th = a0 + (a1 - a0) * t;
+				pts.push(Math.cos(th), Math.sin(th), 0);
+			}
+			line.geometry.setPositions(pts);
+			line.computeLineDistances();
+			line.visible = true;
+		}
+	}
+	_updateViewRing() {
+		if (!this._viewRing) return;
+	
+		// Orient ring so its normal = camera forward in GIZMO-LOCAL space
+		const camQ = this.camera.getWorldQuaternion(new THREE.Quaternion());
+		const camFwdW = new THREE.Vector3(0, 0, -1).applyQuaternion(camQ);
+	
+		// Convert that direction to gizmo-local
+		const centerW = this._group.getWorldPosition(new THREE.Vector3());
+		const tipW = centerW.clone().add(camFwdW);
+		const tipL = this._group.worldToLocal(tipW.clone());
+		const centerL = this._group.worldToLocal(centerW.clone());
+		const fwdL = tipL.sub(centerL).normalize();
+	
+		// Build quaternion that rotates +Z to fwdL
+		const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,1), fwdL);
+		this._viewRing.quaternion.copy(q);
+	}
+	_ensureLineResolution() {
+		// Use renderer drawing-buffer size (accounts for devicePixelRatio)
+		let w = 0, h = 0;
+		if (_editor?.renderer?.getDrawingBufferSize) {
+			const v = new THREE.Vector2();
+			_editor.renderer.getDrawingBufferSize(v);
+			w = v.x; h = v.y;
+		} else {
+			const r = this.dom.getBoundingClientRect();
+			const dpr = window.devicePixelRatio || 1;
+			w = Math.max(1, Math.round(r.width  * dpr));
+			h = Math.max(1, Math.round(r.height * dpr));
+		}
+		if (this._rotLineMats) {
+			for (const m of this._rotLineMats) m.resolution.set(w, h);
+		}
+	}
 
 	// Picking ---------------------------------------------------------
 
@@ -434,6 +636,8 @@ export default class D3DTransformGizmo {
 		if (this._hover && this._handles[this._hover]) this._setHandleHot(this._handles[this._hover], false);
 		this._hover = id;
 		if (id && this._handles[id]) this._setHandleHot(this._handles[id], true);
+	
+		this._setActiveVisibility(); // <--- keep view ring updated
 	}
 
 	_shouldBeginDrag() {
@@ -475,33 +679,40 @@ export default class D3DTransformGizmo {
 			startPoint = this._raycastToPlane(plane);
 		}
 		else if (id === 'rX' || id === 'rY' || id === 'rZ') {
-			const worldPos = this._group.getWorldPosition(new THREE.Vector3());
-			const worldQuat = this._group.getWorldQuaternion(new THREE.Quaternion());
-			const axX = new THREE.Vector3(1, 0, 0).applyQuaternion(worldQuat);
-			const axY = new THREE.Vector3(0, 1, 0).applyQuaternion(worldQuat);
-			const axZ = new THREE.Vector3(0, 0, 1).applyQuaternion(worldQuat);
 			const axisWorld = (id === 'rX') ? axX : (id === 'rY') ? axY : axZ;
-		
-			const viewDir = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.getWorldQuaternion(new THREE.Quaternion())).normalize();
-			let tangent3D = new THREE.Vector3().crossVectors(axisWorld, viewDir);
-			if (tangent3D.lengthSq() < 1e-10) {
-				const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(this.camera.getWorldQuaternion(new THREE.Quaternion()));
-				tangent3D.copy(camRight.sub(axisWorld.clone().multiplyScalar(camRight.dot(axisWorld)))).normalize();
-			}
-			const p0 = this._worldToScreenPx(worldPos);
-			const p1 = this._worldToScreenPx(worldPos.clone().add(tangent3D.clone().multiplyScalar(0.5)));
-			const tan2D = new THREE.Vector2(p1.x - p0.x, p1.y - p0.y).normalize();
-		
+			const centerW = worldPos.clone();
+			const { u, w } = this._ringBasis(axisWorld);
+			const a0 = this._mouseAngleOnRing(centerW, axisWorld, u, w);
 			this._dragData = {
-				kind: 'rotate-axis-px-locked',
+				kind: 'rotate-axis-angle',
 				axisWorld,
-				startMouse: this._mousePx(),
-				dir2D: null,
-				natural2D: tan2D,
-				startObjPos: this.object.getWorldPosition(new THREE.Vector3()),			// added
+				centerW,
+				uW: u, wW: w,
+				theta0: a0.ok ? a0.theta : 0,
+				haveTheta0: a0.ok,
+				startObjPos: this.object.getWorldPosition(new THREE.Vector3()),
 				startObjQuat: this.object.getWorldQuaternion(new THREE.Quaternion()),
-				startObjScale: this.object.getWorldScale(new THREE.Vector3()),			// added
-				sensitivity: this.rotatePixelSensitivity
+				startObjScale: this.object.getWorldScale(new THREE.Vector3())
+			};
+			return;
+		}
+		else if (id === 'rV') {
+			// View-aligned ring: axis = camera forward (world -Z)
+			const axisWorld = new THREE.Vector3();
+			this.camera.getWorldDirection(axisWorld).negate();
+			const centerW = this._group.getWorldPosition(new THREE.Vector3());
+			const { u, w } = this._ringBasis(axisWorld);
+			const a0 = this._mouseAngleOnRing(centerW, axisWorld, u, w);
+			this._dragData = {
+				kind: 'rotate-axis-angle',
+				axisWorld,
+				centerW,
+				uW: u, wW: w,
+				theta0: a0.ok ? a0.theta : 0,
+				haveTheta0: a0.ok,
+				startObjPos: this.object.getWorldPosition(new THREE.Vector3()),
+				startObjQuat: this.object.getWorldQuaternion(new THREE.Quaternion()),
+				startObjScale: this.object.getWorldScale(new THREE.Vector3())
 			};
 			return;
 		}
@@ -592,29 +803,32 @@ export default class D3DTransformGizmo {
 			const targetPosW = d.startObjPos.clone().add(delta);
 			_applyWorldTRS(this.object, targetPosW, d.startObjQuat, d.startObjScale);
 		}
-		else if (d.kind === 'rotate-axis-px-locked') {
-			const cur = this._mousePx();
-			const dx = cur.x - d.startMouse.x;
-			const dy = cur.y - d.startMouse.y;
-		
-			if (!d.dir2D) {
-				const dead = 3;
-				if (Math.hypot(dx, dy) < dead) return;
-				let mv = new THREE.Vector2(dx, -dy).normalize();
-				if (mv.dot(d.natural2D) < 0) mv.multiplyScalar(-1);
-				d.dir2D = mv;
+		else if (d.kind === 'rotate-axis-angle') {
+			// Lazily grab initial angle once the mouse is actually on the plane
+			if (!d.haveTheta0) {
+				const a0 = this._mouseAngleOnRing(d.centerW, d.axisWorld, d.uW, d.wW);
+				if (!a0.ok) return;
+				d.theta0 = a0.theta;
+				d.haveTheta0 = true;
+				return; // wait for next frame to get a delta
 			}
 		
-			let along = dx * d.dir2D.x + (-dy) * d.dir2D.y;
-			if (this.rotateInvert) along = -along;
-			let angle = along * (d.sensitivity ?? 0.006);
+			const a1 = this._mouseAngleOnRing(d.centerW, d.axisWorld, d.uW, d.wW);
+			if (!a1.ok) return;
+		
+			let delta = this._shortestAngle(a1.theta - d.theta0);
+		
+			// Optional global invert switch
+			if (this.rotateInvert) delta = -delta;
+		
+			// Snap if requested
 			if (this.snap?.rotate) {
 				const step = THREE.MathUtils.degToRad(this.snap.rotate);
-				angle = Math.round(angle / step) * step;
+				delta = Math.round(delta / step) * step;
 			}
-			const flip = Math.abs(d.axisWorld.x) > 0.9 ? 1 : -1;
-			const qDelta = new THREE.Quaternion().setFromAxisAngle(d.axisWorld, angle * flip);
-			const quatW = qDelta.clone().multiply(d.startObjQuat);
+		
+			const qDelta = new THREE.Quaternion().setFromAxisAngle(d.axisWorld, delta);
+			const quatW  = qDelta.clone().multiply(d.startObjQuat);
 			_applyWorldTRS(this.object, d.startObjPos, quatW, d.startObjScale);
 		}
 		else if (d.kind === 'scale-axis') {
@@ -750,14 +964,15 @@ export default class D3DTransformGizmo {
 	}
 	
 	_setActiveVisibility() {
-		if (this.mode !== 'rotate') return;
-		if (!this._active) {
-			this._grpR.children.forEach(r => r.visible = true);
-			return;
+		if (!this._viewRingLine) return;
+	
+		const mat = this._viewRingLine.material;
+		if (this._active === 'rV') {
+			mat.opacity = 0.95;
+		} else {
+			mat.opacity = 0.5;
 		}
-		this._grpR.children.forEach(r => {
-			r.visible = (r.name === this._active);
-		});
+		mat.needsUpdate = true;
 	}
 	
 	_worldToScreenPx(pWorld) {
@@ -780,6 +995,109 @@ export default class D3DTransformGizmo {
 			x: ((mouse.x - rect.left) / rect.width) * 2 - 1,
 			y: -((mouse.y - rect.top) / rect.height) * 2 + 1
 		};
+	}
+	
+	// Returns a normalized 2D screen direction from A->B (in world)
+	_screenDir(aW, bW) {
+		const a = this._worldToScreenPx(aW), b = this._worldToScreenPx(bW);
+		const v = new THREE.Vector2(b.x - a.x, b.y - a.y);
+		if (v.lengthSq() < 1e-12) return new THREE.Vector2(1, 0);
+		return v.normalize();
+	}
+	
+	// Project the current mouse ray to the plane of the ring and return the
+	// normalized radial direction on that plane (in WORLD), or null.
+	_hitRingRadialDirWorld(axisW, centerW) {
+		// plane for this ring
+		const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(axisW.clone().normalize(), centerW);
+	
+		// mouse ray in world
+		const rect = this.dom.getBoundingClientRect();
+		const m = _input.getMousePosition();
+		const ndc = {
+			x: ((m.x - rect.left) / rect.width) * 2 - 1,
+			y: -((m.y - rect.top) / rect.height) * 2 + 1
+		};
+		this._raycaster.setFromCamera(ndc, this.camera);
+		const ray = this._raycaster.ray;
+	
+		// intersect plane
+		const hit = new THREE.Vector3();
+		if (!plane.intersectLine(new THREE.Line3(
+			ray.origin,
+			ray.origin.clone().add(ray.direction.clone().multiplyScalar(10000))
+		), hit)) return null;
+	
+		// radial dir = from center to hit, projected to plane and normalized
+		const r = hit.clone().sub(centerW);
+		// ensure it's on plane numerically
+		r.sub(axisW.clone().multiplyScalar(r.dot(axisW)));
+		const len = r.length();
+		if (len < 1e-6) return null;
+		return r.multiplyScalar(1 / len);
+	}
+	
+	// Make a screen-space unit tangent (2D) for +rotation at the cursor hit
+	_makeScreenTangent2D(axisW, centerW) {
+		// radial dir at cursor
+		const rdirW = this._hitRingRadialDirWorld(axisW, centerW);
+		if (!rdirW) return new THREE.Vector2(1, 0);
+	
+		// 3D tangent = axis × radial (direction of +angle around axis)
+		const tW = new THREE.Vector3().crossVectors(axisW, rdirW).normalize();
+	
+		// project a tiny segment along that tangent to screen to get a 2D dir
+		const p0 = centerW.clone().add(rdirW.clone().multiplyScalar(1.0));	// on ring
+		const p1 = p0.clone().add(tW.clone().multiplyScalar(0.25));			// small step along +tangent
+		const a = this._worldToScreenPx(p0);
+		const b = this._worldToScreenPx(p1);
+		const v = new THREE.Vector2(b.x - a.x, b.y - a.y);
+		if (v.lengthSq() < 1e-10) return new THREE.Vector2(1, 0);
+		return v.normalize();
+	}
+	
+	// Build a stable orthonormal basis (u,w) on the ring plane in WORLD space.
+	// axisW is the plane normal.
+	_ringBasis(axisW) {
+		const n = axisW.clone().normalize();
+		// pick a non-parallel reference
+		const ref = Math.abs(n.y) < 0.99 ? new THREE.Vector3(0,1,0) : new THREE.Vector3(1,0,0);
+		const u = ref.clone().sub(n.clone().multiplyScalar(ref.dot(n))).normalize(); // in-plane
+		const w = new THREE.Vector3().crossVectors(n, u).normalize();                // in-plane, orthogonal to u
+		return { u, w, n };
+	}
+	
+	// Intersect current mouse ray with the plane (axisW, centerW).
+	// Return world hit point or null if parallel.
+	_mouseHitOnPlane(centerW, axisW) {
+		const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(axisW.clone().normalize(), centerW);
+		const rect = this.dom.getBoundingClientRect();
+		const m = _input.getMousePosition();
+		const ndc = { x: ((m.x - rect.left) / rect.width) * 2 - 1, y: -((m.y - rect.top) / rect.height) * 2 + 1 };
+		this._raycaster.setFromCamera(ndc, this.camera);
+		const A = this._raycaster.ray.origin.clone();
+		const B = A.clone().add(this._raycaster.ray.direction.clone().multiplyScalar(10000));
+		const out = new THREE.Vector3();
+		return plane.intersectLine(new THREE.Line3(A, B), out) ? out : null;
+	}
+	
+	// Compute polar angle θ of (hit-center) in the (u,w) basis on the plane.
+	_mouseAngleOnRing(centerW, axisW, uW, wW) {
+		const hit = this._mouseHitOnPlane(centerW, axisW);
+		if (!hit) return { ok:false, theta:0 };
+		const r = hit.sub(centerW);
+		// Remove any tiny numerical normal component
+		r.sub(axisW.clone().multiplyScalar(r.dot(axisW)));
+		const x = r.dot(uW), y = r.dot(wW);
+		if (x*x + y*y < 1e-16) return { ok:false, theta:0 };
+		return { ok:true, theta: Math.atan2(y, x) };
+	}
+	
+	// Wrap to (-π, π]
+	_shortestAngle(a) {
+		while (a >  Math.PI) a -= 2*Math.PI;
+		while (a <= -Math.PI) a += 2*Math.PI;
+		return a;
 	}
 }
 

@@ -137,8 +137,7 @@ export default function Inspector() {
 		}
 	
 		update();
-	};
-	
+	}
 	const drawMaterialEditor = (uri) => (
 		<MaterialEditor
 			uri={uri}
@@ -218,79 +217,80 @@ export default function Inspector() {
 						}}
 					/>
 				</div>
-				<div className="field vector-field">
-					<VectorInput 
-						label="Position"
-						value={object.position} 
-						onSave={vector => {
-							const oldPosition = object.position.clone();
-							const newPosition = new THREE.Vector3(vector.x, vector.y, vector.z);
-							_editor.addStep({
-								name: 'Update position',
-								undo: () => {
-									object.position.copy(oldPosition);
-								},
-								redo: () => {
-									object.position.copy(newPosition);
-								}
-							});
-							object.position.copy(newPosition);
-						}} 
-					/>
-				</div>
-				<div className="field vector-field">
-					<VectorInput 
-						label="Rotation"
-						value={{
-							x: THREE.MathUtils.radToDeg(object.rotation.x),
-							y: THREE.MathUtils.radToDeg(object.rotation.y),
-							z: THREE.MathUtils.radToDeg(object.rotation.z)
-						}} 
-						onSave={vector => {
-							const oldRotation = object.rotation.clone();
-							const newRotation = new THREE.Euler(
-								THREE.MathUtils.degToRad(vector.x), 
-								THREE.MathUtils.degToRad(vector.y), 
-								THREE.MathUtils.degToRad(vector.z)
-							);
-							_editor.addStep({
-								name: 'Update rotation',
-								undo: () => {
-									object.rotation.copy(oldRotation);
-								},
-								redo: () => {
-									object.rotation.copy(newRotation);
-								}
-							});
-							
-							object.rotation.copy(newRotation);
-						}} 
-					/>
-				</div>
-				<div className="field vector-field">
-					<VectorInput 
-						label="Scale"
-						value={object.scale} 
-						onSave={vector => {
-							const oldScale = object.scale.clone();
-							const newScale = new THREE.Vector3(vector.x, vector.y, vector.z);
-							_editor.addStep({
-								name: 'Update scale',
-								undo: () => {
-									object.position.copy(oldScale);
-								},
-								redo: () => {
-									object.position.copy(newScale);
-								}
-							});
-							
-							object.scale.copy(newScale);
-						}} 
-					/>
-				</div>
 				
 				{objectInspectorExpanded && (
 					<div className="field mt2">
+						<div className="field vector-field">
+							<VectorInput 
+								label="Position"
+								value={object.position} 
+								onSave={vector => {
+									const oldPosition = object.position.clone();
+									const newPosition = new THREE.Vector3(vector.x, vector.y, vector.z);
+									_editor.addStep({
+										name: 'Update position',
+										undo: () => {
+											object.position.copy(oldPosition);
+										},
+										redo: () => {
+											object.position.copy(newPosition);
+										}
+									});
+									object.position.copy(newPosition);
+								}} 
+							/>
+						</div>
+						<div className="field vector-field">
+							<VectorInput 
+								label="Rotation"
+								value={{
+									x: THREE.MathUtils.radToDeg(object.rotation.x),
+									y: THREE.MathUtils.radToDeg(object.rotation.y),
+									z: THREE.MathUtils.radToDeg(object.rotation.z)
+								}} 
+								onSave={vector => {
+									const oldRotation = object.rotation.clone();
+									const newRotation = new THREE.Euler(
+										THREE.MathUtils.degToRad(vector.x), 
+										THREE.MathUtils.degToRad(vector.y), 
+										THREE.MathUtils.degToRad(vector.z)
+									);
+									_editor.addStep({
+										name: 'Update rotation',
+										undo: () => {
+											object.rotation.copy(oldRotation);
+										},
+										redo: () => {
+											object.rotation.copy(newRotation);
+										}
+									});
+									
+									object.rotation.copy(newRotation);
+								}} 
+							/>
+						</div>
+						<div className="field vector-field">
+							<VectorInput 
+								label="Scale"
+								value={object.scale} 
+								onSave={vector => {
+									const oldScale = object.scale.clone();
+									const newScale = new THREE.Vector3(vector.x, vector.y, vector.z);
+									_editor.addStep({
+										name: 'Update scale',
+										undo: () => {
+											object.position.copy(oldScale);
+										},
+										redo: () => {
+											object.position.copy(newScale);
+										}
+									});
+									
+									object.scale.copy(newScale);
+								}} 
+							/>
+						</div>
+						<div style={{height: 20}}></div>
 						<div className="vector-input vector-input--top">
 							<div>
 								<label>Visible</label>
@@ -1037,7 +1037,7 @@ export default function Inspector() {
 						}}
 						onDoubleClick={() => {
 							_editor.focus = object;
-							_editor.focusOnSelectedObjects();
+							//_editor.focusOnSelectedObjects();
 							_editor.setSelection([]);
 						}}
 					/>

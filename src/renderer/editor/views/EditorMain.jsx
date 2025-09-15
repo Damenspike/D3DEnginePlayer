@@ -1,13 +1,21 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Inspector from './Inspector.jsx';
 import GameView from './GameView.jsx';
+import CodeEditor from './CodeEditor.jsx';
 import useResizable from '../hooks/useResizable.js';
 
 export default function EditorMain() {
-	const inspRef = React.useRef(null);
-	const consoleRef = React.useRef(null);
+	const [codeEditorOpen, setCodeEditorOpen] = useState(false);
+	
+	const inspRef = useRef(null);
+	const consoleRef = useRef(null);
 	useResizable(inspRef, 'x');
 	useResizable(consoleRef, 'y');
+	
+	useEffect(() => {
+		_editor.showCodeEditor = () => setCodeEditorOpen(true);
+		_editor.hideCodeEditor = () => setCodeEditorOpen(false);
+	}, []);
 
 	return (
 		<div className="editor-main">
@@ -18,6 +26,10 @@ export default function EditorMain() {
 				<GameView />
 				<div className="console resizable" ref={consoleRef}></div>
 			</div>
+			
+			<CodeEditor 
+				isOpen={codeEditorOpen}
+			/>
 		</div>
 	);
 }

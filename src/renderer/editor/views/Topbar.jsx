@@ -1,10 +1,11 @@
 import React, { useEffect } from 'react';
 
 import { 
-	MdNavigation,     // select
-	MdOpenWith,       // translate
-	MdOutlineSync,    // rotate
-	MdCameraswitch      // camera pan
+	MdNavigation,
+	MdOpenWith,
+	MdOutlineSync,
+	MdCameraswitch,
+	MdCode
 } from "react-icons/md";
 import { BiExpand } from "react-icons/bi";
 
@@ -67,6 +68,17 @@ export default function Topbar() {
 					tabIndex={0}
 				>
 					<BiExpand />
+				</div>
+			</div>
+			
+			<div className="tools-section">
+				<div 
+					className="tool-option no-select" 
+					id="tool-code"
+					onClick={() => _editor.editCode()} 
+					tabIndex={0}
+				>
+					<MdCode />
 				</div>
 			</div>
 		</div>
