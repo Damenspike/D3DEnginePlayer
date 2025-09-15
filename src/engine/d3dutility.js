@@ -325,5 +325,10 @@ export function dropToGroundIfPossible(obj3d) {
 	obj3d.updateMatrixWorld(true);
 }
 export function fileName(filePath) {
-	return filePath ? filePath.split(/[\\/]/).pop() : '';
+	const a = filePath.split(/[\\/]/);
+	let n = a.pop();
+	
+	if(!n) n = a.pop();
+		
+	return n || '';
 }

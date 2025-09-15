@@ -380,8 +380,7 @@ const menuTemplate = [
 				submenu: [
 					{ id: 'newAssetEmpty', label: 'Empty File', click: () => sendNewFile() },
 					{ type: 'separator' },
-					{ id: 'newAssetMat', label: 'Material', click: () => sendNewFile('mat') },
-					{ id: 'newAssetHtml', label: 'HTML File', click: () => sendNewFile('html') }
+					{ id: 'newAssetMat', label: 'Material', click: () => sendNewFile('mat') }
 				]
 			},
 			{

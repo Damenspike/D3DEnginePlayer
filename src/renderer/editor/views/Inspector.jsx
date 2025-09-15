@@ -1229,40 +1229,66 @@ export default function Inspector() {
 		)
 	}
 	const drawAssetInspector = () => {
-		if(!zip)
-			return <div className="no-label">No project file mounted</div>;
+		const ROOT = 'assets/';
+	
+		// ------------------------------
+		// Path helpers (one source of truth)
+		// ------------------------------
+		const normPath = (p) => {
+			if (!p) return '';
+			let s = p.replace(/\\/g, '/').replace(/^\/+/, '');
+			if (s === 'assets' || s === 'assets/') return 'assets'; // unify root
+			// strip trailing slashes always
+			return s.replace(/\/+$/, '');
+		};
+		const isRoot = (p) => normPath(p) === ROOT;
+		const isDirLike = (p) => normPath(p).endsWith('/');
+		const parentDir = (p) => {
+			const s = normPath(p);
+			if (isRoot(s)) return ROOT;
+			const trimmed = s.endsWith('/') ? s.slice(0, -1) : s;
+			const idx = trimmed.lastIndexOf('/');
+			if (idx <= 0) return ROOT;
+			return trimmed.slice(0, idx + 1);
+		};
+		const baseName = (p) => {
+			const s = normPath(p);
+			const tr = s.endsWith('/') ? s.slice(0, -1) : s;
+			return tr.split('/').pop();
+		};
+	
+		if (!zip) return <div className="no-label">No project file mounted</div>;
 	
 		const updateIndex = (oldRel, newRel) => {
 			const a = _root.findAssetByPath(oldRel);
 			if (a) a.rel = newRel;
 		};
-		
-		// --- helpers (tree) ---
+	
+		// ------------------------------
+		// Tree builder (kept, but normalized)
+		// ------------------------------
 		const buildTree = () => {
-			const root = { name: "assets", path: "assets", type: "dir", children: new Map() };
+			const root = { name: 'assets', path: 'assets', type: 'dir', children: new Map() };
 	
 			zip.forEach((rel, file) => {
-				if(!rel.startsWith("assets/"))
-					return;
-				if(rel.startsWith("assets/Standard/"))
-					return;
+				if (!rel.startsWith('assets/')) return;
+				if (rel.startsWith('assets/Standard/')) return;
 	
-				const stripped = rel.slice("assets/".length);
-				if(!stripped)
-					return;
+				const stripped = rel.slice('assets/'.length);
+				if (!stripped) return;
 	
-				const parts = stripped.split("/").filter(Boolean);
+				const parts = stripped.split('/').filter(Boolean);
 				let node = root;
-				for(let i = 0; i < parts.length; i++) {
+				for (let i = 0; i < parts.length; i++) {
 					const part = parts[i];
 					const isLast = i === parts.length - 1;
-					const keyPath = (node.path ? node.path + "/" : "") + part;
+					const keyPath = (node.path ? node.path + '/' : '') + part;
 	
-					if(isLast && !file.dir) {
-						node.children.set(part, { name: part, path: keyPath, type: "file" });
+					if (isLast && !file.dir) {
+						node.children.set(part, { name: part, path: keyPath, type: 'file' });
 					} else {
-						if(!node.children.has(part)) {
-							node.children.set(part, { name: part, path: keyPath, type: "dir", children: new Map() });
+						if (!node.children.has(part)) {
+							node.children.set(part, { name: part, path: keyPath, type: 'dir', children: new Map() });
 						}
 						node = node.children.get(part);
 					}
@@ -1270,11 +1296,10 @@ export default function Inspector() {
 			});
 	
 			const normalize = (n) => {
-				if(n.type === "dir") {
+				if (n.type === 'dir') {
 					const arr = Array.from(n.children.values());
 					arr.sort((a, b) => {
-						if(a.type !== b.type)
-							return a.type === "dir" ? -1 : 1;
+						if (a.type !== b.type) return a.type === 'dir' ? -1 : 1;
 						return a.name.localeCompare(b.name);
 					});
 					n.children = arr;
@@ -1285,193 +1310,184 @@ export default function Inspector() {
 			return root;
 		};
 	
-		// expanded state
+		// expanded
 		const isExpanded = (p) => assetExpanded.has(p);
 		const toggleExpanded = (p) => {
-			const next = new Set(assetExpanded);
-			if(next.has(p))
-				next.delete(p);
-			else
-				next.add(p);
-			setAssetExpanded(next);
+			setAssetExpanded(prev => {
+				const next = new Set(prev);
+				next.has(p) ? next.delete(p) : next.add(p);
+				return next;
+			});
 		};
 	
-		// derive "current folder" from unified selection
+		// ------------------------------
+		// Selection (centralized & concrete)
+		// ------------------------------
 		const selectedArr = Array.from(selectedAssetPaths);
-		const primarySel = selectedArr.length ? selectedArr[selectedArr.length - 1] : "assets";
-		const currentFolder = isDirPath(zip, primarySel) ? primarySel.replace(/\/$/, "") : parentDir(primarySel);
-	
-		// import files → drop into currentFolder
-		const onImportFiles = async (files) => {
-			if(!files || !files.length)
-				return;
-			for(const f of files) {
-				const buf = await f.arrayBuffer();
-				const target = `${currentFolder}/${f.name}`;
-				zip.file(target, buf);
-			}
-			setAssetTree(buildTree());
-			setAssetExpanded(prev => new Set(prev).add(currentFolder));
-			setSelectedAssetPaths(new Set([`${currentFolder}/${files[0].name}`]));
-			setLastSelectedPath(`${currentFolder}/${files[0].name}`);
-			_editor.onAssetsUpdated();
+		const primarySel = selectedArr.length ? selectedArr[selectedArr.length - 1] : 'assets';
+		const currentFolder = isDirLike(primarySel) ? primarySel.replace(/\/$/, '') : parentDir(primarySel).replace(/\/$/, '');
+		
+		const isSelected = (p) => selectedAssetPaths.has(normPath(p));
+		
+		const selectNone = () => {
+			_editor.setSelection([]);
+			setSelectedAssetPaths(() => new Set());
+			setLastSelectedPath(null);
 		};
 	
-		// new folder in currentFolder
-		const onNewFolder = (name) => {
-			const safe = makeSafeFilename(name);
-			if(!safe)
-				return;
-			const dirPath = uniqueDirPath(zip, currentFolder, safe);
-			zip.folder(dirPath);
-			setAssetTree(buildTree());
-			setAssetExpanded(prev => new Set(prev).add(currentFolder));
-			setSelectedAssetPaths(new Set([dirPath.replace(/\/$/, "")]));
-			setLastSelectedPath(dirPath.replace(/\/$/, ""));
-			setNewFolderOpen(false);
-			setNewFolderName("");
-			_editor.onAssetsUpdated();
-		};
-	
-		// new file in currentFolder (zero-byte)
-		const addNewFile = () => {
-			const path = uniqueFilePath(zip, currentFolder, "New asset");
-			zip.file(path, new Uint8Array());
-			setAssetTree(buildTree());
-			setAssetExpanded(prev => new Set(prev).add(currentFolder));
-			setSelectedAssetPaths(new Set([path]));
-			setLastSelectedPath(path);
-			_editor.onAssetsUpdated();
-		};
-	
-		// DnD helpers
-		const MIME = MIME_D3D_ROW || "application/x-d3d-objectrow";
-		const canAccept = (e) => {
-			const t = e.dataTransfer?.types;
-			if(!t)
-				return false;
-			return Array.from(t).includes(MIME);
-		};
-		const unpack = (e) => {
-			try {
-				return JSON.parse(e.dataTransfer.getData(MIME) || "{}");
-			} catch {
-				return null;
-			}
-		};
-	
-		// selection helpers (unified)
-		const isSelected = (p) => selectedAssetPaths.has(p);
 		const setSingleSelection = (p) => {
-			const next = new Set();
-			if(p)
-				next.add(p);
+			const np = p ? p : null;
 			_editor.setSelection([]);
-			setSelectedAssetPaths(next);
-			setLastSelectedPath(p || null);
+			setSelectedAssetPaths(() => (np ? new Set([np]) : new Set()));
+			setLastSelectedPath(np);
 		};
+	
 		const toggleSelection = (p) => {
-			const next = new Set(selectedAssetPaths);
-			if(next.has(p))
-				next.delete(p);
-			else
-				next.add(p);
+			setSelectedAssetPaths(prev => {
+				const next = new Set(prev);
+				next.has(p) ? next.delete(p) : next.add(p);
+				return next;
+			});
 			_editor.setSelection([]);
-			setSelectedAssetPaths(next);
 			setLastSelectedPath(p);
 		};
+	
 		const selectRange = (siblings, fromPath, toPath) => {
-			if(!fromPath || !toPath) {
-				setSingleSelection(toPath);
-				return;
-			}
-			// range over displayed siblings (files only to keep behavior consistent)
-			const filesOnly = siblings.filter(n => n.type === "file");
+			if (!fromPath || !toPath) return setSingleSelection(toPath);
+			const filesOnly = siblings.filter(n => n.type === 'file');
 			const idxA = filesOnly.findIndex(n => n.path === fromPath);
 			const idxB = filesOnly.findIndex(n => n.path === toPath);
-			if(idxA === -1 || idxB === -1) {
-				setSingleSelection(toPath);
-				return;
-			}
+			if (idxA === -1 || idxB === -1) return setSingleSelection(toPath);
 			const start = Math.min(idxA, idxB);
 			const end = Math.max(idxA, idxB);
-			const next = new Set(selectedAssetPaths);
-			for(let i = start; i <= end; i++)
-				next.add(filesOnly[i].path);
+			setSelectedAssetPaths(prev => {
+				const next = new Set(prev);
+				for (let i = start; i <= end; i++) next.add(filesOnly[i].path);
+				return next;
+			});
 			_editor.setSelection([]);
-			setSelectedAssetPaths(next);
 			setLastSelectedPath(toPath);
 		};
 	
-		const filename = (p) => p.split("/").pop();
+		// ------------------------------
+		// Import / create
+		// ------------------------------
+		const onImportFiles = async (files) => {
+			if (!files || !files.length) return;
+			const destDir = currentFolder; // no slash
+			for (const f of files) {
+				const buf = await f.arrayBuffer();
+				const target = `${destDir}/${f.name}`;
+				zip.file(target, buf);
+			}
+			setAssetTree(buildTree());
+			setAssetExpanded(prev => new Set(prev).add(destDir));
+			const sel = `${destDir}/${files[0].name}`;
+			setSingleSelection(sel);
+			_editor.onAssetsUpdated();
+		};
 	
-		// delete selected (files + folders)
-		const canDelete = selectedAssetPaths.size > 0;
+		const onNewFolder = (name) => {
+			const safe = makeSafeFilename(name);
+			if (!safe) return;
+			const dirPath = uniqueDirPath(zip, currentFolder, safe); // returns "assets/.../New/"
+			zip.folder(dirPath);
+			setAssetTree(buildTree());
+			setAssetExpanded(prev => new Set(prev).add(currentFolder));
+			setSingleSelection(dirPath.replace(/\/$/, ''));
+			setNewFolderOpen(false);
+			setNewFolderName('');
+			_editor.onAssetsUpdated();
+		};
+	
+		const addNewFile = () => {
+			const path = uniqueFilePath(zip, currentFolder, 'New asset'); // returns file path
+			zip.file(path, new Uint8Array());
+			setAssetTree(buildTree());
+			setAssetExpanded(prev => new Set(prev).add(currentFolder));
+			setSingleSelection(path);
+			_editor.onAssetsUpdated();
+		};
+	
+		// ------------------------------
+		// DnD helpers
+		// ------------------------------
+		const MIME = MIME_D3D_ROW || 'application/x-d3d-objectrow';
+		const canAccept = (e) => {
+			const t = e.dataTransfer?.types;
+			return !!t && Array.from(t).includes(MIME);
+		};
+		const unpack = (e) => {
+			try { return JSON.parse(e.dataTransfer.getData(MIME) || '{}'); }
+			catch { return null; }
+		};
+	
+		// ------------------------------
+		// Delete (triple-guarded)
+		// ------------------------------
+		const canDelete = [...selectedAssetPaths].some(p => !isRoot(p));
+	
+		const deleteSelected = (explicitTargets) => {
+			const targets = (explicitTargets || [...selectedAssetPaths])
+				.map(normPath)
+				.filter(p => !isRoot(p));
+	
+			if (!targets.length) return;
+	
+			for (const p of targets) {
+				if (!isDirLike(p)) {
+					zip.remove(p); // file
+					_editor.onAssetDeleted?.(p);
+					continue;
+				}
+				// folder: remove all under it
+				const dir = normPath(p); // ends with /
+				const toRemove = [];
+				zip.forEach((rel) => { if (normPath(rel).startsWith(dir)) toRemove.push(rel); });
+				toRemove.forEach(rel => zip.remove(rel));
+				if (zip.files[dir]) zip.remove(dir);
+			}
+	
+			selectNone();
+			setAssetTree(buildTree());
+			_editor.onAssetsUpdated?.();
+		};
+	
 		const deleteSelectedConfirm = async () => {
-			if(!selectedAssetPaths.size)
+			if (!selectedAssetPaths.size) return;
+			const targets = [...selectedAssetPaths].map(normPath).filter(p => !isRoot(p));
+			if (!targets.length) {
+				_editor.showAlert?.({ message: 'You cannot delete the root assets folder.' });
 				return;
-			const count = selectedAssetPaths.size;
-			const label = count === 1 ? filename([...selectedAssetPaths][0]) : `${count} items`;
+			}
+			
+			const label = targets.length === 1 ? fileName(targets[0]) : `${targets.length} items`;
 			_editor.showConfirm({
 				message: `Delete ${label}? This action cannot be undone.`,
-				onConfirm: deleteSelected
+				onConfirm: () => deleteSelected(targets)
 			});
 		};
 		_editor.deleteSelectedAssets = deleteSelectedConfirm;
 	
-		const deleteSelected = () => {
-			if(!selectedAssetPaths.size)
-				return;
-	
-			// remove files directly, remove folders recursively
-			for(const p of selectedAssetPaths) {
-				const file = zip.file(p);
-				if(file) {
-					zip.remove(p);
-					_editor.onAssetDeleted(p);
-					_editor.onAssetsUpdated();
-					continue;
-				}
-				const dir = p.endsWith("/") ? p : p + "/";
-				const toRemove = [];
-				zip.forEach((rel) => {
-					if(rel.startsWith(dir))
-						toRemove.push(rel);
-				});
-				toRemove.forEach(rel => zip.remove(rel));
-				
-				zip.remove(dir);
-			}
-	
-			setSelectedAssetPaths(new Set());
-			setLastSelectedPath(null);
-			setAssetTree(buildTree());
-			_editor.onAssetsUpdated();
-		};
-	
-		// render a node
+		// ------------------------------
+		// Node renderers
+		// ------------------------------
 		const renderNode = (node, depth = 0, siblings = []) => {
 			const selected = isSelected(node.path);
-	
-			if(node.type === "file") {
+			if (node.type === 'file') {
 				const ext = getExtension(node.name);
 				const displayName = node.name.split('.')[0];
-				
+	
 				const drawIcon = () => {
-					switch(ext) {
-						case 'd3dsymbol':
-							return <MdOutlineInterests />;
-						case 'glb':
-							return <MdViewInAr />;
-						case 'mat':
-							return <MdTexture />;
-						case 'html':
-							return <MdHtml />;
-						default: 
-							return <MdInsertDriveFile />;
+					switch (ext) {
+						case 'd3dsymbol': return <MdOutlineInterests />;
+						case 'glb': return <MdViewInAr />;
+						case 'mat': return <MdTexture />;
+						case 'html': return <MdHtml />;
+						default: return <MdInsertDriveFile />;
 					}
-				}
-				
+				};
+	
 				return (
 					<ObjectRow
 						key={node.path}
@@ -1481,39 +1497,33 @@ export default function Inspector() {
 						selected={selected}
 						style={{ paddingLeft: 6 + depth * 24 }}
 						draggable
-						dragData={{ kind: "asset", path: node.path }}
+						dragData={{ kind: 'asset', path: node.path }}
 						onRename={async (newName) => {
 							try {
 								const newPath = await renameZipFile(zip, node.path, newName);
 								setAssetTree(buildTree());
 								setSingleSelection(newPath);
 								_editor.onAssetsUpdated();
-							} catch(err) {
-								console.warn("Rename failed:", err);
+							} catch (err) {
+								console.warn('Rename failed:', err);
 							}
 							return newName;
 						}}
 						title={node.path}
 						onClick={(e) => {
-							if(e.shiftKey) {
-								selectRange(siblings, lastSelectedPath, node.path);
-							} else if(e.metaKey || e.ctrlKey) {
-								toggleSelection(node.path);
-							} else {
-								setSingleSelection(node.path);
-							}
+							if (e.shiftKey) selectRange(siblings, lastSelectedPath, node.path);
+							else if (e.metaKey || e.ctrlKey) toggleSelection(node.path);
+							else setSingleSelection(node.path);
 						}}
-						onDoubleClick={() => {
-							setSingleSelection(node.path);
-						}}
+						onDoubleClick={() => setSingleSelection(node.path)}
 					/>
 				);
 			}
 	
-			// directory
+			// dir
 			const open = isExpanded(node.path);
 			return (
-				<React.Fragment key={node.path || "assets"}>
+				<React.Fragment key={node.path || 'assets'}>
 					<ObjectRow
 						icon={(
 							<>
@@ -1532,53 +1542,47 @@ export default function Inspector() {
 						)}
 						name={node.name}
 						selected={selected}
-						title={node.path || "/"}
+						title={node.path || '/'}
 						style={{ paddingLeft: 6 + depth * 14 }}
 						droppable
 						draggable
-						dragData={{ kind: "folder", path: node.path }}
-						onDrop={async (e, payload) => {
+						dragData={{ kind: 'folder', path: node.path }}
+						onDrop={async (_e, payload) => {
 							try {
-								if(!payload?.path)
-									return;
-								// prevent moving into itself or its descendants
-								const destDir = node.path.endsWith("/") ? node.path : (node.path + "/");
-								const src = payload.path.endsWith("/") ? payload.path : payload.path + "/";
-								if(payload.kind === "folder" && (destDir === src || destDir.startsWith(src)))
-									return;
+								if (!payload?.path) return;
+								const destDir = node.path.endsWith('/') ? node.path : (node.path + '/');
+								const srcDir = payload.path.endsWith('/') ? payload.path : payload.path + '/';
+								// prevent moving into itself/descendant
+								if (payload.kind === 'folder' && (destDir === srcDir || destDir.startsWith(srcDir))) return;
 	
 								const movedTo = await moveZipFile(zip, payload.path, node.path, { updateIndex });
 								setAssetTree(buildTree());
-								//setSingleSelection((movedTo || "").replace(/\/$/, ""));
 								setAssetExpanded(prev => new Set(prev).add(node.path));
+	
+								// select moved item (never the root)
+								if (movedTo) setSingleSelection(movedTo.replace(/\/$/, ''));
 								_editor.onAssetsUpdated();
-							} catch(err) {
-								console.error("Move failed", err);
+							} catch (err) {
+								console.error('Move failed', err);
 							}
 						}}
 						onRename={async (newName) => {
 							try {
 								const newPath = await renameZipDirectory(zip, node.path, newName);
 								setAssetTree(buildTree());
-								setSingleSelection(newPath.replace(/\/$/, ""));
+								setSingleSelection(newPath.replace(/\/$/, ''));
 								_editor.onAssetsUpdated();
-							} catch(err) {
-								console.warn("Rename failed:", err);
+							} catch (err) {
+								console.warn('Rename failed:', err);
 							}
 							return newName;
 						}}
 						onClick={(e) => {
-							if(e.shiftKey) {
-								selectRange(siblings, lastSelectedPath, node.path);
-							} else if(e.metaKey || e.ctrlKey) {
-								toggleSelection(node.path);
-							} else {
-								setSingleSelection(node.path);
-							}
+							if (e.shiftKey) selectRange(siblings, lastSelectedPath, node.path);
+							else if (e.metaKey || e.ctrlKey) toggleSelection(node.path);
+							else setSingleSelection(node.path);
 						}}
-						onDoubleClick={() => {
-							toggleExpanded(node.path);
-						}}
+						onDoubleClick={() => toggleExpanded(node.path)}
 					/>
 					{open && node.children?.map(child => (
 						<React.Fragment key={child.path}>
@@ -1588,26 +1592,27 @@ export default function Inspector() {
 				</React.Fragment>
 			);
 		};
-		
+	
+		// ------------------------------
+		// Duplicate (uses selection API)
+		// ------------------------------
 		const dupeInspector = async () => {
 			if (!selectedAssetPaths.size) return;
-		
-			// --- small helpers (local) ---
+	
 			const ensureDir = (p) => (p.endsWith('/') ? p : p + '/');
-			const parent = (p) => (p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : 'assets');
+			const parent = (p) => {
+				const s = normPath(p);
+				const pv = s.endsWith('/') ? s.slice(0, -1) : s;
+				const i = pv.lastIndexOf('/');
+				return i <= 0 ? ROOT.slice(0, -1) : pv.slice(0, i);
+			};
 			const splitNameExt = (name) => {
 				const i = name.lastIndexOf('.');
 				return i <= 0 ? { base: name, ext: '' } : { base: name.slice(0, i), ext: name.slice(i) };
 			};
 			const basename = (p) => p.split('/').pop();
-			const isDir = (p) => {
-				// JSZip doesn't always store explicit folder entries; treat trailing slash as dir
-				if (p.endsWith('/')) return true;
-				const f = zip.file(p);
-				return f ? f.dir === true : p.endsWith('/');
-			};
-		
-			// Make a unique sibling file path: /dir/foo.png -> /dir/foo copy.png, foo copy 2.png, ...
+			const isDir = (p) => p.endsWith('/') || (zip.file(p)?.dir === true);
+	
 			const uniqueSiblingFile = (dir, fileName) => {
 				const { base, ext } = splitNameExt(fileName);
 				let candidate = `${dir}/${base} copy${ext}`;
@@ -1618,9 +1623,6 @@ export default function Inspector() {
 				}
 				return candidate;
 			};
-		
-			// Make a unique sibling directory path (with trailing slash)
-			// /dir/Folder -> /dir/Folder copy/, Folder copy 2/, ...
 			const uniqueSiblingDir = (dir, folderName) => {
 				let candidate = ensureDir(`${dir}/${folderName} copy`);
 				let n = 2;
@@ -1634,15 +1636,12 @@ export default function Inspector() {
 				}
 				return candidate;
 			};
-		
-			// --- duplicate logic ---
+	
 			const newSelections = new Set();
-		
+	
 			for (const srcPath0 of selectedAssetPaths) {
-				// Normalize: treat folders as trailing-slash paths for iteration
-				const isSourceDir = isDir(srcPath0);
-				if (!isSourceDir) {
-					// FILE
+				const dirish = isDir(srcPath0);
+				if (!dirish) {
 					const dir = parent(srcPath0);
 					const name = basename(srcPath0);
 					const dstPath = uniqueSiblingFile(dir, name);
@@ -1652,59 +1651,53 @@ export default function Inspector() {
 					zip.file(dstPath, buf);
 					newSelections.add(dstPath);
 				} else {
-					// FOLDER (recursive)
 					const srcDir = ensureDir(srcPath0);
-					const dirParent = parent(srcDir.slice(0, -1)); // strip trailing slash for parent()
-					const folderName = basename(srcDir.slice(0, -1)); // "Folder"
+					const dirParent = parent(srcDir.slice(0, -1));
+					const folderName = basename(srcDir.slice(0, -1));
 					const dstDir = uniqueSiblingDir(dirParent, folderName); // ends with '/'
-		
-					// copy every entry under srcDir to dstDir
+	
 					const copyPromises = [];
 					zip.forEach((rel, file) => {
 						if (!rel.startsWith(srcDir)) return;
-						const tail = rel.slice(srcDir.length); // path inside the folder
+						const tail = rel.slice(srcDir.length);
 						const outRel = dstDir + tail;
-						if (file.dir) {
-							zip.folder(outRel); // create folder entry (optional; files also create parents)
-						} else {
-							copyPromises.push(
-								file.async('arraybuffer').then((buf) => {
-									zip.file(outRel, buf);
-								})
-							);
+						if (file.dir) zip.folder(outRel);
+						else {
+							copyPromises.push(file.async('arraybuffer').then(buf => zip.file(outRel, buf)));
 						}
 					});
 					await Promise.all(copyPromises);
-		
-					newSelections.add(dstDir.replace(/\/$/, '')); // select folder by its non-slash path
+	
+					newSelections.add(dstDir.replace(/\/$/, ''));
 				}
 			}
-		
-			// Refresh UI/state
+	
 			const newTree = buildTree();
 			setAssetTree(newTree);
-		
-			// Expand parents for visibility and select new items
-			const expand = new Set(assetExpanded);
-			for (const p of newSelections) {
-				const dir = parent(p);
-				if (dir) expand.add(dir);
-			}
-			setAssetExpanded(expand);
-		
+	
+			setAssetExpanded(prev => {
+				const next = new Set(prev);
+				for (const p of newSelections) next.add(parentDir(p).replace(/\/$/, ''));
+				return next;
+			});
+	
 			setSelectedAssetPaths(newSelections);
 			setLastSelectedPath([...newSelections][newSelections.size - 1] || null);
-		
+	
 			_editor.onAssetsUpdated?.();
 		};
-	
-		// Build once (or after refresh)
-		const tree = assetTree ?? buildTree();
 		_editor.__buildTree = buildTree;
 		_editor.__dupeInspector = dupeInspector;
-		if(assetTree !== tree)
-			setAssetTree(tree);
 	
+		// ------------------------------
+		// Build once / refresh
+		// ------------------------------
+		const tree = assetTree ?? buildTree();
+		if (assetTree !== tree) setAssetTree(tree);
+	
+		// ------------------------------
+		// Render
+		// ------------------------------
 		return (
 			<InspectorCell
 				id="insp-cell-assets"
@@ -1712,24 +1705,32 @@ export default function Inspector() {
 				expanded={assetsInspectorExpanded}
 				onExpand={() => setAssetsInspectorExpanded(!assetsInspectorExpanded)}
 				onDragOver={(e) => {
-					if(!canAccept(e))
-						return;
+					if (!canAccept(e)) return;
 					e.preventDefault();
-					e.dataTransfer.dropEffect = "copy";
+					e.dataTransfer.dropEffect = 'copy';
 				}}
 				onDrop={async (e) => {
-					if(!canAccept(e))
-						return;
+					if (!canAccept(e)) return;
 					e.preventDefault();
 					const payload = unpack(e);
-					if(!payload?.path)
-						return;
-					// Drop to root if list catches it
-					await moveZipFile(zip, payload.path, "assets", { updateIndex });
+					if (!payload?.path) return;
+				
+					const dstDir = ROOT; // 'assets/'
+					await moveZipFile(zip, payload.path, dstDir, { updateIndex });
+				
 					setAssetTree(buildTree());
-					setSelectedAssetPaths(new Set(["assets"]));
-					setLastSelectedPath("assets");
-					setAssetExpanded(prev => new Set(prev).add("assets"));
+				
+					// select moved item (not root)
+					const movedName = payload.path.split('/').pop();
+					const movedIsFile = /\.[^/]+$/.test(payload.path);
+					const movedPath = normPath(dstDir + (movedIsFile ? movedName : movedName + '/'));
+					
+					setSelectedAssetPaths(new Set([movedPath]));
+					setLastSelectedPath(movedPath);
+					
+					// expand root, do NOT select it
+					setAssetExpanded(prev => new Set(prev).add(ROOT));
+					
 					_editor.onAssetsUpdated();
 				}}
 			>
@@ -1755,7 +1756,7 @@ export default function Inspector() {
 						<button
 							className="btn-small"
 							onClick={deleteSelectedConfirm}
-							title={selectedAssetPaths.size > 0 ? "Delete selected" : "Delete"}
+							title={selectedAssetPaths.size > 0 ? 'Delete selected' : 'Delete'}
 							disabled={!canDelete}
 						>
 							<MdDeleteForever />
@@ -1765,10 +1766,10 @@ export default function Inspector() {
 							ref={assetFileInputRef}
 							type="file"
 							multiple
-							style={{ display: "none" }}
+							style={{ display: 'none' }}
 							onChange={async (e) => {
 								const files = Array.from(e.target.files || []);
-								e.target.value = "";
+								e.target.value = '';
 								await onImportFiles(files);
 							}}
 						/>
@@ -1783,26 +1784,16 @@ export default function Inspector() {
 									value={newFolderName}
 									onChange={e => setNewFolderName(e.target.value)}
 									onKeyDown={(e) => {
-										if(e.key === "Enter")
-											onNewFolder(newFolderName);
-										else if(e.key === "Escape") {
+										if (e.key === 'Enter') onNewFolder(newFolderName);
+										else if (e.key === 'Escape') {
 											setNewFolderOpen(false);
-											setNewFolderName("");
+											setNewFolderName('');
 										}
 									}}
 									style={{ width: 160 }}
 								/>
-								<button onClick={() => onNewFolder(newFolderName)}>
-									Okay
-								</button>
-								<button
-									onClick={() => {
-										setNewFolderOpen(false);
-										setNewFolderName("");
-									}}
-								>
-									Cancel
-								</button>
+								<button onClick={() => onNewFolder(newFolderName)}>Okay</button>
+								<button onClick={() => { setNewFolderOpen(false); setNewFolderName(''); }}>Cancel</button>
 							</div>
 						)}
 					</div>

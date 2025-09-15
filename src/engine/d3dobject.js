@@ -608,6 +608,7 @@ export default class D3DObject {
 		for (const component of components) {
 			switch (component.type) {
 				case 'HTML': {
+					break;
 					if(!component.properties.source)
 						break;
 					
