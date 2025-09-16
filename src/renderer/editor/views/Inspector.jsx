@@ -1269,32 +1269,47 @@ export default function Inspector() {
 		// ------------------------------
 		const buildTree = () => {
 			const root = { name: 'assets', path: 'assets', type: 'dir', children: new Map() };
-	
+		
 			zip.forEach((rel, file) => {
 				if (!rel.startsWith('assets/')) return;
 				if (rel.startsWith('assets/Standard/')) return;
-	
+		
 				const stripped = rel.slice('assets/'.length);
 				if (!stripped) return;
-	
+		
 				const parts = stripped.split('/').filter(Boolean);
 				let node = root;
+		
 				for (let i = 0; i < parts.length; i++) {
 					const part = parts[i];
 					const isLast = i === parts.length - 1;
 					const keyPath = (node.path ? node.path + '/' : '') + part;
-	
+		
+					// make sure node has children if it's a dir
+					if (node.type !== 'dir') {
+						node.type = 'dir';
+						node.children = new Map();
+					}
+		
 					if (isLast && !file.dir) {
 						node.children.set(part, { name: part, path: keyPath, type: 'file' });
 					} else {
 						if (!node.children.has(part)) {
 							node.children.set(part, { name: part, path: keyPath, type: 'dir', children: new Map() });
+						} else {
+							// if an entry exists but was a file, promote it to a dir
+							const existing = node.children.get(part);
+							if (existing.type !== 'dir') {
+								existing.type = 'dir';
+								existing.children = new Map();
+							}
 						}
 						node = node.children.get(part);
 					}
 				}
 			});
-	
+		
+			// normalize Map -> Array and sort
 			const normalize = (n) => {
 				if (n.type === 'dir') {
 					const arr = Array.from(n.children.values());
@@ -1307,6 +1322,7 @@ export default function Inspector() {
 				}
 			};
 			normalize(root);
+		
 			return root;
 		};
 	
@@ -1376,14 +1392,15 @@ export default function Inspector() {
 			if (!files || !files.length) return;
 			const destDir = currentFolder; // no slash
 			for (const f of files) {
-				const buf = await f.arrayBuffer();
-				const target = `${destDir}/${f.name}`;
-				zip.file(target, buf);
+				await _editor.importFile(f, destDir);
 			}
 			setAssetTree(buildTree());
 			setAssetExpanded(prev => new Set(prev).add(destDir));
 			const sel = `${destDir}/${files[0].name}`;
-			setSingleSelection(sel);
+			
+			if(zip.file(sel))
+				setSingleSelection(sel);
+			
 			_editor.onAssetsUpdated();
 		};
 	

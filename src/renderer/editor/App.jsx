@@ -10,10 +10,12 @@ import '../../assets/style/editor.css';
 export default function App() {
 	const theme = useSystemTheme();
 	
+	_editor.theme = theme;
+	
 	return (
 		<div className="editor-shell" onClick={() => _editor.setDirty(true)}>
 			<Topbar />
-			<EditorMain />
+			<EditorMain theme={theme} />
 		</div>
 	);
 }

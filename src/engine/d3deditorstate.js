@@ -1,3 +1,7 @@
+import {
+	handleImportFile
+} from './d3deditorimporter.js';
+
 // Tool enum
 export const Tools = Object.freeze({
 	Select: 'select',
@@ -295,20 +299,9 @@ export default class D3DEditorState {
 		
 		// Save scripts
 		_editor.clearDirectory('scripts');
-		for(let i in _root.superIndex) {
-			const d3dobject = _root.superIndex[i];
-			const script = d3dobject.__script;
-			if(!script)
-				continue;
-				
-			_editor.writeFile({
-				path: d3dobject.__scriptPath, 
-				data: script
-			});
-		}
 		if(_root.__script) {
 			_editor.writeFile({
-				path: _root.__scriptPath, 
+				path: 'scripts/_root.js', 
 				data: _root.__script
 			});
 		}
@@ -411,5 +404,9 @@ export default class D3DEditorState {
 		}
 		
 		this.openCodeEditor(this.selectedObjects[0] ?? _root);
+	}
+	
+	async importFile(file, destDir) {
+		return await handleImportFile(file, destDir);
 	}
 }

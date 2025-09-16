@@ -31,6 +31,7 @@ export default class D3DObject {
 		this.suuid = uuidv4();
 		this.parent = parent; // D3DObject or null for root
 		this.name = name;
+		this.__ready = false;
 		
 		this.object3d = this.parent ? new THREE.Object3D() : new THREE.Scene();
 		this.object3d.userData.d3dobject = this;
@@ -182,10 +183,6 @@ export default class D3DObject {
 		// Editor use only
 	}
 	
-	get __scriptPath() {
-		return path.join('scripts', `object_${this.name}_${this.uuid}.js`)
-	}
-	
 	get opacity() {
 		let value = 1;
 	
@@ -320,6 +317,7 @@ export default class D3DObject {
 			objData.children = symbol.objData.children;
 			objData.components = symbol.objData.components;
 			objData.suuid = symbol.objData.suuid;
+			objData.script = symbol.objData.script;
 			
 			/*
 				Override-able properties
@@ -346,10 +344,11 @@ export default class D3DObject {
 		const child = new D3DObject(objData.name, this);
 		
 		child.objData = objData;
-		child.position = objData.position;
-		child.rotation = objData.rotation;
-		child.scale = objData.scale;
+		child.position = objData.position ?? {x: 0, y: 0, z: 0};
+		child.rotation = objData.rotation ?? {x: 0, y: 0, z: 0};
+		child.scale = objData.scale ?? {x: 1, y: 1, z: 1};
 		child.components = objData.components || [];
+		child.__script = objData.script;
 		
 		child.editorOnly = !!objData.editorOnly || false;
 		child.editorAlwaysVisible = !!objData.editorAlwaysVisible || false;
@@ -404,6 +403,8 @@ export default class D3DObject {
 				objects: objData.children
 			});
 		}
+		
+		child.__ready = true;
 			
 		if(executeScripts)
 			await child.executeScripts();
@@ -515,7 +516,7 @@ export default class D3DObject {
 		const zip = this.root.zip;
 		
 		let script;
-		let scriptName = this.__scriptPath;
+		let scriptName = `__script[${this.name}]`;
 		
 		if(this.engineScript) {
 			const url = new URL(`/engine/${this.engineScript}`, window.location.origin);
@@ -524,8 +525,11 @@ export default class D3DObject {
 				throw new Error(`Failed to fetch engine script ${filename}: ${res.status}`);
 			script = await res.text();
 			scriptName = this.engineScript;
+		}else
+		if(_root == this) {
+			script = await zip.file('scripts/_root.js')?.async('string');
 		}else{
-			script = await zip.file(scriptName)?.async('string');
+			script = this.__script;
 		}
 		
 		this.__script = script;
@@ -1055,6 +1059,10 @@ export default class D3DObject {
 			return;
 		}
 		
+		// never update symbol before object is fully created or it will corrupt the symbol
+		if(!this.__ready)
+			return; 
+		
 		symbol.objData = this.getSerializableObject();
 		
 		for(let i in _root.superIndex) {
@@ -1131,6 +1139,7 @@ export default class D3DObject {
 				d3dobject.visible = objData.visible;
 			}
 			
+			d3dobject.__script = objData.script;
 			d3dobject.components = structuredClone(objData.components);
 			d3dobject.updateComponents();
 			
@@ -1177,7 +1186,6 @@ export default class D3DObject {
 			
 			d3dobject.__finishedSyncing = true;
 		}
-		
 		await syncWithObjData(this, symbol.objData);
 	}
 	
@@ -1299,7 +1307,8 @@ export default class D3DObject {
 			opacity: this.opacity,
 			visible: this.visible,
 			components: this.getSerializedComponents(),
-			children: this.children.map(child => child.getSerializableObject())
+			children: this.children.map(child => child.getSerializableObject()),
+			script: this.__script
 		}
 		
 		if(this.symbolId)

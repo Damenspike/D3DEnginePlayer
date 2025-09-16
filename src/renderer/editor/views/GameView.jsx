@@ -30,9 +30,8 @@ export default function GameView() {
 		const payload = unpack(e);
 		if (!payload)
 			return;
-
-		// Example payload from ObjectRow: { kind:'asset', path:'assets/foo.glb' }
-		if (payload.kind !== 'asset' || !payload.path)
+			
+		if (!payload.path)
 			return;
 
 		// Screen → local coords

@@ -249,6 +249,9 @@ function sendNewFile(extension) {
 function sendEditCode() {
 	editorWindow.webContents.send('edit-code');
 }
+function sendImportAsset() {
+	editorWindow.webContents.send('import-asset');
+}
 
 // --- Menu ---
 const isMac = process.platform === 'darwin';
@@ -386,7 +389,7 @@ const menuTemplate = [
 			{
 				id: 'importAsset',
 				label: 'Import Asset',
-				click: () => null
+				click: () => sendImportAsset()
 			}
 		]
 	},

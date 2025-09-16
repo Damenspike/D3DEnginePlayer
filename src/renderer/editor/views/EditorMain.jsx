@@ -4,7 +4,7 @@ import GameView from './GameView.jsx';
 import CodeEditor from './CodeEditor.jsx';
 import useResizable from '../hooks/useResizable.js';
 
-export default function EditorMain() {
+export default function EditorMain({theme}) {
 	const [codeEditorOpen, setCodeEditorOpen] = useState(false);
 	
 	const inspRef = useRef(null);
@@ -28,6 +28,7 @@ export default function EditorMain() {
 			</div>
 			
 			<CodeEditor 
+				theme={theme}
 				isOpen={codeEditorOpen}
 			/>
 		</div>

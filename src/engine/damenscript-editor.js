@@ -165,6 +165,22 @@ export function installDamenScript(monaco) {
 	});
 
 	// --- theme (define only; DO NOT set here) ---
+	monaco.editor.defineTheme('damenscript-light', {
+		base: 'vs',        // light base
+		inherit: true,
+		rules: [
+			{ token: 'banned', foreground: 'ff5555', fontStyle: 'bold' }
+		],
+		colors: {
+			'editor.background': '#ffffff',
+			'editor.foreground': '#1e1e1e',
+			'editorLineNumber.foreground': '#999999',
+			'editor.selectionBackground': '#cce8ff',
+			'editor.inactiveSelectionBackground': '#e6f2ff',
+			'editor.lineHighlightBackground': '#f7f7f7',
+			'editorCursor.foreground': '#000000'
+		}
+	});
 	monaco.editor.defineTheme('damenscript-dark', {
 		base: 'vs-dark',
 		inherit: true,

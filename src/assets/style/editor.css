@@ -34,7 +34,11 @@ body.dark {
 	}
 	.code-editor {
 		.code-editor__window {
-			background: #222;
+			background: #121212;
+			color: white;
+		}
+		.code-editor__file {
+			background: rgba(255, 255, 255, 0.14);
 			color: white;
 		}
 	}
@@ -183,7 +187,7 @@ body.dark {
 	background: rgb(255, 255, 255);
 	border-radius: 5px;
 	box-shadow: 0px 0px 3px rgba(0, 0, 0, 0.107);
-	margin-right: 2px;
+	margin-right: 5px;
 	cursor: pointer;
 	
 	svg {
@@ -609,6 +613,7 @@ body.dark {
 		pointer-events: auto;
 		resize: both;
 		overflow: auto;
+		padding-top: 5px;
 	}
 	.code-editor__container {
 		display: flex;
@@ -633,18 +638,19 @@ body.dark {
 		font-size: 14px;
 		padding: 7px;
 		border-radius: 10px;
-		background: rgba(0, 0, 0, 0.3);
-		color: white;
+		background: rgba(0, 0, 0, 0.05);
+		color: black;
 		cursor: pointer;
+	}
+	.code-editor__file:hover {
+		background: rgba(255, 255, 255, 0.24);
 	}
 	.code-editor__file--selected {
 		background: #0099ff;
+		color: white;
 	}
 	.code-editor__file--selected:hover {
 		background: #007acc !important;
-	}
-	.code-editor__file:hover {
-		background: rgba(0, 0, 0, 0.8);
 	}
 	.code-editor__file__close {
 		display: inline-flex;
@@ -662,6 +668,7 @@ body.dark {
 		transition: background 0.15s;
 	}
 	.code-editor__input {
+		margin-top: 5px;
 		flex-grow: 1;
 	}
 	.monaco-editor, .monaco-editor * {
@@ -675,7 +682,7 @@ body.dark {
 		cursor: pointer;
 		min-width: 0px !important;
 		position: absolute;
-		right: 0px;
-		top: 0px;
+		right: 5px;
+		top: 5px;
 	}
 }

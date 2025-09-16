@@ -11,7 +11,7 @@ import {
 
 import { MdClose } from 'react-icons/md';
 
-export default function CodeEditor({isOpen}) {
+export default function CodeEditor({isOpen, theme}) {
 	const [objectsOpen, setObjectsOpen] = useState([]);
 	const [objectOpen, setObjectOpen] = useState();
 	const [value, setValue] = useState();
@@ -42,6 +42,16 @@ export default function CodeEditor({isOpen}) {
 	}, [objectsOpen]);
 	
 	useEffect(() => {
+		
+		const firstObject = _editor.selectedObjects[0];
+		console.log(firstObject);
+		if(isOpen && objectOpen != firstObject) {
+			_editor.openCodeEditor(firstObject);
+		}
+		
+	}, [isOpen, objectOpen, _editor.selectedObjects]);
+	
+	useEffect(() => {
 		setValue(objectOpen?.__script ?? '');
 	}, [objectOpen]);
 	
@@ -51,6 +61,7 @@ export default function CodeEditor({isOpen}) {
 			return;
 			
 		objectOpen.__script = value;
+		objectOpen.checkSymbols();
 		
 	}, [value]);
 	
@@ -60,9 +71,12 @@ export default function CodeEditor({isOpen}) {
 	
 	const drawOpenObjects = () => {
 		const rows = [];
+		const objectsOpenList = [...objectsOpen];
 		
-		objectsOpen.forEach(d3dobject => {
-			const path = d3dobject.__scriptPath;
+		if(window._root && !objectsOpenList.includes(window._root))
+			objectsOpenList.unshift(window._root);
+		
+		objectsOpenList.forEach(d3dobject => {
 			const classNames = ['code-editor__file', 'no-select'];
 			
 			if(d3dobject == objectOpen)
@@ -74,13 +88,23 @@ export default function CodeEditor({isOpen}) {
 				setObjectsOpen(arr);
 				
 				if(objectOpen == d3dobject)
-					setObjectOpen(arr.length > 0 ? arr[0] : null);
+					setObjectOpen(arr.length > 0 ? arr[0] : _root);
 				
 				e.preventDefault();
+				e.stopPropagation();
 			}
 			const selectMe = (e) => {
 				setObjectOpen(d3dobject);
 			}
+			
+			const drawClose = () => (
+				<div 
+					className='code-editor__file__close'
+					onClick={closeMe}
+				>
+					x
+				</div>
+			)
 			
 			rows.push(
 				<div 
@@ -89,12 +113,7 @@ export default function CodeEditor({isOpen}) {
 					onClick={selectMe}
 				>
 					{d3dobject.name}
-					<div 
-						className='code-editor__file__close'
-						onClick={closeMe}
-					>
-						x
-					</div>
+					{d3dobject != _root && drawClose()}
 				</div>
 			)
 		});
@@ -105,7 +124,7 @@ export default function CodeEditor({isOpen}) {
 	return (
 		<div 
 			className='code-editor' 
-			style={{display: (!isOpen || objectsOpen.length < 1) ? 'none': 'block'}}
+			style={{display: (!isOpen) ? 'none' : 'block'}}
 			tabIndex={3}
 		>
 			<div ref={panelRef} className='code-editor__window'>
@@ -141,11 +160,8 @@ export default function CodeEditor({isOpen}) {
 										_editor.saveProject();
 									}
 								});
-								
-								// set theme ONLY after mount
-								monaco.editor.setTheme('damenscript-dark');
 							}}
-							theme="vs-dark"
+							theme={theme == 'dark' ? 'damenscript-dark' : 'damenscript-light'}
 							options={{
 								minimap: { enabled: false },
 								tabSize: 6,

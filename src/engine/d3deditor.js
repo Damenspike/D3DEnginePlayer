@@ -6,6 +6,7 @@ import { OutlinePass } from 'three/examples/jsm/postprocessing/OutlinePass.js';
 import { GammaCorrectionShader } from 'three/examples/jsm/shaders/GammaCorrectionShader.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { GrayscaleShader } from './d3dshaders.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { v4 as uuidv4 } from 'uuid';
 import { 
 	arraysEqual,
@@ -13,7 +14,9 @@ import {
 	getExtension,
 	pickWorldPointAtScreen,
 	dropToGroundIfPossible,
-	clearDir
+	clearDir,
+	fileName,
+	fileNameNoExt
 } from './d3dutility.js';
 
 import $ from 'jquery';
@@ -134,7 +137,7 @@ async function initEditorCamera() {
 		editorAlwaysVisible: true,
 		engineScript: 'd3deditorcamera.js',
 		uuid: '',
-		components: [{ type: 'Camera', properties: {} }]
+		components: [{ type: 'Camera', properties: {clipNear: 0.0001} }]
 	});
 	const editorLight = await cameraD3DObj.createObject({
 		name: 'Editor Camera Light',
@@ -779,7 +782,7 @@ async function desymboliseObject(d3dobject) {
 	d3dobject.checkSymbols();
 	_editor.updateInspector();
 }
-function moveObjectToCameraView(d3dobject, distance = 5) {
+function moveObjectToCameraView(d3dobject, distance = 1) {
 	const cameraWorldPos = new THREE.Vector3();
 	_editor.camera.getWorldPosition(cameraWorldPos);
 	
@@ -818,25 +821,124 @@ function onAssetsUpdated() {
 }
 async function onAssetDroppedIntoGameView(path, screenPos) {
 	const { sx, sy } = screenPos;
+	const zip = _root.zip;
 	const ext = getExtension(path);
-	
-	switch(ext) {
+
+	switch (ext) {
 		case 'd3dsymbol': {
 			const symbol = Object.values(_root.__symbols)
-				.find(symbol => symbol.file.name == path);
-			
-			if(!symbol) {
+				.find(symbol => symbol.file.name === path);
+
+			if (!symbol) {
 				console.warn('Could not find symbol by path', path);
 				break;
 			}
-			
+
 			const d3dobject = await _editor.focus.createObject({
 				symbolId: symbol.symbolId
 			});
-			
 			moveObjectToCameraView(d3dobject);
-			
 			_editor.setSelection([d3dobject]);
+			break;
+		}
+		case 'glb':
+		case 'gltf': {
+			const loader = new GLTFLoader();
+		
+			const isZipFolder = (p) => {
+				const dir = p.endsWith('/') ? p : (p + '/');
+				return zip.folder(dir) !== null || (() => {
+					let found = false;
+					zip.forEach((rel, f) => { if (rel.startsWith(dir)) found = true; });
+					return found;
+				})();
+			};
+		
+			const listSubmeshGLBs = (folderPath) => {
+				const dir = folderPath.endsWith('/') ? folderPath : (folderPath + '/');
+				const list = [];
+				zip.forEach((rel, f) => {
+					if (!f.dir && rel.startsWith(dir) && rel.toLowerCase().endsWith('.glb')) {
+						list.push(rel);
+					}
+				});
+				list.sort((a,b) => a.localeCompare(b));
+				return list;
+			};
+		
+			const readLocalTRSFromZip = async (relPath) => {
+				const zf = zip.file(relPath);
+				if (!zf) return { position: {x:0,y:0,z:0}, rotation: {x:0,y:0,z:0}, scale: {x:1,y:1,z:1} };
+				const ab = await zf.async('arraybuffer');
+				const gltf = await loader.parseAsync(ab, '');
+				let node = null;
+				gltf.scene.traverse(o => { if (!node && o.isMesh) node = o; });
+				if (!node) node = gltf.scene;
+		
+				// use LOCAL matrix (some GLBs have matrixAutoUpdate=false)
+				if (!node.matrix || !node.matrix.isMatrix4) node.updateMatrix();
+				const pos = new THREE.Vector3();
+				const quat = new THREE.Quaternion();
+				const scl = new THREE.Vector3();
+				node.matrix.decompose(pos, quat, scl);
+				const eul = new THREE.Euler().setFromQuaternion(quat, node.rotation?.order || 'XYZ');
+		
+				return {
+					position: { x: pos.x || 0, y: pos.y || 0, z: pos.z || 0 },
+					rotation: { x: eul.x || 0, y: eul.y || 0, z: eul.z || 0 }, // radians
+					scale:    { x: scl.x || 1, y: scl.y || 1, z: scl.z || 1 }
+				};
+			};
+		
+			const treatAsFolder = isZipFolder(path); // prefer folder if it exists
+			
+			if (treatAsFolder) {
+				const meshes = listSubmeshGLBs(path);
+				// no submeshes? fall back to file behavior
+				if (meshes.length === 0 && zip.file(path)) {
+					const trs = await readLocalTRSFromZip(path);
+					const d3dobject = await _editor.focus.createObject({
+						name: fileNameNoExt(path),
+						position: trs.position,
+						rotation: trs.rotation,
+						scale: trs.scale,
+						components: [{ type: 'Mesh', properties: { mesh: _root.resolveAssetId(path), materials: [] } }]
+					});
+					moveObjectToCameraView(d3dobject);
+					_editor.setSelection([d3dobject]);
+					break;
+				}
+		
+				const parent = await _editor.focus.createObject({
+					name: fileNameNoExt(path.endsWith('/') ? path.slice(0, -1) : path)
+				});
+				moveObjectToCameraView(parent);
+		
+				for (const meshPath of meshes) {
+					const trs = await readLocalTRSFromZip(meshPath);
+					await parent.createObject({
+						name: fileNameNoExt(meshPath),
+						position: trs.position,
+						rotation: trs.rotation,
+						scale: trs.scale,
+						components: [{ type: 'Mesh', properties: { mesh: _root.resolveAssetId(meshPath), materials: [] } }]
+					}, parent);
+				}
+		
+				_editor.setSelection([parent]);
+			} else {
+				// pure file
+				const trs = await readLocalTRSFromZip(path);
+				const d3dobject = await _editor.focus.createObject({
+					name: fileNameNoExt(path),
+					position: trs.position,
+					rotation: trs.rotation,
+					scale: trs.scale,
+					components: [{ type: 'Mesh', properties: { mesh: _root.resolveAssetId(path), materials: [] } }]
+				});
+				moveObjectToCameraView(d3dobject);
+				_editor.setSelection([d3dobject]);
+			}
 			break;
 		}
 	}
@@ -887,6 +989,7 @@ D3D.setEventListener('dupe', () => _editor.dupe());
 D3D.setEventListener('edit-code', () => _editor.editCode());
 D3D.setEventListener('save-project', () => saveProject());
 D3D.setEventListener('request-save-and-close', () => saveProjectAndClose());
+D3D.setEventListener('import-asset', () => null); // idk how to do this yet
 
 D3D.setEventListener('add-object', (type) => addD3DObjectEditor(type));
 D3D.setEventListener('symbolise-object', (type) => symboliseSelectedObject(type));

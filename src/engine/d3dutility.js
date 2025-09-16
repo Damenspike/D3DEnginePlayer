@@ -332,3 +332,17 @@ export function fileName(filePath) {
 		
 	return n || '';
 }
+export function fileNameNoExt(filePath) {
+	const a = filePath.split(/[\\/]/);
+	let n = a.pop();
+
+	if (!n) n = a.pop();
+	if (!n) return '';
+
+	// strip extension if present
+	const i = n.lastIndexOf('.');
+	if (i > 0) {
+		return n.substring(0, i);
+	}
+	return n;
+}
