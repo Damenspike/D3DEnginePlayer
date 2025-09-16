@@ -13,6 +13,7 @@ import {
 	MdFolderOpen, 
 	MdGames,
 	MdViewInAr,
+	MdFolderSpecial,
 	MdLightbulbOutline,
 	MdPhotoCamera,
 	MdHtml,
@@ -23,7 +24,7 @@ import {
 
 import {
 	MIME_D3D_ROW,
-	moveZipFile,
+	moveZipEntry,
 	renameZipFile,
 	renameZipDirectory,
 	uniqueDirPath,
@@ -33,7 +34,8 @@ import {
 	parentDir,
 	uniqueFilePath,
 	getExtension,
-	fileName
+	fileName,
+	isDirectory
 } from '../../../engine/d3dutility.js';
 
 const { path } = D3D;
@@ -1260,6 +1262,7 @@ export default function Inspector() {
 		if (!zip) return <div className="no-label">No project file mounted</div>;
 	
 		const updateIndex = (oldRel, newRel) => {
+			console.log(oldRel, newRel);
 			const a = _root.findAssetByPath(oldRel);
 			if (a) a.rel = newRel;
 		};
@@ -1491,20 +1494,25 @@ export default function Inspector() {
 		// ------------------------------
 		const renderNode = (node, depth = 0, siblings = []) => {
 			const selected = isSelected(node.path);
+			const ext = getExtension(node.name);
+			const displayName = node.name.split('.')[0];
+			
+			const drawIcon = (isDir = false) => {
+				switch (ext) {
+					case 'd3dsymbol': return <MdOutlineInterests />;
+					case 'glb':
+					case 'gltf':
+						return <MdViewInAr />;
+					case 'glbmodel': 
+					case 'gltfmodel': 
+						return <MdFolderSpecial />;
+					case 'mat': return <MdTexture />;
+					case 'html': return <MdHtml />;
+					default: return isDir ? <MdFolder /> : <MdInsertDriveFile />;
+				}
+			};
+			
 			if (node.type === 'file') {
-				const ext = getExtension(node.name);
-				const displayName = node.name.split('.')[0];
-	
-				const drawIcon = () => {
-					switch (ext) {
-						case 'd3dsymbol': return <MdOutlineInterests />;
-						case 'glb': return <MdViewInAr />;
-						case 'mat': return <MdTexture />;
-						case 'html': return <MdHtml />;
-						default: return <MdInsertDriveFile />;
-					}
-				};
-	
 				return (
 					<ObjectRow
 						key={node.path}
@@ -1535,79 +1543,98 @@ export default function Inspector() {
 						onDoubleClick={() => setSingleSelection(node.path)}
 					/>
 				);
+			}else{
+				// dir
+				const open = isExpanded(node.path);
+				return (
+					<React.Fragment key={node.path || 'assets'}>
+						<ObjectRow
+							icon={(
+								<>
+									<div
+										className="folder-expand-icon"
+										onClick={(e) => {
+											toggleExpanded(node.path);
+											e.stopPropagation();
+											e.preventDefault();
+										}}
+									>
+										{open ? <MdExpandMore /> : <MdChevronRight />}
+									</div>
+									{drawIcon(true)}
+								</>
+							)}
+							name={node.name}
+							displayName={displayName}
+							selected={selected}
+							title={node.path || '/'}
+							style={{ paddingLeft: 6 + depth * 14 }}
+							droppable
+							draggable
+							dragData={{ kind: 'folder', path: node.path }}
+							onDrop={async (e, payload) => {
+								e.stopPropagation();
+								e.preventDefault();
+								
+								try {
+									if (!payload?.path) return;
+							
+									const destDir = node.path.endsWith('/') ? node.path : (node.path + '/');
+									const srcIsDir = isDirectory(zip, payload.path);
+									const srcDir = srcIsDir ? (payload.path.endsWith('/') ? payload.path : payload.path + '/') : null;
+							
+									// prevent moving a folder into itself/descendant
+									if (srcIsDir && (destDir === srcDir || destDir.startsWith(srcDir))) return;
+							
+									// IMPORTANT: pass destDir (not node.path)
+									const moveResult = await moveZipEntry(zip, payload.path, destDir, { updateIndex });
+									const movedTo = moveResult.dir;
+							
+									setAssetTree(buildTree());
+									setAssetExpanded(prev => {
+										const next = new Set(prev);
+										next.add(destDir.replace(/\/$/, '')); // expand destination folder
+										return next;
+									});
+							
+									// Select the thing we actually moved
+									if (movedTo) {
+										const movedIsDir = isDirectory(zip, movedTo);
+										const selectPath = movedIsDir ? movedTo.replace(/\/$/, '') : movedTo;
+										setSingleSelection(selectPath);
+									}
+							
+									_editor.onAssetsUpdated();
+								} catch (err) {
+									console.error('Move failed', err);
+								}
+							}}
+							onRename={async (newName) => {
+								try {
+									const newPath = await renameZipDirectory(zip, node.path, newName);
+									setAssetTree(buildTree());
+									setSingleSelection(newPath.replace(/\/$/, ''));
+									_editor.onAssetsUpdated();
+								} catch (err) {
+									console.warn('Rename failed:', err);
+								}
+								return newName;
+							}}
+							onClick={(e) => {
+								if (e.shiftKey) selectRange(siblings, lastSelectedPath, node.path);
+								else if (e.metaKey || e.ctrlKey) toggleSelection(node.path);
+								else setSingleSelection(node.path);
+							}}
+							onDoubleClick={() => toggleExpanded(node.path)}
+						/>
+						{open && node.children?.map(child => (
+							<React.Fragment key={child.path}>
+								{renderNode(child, depth + 1, node.children)}
+							</React.Fragment>
+						))}
+					</React.Fragment>
+				);
 			}
-	
-			// dir
-			const open = isExpanded(node.path);
-			return (
-				<React.Fragment key={node.path || 'assets'}>
-					<ObjectRow
-						icon={(
-							<>
-								<div
-									className="folder-expand-icon"
-									onClick={(e) => {
-										toggleExpanded(node.path);
-										e.stopPropagation();
-										e.preventDefault();
-									}}
-								>
-									{open ? <MdExpandMore /> : <MdChevronRight />}
-								</div>
-								<MdFolder />
-							</>
-						)}
-						name={node.name}
-						selected={selected}
-						title={node.path || '/'}
-						style={{ paddingLeft: 6 + depth * 14 }}
-						droppable
-						draggable
-						dragData={{ kind: 'folder', path: node.path }}
-						onDrop={async (_e, payload) => {
-							try {
-								if (!payload?.path) return;
-								const destDir = node.path.endsWith('/') ? node.path : (node.path + '/');
-								const srcDir = payload.path.endsWith('/') ? payload.path : payload.path + '/';
-								// prevent moving into itself/descendant
-								if (payload.kind === 'folder' && (destDir === srcDir || destDir.startsWith(srcDir))) return;
-	
-								const movedTo = await moveZipFile(zip, payload.path, node.path, { updateIndex });
-								setAssetTree(buildTree());
-								setAssetExpanded(prev => new Set(prev).add(node.path));
-	
-								// select moved item (never the root)
-								if (movedTo) setSingleSelection(movedTo.replace(/\/$/, ''));
-								_editor.onAssetsUpdated();
-							} catch (err) {
-								console.error('Move failed', err);
-							}
-						}}
-						onRename={async (newName) => {
-							try {
-								const newPath = await renameZipDirectory(zip, node.path, newName);
-								setAssetTree(buildTree());
-								setSingleSelection(newPath.replace(/\/$/, ''));
-								_editor.onAssetsUpdated();
-							} catch (err) {
-								console.warn('Rename failed:', err);
-							}
-							return newName;
-						}}
-						onClick={(e) => {
-							if (e.shiftKey) selectRange(siblings, lastSelectedPath, node.path);
-							else if (e.metaKey || e.ctrlKey) toggleSelection(node.path);
-							else setSingleSelection(node.path);
-						}}
-						onDoubleClick={() => toggleExpanded(node.path)}
-					/>
-					{open && node.children?.map(child => (
-						<React.Fragment key={child.path}>
-							{renderNode(child, depth + 1, node.children)}
-						</React.Fragment>
-					))}
-				</React.Fragment>
-			);
 		};
 	
 		// ------------------------------
@@ -1733,21 +1760,23 @@ export default function Inspector() {
 					if (!payload?.path) return;
 				
 					const dstDir = ROOT; // 'assets/'
-					await moveZipFile(zip, payload.path, dstDir, { updateIndex });
+					await moveZipEntry(zip, payload.path, dstDir, { updateIndex });
 				
 					setAssetTree(buildTree());
 				
 					// select moved item (not root)
 					const movedName = payload.path.split('/').pop();
-					const movedIsFile = /\.[^/]+$/.test(payload.path);
-					const movedPath = normPath(dstDir + (movedIsFile ? movedName : movedName + '/'));
-					
+					const movedIsDir = isDirectory(zip, payload.path);
+					const movedPath = normPath(
+						dstDir + movedName + (movedIsDir ? '/' : '')
+					);
+				
 					setSelectedAssetPaths(new Set([movedPath]));
 					setLastSelectedPath(movedPath);
-					
+				
 					// expand root, do NOT select it
 					setAssetExpanded(prev => new Set(prev).add(ROOT));
-					
+				
 					_editor.onAssetsUpdated();
 				}}
 			>

@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
-import { fileName, getExtension } from './d3dutility.js';
+import { fileName, getExtension, uniqueFilePath } from './d3dutility.js';
 
 export async function handleImportFile(file, destDir) {
 	const zip = _root.zip;
@@ -14,57 +14,58 @@ export async function handleImportFile(file, destDir) {
 	switch (ext) {
 		case 'glb':
 		case 'gltf': {
-			// 1) Save the original source model as-is
-			zip.file(target, buf);
+			// Source filename + parts
+			const srcFileName = file.name || name || 'model.glb';
+			const dot = srcFileName.lastIndexOf('.');
+			const base = dot >= 0 ? srcFileName.slice(0, dot) : srcFileName;
+			const ext  = dot >= 0 ? srcFileName.slice(dot + 1).toLowerCase() : 'glb';
 		
-			// 2) Create a folder with the same name as the source file (including extension)
-			const virtualDir = `${destDir}/${name}/`;
-			zip.folder(virtualDir);
+			// --- 1) Make a folder with .<ext>model
+			// e.g. "Plane.glbmodel/"
+			const folderLabel = `${base}.${ext}model`;
+			const uniqueFolderPathNoSlash = uniqueFilePath(zip, destDir, folderLabel);
+			const virtualDir = uniqueFolderPathNoSlash.endsWith('/')
+				? uniqueFolderPathNoSlash
+				: (uniqueFolderPathNoSlash + '/');
+			zip.folder(virtualDir); // create the dir marker
 		
-			// 3) Parse the uploaded File directly
+			// --- 2) Parse GLB and export each mesh as its own GLB into the folder
 			const loader = new GLTFLoader();
 			const arrayBuffer = await file.arrayBuffer();
 			const gltf = await loader.parseAsync(arrayBuffer, '');
 		
-			// 4) Export each mesh as its own GLB inside the folder
 			const exporter = new GLTFExporter();
 			const promises = [];
 			const nameCounts = new Map();
+			const wrote = [virtualDir];
 		
 			gltf.scene.traverse(obj => {
 				if (!obj.isMesh) return;
 		
 				// sanitize + dedupe filename
-				let base = obj.name ? obj.name.replace(/[^\w\-\.]+/g, '_') : 'mesh';
-				let n = nameCounts.get(base) || 0;
-				let outRel = `${virtualDir}${base}${n ? `_${n}` : ''}.glb`;
-				nameCounts.set(base, n + 1);
+				let baseName = obj.name ? obj.name.replace(/[^\w\-\.]+/g, '_') : 'mesh';
+				let n = nameCounts.get(baseName) || 0;
+				let outRel = `${virtualDir}${baseName}${n ? `_${n}` : ''}.glb`;
+				nameCounts.set(baseName, n + 1);
 		
-				// export mesh → blob → zip
 				const p = new Promise((resolve, reject) => {
 					exporter.parse(
 						obj,
 						async (result) => {
 							try {
 								let data;
-					
 								if (result instanceof ArrayBuffer) {
-									// already good
 									data = result;
 								} else if (ArrayBuffer.isView(result)) {
-									// TypedArray -> slice into ArrayBuffer
 									data = result.buffer.slice(result.byteOffset, result.byteOffset + result.byteLength);
 								} else if (result instanceof Blob) {
-									// convert Blob -> ArrayBuffer
 									data = await result.arrayBuffer();
 								} else {
-									// fallback, stringify JSON to ArrayBuffer
 									const str = typeof result === 'string' ? result : JSON.stringify(result);
 									data = new TextEncoder().encode(str).buffer;
 								}
-					
-								// Write raw ArrayBuffer into the zip entry
 								zip.file(outRel, data, { binary: true });
+								wrote.push(outRel);
 								resolve();
 							} catch (e) {
 								reject(e);
@@ -77,7 +78,7 @@ export async function handleImportFile(file, destDir) {
 			});
 		
 			await Promise.all(promises);
-			return { wrote: [target] };
+			return { wrote };
 		}
 
 		default: {

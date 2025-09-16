@@ -6,7 +6,6 @@ import { OutlinePass } from 'three/examples/jsm/postprocessing/OutlinePass.js';
 import { GammaCorrectionShader } from 'three/examples/jsm/shaders/GammaCorrectionShader.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { GrayscaleShader } from './d3dshaders.js';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { v4 as uuidv4 } from 'uuid';
 import { 
 	arraysEqual,
@@ -16,7 +15,9 @@ import {
 	dropToGroundIfPossible,
 	clearDir,
 	fileName,
-	fileNameNoExt
+	fileNameNoExt,
+	isDirectory,
+	readLocalTRSFromZip
 } from './d3dutility.js';
 
 import $ from 'jquery';
@@ -841,19 +842,8 @@ async function onAssetDroppedIntoGameView(path, screenPos) {
 			_editor.setSelection([d3dobject]);
 			break;
 		}
-		case 'glb':
-		case 'gltf': {
-			const loader = new GLTFLoader();
-		
-			const isZipFolder = (p) => {
-				const dir = p.endsWith('/') ? p : (p + '/');
-				return zip.folder(dir) !== null || (() => {
-					let found = false;
-					zip.forEach((rel, f) => { if (rel.startsWith(dir)) found = true; });
-					return found;
-				})();
-			};
-		
+		case 'glbmodel':
+		case 'glbtfmodel': {
 			const listSubmeshGLBs = (folderPath) => {
 				const dir = folderPath.endsWith('/') ? folderPath : (folderPath + '/');
 				const list = [];
@@ -865,80 +855,40 @@ async function onAssetDroppedIntoGameView(path, screenPos) {
 				list.sort((a,b) => a.localeCompare(b));
 				return list;
 			};
-		
-			const readLocalTRSFromZip = async (relPath) => {
-				const zf = zip.file(relPath);
-				if (!zf) return { position: {x:0,y:0,z:0}, rotation: {x:0,y:0,z:0}, scale: {x:1,y:1,z:1} };
-				const ab = await zf.async('arraybuffer');
-				const gltf = await loader.parseAsync(ab, '');
-				let node = null;
-				gltf.scene.traverse(o => { if (!node && o.isMesh) node = o; });
-				if (!node) node = gltf.scene;
-		
-				// use LOCAL matrix (some GLBs have matrixAutoUpdate=false)
-				if (!node.matrix || !node.matrix.isMatrix4) node.updateMatrix();
-				const pos = new THREE.Vector3();
-				const quat = new THREE.Quaternion();
-				const scl = new THREE.Vector3();
-				node.matrix.decompose(pos, quat, scl);
-				const eul = new THREE.Euler().setFromQuaternion(quat, node.rotation?.order || 'XYZ');
-		
-				return {
-					position: { x: pos.x || 0, y: pos.y || 0, z: pos.z || 0 },
-					rotation: { x: eul.x || 0, y: eul.y || 0, z: eul.z || 0 }, // radians
-					scale:    { x: scl.x || 1, y: scl.y || 1, z: scl.z || 1 }
-				};
-			};
-		
-			const treatAsFolder = isZipFolder(path); // prefer folder if it exists
 			
-			if (treatAsFolder) {
-				const meshes = listSubmeshGLBs(path);
-				// no submeshes? fall back to file behavior
-				if (meshes.length === 0 && zip.file(path)) {
-					const trs = await readLocalTRSFromZip(path);
-					const d3dobject = await _editor.focus.createObject({
-						name: fileNameNoExt(path),
-						position: trs.position,
-						rotation: trs.rotation,
-						scale: trs.scale,
-						components: [{ type: 'Mesh', properties: { mesh: _root.resolveAssetId(path), materials: [] } }]
-					});
-					moveObjectToCameraView(d3dobject);
-					_editor.setSelection([d3dobject]);
-					break;
-				}
-		
-				const parent = await _editor.focus.createObject({
-					name: fileNameNoExt(path.endsWith('/') ? path.slice(0, -1) : path)
-				});
-				moveObjectToCameraView(parent);
-		
-				for (const meshPath of meshes) {
-					const trs = await readLocalTRSFromZip(meshPath);
-					await parent.createObject({
-						name: fileNameNoExt(meshPath),
-						position: trs.position,
-						rotation: trs.rotation,
-						scale: trs.scale,
-						components: [{ type: 'Mesh', properties: { mesh: _root.resolveAssetId(meshPath), materials: [] } }]
-					}, parent);
-				}
-		
-				_editor.setSelection([parent]);
-			} else {
-				// pure file
-				const trs = await readLocalTRSFromZip(path);
-				const d3dobject = await _editor.focus.createObject({
-					name: fileNameNoExt(path),
+			const meshes = listSubmeshGLBs(path);
+			const parent = await _editor.focus.createObject({
+				name: fileNameNoExt(path.endsWith('/') ? path.slice(0, -1) : path)
+			});
+			
+			moveObjectToCameraView(parent);
+			
+			for (const meshPath of meshes) {
+				const trs = await readLocalTRSFromZip(zip, meshPath);
+				await parent.createObject({
+					name: fileNameNoExt(meshPath),
 					position: trs.position,
 					rotation: trs.rotation,
 					scale: trs.scale,
-					components: [{ type: 'Mesh', properties: { mesh: _root.resolveAssetId(path), materials: [] } }]
+					components: [{ type: 'Mesh', properties: { mesh: _root.resolveAssetId(meshPath), materials: [] } }]
 				});
-				moveObjectToCameraView(d3dobject);
-				_editor.setSelection([d3dobject]);
 			}
+			
+			_editor.setSelection([parent]);
+			break;
+		}
+		case 'glb':
+		case 'gltf': {
+			const trs = await readLocalTRSFromZip(zip, path);
+			const d3dobject = await _editor.focus.createObject({
+				name: fileNameNoExt(path),
+				position: trs.position,
+				rotation: trs.rotation,
+				scale: trs.scale,
+				components: [{ type: 'Mesh', properties: { mesh: _root.resolveAssetId(path), materials: [] } }]
+			});
+			moveObjectToCameraView(d3dobject);
+			_editor.setSelection([d3dobject]);
 			break;
 		}
 	}

@@ -1,99 +1,94 @@
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+
 export const MIME_D3D_ROW = "application/x-d3d-objectrow";
 
 export function arraysEqual(a, b) {
 	return a.length === b.length && a.every((value, index) => value === b[index]);
 }
-export async function moveZipFile(zip, oldPath, newDir, opts = {}) {
-	const updateIndex = opts.updateIndex || null;
+export async function moveZipEntry(zip, srcPath, destDir, { updateIndex }) {
+	const nd = p => (p.endsWith('/') ? p : p + '/');
+	const nf = p => p.replace(/\/+$/, '');
+	const base = p => nf(p).split('/').pop();
 
-	function ensureDirSlash(p) {
-		return p.endsWith('/') ? p : p + '/';
-	}
-	function parentDir(p) {
-		const i = p.lastIndexOf('/');
-		return i >= 0 ? p.slice(0, i + 1) : 'assets/';
-	}
+	const entry = zip.files[srcPath] ?? zip.files[srcPath + '/'];
 
-	if (!newDir.endsWith('/')) newDir += '/';
+	if(!entry)
+		throw new Error(`${srcPath} not found for move`);
 
-	const oldFile = zip.file(oldPath);
-	const isFile = !!oldFile;
-	const isDir = !isFile && Object.keys(zip.files).some(p =>
-		p.startsWith(oldPath.endsWith('/') ? oldPath : oldPath + '/')
-	);
+	if(entry.dir) {
+		const name = base(srcPath);
+		const trueDestDir = nd(destDir + name);
 
-	if (!isFile && !isDir)
-		throw new Error(`Path not found: ${oldPath}`);
+		if(!srcPath.endsWith('/'))
+			srcPath += '/'; // dir must always end with /
 
-	const baseName = (oldPath.split('/').pop() || '').replace(/\/$/, '');
-	const targetBase = newDir + baseName;
+		const srcDir   = nd(srcPath);
+		const destDirN = nd(destDir);
 
-	// prevent same-folder move
-	const oldParent = parentDir(oldPath);
-	if (newDir === oldParent)
-		return oldPath;
-
-	// Collect all rel changes to update the asset index after the move
-	const renames = [];
-
-	if (isFile) {
-		if (targetBase === oldPath)
-			return oldPath;
-
-		const buf = await oldFile.async('arraybuffer');
-		zip.file(targetBase, buf);
-		zip.remove(oldPath);
-
-		renames.push([oldPath, targetBase]);
-
-		// apply index updates at the end
-		if (updateIndex) {
-			for (const [from, to] of renames) updateIndex(from, to);
-		}
-		return targetBase;
-	}
-
-	// Directory move
-	const oldDirPath = ensureDirSlash(oldPath);
-	let newDirPath = ensureDirSlash(targetBase);
-
-	// prevent moving folder into itself/descendant
-	if (newDirPath.startsWith(oldDirPath))
-		throw new Error('Cannot move a folder into itself or its descendant.');
-
-	if (newDirPath === oldDirPath)
-		return oldDirPath;
-
-	const toRemove = [];
-	const copyJobs = [];
-
-	zip.forEach((rel, file) => {
-		if (!rel.startsWith(oldDirPath)) return;
-
-		const suffix = rel.slice(oldDirPath.length);
-		const target = newDirPath + suffix;
-
-		if (file.dir) {
-			zip.folder(target);
-		} else {
-			copyJobs.push(file.async('arraybuffer').then(buf => zip.file(target, buf)));
+		// guard: cannot move into itself or descendant
+		if (destDirN == srcDir || destDirN.startsWith(srcDir)) {
+			throw new Error('Cannot move a folder into itself or its descendant');
 		}
 
-		// Record every file/dir path change so the asset index can be updated
-		renames.push([rel, target]);
-		toRemove.push(rel);
-	});
+		// guard: already in destination (same parent)
+		const srcParent = srcDir.slice(0, srcDir.slice(0, -1).lastIndexOf('/') + 1);
+		if (srcParent == destDirN) {
+			return {
+				dir: destDir,
+				path: srcPath
+			}
+		}
 
-	await Promise.all(copyJobs);
-	toRemove.forEach(p => zip.remove(p));
-	zip.remove(oldDirPath);
+		const paths = Object.keys(zip.files).filter(
+			path => path == srcPath || path.startsWith(srcPath)
+		);
 
-	// Index updates
-	if (updateIndex) {
-		for (const [from, to] of renames) updateIndex(from, to);
+		await Promise.all(paths.map(async path => {
+			const file = zip.files[path];
+			const destPath = (path == srcPath) ? trueDestDir : (trueDestDir + path.slice(srcPath.length));
+
+			if (file.dir) {
+				zip.folder(destPath);
+				updateIndex?.(path, destPath);
+			} else {
+				const data = await file.async('arraybuffer');
+				zip.file(destPath, data, { date: file.date, comment: file.comment });
+				updateIndex?.(path, destPath);
+			}
+		}));
+
+		paths.forEach(path => zip.remove(path));
+
+		return {
+			dir: destDir,
+			path: trueDestDir
+		}
+	}else{
+		const data = await entry.async('arraybuffer');
+		const fname = fileName(srcPath);
+		const destPath = `${destDir}${fname}`;
+
+		// guard: already in destination (same parent)
+		const srcParent = nf(srcPath).slice(0, nf(srcPath).lastIndexOf('/') + 1);
+		const destDirN = nd(destDir);
+		
+		if (srcParent == destDirN) {
+			return {
+				dir: destDir,
+				path: srcPath
+			}
+		}
+
+		zip.file(destPath, data, { date: entry.date, comment: entry.comment });
+		updateIndex?.(srcPath, destPath);
+
+		zip.remove(srcPath);
+
+		return {
+			dir: destDir,
+			path: destPath
+		}
 	}
-
-	return newDirPath;
 }
 export async function renameZipFile(zip, oldPath, newBaseName) {
 	// validate source
@@ -346,3 +341,35 @@ export function fileNameNoExt(filePath) {
 	}
 	return n;
 }
+export function isDirectory(zip, p) {
+	if(!p) return false;
+	const dir = p.endsWith('/') ? p : (p + '/');
+	let hasChild = false;
+	zip.forEach((rel, f) => { if (rel.startsWith(dir) && !f.dir) hasChild = true; });
+	// If it has children, treat it as a folder even if a file entry also exists.
+	return hasChild || (zip.files[dir]?.dir == true);
+}
+export async function readLocalTRSFromZip(zip, relPath) {
+	const loader = new GLTFLoader();
+	const zf = zip.file(relPath);
+	if (!zf) return { position: {x:0,y:0,z:0}, rotation: {x:0,y:0,z:0}, scale: {x:1,y:1,z:1} };
+	const ab = await zf.async('arraybuffer');
+	const gltf = await loader.parseAsync(ab, '');
+	let node = null;
+	gltf.scene.traverse(o => { if (!node && o.isMesh) node = o; });
+	if (!node) node = gltf.scene;
+
+	// use LOCAL matrix (some GLBs have matrixAutoUpdate=false)
+	if (!node.matrix || !node.matrix.isMatrix4) node.updateMatrix();
+	const pos = new THREE.Vector3();
+	const quat = new THREE.Quaternion();
+	const scl = new THREE.Vector3();
+	node.matrix.decompose(pos, quat, scl);
+	const eul = new THREE.Euler().setFromQuaternion(quat, node.rotation?.order || 'XYZ');
+
+	return {
+		position: { x: pos.x || 0, y: pos.y || 0, z: pos.z || 0 },
+		rotation: { x: eul.x || 0, y: eul.y || 0, z: eul.z || 0 }, // radians
+		scale:    { x: scl.x || 1, y: scl.y || 1, z: scl.z || 1 }
+	};
+};
