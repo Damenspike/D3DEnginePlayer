@@ -1,5 +1,4 @@
-// onAssetDroppedIntoGameView.js
-import { readLocalTRSFromZip } from './glb-importer.js';
+import { readLocalTRSFromZip } from './glb-instancer.js';
 import { getExtension, fileNameNoExt } from './d3dutility.js';
 
 export async function onAssetDroppedIntoGameView(path, screenPos) {
@@ -57,16 +56,14 @@ export async function onAssetDroppedIntoGameView(path, screenPos) {
 ------------------------------ */
 
 async function _spawnModelFromZip(assetPath, zip, parent) {
-	// Use TRS from file for initial placement
 	const trs = await readLocalTRSFromZip(zip, assetPath);
 
-	// Create a D3DObject with a Mesh component
-	// Mesh component itself will handle rig creation / rebind when modelScene is ready
 	const d3dobject = await (parent || _editor.focus).createObject({
 		name: fileNameNoExt(assetPath),
-		position: trs?.position || {x:0,y:0,z:0},
-		rotation: trs?.rotation || {x:0,y:0,z:0},
-		scale:    trs?.scale    || {x:1,y:1,z:1},
+		position: trs?.position || { x:0, y:0, z:0 },
+		rotation: trs?.rotation || { x:0, y:0, z:0 },
+		// IMPORTANT: do NOT apply file scale here; the glTF scene already has it
+		scale: { x:1, y:1, z:1 },
 		components: [
 			{ type: 'Mesh', properties: { mesh: _root.resolveAssetId(assetPath), materials: [] } }
 		]

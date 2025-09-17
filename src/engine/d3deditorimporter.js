@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
-import { fileName, getExtension, uniqueFilePath } from './d3dutility.js';
+import { getExtension, uniqueFilePath } from './d3dutility.js';
 
 export async function handleImportFile(file, destDir) {
 	const zip = _root.zip;
@@ -14,70 +14,117 @@ export async function handleImportFile(file, destDir) {
 	switch (ext) {
 		case 'glb':
 		case 'gltf': {
-			// Source filename + parts
+			// --- source name parts
 			const srcFileName = file.name || name || 'model.glb';
 			const dot = srcFileName.lastIndexOf('.');
 			const base = dot >= 0 ? srcFileName.slice(0, dot) : srcFileName;
-			const ext  = dot >= 0 ? srcFileName.slice(dot + 1).toLowerCase() : 'glb';
-		
-			// --- 1) Make a folder with .<ext>model
-			// e.g. "Plane.glbmodel/"
-			const folderLabel = `${base}.${ext}model`;
-			const uniqueFolderPathNoSlash = uniqueFilePath(zip, destDir, folderLabel);
-			const virtualDir = uniqueFolderPathNoSlash.endsWith('/')
-				? uniqueFolderPathNoSlash
-				: (uniqueFolderPathNoSlash + '/');
-			zip.folder(virtualDir); // create the dir marker
-		
-			// --- 2) Parse GLB and export each mesh as its own GLB into the folder
+			const srcExt = dot >= 0 ? srcFileName.slice(dot + 1).toLowerCase() : 'glb';
+
+			// --- create <base>.<ext>model/ folder
+			const folderLabel = `${base}.${srcExt}model`;
+			const folderNoSlash = uniqueFilePath(zip, destDir, folderLabel);
+			const virtualDir = folderNoSlash.endsWith('/') ? folderNoSlash : (folderNoSlash + '/');
+			zip.folder(virtualDir);
+
+			// --- load once
 			const loader = new GLTFLoader();
-			const arrayBuffer = await file.arrayBuffer();
-			const gltf = await loader.parseAsync(arrayBuffer, '');
-		
+			const gltf = await loader.parseAsync(await file.arrayBuffer(), '');
+			gltf.scene.updateMatrixWorld(true);
+
+			// --- detect skeletons
+			let hasSkin = false;
+			gltf.scene.traverse(o => { if (o.isSkinnedMesh && o.skeleton) hasSkin = true; });
+
 			const exporter = new GLTFExporter();
-			const promises = [];
-			const nameCounts = new Map();
+			const exportAsGLB = (srcExt === 'glb');
+			const exporterOptions = exportAsGLB
+				? { binary: true }                          // -> .glb child
+				: { binary: false, embedImages: true };     // -> .gltf child (embedded)
+
 			const wrote = [virtualDir];
-		
+
+			if (hasSkin) {
+				// ===========================
+				// ONE FILE: meshes + skeleton
+				// ===========================
+				const childExt = exportAsGLB ? 'glb' : 'gltf';
+				const outRel = `${virtualDir}${base}.${childExt}`;
+
+				await new Promise((resolve, reject) => {
+					exporter.parse(
+						gltf.scene,
+						async (result) => {
+							try {
+								if (exportAsGLB) {
+									let data;
+									if (result instanceof ArrayBuffer) data = result;
+									else if (ArrayBuffer.isView(result)) data = result.buffer.slice(result.byteOffset, result.byteOffset + result.byteLength);
+									else if (result instanceof Blob) data = await result.arrayBuffer();
+									else {
+										const str = (typeof result === 'string') ? result : JSON.stringify(result);
+										data = new TextEncoder().encode(str).buffer;
+									}
+									zip.file(outRel, data, { binary: true });
+								} else {
+									const jsonText = (typeof result === 'string') ? result : JSON.stringify(result);
+									zip.file(outRel, jsonText);
+								}
+								wrote.push(outRel);
+								resolve();
+							} catch (e) { reject(e); }
+						},
+						exporterOptions
+					);
+				});
+
+				return { wrote };
+			}
+
+			// ==========================================
+			// NO skeletons → split into per-mesh children
+			// ==========================================
+			const nameCounts = new Map();
+			const tasks = [];
+
 			gltf.scene.traverse(obj => {
 				if (!obj.isMesh) return;
-		
-				// sanitize + dedupe filename
-				let baseName = obj.name ? obj.name.replace(/[^\w\-\.]+/g, '_') : 'mesh';
-				let n = nameCounts.get(baseName) || 0;
-				let outRel = `${virtualDir}${baseName}${n ? `_${n}` : ''}.glb`;
-				nameCounts.set(baseName, n + 1);
-		
-				const p = new Promise((resolve, reject) => {
+
+				const baseName = (obj.name ? obj.name.replace(/[^\w\-\.]+/g, '_') : 'mesh');
+				const idx = nameCounts.get(baseName) || 0;
+				nameCounts.set(baseName, idx + 1);
+
+				const childExt = exportAsGLB ? 'glb' : 'gltf';
+				const outRel = `${virtualDir}${baseName}${idx ? `_${idx}` : ''}.${childExt}`;
+
+				tasks.push(new Promise((resolve, reject) => {
 					exporter.parse(
 						obj,
 						async (result) => {
 							try {
-								let data;
-								if (result instanceof ArrayBuffer) {
-									data = result;
-								} else if (ArrayBuffer.isView(result)) {
-									data = result.buffer.slice(result.byteOffset, result.byteOffset + result.byteLength);
-								} else if (result instanceof Blob) {
-									data = await result.arrayBuffer();
+								if (exportAsGLB) {
+									let data;
+									if (result instanceof ArrayBuffer) data = result;
+									else if (ArrayBuffer.isView(result)) data = result.buffer.slice(result.byteOffset, result.byteOffset + result.byteLength);
+									else if (result instanceof Blob) data = await result.arrayBuffer();
+									else {
+										const str = (typeof result === 'string') ? result : JSON.stringify(result);
+										data = new TextEncoder().encode(str).buffer;
+									}
+									zip.file(outRel, data, { binary: true });
 								} else {
-									const str = typeof result === 'string' ? result : JSON.stringify(result);
-									data = new TextEncoder().encode(str).buffer;
+									const jsonText = (typeof result === 'string') ? result : JSON.stringify(result);
+									zip.file(outRel, jsonText);
 								}
-								zip.file(outRel, data, { binary: true });
 								wrote.push(outRel);
 								resolve();
-							} catch (e) {
-								reject(e);
-							}
+							} catch (e) { reject(e); }
 						},
-						{ binary: true }
+						exporterOptions
 					);
-				});
-				promises.push(p);
+				}));
 			});
-		
-			await Promise.all(promises);
+
+			await Promise.all(tasks);
 			return { wrote };
 		}
 

@@ -375,6 +375,10 @@ export default function Inspector() {
 				console.warn(`Unknown component schema for '${component.type}'`);
 				return;
 			}
+			if(!dummyComponent) {
+				console.warn(`Unknown component for '${idx}'`);
+				return;
+			}
 			
 			for(let fieldId in schema.fields) {
 				const field = schema.fields[fieldId];

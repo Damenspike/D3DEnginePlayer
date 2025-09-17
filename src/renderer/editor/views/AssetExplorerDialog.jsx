@@ -3,6 +3,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import MaterialSphere from './MaterialSphere.jsx';
 import { MdClose } from "react-icons/md";
 
+import { fileNameNoExt } from '../../../engine/d3dutility.js';
+
 const EXT_GROUPS = {
 	img: ['.png','.jpg','.jpeg','.gif','.webp','.bmp','.svg'],
 	audio: ['.mp3','.ogg','.wav','.m4a','.flac'],
@@ -285,7 +287,7 @@ export default function AssetExplorerDialog({
 									onDoubleClick={() => tryCommitSelect(it.name)}
 									title={it.path.slice(folder.length)}
 								>
-									<div className="asset-row__name">{it.name}</div>
+									<div className="asset-row__name">{it.name.split('/').map(n => fileNameNoExt(n)).join('/')}</div>
 								</div>
 							);
 						})}

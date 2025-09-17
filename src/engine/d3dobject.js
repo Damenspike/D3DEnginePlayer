@@ -4,7 +4,7 @@ import JSZip from 'jszip';
 import DamenScript from './damenscript.js';
 import D3DComponents from './d3dcomponents.js';
 import { v4 as uuidv4 } from 'uuid';
-import { importModelFromZip } from './glb-importer.js';
+import { importModelFromZip } from './glb-instancer.js';
 import { ensureRigAndBind } from './rig-binding.js';
 import {
 	getExtension
@@ -171,6 +171,15 @@ export default class D3DObject {
 		this.onVisibilityChanged?.();
 		this._onVisibilityChanged?.();
 		this.checkSymbols();
+	}
+	
+	get rootParent() {
+		let par = this;
+		
+		while(par.parent && par.parent != this.root)
+			par = par.parent;
+		
+		return par;
 	}
 	
 	get __visible() {
@@ -776,6 +785,16 @@ export default class D3DObject {
 							try {
 								// Use robust importer (handles .glb/.gltf, external files in zip, and skin fallbacks)
 								const { gltf, scene } = await importModelFromZip(zip, modelPath);
+								
+								scene.traverse(o => {
+									if (o.isSkinnedMesh) {
+										o.frustumCulled = false;
+								
+										// belt & braces: make sure skinning is enabled on materials
+										const mats = Array.isArray(o.material) ? o.material : [o.material];
+										for (const m of mats) if (m && 'skinning' in m) m.skinning = true;
+									}
+								});
 				
 								// remove previous model root BEFORE adding the new one
 								if (this.modelScene && this.modelScene.parent) {

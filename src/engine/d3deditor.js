@@ -20,7 +20,7 @@ import {
 } from './d3dutility.js';
 import {
 	readLocalTRSFromZip
-} from './glb-importer.js';
+} from './glb-instancer.js';
 import {
 	onAssetDroppedIntoGameView
 } from './d3deditordrop.js';
@@ -244,7 +244,7 @@ function updateObject(method, d3dobj) {
 function afterRenderShowObjects() {
 	_editor.grid.visible = true;
 	_root.children.forEach(d3dobject => {
-		if(d3dobject == _editor.focus || d3dobject.__wasVisible === undefined || d3dobject.editorAlwaysVisible)
+		if(d3dobject.rootParent == _editor.focus.rootParent || d3dobject.__wasVisible === undefined || d3dobject.editorAlwaysVisible)
 			return;
 		
 		d3dobject.__visible = d3dobject.__wasVisible;
@@ -254,7 +254,7 @@ function afterRenderShowObjects() {
 function afterRenderHideObjects() {
 	_editor.grid.visible = false;
 	_root.children.forEach(d3dobject => {
-		if(d3dobject == _editor.focus || d3dobject.isLight || d3dobject.editorAlwaysVisible)
+		if(d3dobject.rootParent == _editor.focus.rootParent || d3dobject.isLight || d3dobject.editorAlwaysVisible)
 			return;
 		
 		if(d3dobject.__wasVisible === undefined)
