@@ -349,27 +349,3 @@ export function isDirectory(zip, p) {
 	// If it has children, treat it as a folder even if a file entry also exists.
 	return hasChild || (zip.files[dir]?.dir == true);
 }
-export async function readLocalTRSFromZip(zip, relPath) {
-	const loader = new GLTFLoader();
-	const zf = zip.file(relPath);
-	if (!zf) return { position: {x:0,y:0,z:0}, rotation: {x:0,y:0,z:0}, scale: {x:1,y:1,z:1} };
-	const ab = await zf.async('arraybuffer');
-	const gltf = await loader.parseAsync(ab, '');
-	let node = null;
-	gltf.scene.traverse(o => { if (!node && o.isMesh) node = o; });
-	if (!node) node = gltf.scene;
-
-	// use LOCAL matrix (some GLBs have matrixAutoUpdate=false)
-	if (!node.matrix || !node.matrix.isMatrix4) node.updateMatrix();
-	const pos = new THREE.Vector3();
-	const quat = new THREE.Quaternion();
-	const scl = new THREE.Vector3();
-	node.matrix.decompose(pos, quat, scl);
-	const eul = new THREE.Euler().setFromQuaternion(quat, node.rotation?.order || 'XYZ');
-
-	return {
-		position: { x: pos.x || 0, y: pos.y || 0, z: pos.z || 0 },
-		rotation: { x: eul.x || 0, y: eul.y || 0, z: eul.z || 0 }, // radians
-		scale:    { x: scl.x || 1, y: scl.y || 1, z: scl.z || 1 }
-	};
-};

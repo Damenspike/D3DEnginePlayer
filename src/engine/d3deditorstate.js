@@ -403,7 +403,7 @@ export default class D3DEditorState {
 			return;
 		}
 		
-		this.openCodeEditor(this.selectedObjects[0] ?? _root);
+		this.openCodeEditor(this.selectedObjects[0] ?? _editor.focus);
 	}
 	
 	async importFile(file, destDir) {

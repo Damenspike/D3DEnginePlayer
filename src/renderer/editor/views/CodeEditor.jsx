@@ -42,16 +42,6 @@ export default function CodeEditor({isOpen, theme}) {
 	}, [objectsOpen]);
 	
 	useEffect(() => {
-		
-		const firstObject = _editor.selectedObjects[0];
-		console.log(firstObject);
-		if(isOpen && objectOpen != firstObject) {
-			_editor.openCodeEditor(firstObject);
-		}
-		
-	}, [isOpen, objectOpen, _editor.selectedObjects]);
-	
-	useEffect(() => {
 		setValue(objectOpen?.__script ?? '');
 	}, [objectOpen]);
 	

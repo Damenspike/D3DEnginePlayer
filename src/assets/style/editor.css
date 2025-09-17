@@ -646,7 +646,7 @@ body.dark {
 		background: rgba(255, 255, 255, 0.24);
 	}
 	.code-editor__file--selected {
-		background: #0099ff;
+		background: #0099ff !important;
 		color: white;
 	}
 	.code-editor__file--selected:hover {

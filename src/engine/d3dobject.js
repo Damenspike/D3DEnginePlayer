@@ -4,7 +4,8 @@ import JSZip from 'jszip';
 import DamenScript from './damenscript.js';
 import D3DComponents from './d3dcomponents.js';
 import { v4 as uuidv4 } from 'uuid';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { importModelFromZip } from './glb-importer.js';
+import { ensureRigAndBind } from './rig-binding.js';
 import {
 	getExtension
 } from './d3dutility.js';
@@ -389,9 +390,6 @@ export default class D3DObject {
 			_root.superIndex[child.uuid] = child;
 		}
 		
-		// Handle all child components
-		await child.updateComponents();
-		
 		this.object3d.add(child.object3d);
 		this.children.push(child);
 		
@@ -403,6 +401,9 @@ export default class D3DObject {
 				objects: objData.children
 			});
 		}
+		
+		// Handle all child components
+		await child.updateComponents();
 		
 		child.__ready = true;
 			
@@ -768,20 +769,25 @@ export default class D3DObject {
 					// load model from zip if provided
 					if (component.properties.mesh) {
 						const modelPath = this.resolvePath(component.properties.mesh);
-						const modelData = await zip.file(modelPath)?.async('arraybuffer');
-						if (!modelData) {
+						const zf = zip.file(modelPath);
+						if (!zf) {
 							console.warn(`Model file not found: ${modelPath}`);
 						} else {
-							const loader = new GLTFLoader();
-							const gltf = await loader.parseAsync(modelData, '');
+							try {
+								// Use robust importer (handles .glb/.gltf, external files in zip, and skin fallbacks)
+								const { gltf, scene } = await importModelFromZip(zip, modelPath);
 				
-							// remove previous model root BEFORE adding the new one
-							if (this.modelScene && this.modelScene.parent) {
-								this.modelScene.parent.remove(this.modelScene);
+								// remove previous model root BEFORE adding the new one
+								if (this.modelScene && this.modelScene.parent) {
+									this.modelScene.parent.remove(this.modelScene);
+								}
+				
+								this.object3d.add(scene);
+								this.modelScene = scene;
+								await ensureRigAndBind(this, this.modelScene);
+							} catch (e) {
+								console.error('Failed to import model:', modelPath, e);
 							}
-				
-							this.object3d.add(gltf.scene);
-							this.modelScene = gltf.scene;
 						}
 					}
 				
@@ -896,7 +902,7 @@ export default class D3DObject {
 							if (params.opacity !== undefined && params.opacity < 1 && params.transparent !== true) {
 								params.transparent = true;
 							}
-							
+				
 							if (typeof params.side === 'string' && THREE[params.side] !== undefined) {
 								params.side = THREE[params.side];
 							}
@@ -922,7 +928,7 @@ export default class D3DObject {
 							await setMapUUID(m, 'metalnessMap', metalnessMap);
 							await setMapUUID(m, 'emissiveMap', emissiveMap, /*isColor*/ true);
 							await setMapUUID(m, 'alphaMap', alphaMap);
-							
+				
 							if (m.map) {
 								m.map.offset.fromArray(params.mapOffset || [0, 0]);
 								m.map.repeat.fromArray(params.mapRepeat || [1, 1]);

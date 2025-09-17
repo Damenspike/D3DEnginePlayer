@@ -16,9 +16,14 @@ import {
 	clearDir,
 	fileName,
 	fileNameNoExt,
-	isDirectory,
-	readLocalTRSFromZip
+	isDirectory
 } from './d3dutility.js';
+import {
+	readLocalTRSFromZip
+} from './glb-importer.js';
+import {
+	onAssetDroppedIntoGameView
+} from './d3deditordrop.js';
 
 import $ from 'jquery';
 import D3DObject from './d3dobject.js';
@@ -237,6 +242,7 @@ function updateObject(method, d3dobj) {
 }
 
 function afterRenderShowObjects() {
+	_editor.grid.visible = true;
 	_root.children.forEach(d3dobject => {
 		if(d3dobject == _editor.focus || d3dobject.__wasVisible === undefined || d3dobject.editorAlwaysVisible)
 			return;
@@ -246,6 +252,7 @@ function afterRenderShowObjects() {
 	});
 }
 function afterRenderHideObjects() {
+	_editor.grid.visible = false;
 	_root.children.forEach(d3dobject => {
 		if(d3dobject == _editor.focus || d3dobject.isLight || d3dobject.editorAlwaysVisible)
 			return;
@@ -576,6 +583,7 @@ function addGridHelper() {
 	const grid = new D3DInfiniteGrid();
 	const scene = _root.object3d;
 	scene.add(grid);
+	_editor.grid = grid;
 	return grid;
 }
 async function addD3DObjectEditor(type) {
@@ -820,79 +828,6 @@ function onAssetsUpdated() {
 	_editor.onAssetsUpdatedInspector?.();
 	_root.updateAssetIndex();
 }
-async function onAssetDroppedIntoGameView(path, screenPos) {
-	const { sx, sy } = screenPos;
-	const zip = _root.zip;
-	const ext = getExtension(path);
-
-	switch (ext) {
-		case 'd3dsymbol': {
-			const symbol = Object.values(_root.__symbols)
-				.find(symbol => symbol.file.name === path);
-
-			if (!symbol) {
-				console.warn('Could not find symbol by path', path);
-				break;
-			}
-
-			const d3dobject = await _editor.focus.createObject({
-				symbolId: symbol.symbolId
-			});
-			moveObjectToCameraView(d3dobject);
-			_editor.setSelection([d3dobject]);
-			break;
-		}
-		case 'glbmodel':
-		case 'glbtfmodel': {
-			const listSubmeshGLBs = (folderPath) => {
-				const dir = folderPath.endsWith('/') ? folderPath : (folderPath + '/');
-				const list = [];
-				zip.forEach((rel, f) => {
-					if (!f.dir && rel.startsWith(dir) && rel.toLowerCase().endsWith('.glb')) {
-						list.push(rel);
-					}
-				});
-				list.sort((a,b) => a.localeCompare(b));
-				return list;
-			};
-			
-			const meshes = listSubmeshGLBs(path);
-			const parent = await _editor.focus.createObject({
-				name: fileNameNoExt(path.endsWith('/') ? path.slice(0, -1) : path)
-			});
-			
-			moveObjectToCameraView(parent);
-			
-			for (const meshPath of meshes) {
-				const trs = await readLocalTRSFromZip(zip, meshPath);
-				await parent.createObject({
-					name: fileNameNoExt(meshPath),
-					position: trs.position,
-					rotation: trs.rotation,
-					scale: trs.scale,
-					components: [{ type: 'Mesh', properties: { mesh: _root.resolveAssetId(meshPath), materials: [] } }]
-				});
-			}
-			
-			_editor.setSelection([parent]);
-			break;
-		}
-		case 'glb':
-		case 'gltf': {
-			const trs = await readLocalTRSFromZip(zip, path);
-			const d3dobject = await _editor.focus.createObject({
-				name: fileNameNoExt(path),
-				position: trs.position,
-				rotation: trs.rotation,
-				scale: trs.scale,
-				components: [{ type: 'Mesh', properties: { mesh: _root.resolveAssetId(path), materials: [] } }]
-			});
-			moveObjectToCameraView(d3dobject);
-			_editor.setSelection([d3dobject]);
-			break;
-		}
-	}
-}
 function onAssetDeleted(path) {
 	const ext = getExtension(path);
 	
@@ -931,6 +866,7 @@ _editor.readFile = readFile;
 _editor.newAsset = newAsset;
 _editor.clearDirectory = clearDirectory;
 _editor.saveProject = saveProject;
+_editor.moveObjectToCameraView = moveObjectToCameraView;
 
 D3D.setEventListener('delete', () => _editor.onDeleteKey());
 D3D.setEventListener('undo', () => _editor.undo());

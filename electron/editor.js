@@ -536,11 +536,13 @@ ipcMain.on('editor-status', (_, { inputFocussed, codeEditorOpen, activeElement }
 	
 	if(typeof codeEditorOpen === 'boolean')
 		codeEditorActive = codeEditorOpen;
-		
-	editorWindow.webContents.setIgnoreMenuShortcuts(
-		activeElement?.tag == 'TEXTAREA' || 
-		(activeElement?.tag == 'INPUT' && activeElement?.type == 'text')
-	);
+	
+	try {
+		editorWindow.webContents.setIgnoreMenuShortcuts(
+			activeElement?.tag == 'TEXTAREA' || 
+			(activeElement?.tag == 'INPUT' && activeElement?.type == 'text')
+		);
+	}catch(e) {};
 		
 	updateEditorMenusEnabled();
 });
