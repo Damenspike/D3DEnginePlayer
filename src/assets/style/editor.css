@@ -404,9 +404,17 @@ body.dark {
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
+		font-size: 14px;
 	}
 	.asset-row:hover { background: rgba(0,0,0,0.06); }   /* light hover */
 	.asset-row.is-active { background: rgba(0,0,0,0.12); } /* light active */
+	.asset-row__path {
+		color: grey;
+		font-weight: normal;
+	}
+	.asset-row__file {
+		color: inherit;        /* or something stronger */
+	}
 	
 	.asset-dialog__preview {
 		border-left: 1px solid rgba(0,0,0,0.1); /* light border */
@@ -500,6 +508,9 @@ body.dark {
 	display: inline-block;
 	vertical-align: middle;
 	font-size: 14px;
+}
+.object-path-item--active {
+	font-weight: bold;
 }
 .object-path-item:hover {
 	text-decoration: underline;

@@ -136,7 +136,8 @@ export function installDamenScript(monaco) {
 				[/"([^"\\]|\\.)*$/, 'string.invalid'],
 				[/"/, 'string', '@string'],
 				[/'[^\\']'/, 'string'],
-				[/'/, 'string.invalid']
+				[/'([^'\\]|\\.)*$/, 'string.invalid'],
+				[/'/, 'string', '@stringSingle'],
 			],
 			whitespace: [
 				[/[ \t\r\n]+/, 'white'],
@@ -148,7 +149,13 @@ export function installDamenScript(monaco) {
 				[/@escapes/, 'string.escape'],
 				[/\\./, 'string.escape.invalid'],
 				[/"/, 'string']
-			]
+			],
+			stringSingle: [
+				[/[^\\']+/, 'string'],
+				[/@escapes/, 'string.escape'],
+				[/\\./, 'string.escape.invalid'],
+				[/'/, 'string', '@pop']
+			],
 		}
 	});
 
@@ -158,7 +165,8 @@ export function installDamenScript(monaco) {
 			{ open: '{', close: '}' },
 			{ open: '[', close: ']' },
 			{ open: '(', close: ')' },
-			{ open: '"', close: '"', notIn: ['string'] }
+			{ open: '"', close: '"', notIn: ['string'] },
+			{ open: "'", close: "'", notIn: ['string'] }
 		],
 		comments: { lineComment: '//', blockComment: ['/*', '*/'] },
 		brackets: [['{','}'],['[',']'],['(',')']]

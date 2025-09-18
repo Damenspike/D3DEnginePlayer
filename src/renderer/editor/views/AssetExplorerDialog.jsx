@@ -13,6 +13,7 @@ const EXT_GROUPS = {
 	model: ['.glb','.gltf'],
 	material: ['.mat'],
 	html: ['.html'],
+	anim: ['.anim'],
 	all: []
 };
 
@@ -234,6 +235,7 @@ export default function AssetExplorerDialog({
 						<option value="all">All</option>
 						<option value="model">3D Models</option>
 						<option value="material">Materials</option>
+						<option value="anim">Animation Clips</option>
 						<option value="img">Images</option>
 						<option value="audio">Audio</option>
 						<option value="html">HTML</option>
@@ -287,7 +289,18 @@ export default function AssetExplorerDialog({
 									onDoubleClick={() => tryCommitSelect(it.name)}
 									title={it.path.slice(folder.length)}
 								>
-									<div className="asset-row__name">{it.name.split('/').map(n => fileNameNoExt(n)).join('/')}</div>
+									<div className="asset-row__name">
+									  <span className="asset-row__path">
+										{it.name
+										  .split('/')
+										  .slice(0, -1)
+										  .map(n => fileNameNoExt(n))
+										  .join('/') + '/'}
+									  </span>
+									  <span className="asset-row__file">
+										{fileNameNoExt(it.name.split('/').pop())}
+									  </span>
+									</div>
 								</div>
 							);
 						})}

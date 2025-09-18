@@ -15,13 +15,13 @@ export async function handleImportFile(file, destDir) {
 		case 'glb':
 		case 'gltf': {
 			// --- source name parts
-			const srcFileName = file.name || name || 'model.glb';
+			const srcFileName = name;
 			const dot = srcFileName.lastIndexOf('.');
 			const base = dot >= 0 ? srcFileName.slice(0, dot) : srcFileName;
 			const srcExt = dot >= 0 ? srcFileName.slice(dot + 1).toLowerCase() : 'glb';
 
 			// --- create <base>.<ext>model/ folder
-			const folderLabel = `${base}.${srcExt}model`;
+			const folderLabel = `${base}.${srcExt}container`;
 			const folderNoSlash = uniqueFilePath(zip, destDir, folderLabel);
 			const virtualDir = folderNoSlash.endsWith('/') ? folderNoSlash : (folderNoSlash + '/');
 			zip.folder(virtualDir);
@@ -31,17 +31,36 @@ export async function handleImportFile(file, destDir) {
 			const gltf = await loader.parseAsync(await file.arrayBuffer(), '');
 			gltf.scene.updateMatrixWorld(true);
 
-			// --- detect skeletons
-			let hasSkin = false;
-			gltf.scene.traverse(o => { if (o.isSkinnedMesh && o.skeleton) hasSkin = true; });
-
 			const exporter = new GLTFExporter();
 			const exportAsGLB = (srcExt === 'glb');
 			const exporterOptions = exportAsGLB
-				? { binary: true }                          // -> .glb child
-				: { binary: false, embedImages: true };     // -> .gltf child (embedded)
+				? { binary: true }
+				: { binary: false, embedImages: true };
 
 			const wrote = [virtualDir];
+
+			// ======================================
+			// 1. extract animations (if any)
+			// ======================================
+			console.log(gltf.animations);
+			if (gltf.animations?.length) {
+				let animCounts = new Map();
+				for (let i = 0; i < gltf.animations.length; i++) {
+					const clip = gltf.animations[i];
+					const safeName = (clip.name || `anim_${i}`).replace(/[^\w\-\.]+/g, '_');
+					const idx = animCounts.get(safeName) || 0;
+					animCounts.set(safeName, idx + 1);
+
+					const animFile = `${virtualDir}${safeName}${idx ? `_${idx}` : ''}.anim`;
+					const json = JSON.stringify(clip.toJSON());
+					zip.file(animFile, json);
+					wrote.push(animFile);
+				}
+			}
+
+			// --- detect skeletons
+			let hasSkin = false;
+			gltf.scene.traverse(o => { if (o.isSkinnedMesh && o.skeleton) hasSkin = true; });
 
 			if (hasSkin) {
 				// ===========================

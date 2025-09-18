@@ -19,7 +19,7 @@ import {
 	MdHtml,
 	MdFolder, MdInsertDriveFile, MdExpandMore, MdChevronRight,
 	MdUpload, MdCreateNewFolder, MdRefresh, MdDeleteForever,
-	MdOutlineInterests, MdTexture
+	MdOutlineInterests, MdTexture, MdDirectionsWalk
 } from "react-icons/md";
 
 import {
@@ -934,6 +934,7 @@ export default function Inspector() {
 			
 			stack = stack.reverse();
 			stack.forEach(object => {
+				const classes = ['object-path-item'];
 				const drawArrow = () => {
 					if(stack.indexOf(object) == stack.length - 1)
 						return;
@@ -946,10 +947,15 @@ export default function Inspector() {
 						</>
 					)
 				}
+				
+				if(object == _editor.focus) {
+					classes.push('object-path-item--active')
+				}
+				
 				path.push(
 					<React.Fragment key={path.length}>
 						<div 
-							className='object-path-item'
+							className={classes.join(' ')}
 							onClick={() => {
 								const oldParent = _editor.focus;
 								
@@ -1507,11 +1513,12 @@ export default function Inspector() {
 					case 'glb':
 					case 'gltf':
 						return <MdViewInAr />;
-					case 'glbmodel': 
-					case 'gltfmodel': 
+					case 'glbcontainer': 
+					case 'gltfcontainer': 
 						return <MdFolderSpecial />;
 					case 'mat': return <MdTexture />;
 					case 'html': return <MdHtml />;
+					case 'anim': return <MdDirectionsWalk />;
 					default: return isDir ? <MdFolder /> : <MdInsertDriveFile />;
 				}
 			};

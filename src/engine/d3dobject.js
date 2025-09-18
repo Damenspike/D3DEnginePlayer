@@ -278,6 +278,17 @@ export default class D3DObject {
 		return up;
 	}
 	
+	// Component shorthand
+	get animation() {
+		return this.getComponent('Animation');
+	}
+	get mesh() {
+		return this.getComponent('Mesh');
+	}
+	get camera() {
+		return this.getComponent('Camera');
+	}
+	
 	setupDefaultMethods() {
 		if(window._editor) {
 			this.__onEditorEnterFrame = () => {
@@ -596,6 +607,54 @@ export default class D3DObject {
 		
 		this.updateComponents();
 		this.checkSymbols();
+	}
+	addComponent(type, properties) {
+		if(this.components.find(c => c.type == type)) {
+			console.error(`${this.name} already has a ${type} component`);
+			return;
+		}
+		if(!D3DComponents[type]) {
+			console.error(`${type} is not a component`);
+			return;
+		}
+		
+		const schema = D3DComponents[type];
+		const component = {
+			type,
+			properties
+		};
+		
+		const fieldsToDelete = [];
+		
+		for(let i in component.properties) {
+			const schemaField = schema.fields[i];
+			
+			if(schemaField === undefined)
+				fieldsToDelete.push(i);
+		}
+		for(let i in schema.fields) {
+			const schemaField = schema.fields[i];
+			
+			if(component.properties[i] === undefined)
+				component.properties[i] = schemaField.def;
+		}
+		fieldsToDelete.forEach(field => {
+			delete component.properties[field];
+		});
+		
+		this.components.push(component);
+	}
+	getComponent(type) {
+		const component = this.components.find(c => c.type == type);
+		
+		if(!component) {
+			console.error(`${this.name} does not have a ${type} component`);
+			return;
+		}
+		
+		const schema = D3DComponents[component.type];
+		
+		return new schema.manager(this, component);
 	}
 	async updateComponents() {
 		const zip = this.root.zip;

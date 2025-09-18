@@ -76,6 +76,19 @@ export const D3D_OBJECT_SCHEMA = {
 		type: 'D3DObject[]',
 		doc: 'Immediate children.'
 	},
+	
+	animation: {
+		type: 'Manager',
+		doc: 'Animation manager (if exists)'
+	},
+	camera: {
+		type: 'Manager',
+		doc: 'Camera manager (if exists)'
+	},
+	mesh: {
+		type: 'Manager',
+		doc: 'Mesh manager (if exists)'
+	},
 
 	createObject: {
 		type: 'Function(child:D3DObject):void',

@@ -18,25 +18,54 @@ export async function onAssetDroppedIntoGameView(path, screenPos) {
 			break;
 		}
 
-		case 'glbmodel':
-		case 'gltfmodel': {
+		case 'glbcontainer':
+		case 'gltfcontainer': {
 			const parent = await _editor.focus.createObject({
 				name: fileNameNoExt(path.endsWith('/') ? path.slice(0, -1) : path)
 			});
 			_editor.moveObjectToCameraView(parent);
-
+		
+			/*
+				Extract animations
+			*/
 			const dir = path.endsWith('/') ? path : path + '/';
 			const childFiles = [];
+			const animFiles = [];
+		
 			zip.forEach((rel, f) => {
-				if (!f.dir && rel.startsWith(dir) && /\.(glb|gltf)$/i.test(rel)) {
+				if (f.dir)
+					return;
+		
+				if (!rel.startsWith(dir))
+					return;
+		
+				if (/\.(glb|gltf)$/i.test(rel)) {
 					childFiles.push(rel);
+				}
+		
+				if (/\.anim$/i.test(rel)) {
+					animFiles.push(rel);
+				}
+				if (/\.mat$/i.test(rel)) {
+					matFiles.push(rel);
 				}
 			});
 			childFiles.sort();
-
+			animFiles.sort();
+			
+			/*
+				Assign animation component if any
+			*/
+			if(animFiles.length > 0) {
+				parent.addComponent('Animation', {
+					clips: animFiles.map(path => _root.resolveAssetId(path))
+				});
+			}
+		
 			for (const childPath of childFiles) {
 				await _spawnModelFromZip(childPath, zip, parent);
 			}
+		
 			_editor.setSelection([parent]);
 			break;
 		}

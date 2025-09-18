@@ -1,5 +1,9 @@
 import * as THREE from 'three';
 
+import {
+	fileNameNoExt
+} from './d3dutility.js';
+
 const D3DComponents = {
 	Mesh: {
 		fields: {
@@ -184,6 +188,39 @@ const D3DComponents = {
 				type: 'file',
 				format: 'html',
 				def: ''
+			}
+		}
+	},
+	Animation: {
+		name: 'Animation',
+		fields: {
+			'clips': {
+				label: 'Clips',
+				type: 'file[]',
+				format: 'anim',
+				def: []
+			}
+		},
+		manager: function(d3dobject, component) {
+			this.getClipUUID = (clipName) => {
+				return component.properties.clips.find(uuid => {
+					const path = d3dobject.root.resolvePath(uuid);
+					const baseName = fileNameNoExt(path);
+					return baseName == clipName;
+				})
+			}
+			this.getClip = (clipName) => {
+				const uuid = this.getClipUUID(clipName);
+				const path = d3dobject.root.resolvePath(uuid);
+				return path;
+			}
+			this.play = (clipName) => {
+				const clip = this.getClip(clipName);
+				if(!clip) {
+					console.error(`${clipName} not found in animation clips`);
+					return;
+				}
+				console.log('Play', clip);
 			}
 		}
 	}
