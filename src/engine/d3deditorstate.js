@@ -138,6 +138,8 @@ export default class D3DEditorState {
 		this.selectedObjects = objects;
 		this.onObjectSelected?.(this.selectedObjects);
 		this.selectNoAssets?.();
+		
+		_events.invoke('selected-objects', this.selectedObjects);
 	}
 	addSelection(selectObjects, addStep = true) {
 		if(!selectObjects || !Array.isArray(selectObjects))
@@ -158,6 +160,8 @@ export default class D3DEditorState {
 		this.selectedObjects.push(...objects);
 		this.onObjectSelected?.(this.selectedObjects);
 		this.selectNoAssets?.();
+		
+		_events.invoke('selected-objects', this.selectedObjects);
 	}
 	removeSelection(objects, addStep = true) {
 		const oldSelection = [...this.selectedObjects];
@@ -175,6 +179,11 @@ export default class D3DEditorState {
 		);
 		
 		this.onObjectSelected?.(this.selectedObjects);
+		
+		_events.invoke('selected-objects', this.selectedObjects);
+	}
+	probeSelection() {
+		_events.invoke('selected-objects', this.selectedObjects);
 	}
 	isSelected(object) {
 		return this.selectedObjects.includes(object);

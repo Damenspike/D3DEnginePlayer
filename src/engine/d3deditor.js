@@ -33,6 +33,7 @@ import D3DEditorState from './d3deditorstate.js';
 import D3DInfiniteGrid from './d3dinfinitegrid.js';
 import D3DTransformGizmo from './d3dtransformgizmo.js';
 import D3DComponents from './d3dcomponents.js';
+import D3DEventSystem from './d3devents.js';
 
 window.THREE = THREE;
 window._input = new D3DInput();
@@ -867,6 +868,8 @@ _editor.newAsset = newAsset;
 _editor.clearDirectory = clearDirectory;
 _editor.saveProject = saveProject;
 _editor.moveObjectToCameraView = moveObjectToCameraView;
+
+window._events = new D3DEventSystem();
 
 D3D.setEventListener('delete', () => _editor.onDeleteKey());
 D3D.setEventListener('undo', () => _editor.undo());

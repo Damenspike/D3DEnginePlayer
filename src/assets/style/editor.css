@@ -37,9 +37,14 @@ body.dark {
 			background: #121212;
 			color: white;
 		}
-		.code-editor__file {
-			background: rgba(255, 255, 255, 0.14);
+	}
+	.tabs {
+		.tab {
+	 		background: rgba(255, 255, 255, 0.14);
 			color: white;
+		}
+		.tab:hover {
+			background: rgba(255, 255, 255, 0.24);
 		}
 	}
 	.asset-dialog {
@@ -632,37 +637,6 @@ body.dark {
 		height: 100%;
 		min-height: 0;
 	}
-	.code-editor__files {
-		flex: 0 0 auto;
-		display: flex;
-		gap: 6px;
-		overflow-x: scroll;
-		white-space: nowrap;
-		padding: 6px 8px;
-		color: #ccc;
-	
-		width: calc(100% - 50px);
-	}
-	.code-editor__file {
-		display: inline-block;
-		vertical-align: middle;
-		font-size: 14px;
-		padding: 7px;
-		border-radius: 10px;
-		background: rgba(0, 0, 0, 0.05);
-		color: black;
-		cursor: pointer;
-	}
-	.code-editor__file:hover {
-		background: rgba(255, 255, 255, 0.24);
-	}
-	.code-editor__file--selected {
-		background: #0099ff !important;
-		color: white;
-	}
-	.code-editor__file--selected:hover {
-		background: #007acc !important;
-	}
 	.code-editor__file__close {
 		display: inline-flex;
 		justify-content: center;
@@ -695,5 +669,66 @@ body.dark {
 		position: absolute;
 		right: 5px;
 		top: 5px;
+	}
+}
+
+.tabs {
+	flex: 0 0 auto;
+	display: flex;
+	gap: 6px;
+	overflow-x: scroll;
+	white-space: nowrap;
+	padding: 6px 8px;
+	color: #ccc;
+	
+	width: calc(100% - 50px);
+	
+	.tab {
+		display: inline-block;
+		vertical-align: middle;
+		font-size: 14px;
+		padding: 7px;
+		border-radius: 10px;
+		background: rgba(0, 0, 0, 0.1);
+		color: black;
+		cursor: pointer;
+	}
+	.tab:hover {
+		background: rgba(0, 0, 0, 0.15);
+	}
+	.tab--selected {
+		background: #0099ff !important;
+		color: white;
+	}
+	.tab--selected:hover {
+		background: #007acc !important;
+	}
+}
+.console-view {
+	overflow: hidden;
+	.tabs {
+		background: none;
+		width: 100%;
+	}
+	.tab-content {
+		transform: translateY(-8px);
+		padding-left: 5px;
+		padding-right: 5px;
+	}
+}
+.animation-editor {
+	position: relative;
+	display: flow-root;
+	
+	.clip-select {
+		position: absolute;
+		top: 0px;
+		right: 0px;
+		transform: translateY(-27px);
+	}
+	.timeline {
+		background: white;
+		border-radius: 10px;
+		margin-top: 10px;
 	}
 }

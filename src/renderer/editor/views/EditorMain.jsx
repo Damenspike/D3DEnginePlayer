@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Inspector from './Inspector.jsx';
 import GameView from './GameView.jsx';
+import ConsoleView from './ConsoleView.jsx';
 import CodeEditor from './CodeEditor.jsx';
 import useResizable from '../hooks/useResizable.js';
 
@@ -24,7 +25,9 @@ export default function EditorMain({theme}) {
 			</div>
 			<div className="center-column">
 				<GameView />
-				<div className="console resizable" ref={consoleRef}></div>
+				<div className="console resizable" ref={consoleRef}>
+					<ConsoleView />
+				</div>
 			</div>
 			
 			<CodeEditor 

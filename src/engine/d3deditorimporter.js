@@ -42,7 +42,6 @@ export async function handleImportFile(file, destDir) {
 			// ======================================
 			// 1. extract animations (if any)
 			// ======================================
-			console.log(gltf.animations);
 			if (gltf.animations?.length) {
 				let animCounts = new Map();
 				for (let i = 0; i < gltf.animations.length; i++) {

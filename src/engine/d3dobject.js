@@ -647,14 +647,17 @@ export default class D3DObject {
 	getComponent(type) {
 		const component = this.components.find(c => c.type == type);
 		
-		if(!component) {
-			console.error(`${this.name} does not have a ${type} component`);
+		if(!component)
 			return;
-		}
 		
 		const schema = D3DComponents[component.type];
 		
 		return new schema.manager(this, component);
+	}
+	hasComponent(type) {
+		const component = this.components.find(c => c.type == type);
+		
+		return !!component;
 	}
 	async updateComponents() {
 		const zip = this.root.zip;

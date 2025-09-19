@@ -209,18 +209,23 @@ const D3DComponents = {
 					return baseName == clipName;
 				})
 			}
-			this.getClip = (clipName) => {
+			this.getClipPath = (clipName) => {
 				const uuid = this.getClipUUID(clipName);
 				const path = d3dobject.root.resolvePath(uuid);
 				return path;
 			}
+			this.getClipPaths = () => {
+				return component.properties.clips.map(
+					uuid => d3dobject.root.resolvePath(uuid)
+				);
+			}
 			this.play = (clipName) => {
-				const clip = this.getClip(clipName);
-				if(!clip) {
+				const clipPath = this.getClipPath(clipName);
+				if(!clipPath) {
 					console.error(`${clipName} not found in animation clips`);
 					return;
 				}
-				console.log('Play', clip);
+				console.log('Play', clipPath);
 			}
 		}
 	}

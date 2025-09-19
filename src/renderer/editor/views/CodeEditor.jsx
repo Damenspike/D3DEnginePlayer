@@ -67,10 +67,10 @@ export default function CodeEditor({isOpen, theme}) {
 			objectsOpenList.unshift(window._root);
 		
 		objectsOpenList.forEach(d3dobject => {
-			const classNames = ['code-editor__file', 'no-select'];
+			const classNames = ['tab', 'no-select'];
 			
 			if(d3dobject == objectOpen)
-				classNames.push('code-editor__file--selected');
+				classNames.push('tab--selected');
 				
 			const closeMe = (e) => {
 				const arr = [...objectsOpen];
@@ -120,7 +120,7 @@ export default function CodeEditor({isOpen, theme}) {
 			<div ref={panelRef} className='code-editor__window'>
 				
 				<div className='code-editor__container'>
-					<div className='code-editor__files'>
+					<div className='tabs'>
 						{drawOpenObjects()}
 					</div>
 					<button 
