@@ -81,6 +81,11 @@ export default function Inspector() {
 	const [newFolderName, setNewFolderName] = useState('');
 	
 	useEffect(() => {
+		_events.on('deselect-assets', () => {
+			setSelectedAssetPaths(() => new Set());
+			setLastSelectedPath(null);
+		});
+		
 		_editor.onProjectLoaded = () => {
 			setDummyProject({..._editor.project});
 		}

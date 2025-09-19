@@ -15,7 +15,7 @@ body.light {
 }
 body.dark {
 	.inspector, .console, .topbar {
-		border-color: rgba(255, 255, 255, 0.15);
+		border-color: rgba(255, 255, 255, 0.05);
 	}
 	.tool-option {
 		background: black;
@@ -66,6 +66,37 @@ body.dark {
 			border-color: rgba(255,255,255,0.2);
 		}
 	}
+	.animation-editor {
+		.timeline {
+			background: rgb(10, 10, 10);
+		}
+		.timing-bar {
+			background: rgba(255, 255, 255, 0.05);
+		}
+		.time-marker {
+			border-color: white;
+		}
+		.tracks {
+			background: rgba(255, 255, 255, 0.05);
+			border-color: rgb(31, 31, 31);
+			
+			.track {
+				outline-color: rgba(38, 38, 38, 1);
+			}
+			.track:hover {
+				background: rgba(255, 255, 255, 0.1);
+			}
+		}
+		.keytracks {
+			.track {
+				outline-color: rgba(28, 28, 28, 1);
+				
+				.key {
+					outline-color: rgba(32, 32, 32, 1);
+				}
+			}
+		}
+	}
 	.object-row:hover {
 		background: rgba(0, 0, 0, 0.3);
 	}
@@ -90,7 +121,7 @@ body.dark {
 .topbar {
 	height: 40px;
 	flex-shrink: 0;
-	border-bottom: 2px solid #666;
+	border-bottom: 1px solid #666;
 	display: flex;
 	align-items: center;
 	padding: 0 10px;
@@ -113,7 +144,7 @@ body.dark {
 	overflow-x: hidden;
 	overflow-y: scroll;
 	flex-shrink: 0;
-	border-right: 2px solid #666;
+	border-right: 1px solid #666;
 }
 
 /* CENTER COLUMN */
@@ -145,7 +176,7 @@ body.dark {
 	max-height: 400px;
 	overflow: auto;
 	flex-shrink: 0;
-	border-top: 2px solid #666;
+	border-top: 1px solid #666;
 }
 
 /* Resize handles */
@@ -705,7 +736,9 @@ body.dark {
 	}
 }
 .console-view {
+	height: 100%;
 	overflow: hidden;
+	
 	.tabs {
 		background: none;
 		width: 100%;
@@ -714,11 +747,14 @@ body.dark {
 		transform: translateY(-8px);
 		padding-left: 5px;
 		padding-right: 5px;
+		
+		height: 100%;
 	}
 }
 .animation-editor {
 	position: relative;
 	display: flow-root;
+	height: 100%;
 	
 	.clip-select {
 		position: absolute;
@@ -727,8 +763,69 @@ body.dark {
 		transform: translateY(-27px);
 	}
 	.timeline {
+		height: calc(100% - 95px);
 		background: white;
 		border-radius: 10px;
+		overflow: hidden;
 		margin-top: 10px;
+		
+		display: flex;
+		flex-direction: row;
+		
+		.tracks {
+			width: 400px;
+			background: rgba(255, 255, 255, 0.098);
+			border-right: 1px solid rgb(225, 225, 225);
+			
+			.tracks-topbar {
+				height: 25px;
+			}
+			.track {
+				padding-left: 5px;
+				outline: 0.1px solid rgba(230, 230, 230, 1);
+			}
+		}
+		.keytracks {
+			flex-grow: 1;
+			overflow-x: scroll;
+			
+			.key {
+				display: inline-block;
+				vertical-align: top;
+				height: 100%;
+				outline: 0.1px solid rgba(232, 232, 232, 1);
+			}
+			.key--framed {
+				background: #0099ff;
+			}
+		}
+		.track {
+			height: 25px;
+			font-size: 14px;
+			
+			display: flex;
+			align-items: center;
+		}
+		.track--selected {
+			background: #0099ff !important;
+		}
+	}
+	.timing-bar {
+		display: flex;
+		align-items: flex-end;
+		
+		background: rgba(0, 0, 0, 0.051);
+		height: 25px;
+		
+		.time-marker {
+			display: inline-block;
+			vertical-align: top;
+			border-left: 1px solid rgba(0, 0, 0, 1);
+			opacity: 0.5;
+			height: 10px;
+			padding-left: 5px;
+			padding-bottom: 5px;
+			font-size: 12px;
+		}
 	}
 }

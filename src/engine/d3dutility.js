@@ -349,3 +349,9 @@ export function isDirectory(zip, p) {
 	// If it has children, treat it as a folder even if a file entry also exists.
 	return hasChild || (zip.files[dir]?.dir == true);
 }
+export function approx(v1, v2, epsilon) {
+	if (!epsilon)
+		epsilon = 0.001;
+	
+	return Math.abs(v1 - v2) < epsilon;
+};

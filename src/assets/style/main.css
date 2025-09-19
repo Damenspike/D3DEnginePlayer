@@ -94,6 +94,9 @@ body.dark {
 .tf--num {
 	width: 100px !important;
 }
+.tf--nums {
+	width: 50px !important;
+}
 .field {
 	text-align: left;
 	margin-bottom: 20px;
@@ -184,6 +187,9 @@ body.dark {
 }
 .btn-destructive:hover {
 	background: #9d3434;
+}
+.small {
+	font-size: 14px;
 }
 
 button {
