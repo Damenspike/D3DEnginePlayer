@@ -25,10 +25,23 @@ export default function CodeEditor({isOpen, theme}) {
 			edgeThreshold: 14,
 			padding: 8
 		});
+		
 		return detach;
 	}, []);
 	
 	useEffect(() => {
+		
+		const onSelectedObjects = objects => {
+			if(objects.length < 1)
+				return;
+			
+			const defObject = objects[0];
+			
+			if(!objectsOpen.includes(defObject))
+				setObjectsOpen([...objectsOpen, defObject]);
+			
+			setObjectOpen(defObject);
+		}
 		
 		_editor.openCodeEditor = (d3dobject) => {
 			if(!objectsOpen.includes(d3dobject))
@@ -39,6 +52,11 @@ export default function CodeEditor({isOpen, theme}) {
 			_editor.showCodeEditor();
 		}
 		
+		_events.on('selected-objects', onSelectedObjects);
+		
+		return () => {
+			_events.un('selected-objects', onSelectedObjects);
+		}
 	}, [objectsOpen]);
 	
 	useEffect(() => {
