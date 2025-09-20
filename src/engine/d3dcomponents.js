@@ -1,8 +1,6 @@
 import * as THREE from 'three';
 
-import {
-	fileNameNoExt
-} from './d3dutility.js';
+import D3DAnimationManager from './d3dmgr_animation.js';
 
 const D3DComponents = {
 	Mesh: {
@@ -201,33 +199,7 @@ const D3DComponents = {
 				def: []
 			}
 		},
-		manager: function(d3dobject, component) {
-			this.getClipUUID = (clipName) => {
-				return component.properties.clips.find(uuid => {
-					const path = d3dobject.root.resolvePath(uuid);
-					const baseName = fileNameNoExt(path);
-					return baseName == clipName;
-				})
-			}
-			this.getClipPath = (clipName) => {
-				const uuid = this.getClipUUID(clipName);
-				const path = d3dobject.root.resolvePath(uuid);
-				return path;
-			}
-			this.getClipPaths = () => {
-				return component.properties.clips.map(
-					uuid => d3dobject.root.resolvePath(uuid)
-				);
-			}
-			this.play = (clipName) => {
-				const clipPath = this.getClipPath(clipName);
-				if(!clipPath) {
-					console.error(`${clipName} not found in animation clips`);
-					return;
-				}
-				console.log('Play', clipPath);
-			}
-		}
+		manager: D3DAnimationManager
 	}
 }
 

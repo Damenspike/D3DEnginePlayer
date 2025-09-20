@@ -37,6 +37,7 @@ export default class D3DEditorState {
 		this.steps = [];
 		this.currentStep = -1;
 		this.clipboard = null;
+		this.animationDefaultFps = 60;
 	}
 
 	setTool(tool) {
@@ -138,8 +139,7 @@ export default class D3DEditorState {
 		this.selectedObjects = objects;
 		this.onObjectSelected?.(this.selectedObjects);
 		this.selectNoAssets?.();
-		
-		_events.invoke('selected-objects', this.selectedObjects);
+		this.probeSelection();
 	}
 	addSelection(selectObjects, addStep = true) {
 		if(!selectObjects || !Array.isArray(selectObjects))
@@ -160,8 +160,7 @@ export default class D3DEditorState {
 		this.selectedObjects.push(...objects);
 		this.onObjectSelected?.(this.selectedObjects);
 		this.selectNoAssets?.();
-		
-		_events.invoke('selected-objects', this.selectedObjects);
+		this.probeSelection();
 	}
 	removeSelection(objects, addStep = true) {
 		const oldSelection = [...this.selectedObjects];
@@ -179,11 +178,11 @@ export default class D3DEditorState {
 		);
 		
 		this.onObjectSelected?.(this.selectedObjects);
-		
-		_events.invoke('selected-objects', this.selectedObjects);
+		this.probeSelection();
 	}
 	probeSelection() {
 		_events.invoke('selected-objects', this.selectedObjects);
+		_events.invoke('deselect-animation-editor');
 	}
 	isSelected(object) {
 		return this.selectedObjects.includes(object);

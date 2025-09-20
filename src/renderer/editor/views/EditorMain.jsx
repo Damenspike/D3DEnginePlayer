@@ -25,7 +25,7 @@ export default function EditorMain({theme}) {
 			</div>
 			<div className="center-column">
 				<GameView />
-				<div className="console resizable" ref={consoleRef}>
+				<div className="console resizable no-select" ref={consoleRef}>
 					<ConsoleView />
 				</div>
 			</div>

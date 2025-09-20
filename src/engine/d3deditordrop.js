@@ -1,5 +1,9 @@
 import { readLocalTRSFromZip } from './glb-instancer.js';
-import { getExtension, fileNameNoExt } from './d3dutility.js';
+import { 
+	getExtension, 
+	fileNameNoExt,
+	getAnimTargets
+} from './d3dutility.js';
 
 export async function onAssetDroppedIntoGameView(path, screenPos) {
 	const zip = _root.zip;
@@ -52,18 +56,29 @@ export async function onAssetDroppedIntoGameView(path, screenPos) {
 			});
 			childFiles.sort();
 			animFiles.sort();
+		
+			for (const childPath of childFiles) {
+				await _spawnModelFromZip(childPath, zip, parent);
+			}
 			
 			/*
 				Assign animation component if any
 			*/
 			if(animFiles.length > 0) {
-				parent.addComponent('Animation', {
-					clips: animFiles.map(path => _root.resolveAssetId(path))
-				});
-			}
-		
-			for (const childPath of childFiles) {
-				await _spawnModelFromZip(childPath, zip, parent);
+				for(let path of animFiles) {
+					const json = await _editor.readFile(path);
+					try {
+						const clip = JSON.parse(json);
+						const targets = getAnimTargets(clip);
+						
+						parent.addComponent('Animation', {
+							clips: animFiles.map(path => _root.resolveAssetId(path))
+						});
+					}catch(e) {
+						console.warn('Invalid animation clip', path);
+						console.error(e);
+					}
+				}
 			}
 		
 			_editor.setSelection([parent]);

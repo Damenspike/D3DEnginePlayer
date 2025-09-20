@@ -237,9 +237,9 @@ function initFocusOverlay() {
 	_editor._overlayScene.add(_editor._overlayQuad);
 }
 
-function updateObject(method, d3dobj) {
-	d3dobj[method]?.();
-	d3dobj.children.forEach(child => updateObject(method, child));
+function updateObject(methods, d3dobj) {
+	methods.forEach(method => d3dobj[method]?.());
+	d3dobj.children.forEach(child => updateObject(methods, child));
 }
 
 function afterRenderShowObjects() {
@@ -267,8 +267,11 @@ function afterRenderHideObjects() {
 
 function startAnimationLoop(composer, outlinePass) {
 	function animate() {
-		updateObject('onEditorEnterFrame', _root);
-		updateObject('__onEditorEnterFrame', _root);
+		updateObject([
+			'onEditorEnterFrame',
+			'__onEditorEnterFrame',
+			'__onInternalEnterFrame'
+		], _root);
 
 		requestAnimationFrame(animate);
 
@@ -301,15 +304,18 @@ function startAnimationLoop(composer, outlinePass) {
 			afterRenderShowObjects();
 		}
 		
-		updateObject('onEditorExitFrame', _root);
-		updateObject('__onEditorExitFrame', _root);
+		updateObject([
+			'onEditorExitFrame',
+			'__onEditorExitFrame',
+			'__onInternalExitFrame'
+		], _root);
+		
 		_input._afterRenderFrame?.();
 	}
 
 	_time.lastRender = _time.now;
 	
-	updateObject('onEditorStart', _root);
-	updateObject('__onEditorStart', _root);
+	updateObject(['onEditorStart', '__onEditorStart'], _root);
 	animate();
 }
 

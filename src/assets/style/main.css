@@ -95,7 +95,7 @@ body.dark {
 	width: 100px !important;
 }
 .tf--nums {
-	width: 50px !important;
+	width: 40px !important;
 }
 .field {
 	text-align: left;
@@ -135,6 +135,12 @@ body.dark {
 		border-radius: 6px;
 	}
 }
+.mrs {
+	margin-right: 5px;
+}
+.mrvs {
+	margin-right: 2px;
+}
 .ml {
 	margin-left: 10px;
 }
@@ -159,13 +165,16 @@ body.dark {
 .mt2 {
 	margin-top: 20px;
 }
-.vt {
+.mrx {
+	margin-right: 15px;
+}
+.vt, .vt * {
 	vertical-align: top;
 }
-.vm {
+.vm, .vm * {
 	vertical-align: middle;
 }
-.vb {
+.vb, .vb * {
 	vertical-align: bottom;
 }
 .ib {

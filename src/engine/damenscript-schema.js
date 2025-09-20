@@ -15,7 +15,9 @@ export const FORBIDDEN_KEYWORDS = [
 export const FORBIDDEN_PROPS = [
 	'constructor','prototype','__proto__',
 	   'caller','callee','arguments',
-	   'call','apply','bind', '__script'
+	   'call','apply','bind', '__script',
+	   '__onInternalEnterFrame', '__onEditorEnterFrame',
+	   '__componentInstances'
 ]
 export const D3D_OBJECT_SCHEMA = {
 	name: {

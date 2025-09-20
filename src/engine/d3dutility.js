@@ -355,3 +355,24 @@ export function approx(v1, v2, epsilon) {
 	
 	return Math.abs(v1 - v2) < epsilon;
 };
+export function getAnimTargets(clip) {
+	const targets = new Set();
+
+	if (!clip || !Array.isArray(clip.tracks))
+		return [];
+
+	for (let i = 0; i < clip.tracks.length; i++) {
+		const tr = clip.tracks[i];
+		if (!tr || !tr.name)
+			continue;
+
+		// format is "NodeName.property"
+		const dot = tr.name.indexOf('.');
+		const nodeName = dot >= 0 ? tr.name.slice(0, dot) : tr.name;
+
+		if (nodeName)
+			targets.add(nodeName);
+	}
+
+	return Array.from(targets);
+}

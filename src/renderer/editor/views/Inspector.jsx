@@ -20,7 +20,7 @@ import {
 	MdFolder, MdInsertDriveFile, MdExpandMore, MdChevronRight,
 	MdUpload, MdCreateNewFolder, MdRefresh, MdDeleteForever,
 	MdOutlineInterests, MdTexture, MdDirectionsWalk
-} from "react-icons/md";
+} from 'react-icons/md';
 
 import {
 	MIME_D3D_ROW,
@@ -35,8 +35,14 @@ import {
 	uniqueFilePath,
 	getExtension,
 	fileName,
-	isDirectory
+	isDirectory,
+	fileNameNoExt
 } from '../../../engine/d3dutility.js';
+
+import {
+	drawIconForObject,
+	drawIconForExt
+} from '../utilities/d3dicons.jsx';
 
 const { path } = D3D;
 
@@ -685,7 +691,8 @@ export default function Inspector() {
 								<div className="file-array-list">
 									{current.map((uuid, idx) => {
 										const filePath = _root.resolveAssetPath(uuid);
-										const fname = fileName(filePath);
+										const fname = fileNameNoExt(filePath);
+										const ext = getExtension(filePath);
 										
 										const browse = () => {
 											openAssetExplorer({
@@ -720,14 +727,20 @@ export default function Inspector() {
 										
 										return (
 											<div key={idx} className="file-array-row">
-												<input
-													className="tf"
-													type="text"
-													readOnly
-													value={fname}
-													placeholder="No asset selected"
+												<div 
+													className='tf'
 													onClick={browse}
-												/>
+													tabIndex={0}
+												>
+													{fname && (
+														<div className='ib vm mrs'>
+															{drawIconForExt(ext)}
+														</div>
+													)}
+													<div className='ib vm'>
+														{fname || 'No file selected'}
+													</div>
+												</div>
 												<button
 													title="Browse"
 													onClick={browse}
@@ -991,28 +1004,10 @@ export default function Inspector() {
 			objects.forEach(object => {
 				const selected = _editor.selectedObjects.includes(object);
 				
-				const drawIcon = () => {
-					if(object.symbol)
-						return <MdOutlineInterests />;
-					if(object.components.find(c => c.type == 'Mesh'))
-						return <MdViewInAr />;
-					else
-					if(object.components.find(c => c.type.includes('Light')))
-						return <MdLightbulbOutline />;
-					else
-					if(object.components.find(c => c.type == 'Camera'))
-						return <MdPhotoCamera />;
-					else
-					if(object.components.find(c => c.type == 'HTML'))
-						return <MdHtml />;
-					else
-						return <MdGames />;
-				}
-				
 				rows.push(
 					<ObjectRow
 						key={rows.length}
-						icon={drawIcon()}
+						icon={drawIconForObject(object)}
 						name={object.name}
 						selected={selected}
 						isInstance={true}
@@ -1512,27 +1507,11 @@ export default function Inspector() {
 			const ext = getExtension(node.name);
 			const displayName = node.name.split('.')[0];
 			
-			const drawIcon = (isDir = false) => {
-				switch (ext) {
-					case 'd3dsymbol': return <MdOutlineInterests />;
-					case 'glb':
-					case 'gltf':
-						return <MdViewInAr />;
-					case 'glbcontainer': 
-					case 'gltfcontainer': 
-						return <MdFolderSpecial />;
-					case 'mat': return <MdTexture />;
-					case 'html': return <MdHtml />;
-					case 'anim': return <MdDirectionsWalk />;
-					default: return isDir ? <MdFolder /> : <MdInsertDriveFile />;
-				}
-			};
-			
 			if (node.type === 'file') {
 				return (
 					<ObjectRow
 						key={node.path}
-						icon={drawIcon()}
+						icon={drawIconForExt(ext)}
 						name={node.name}
 						displayName={displayName}
 						selected={selected}
@@ -1577,7 +1556,7 @@ export default function Inspector() {
 									>
 										{open ? <MdExpandMore /> : <MdChevronRight />}
 									</div>
-									{drawIcon(true)}
+									{drawIconForExt(ext, true)}
 								</>
 							)}
 							name={node.name}

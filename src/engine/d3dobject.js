@@ -12,7 +12,7 @@ import {
 const { path } = D3D;
 
 const protectedNames = [
-	'_root', 'Input', 'position', 'rotation', 'scale', 'name', 'parent', 'children', 'threeObj', 'scenes', 'zip', 'forward', 'right', 'up', 'quaternion', 'onEnterFrame', 'onAddedToScene', 'manifest', 'scenes', '__origin'
+	'_root', 'Input', 'position', 'rotation', 'scale', 'name', 'parent', 'children', 'threeObj', 'scenes', 'zip', 'forward', 'right', 'up', 'quaternion', 'onEnterFrame', 'onAddedToScene', 'manifest', 'scenes', '__origin', '__componentInstances', '__onInternalEnterFrame', '__onEditorEnterFrame'
 ]
 
 export default class D3DObject {
@@ -32,7 +32,10 @@ export default class D3DObject {
 		this.suuid = uuidv4();
 		this.parent = parent; // D3DObject or null for root
 		this.name = name;
+		
+		// INTERNAL SENSITIVE VARS
 		this.__ready = false;
+		this.__componentInstances = {};
 		
 		this.object3d = this.parent ? new THREE.Object3D() : new THREE.Scene();
 		this.object3d.userData.d3dobject = this;
@@ -256,6 +259,19 @@ export default class D3DObject {
 			r = r.parent;
 		return r;
 	}
+	get nameTree() {
+		return this.tree.join('.');
+	}
+	get tree() {
+		// root of this object only
+		let r = this;
+		const names = [];
+		while(r && !r.manifest) {
+			names.push(r.name);
+			r = r.parent;
+		}
+		return names.reverse();
+	}
 	get symbol() {
 		if(!this.symbolId)
 			return;
@@ -316,6 +332,17 @@ export default class D3DObject {
 			}
 			this.__onTransformationChange = () => {
 				this.checkSymbols();
+			}
+		}
+		
+		this.__onInternalEnterFrame = () => {
+			//////////////////////////////////////////////
+			//// ENGINE LOOP USED FOR INTERNALS
+			//// FOR EXAMPLE ANIMATION
+			//////////////////////////////////////////////
+			if(this.hasComponent('Animation')) {
+				const animation = this.animation;
+				animation.__advanceFrame();
 			}
 		}
 	}
@@ -650,9 +677,15 @@ export default class D3DObject {
 		if(!component)
 			return;
 		
-		const schema = D3DComponents[component.type];
+		if(this.__componentInstances[type])
+			return this.__componentInstances[type];
 		
-		return new schema.manager(this, component);
+		const schema = D3DComponents[component.type];
+		const inst = new schema.manager(this, component);
+		
+		this.__componentInstances[type] = inst;
+		
+		return inst;
 	}
 	hasComponent(type) {
 		const component = this.components.find(c => c.type == type);
@@ -1056,8 +1089,6 @@ export default class D3DObject {
 					}
 					break;
 				}
-				default:
-					console.warn(`Unknown component type: ${component.type}`);
 			}
 		}
 	}
@@ -1412,6 +1443,28 @@ export default class D3DObject {
 	
 	find(name) {
 		return this.children.find(child => child.name == name);
+	}
+	findDeep(name) {
+		const res = [];
+		if(this.name == name)
+			res.push(this);
+		this.traverse(d3dobject => {
+			if(d3dobject.name == name)
+				res.push(d3dobject);
+		});
+		return res;
+	}
+	traverse(callback) {
+		callback(this);
+	
+		if (this.children && this.children.length) {
+			for (let i = 0; i < this.children.length; i++) {
+				const child = this.children[i];
+				if (child && typeof child.traverse === 'function') {
+					child.traverse(callback);
+				}
+			}
+		}
 	}
 	
 	delete() {

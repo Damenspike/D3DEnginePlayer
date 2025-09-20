@@ -94,7 +94,14 @@ body.dark {
 				.key {
 					outline-color: rgba(32, 32, 32, 1);
 				}
+				.key--framed {
+					background: #414141;
+				}
 			}
+		}
+		.play-button {
+			color: white;
+			background: rgba(0, 0, 0, 0.6);
 		}
 	}
 	.object-row:hover {
@@ -764,7 +771,7 @@ body.dark {
 	}
 	.timeline {
 		height: calc(100% - 95px);
-		background: white;
+		background: rgba(0, 0, 0, 0.02);
 		border-radius: 10px;
 		overflow: hidden;
 		margin-top: 10px;
@@ -773,8 +780,8 @@ body.dark {
 		flex-direction: row;
 		
 		.tracks {
-			width: 400px;
-			background: rgba(255, 255, 255, 0.098);
+			width: 300px;
+			background: rgba(243, 243, 243, 1);
 			border-right: 1px solid rgb(225, 225, 225);
 			
 			.tracks-topbar {
@@ -788,6 +795,7 @@ body.dark {
 		.keytracks {
 			flex-grow: 1;
 			overflow-x: scroll;
+			position: relative;
 			
 			.key {
 				display: inline-block;
@@ -796,7 +804,10 @@ body.dark {
 				outline: 0.1px solid rgba(232, 232, 232, 1);
 			}
 			.key--framed {
-				background: #0099ff;
+				background: #b3b3b3;
+			}
+			.key--selected {
+				background: #0099ff !important;
 			}
 		}
 		.track {
@@ -808,6 +819,13 @@ body.dark {
 		}
 		.track--selected {
 			background: #0099ff !important;
+		}
+		.playhead {
+			position: absolute;
+			left: 0px;
+			top: 0px;
+			height: 100%;
+			border-left: 1px solid #0099ff;
 		}
 	}
 	.timing-bar {
@@ -827,5 +845,17 @@ body.dark {
 			padding-bottom: 5px;
 			font-size: 12px;
 		}
+	}
+	.play-button {
+		background: rgba(0, 0, 0, 0.1);
+		color: black;
+		min-width: 0px;
+		width: 30px;
+		padding: 5px;
+		margin: 2px;
+	}
+	.play-button:hover {
+		color: white;
+		background: #0099ff !important;
 	}
 }

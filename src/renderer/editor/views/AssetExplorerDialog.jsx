@@ -3,7 +3,14 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import MaterialSphere from './MaterialSphere.jsx';
 import { MdClose } from "react-icons/md";
 
-import { fileNameNoExt } from '../../../engine/d3dutility.js';
+import { 
+	fileNameNoExt,
+	getExtension
+} from '../../../engine/d3dutility.js';
+import {
+	drawIconForObject,
+	drawIconForExt
+} from '../utilities/d3dicons.jsx';
 
 const EXT_GROUPS = {
 	img: ['.png','.jpg','.jpeg','.gif','.webp','.bmp','.svg'],
@@ -280,6 +287,7 @@ export default function AssetExplorerDialog({
 					<div className="asset-dialog__list" ref={listRef}>
 						{filtered.map(it => {
 							const isActive = it.path === active?.path;
+							const ext = getExtension(it.path);
 							return (
 								<div
 									key={it.path}
@@ -297,10 +305,15 @@ export default function AssetExplorerDialog({
 										  .map(n => fileNameNoExt(n))
 										  .join('/') + '/'}
 									  </span>
-									  <span className="asset-row__file">
-										{fileNameNoExt(it.name.split('/').pop())}
-									  </span>
-									</div>
+									<span className="asset-row__file">
+										<div className='ib vm mrvs'>
+											{drawIconForExt(ext)}
+										</div>
+										<div className='ib vm'>
+											{fileNameNoExt(it.name.split('/').pop())}
+										</div>
+									</span>
+								</div>
 								</div>
 							);
 						})}

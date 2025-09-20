@@ -1,4 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
+import {
+	MdPlayArrow,
+	MdFastForward,
+	MdFastRewind,
+	MdFiberManualRecord
+} from 'react-icons/md';
 
 import { 
 	fileNameNoExt,
@@ -6,6 +12,12 @@ import {
 } from '../../../engine/d3dutility.js';
 
 const frameWidth = 10;
+const autoBlur = (e) => {
+	if (e.key === 'Enter') {
+		e.preventDefault();   // stop form submit
+		e.currentTarget.blur();
+	}
+}
 
 export default function AnimationInspector() {
 	const defObject = _editor.selectedObjects[0] ?? _editor.focus.rootParent;
@@ -14,21 +26,22 @@ export default function AnimationInspector() {
 	const [animManager, setAnimManager] = useState(defObject?.getComponent('Animation'));
 	const [activeClip, setActiveClip] = useState();
 	const [scale, setScale] = useState(1);
-	const [fps, setFps] = useState(60);
+	const [fps, setFps] = useState(_editor.animationDefaultFps);
 	const [resolution, setResolution] = useState(0.5);
 	const [selectedTracks, setSelectedTracks] = useState([]);
+	const [selectedKeys, setSelectedKeys] = useState([]);
+	const [currentTime, setCurrentTime] = useState(0);
 	
 	const duration = activeClip?.duration ?? 0;
 	const keysCount = duration * fps;
 	const timingBarWidth = keysCount * frameWidth;
 	const timeMarkerWidth = timingBarWidth / (duration / resolution);
 	
-	console.log(activeClip);
-	
 	useEffect(() => {
 		
 		_events.on('deselect-animation-editor', () => {
 			setSelectedTracks([]);
+			setSelectedKeys([]);
 		});
 		_events.on('selected-objects', objects => {
 			let obj = objects.length > 0 ? objects[0] : _editor.focus.rootParent;
@@ -47,26 +60,21 @@ export default function AnimationInspector() {
 	}, []);
 	
 	useEffect(() => {
-		const clipPaths = animManager?.getClipPaths();
-		const path = clipPaths?.[0];
-		
-		if(!path) {
+		if(!animManager) {
 			setActiveClip(null);
 			return;
 		}
 		
-		_editor.readFile(path)
-		.then(json => {
-			try {
-				const obj = JSON.parse(json);
-				setActiveClip(obj);
-			}catch(e) {
-				setActiveClip(null);
-				console.error(path, 'is a corrupt animation clip');
-			}
-		})
-		
+		setActiveClip(Object.values(animManager.clips)[0]);
 	}, [animManager]);
+	
+	useEffect(() => {
+		_editor.animationDefaultFps = fps;
+	}, [fps]);
+	
+	useEffect(() => {
+		console.log(activeClip);
+	}, [activeClip]);
 	
 	const selectTrack = (trackName) => {
 		_events.invoke('deselect-assets');
@@ -83,8 +91,28 @@ export default function AnimationInspector() {
 			
 			sel.splice(sel.indexOf(trackName), 1);
 			
-			setSelectedTracks(sel)
+			setSelectedTracks(sel);
 		}
+		setSelectedKeys([]);
+	}
+	const selectKey = (keyId) => {
+		_events.invoke('deselect-assets');
+		
+		if(!selectedKeys.includes(keyId)) {
+			if(_input.getKeyDown('shift')) {
+				setSelectedKeys([...selectedKeys, keyId]);
+			}else{
+				setSelectedKeys([keyId]);
+			}
+		}else
+		if(_input.getKeyDown('shift')) {
+			const sel = [...selectedKeys];
+			
+			sel.splice(sel.indexOf(keyId), 1);
+			
+			setSelectedKeys(sel);
+		}
+		setSelectedTracks([]);
 	}
 	const openTrack = (trackName) => {
 		const d3dobject = selectedObject.find(trackName); // TODO: May need path parsing
@@ -140,6 +168,30 @@ export default function AnimationInspector() {
 			return (
 				<div className='clip-select'>
 					<div className='ib mr'>
+						<button
+							className='play-button'
+						>
+							<MdFastRewind />
+						</button>
+						<button
+							className='play-button'
+						>
+							<MdPlayArrow />
+						</button>
+						<button
+							className='play-button'
+						>
+							<MdFastForward />
+						</button>
+					</div>
+					<div className='ib mrx'>
+						<button
+							className='play-button record-button'
+						>
+							<MdFiberManualRecord />
+						</button>
+					</div>
+					<div className='ib mr'>
 						<span className='small mr'>
 							FPS
 						</span>
@@ -148,13 +200,34 @@ export default function AnimationInspector() {
 							className='tf tf--nums'
 							value={fps}
 							onChange={e => {
-								const v = Number(e.target.value);
+								let v = Number(e.target.value);
 								if(!v) v = 60;
 								if(v < 1) v = 1;
 								if(v > 120) v = 120;
 								setFps(v);
 							}}
+							onKeyDown={autoBlur}
 							placeholder='FPS'
+						/>
+					</div>
+					<div className='ib mr'>
+						<span className='small mr'>
+							Duration
+						</span>
+						<input
+							type='number'
+							className='tf tf--nums'
+							value={duration}
+							onChange={e => {
+								let v = Number(e.target.value);
+								if(isNaN(v)) return;
+								if(!v) v = 0.1;
+								
+								activeClip.duration = v;
+								setActiveClip({...activeClip});
+							}}
+							onKeyDown={autoBlur}
+							placeholder='Secs'
 						/>
 					</div>
 					<div className='ib'>
@@ -178,26 +251,19 @@ export default function AnimationInspector() {
 				return;
 			}
 				
-			const objectTracks = {};
-			
-			activeClip.tracks.forEach(track => {
-				const parts = track.name.split('.');
-				const objectName = parts[0];
-				const transform = parts[1];
+			const objectTracks = activeClip.objectTracks;
 				
-				if(
-					transform != 'position' && 
-					transform != 'quaternion' && 
-					transform != 'scale'
+			const drawPlayHead = () => {
+				let x = (timingBarWidth * currentTime) + 4;
+				if(x > timingBarWidth)
+					x = timingBarWidth - 6;
+				return (
+					<div 
+						className='playhead'
+						style={{transform: `translateX(${x}px)`}}
+					></div>
 				)
-					return;
-				
-				if(!objectTracks[objectName])
-					objectTracks[objectName] = {};
-				
-				objectTracks[objectName][transform] = track;
-			});
-				
+			}
 			const drawTimingBar = () => {
 				const rows = [];
 				
@@ -220,10 +286,27 @@ export default function AnimationInspector() {
 					)
 				}
 				
+				const updateScrub = (e) => {
+					if(_input.getMouseButtonDown(0)) {
+						const rect = e.currentTarget.getBoundingClientRect();
+						const x = e.clientX - rect.left;
+						
+						let time = x / timingBarWidth;
+						if(time < 0) time = 0;
+						if(time > 1) time = 1;
+						
+						const frameDur = 1 / fps / 2;
+						const snappedTime = Math.round(time / frameDur) * frameDur;
+						setCurrentTime(snappedTime);
+					}
+				}
+				
 				return (
 					<div 
 						className='timing-bar' 
 						style={{width: timingBarWidth}}
+						onMouseMove={updateScrub}
+						onMouseDown={updateScrub}
 					>
 						{rows}
 					</div>
@@ -255,7 +338,13 @@ export default function AnimationInspector() {
 				};
 				
 				return (
-					<div className='tracks'>
+					<div 
+						className='tracks'
+						onMouseDown={e => {
+							setSelectedKeys([]);
+							setSelectedTracks([]);
+						}}
+					>
 						<div className='tracks-topbar'>
 							
 						</div>
@@ -274,6 +363,7 @@ export default function AnimationInspector() {
 					for(let i = 0; i < keysCount; i++) {
 						const classes = ['key'];
 						const time = i / keysCount * duration;
+						const keyId = `${objectName}_${i}`;
 						
 						const key_Pos = objectTrack.position.times.find(
 							t => approx(t, time)
@@ -285,14 +375,25 @@ export default function AnimationInspector() {
 							t => approx(t, time)
 						) !== undefined;
 						
-						if(key_Pos || key_Rot || key_Scl)
+						const isFramed = key_Pos || key_Rot || key_Scl;
+						
+						if(isFramed)
 							classes.push('key--framed');
+							
+						if(selectedKeys.includes(keyId))
+							classes.push('key--selected');
 							
 						keys.push(
 							<div 
 								key={keys.length}
 								className={classes.join(' ')} 
 								style={{width: frameWidth}}
+								onMouseDown={e => {
+									if(!isFramed) return;
+									e.preventDefault();
+									e.stopPropagation();
+									selectKey(keyId);
+								}}
 							></div>
 						)
 					}
@@ -311,13 +412,14 @@ export default function AnimationInspector() {
 				return (
 					<div className='keytracks'>
 						{drawTimingBar()}
+						{drawPlayHead()}
 						{rows}
 					</div>
 				)
 			}
 			
 			return (
-				<div className='timeline' tabIndex={2}>
+				<div className='timeline'>
 					{drawTracks()}
 					{drawKeyTracks()}
 				</div>
