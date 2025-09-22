@@ -181,7 +181,6 @@ export default class D3DEditorState {
 		this.probeSelection();
 	}
 	probeSelection() {
-		console.log('invoking');
 		_events.invoke('selected-objects', this.selectedObjects);
 		_events.invoke('deselect-animation-editor');
 	}

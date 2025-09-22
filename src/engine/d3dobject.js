@@ -151,10 +151,10 @@ export default class D3DObject {
 	get quaternion() {
 		return this.object3d.quaternion;
 	}
-	set quaternion({x, y, z}) {
-		if (Number.isNaN(x) || Number.isNaN(y) || Number.isNaN(z))
+	set quaternion({x, y, z, w}) {
+		if (Number.isNaN(x) || Number.isNaN(y) || Number.isNaN(z) || Number.isNaN(w))
 			return;
-		this.object3d.quaternion.set(x, y, z);
+		this.object3d.quaternion.set(x, y, z, w);
 	}
 	
 	get scale() {
@@ -1490,5 +1490,28 @@ export default class D3DObject {
 	}
 	isNameAllowed(str) {
 		return !protectedNames.includes(str) && this.isValidName(str);
+	}
+	
+	setAnimatedTransform({position, quaternion, scale}) {
+		if(!this.__preAnimationState) {
+			this.__preAnimationState = {
+				position: this.position.clone(),
+				quaternion: this.quaternion.clone(),
+				scale: this.scale.clone()
+			}
+		}
+		
+		this.position = position;
+		this.quaternion = quaternion;
+		this.scale = scale;
+	}
+	resetAnimationTransform() {
+		if(this.__preAnimationState) {
+			this.position = this.__preAnimationState.position;
+			this.quaternion = this.__preAnimationState.quaternion;
+			this.scale = this.__preAnimationState.scale;
+			
+			this.__preAnimationState = null;
+		}
 	}
 }

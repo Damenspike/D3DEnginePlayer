@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
 	MdPlayArrow,
+	MdPause,
 	MdFastForward,
 	MdFastRewind,
 	MdFiberManualRecord
@@ -11,7 +12,6 @@ import {
 	approx
 } from '../../../engine/d3dutility.js';
 
-const frameWidth = 10;
 const autoBlur = (e) => {
 	if (e.key === 'Enter') {
 		e.preventDefault();   // stop form submit
@@ -22,6 +22,9 @@ const autoBlur = (e) => {
 export default function AnimationInspector() {
 	const defObject = _editor.selectedObjects[0] ?? _editor.focus.rootParent;
 	
+	const animationEditorRef = useRef();
+	const timingBarRef = useRef();
+	
 	const [selectedObject, setSelectedObject] = useState(defObject);
 	const [animManager, setAnimManager] = useState(defObject?.getComponent('Animation'));
 	const [activeClip, setActiveClip] = useState();
@@ -31,7 +34,10 @@ export default function AnimationInspector() {
 	const [selectedTracks, setSelectedTracks] = useState([]);
 	const [selectedKeys, setSelectedKeys] = useState([]);
 	const [currentTime, setCurrentTime] = useState(0);
+	const [playing, setPlaying] = useState(false);
+	const [scrubbing, setScrubbing] = useState(false);
 	
+	const frameWidth = 10 * (resolution + 0.5);
 	const duration = activeClip?.duration ?? 0;
 	const keysCount = duration * fps;
 	const timingBarWidth = keysCount * frameWidth;
@@ -73,7 +79,44 @@ export default function AnimationInspector() {
 	}, [fps]);
 	
 	useEffect(() => {
-		console.log(activeClip);
+		if(!selectedObject || !activeClip)
+			return;
+		
+		const clipState = selectedObject.animation.getClipState(activeClip.name);
+		
+		if(!clipState)
+			return;
+		
+		clipState.updateTransforms(currentTime);
+	}, [currentTime]);
+	
+	useEffect(() => {
+		//console.log(activeClip);
+		
+		// Undo scrub effects
+		const handleClickOutside = (e) => {
+			if (
+				animationEditorRef.current && 
+				!animationEditorRef.current.contains(e.target)
+			) {
+				console.log('Clicked outside of animation editor, resetting transforms...');
+				
+				if(!selectedObject || !activeClip)
+					return;
+				
+				const clipState = selectedObject.animation.getClipState(activeClip.name);
+				
+				if(!clipState)
+					return;
+				
+				clipState.resetAnimationTransforms();
+			}
+		}
+		
+		document.addEventListener('mousedown', handleClickOutside);
+		return () => {
+			document.removeEventListener('mousedown', handleClickOutside);
+		};
 	}, [activeClip]);
 	
 	const selectTrack = (trackName) => {
@@ -115,14 +158,57 @@ export default function AnimationInspector() {
 		setSelectedTracks([]);
 	}
 	const openTrack = (trackName) => {
-		const d3dobject = selectedObject.find(trackName); // TODO: May need path parsing
+		const d3dobject = selectedObject.findDeep(trackName)[0];
 		if(!d3dobject) {
 			console.warn('Could not open track object', trackName);
 			return;
 		}
 		
-		_editor.focus = d3dobject;
+		_editor.focus = d3dobject.parent ?? d3dobject;
+		_editor.setSelection([d3dobject]);
 		selectTrack(trackName);
+	}
+	const togglePlaying = () => {
+		if(playing) {
+			selectedObject.animation.pause(activeClip.name);
+			setPlaying(false);
+		}else{
+			selectedObject.animation.play(activeClip.name, {
+				listener: (state) => {
+					setPlaying(state.playing);
+					setCurrentTime(state.normalizedTime);
+				}
+			});
+			setPlaying(true);
+		}
+	}
+	const updateScrub = (e, override = false) => {
+		if(!scrubbing && !override) return;
+		if(!_input.getMouseButtonDown(0) && !override) return;
+	
+		const rect = timingBarRef.current.getBoundingClientRect();
+		const x = e.clientX - rect.left;
+		
+		let time = x / timingBarWidth;
+		if(time < 0) time = 0;
+		if(time > 1) time = 1;
+		
+		const frameDur = 1 / fps / 2;
+		const snappedTime = Math.round(time / frameDur) * frameDur;
+		setCurrentTime(snappedTime);
+	}
+	const updateZoom = (e) => {
+		const baseSens = 0.0015;
+		const sens = e.shiftKey ? baseSens * 4 : baseSens;
+		const min = 0.05;
+		const max = 2;
+		
+		const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
+		
+		setResolution((prev) => {
+			const scale = Math.pow(1 - sens, e.deltaY);
+			return clamp(prev * scale, min, max);
+		});
 	}
 	
 	const drawAnimationEditor = () => {
@@ -170,16 +256,28 @@ export default function AnimationInspector() {
 					<div className='ib mr'>
 						<button
 							className='play-button'
+							title='Go to start'
+							onClick={() => setCurrentTime(0)}
 						>
 							<MdFastRewind />
 						</button>
 						<button
 							className='play-button'
+							onClick={() => togglePlaying()}
+							title={!playing ? 'Play' : 'Pause'}
 						>
-							<MdPlayArrow />
+							{
+								!playing ? (
+									<MdPlayArrow />
+								) : (
+									<MdPause />
+								)
+							}
 						</button>
 						<button
 							className='play-button'
+							title='Go to end'
+							onClick={() => setCurrentTime(1)}
 						>
 							<MdFastForward />
 						</button>
@@ -266,47 +364,58 @@ export default function AnimationInspector() {
 			}
 			const drawTimingBar = () => {
 				const rows = [];
+				const duration = activeClip.duration; // seconds
 				
-				const frames = activeClip.duration * fps;
+				// choose a nice step in seconds based on resolution
+				let stepSec;
+				if (resolution > 0.75) stepSec = 0.1;
+				else if (resolution > 0.4) stepSec = 0.25;
+				else if (resolution > 0.2) stepSec = 0.5;
+				else stepSec = 1;
 				
-				for(let i = 0; i < frames; i++) {
-					const secs = i / fps;
-					
-					if(secs % (resolution / 2) != 0)
-						continue;
-					
+				// how many full steps fit strictly before the end
+				const steps = Math.floor(duration / stepSec);
+				
+				// marker width in px for one step
+				const stepWidth = timeMarkerWidth * stepSec * fps;
+				
+				// emit markers at 0, stepSec, 2*stepSec, ... < duration
+				for (let k = 0; k < steps; k++) {
+					const secs = k * stepSec; // integer * step => stable
+				
 					rows.push(
-						<div 
-							key={rows.length}
-							className='time-marker' 
-							style={{width: timeMarkerWidth }}
+						<div
+							key={`t-${k}`}
+							className="time-marker"
+							style={{ width: stepWidth }}
 						>
-							{secs}s
+							{Math.round(secs * 100) / 100}s
 						</div>
-					)
+					);
 				}
 				
-				const updateScrub = (e) => {
-					if(_input.getMouseButtonDown(0)) {
-						const rect = e.currentTarget.getBoundingClientRect();
-						const x = e.clientX - rect.left;
-						
-						let time = x / timingBarWidth;
-						if(time < 0) time = 0;
-						if(time > 1) time = 1;
-						
-						const frameDur = 1 / fps / 2;
-						const snappedTime = Math.round(time / frameDur) * frameDur;
-						setCurrentTime(snappedTime);
-					}
+				// tail to fill up to exact duration (no label)
+				const tailSec = duration - steps * stepSec;
+				if (tailSec > 0) {
+					rows.push(
+						<div
+							key="t-tail"
+							className="time-marker"
+							style={{ width: timeMarkerWidth * tailSec * fps }}
+						/>
+					);
 				}
 				
 				return (
 					<div 
+						ref={timingBarRef}
 						className='timing-bar' 
 						style={{width: timingBarWidth}}
-						onMouseMove={updateScrub}
-						onMouseDown={updateScrub}
+						onMouseDown={e => {
+							updateScrub(e, true);
+							setScrubbing(true);
+						}}
+						onMouseUp={() => setScrubbing(false)}
 					>
 						{rows}
 					</div>
@@ -326,11 +435,11 @@ export default function AnimationInspector() {
 						<div 
 							key={rows.length}
 							className={classes.join(' ')}
-							onClick={() => selectTrack(objectName)}
-							onDoubleClick={e => {
-								e.preventDefault();
-								openTrack(objectName);
+							onClick={e => {
+								e.stopPropagation();
+								selectTrack(objectName);
 							}}
+							onDoubleClick={() => openTrack(objectName)}
 						>
 							{objectName}
 						</div>
@@ -340,7 +449,7 @@ export default function AnimationInspector() {
 				return (
 					<div 
 						className='tracks'
-						onMouseDown={e => {
+						onClick={e => {
 							setSelectedKeys([]);
 							setSelectedTracks([]);
 						}}
@@ -433,9 +542,16 @@ export default function AnimationInspector() {
 			</>
 		)
 	}
-	
+	console.log(resolution);
 	return (
-		<div className='animation-editor no-select'>
+		<div 
+			ref={animationEditorRef}
+			className='animation-editor no-select'
+			onMouseDown={updateScrub}
+			onMouseUp={() => setScrubbing(false)}
+			onMouseMove={updateScrub}
+			onWheel={updateZoom}
+		>
 			{drawAnimationEditor()}
 		</div>
 	)

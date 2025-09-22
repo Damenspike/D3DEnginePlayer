@@ -780,7 +780,9 @@ body.dark {
 		flex-direction: row;
 		
 		.tracks {
-			width: 300px;
+			flex: 0 1 300px;
+			min-width: 200px;
+			
 			background: rgba(243, 243, 243, 1);
 			border-right: 1px solid rgb(225, 225, 225);
 			

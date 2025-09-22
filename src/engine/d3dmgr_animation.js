@@ -1,7 +1,13 @@
+import Tween from './d3dtween.js';
+
 import {
 	fileNameNoExt,
 	approx
 } from './d3dutility.js';
+
+import {
+	interpolateClip
+} from './d3dinterpolateclip.js';
 
 export const WRAP_MODE_ONCE = 'once';
 export const WRAP_MODE_LOOP = 'loop';
@@ -22,8 +28,16 @@ export default function AnimationManager(d3dobject, component) {
 			const clipState = this.clipStates[clipName];
 			const clip = clipState.clip;
 			
-			if(!clipState.playing)
+			if(!clipState.playing) {
+				if(clipState.wasPlaying)
+					clipState.updateListener();
+					
+				clipState.wasPlaying = false;
 				continue;
+			}
+			
+			clipState.wasPlaying = true;
+			clipState.stopped = false;
 			
 			clipState.time = clipState.normalizedTime * clip.duration;
 			clipState.time += _time.delta * clipState.speed;
@@ -33,6 +47,7 @@ export default function AnimationManager(d3dobject, component) {
 				if(clipState.wrapMode == WRAP_MODE_ONCE) {
 					clipState.time = 0;
 					clipState.playing = false;
+					clipState.resetAnimationTransforms();
 				}
 				if(clipState.wrapMode == WRAP_MODE_LOOP) {
 					clipState.time = 0;
@@ -44,26 +59,8 @@ export default function AnimationManager(d3dobject, component) {
 			
 			clipState.normalizedTime = clipState.time / clip.duration;
 			
-			// Now update the objects themselves
-			clip.targets.forEach(name => {
-				const d3dtarget = d3dobject.findDeep(name)[0];
-				const track = clip.objectTracks[name];
-				
-				if(!d3dtarget || !track)
-					return;
-				
-				/*TODO const idx_Pos = track.position.times.findIndex(
-					t => approx(t, time)
-				);
-				const idx_Rot = track.quaternion.times.findIndex(
-					t => approx(t, time)
-				);
-				const idx_Scl = track.scale.times.findIndex(
-					t => approx(t, time)
-				);
-				
-				d3dtarget.setAnimatedTransform()*/
-			})
+			clipState.updateListener();
+			clipState.updateTransforms();
 		}
 	}
 	this.__loadClips = () => {
@@ -131,30 +128,34 @@ export default function AnimationManager(d3dobject, component) {
 		const exists = !!clipPath;
 		if(!exists)
 			console.warn(clipName, ' does not exist in animation clips')
-		return !exists;
+		return exists;
 	}
 	this.getClipState = (clipName) => {
 		if(!this.clipExists(clipName))
 			return;
 		
 		if(!this.clipStates[clipName]) {
-			this.clipStates[clipName] = {
-				playing: false,
-				time: 0,
-				normalizedTime: 0,
-				speed: 1,
+			this.clipStates[clipName] = new AnimationState({
 				clip: this.clips[clipName],
-				wrapMode: WRAP_MODE_ONCE
-			}
+				d3dobject
+			});
 		}
 		return this.clipStates[clipName];
 	}
-	this.play = (clipName) => {
-		if(!this.clipExists(clipName))
+	this.play = (clipName, options) => {
+		if(!this.clipExists(clipName)) {
+			console.warn(clipName, 'clip does not exist');
 			return;
+		}
 		
-		const clip = this.getClipState(clipName);
-		clip.playing = true;
+		const clipState = this.getClipState(clipName);
+		clipState.playing = true;
+		
+		// Apply each option or revert back
+		clipState.speed = options?.speed ?? clipState.speed;
+		clipState.wrapMode = options?.wrapMode ?? clipState.wrapMode;
+		clipState.tween = options?.tween ?? clipState.tween;
+		clipState.listener = options?.listener;
 	}
 	this.pause = (clipName) => {
 		if(!this.clipExists(clipName))
@@ -173,4 +174,63 @@ export default function AnimationManager(d3dobject, component) {
 	}
 	
 	this.__loadClips();
+}
+function AnimationState({d3dobject, clip}) {
+	this.playing = false;
+	this.time = 0;
+	this.normalizedTime = 0;
+	this.speed = 1;
+	this.clip = clip;
+	this.wrapMode = WRAP_MODE_ONCE;
+	this.tween = Tween.Linear;
+	this.listener = () => null;
+	this.d3dobject = d3dobject;
+	
+	this.updateListener = () => this.listener?.(this);
+	this.updateTransforms = (time) => {
+		if(time === undefined) time = this.normalizedTime;
+		
+		for(let name in this.clip.objectTracks) {
+			const d3dtarget = this.d3dobject.findDeep(name)[0];
+			const track = this.clip.objectTracks[name];
+			
+			if(!d3dtarget || !track)
+				continue;
+			
+			const trackPos = interpolateClip(
+				time,
+				track.position.values,
+				'vector',
+				this.tween
+			);
+			const trackScl = interpolateClip(
+				time,
+				track.scale.values,
+				'vector',
+				this.tween
+			);
+			const trackRot = interpolateClip(
+				time,
+				track.quaternion.values,
+				'quaternion',
+				this.tween
+			);
+			
+			d3dtarget.setAnimatedTransform({
+				position: trackPos,
+				quaternion: trackRot,
+				scale: trackScl
+			});
+		}
+	}
+	this.resetAnimationTransforms = () => {
+		for(let name in this.clip.objectTracks) {
+			const d3dtarget = this.d3dobject.findDeep(name)[0];
+			
+			if(!d3dtarget)
+				return;
+			
+			d3dtarget.resetAnimationTransform();
+		}
+	}
 }
