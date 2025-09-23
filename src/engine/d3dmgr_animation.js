@@ -39,7 +39,7 @@ export default function AnimationManager(d3dobject, component) {
 			clipState.wasPlaying = true;
 			clipState.stopped = false;
 			
-			clipState.time = clipState.normalizedTime * clip.duration;
+			//clipState.time = clipState.normalizedTime * clip.duration;
 			clipState.time += _time.delta * clipState.speed;
 			
 			// Clip has ended
@@ -74,6 +74,7 @@ export default function AnimationManager(d3dobject, component) {
 					this.addClip(baseName, obj);
 				}catch(e) {
 					console.error(path, 'is a corrupt animation clip');
+					console.error(e);
 				}
 			})
 		})
@@ -82,14 +83,8 @@ export default function AnimationManager(d3dobject, component) {
 		clip.objectTracks = {};
 		
 		clip.tracks.forEach(track => {
-			const parts = track.name.split('.');
-			const objectName = parts.shift();
-			const transform = parts.pop();
-			
-			if(parts.length > 0) {
-				console.error('Are we prepared for this?', parts);
-				return;
-			}
+			const objectName = track.name.split('.').slice(0, -1).join('.');
+			const transform = track.name.split('.').pop();
 			
 			if(
 				transform != 'position' && 
@@ -101,10 +96,75 @@ export default function AnimationManager(d3dobject, component) {
 			if(!clip.objectTracks[objectName])
 				clip.objectTracks[objectName] = {};
 			
-			clip.objectTracks[objectName][transform] = track;
+			const smartTrack = [];
+			const step = track.type == 'vector' ? 3 : 4;
+			
+			for(let i = 0; i < track.values.length; i += step) {
+				const t = track.times[Math.floor(i / step)];
+				const smartKey = {
+					time: t,
+					value: {
+						x: track.values[i],
+						y: track.values[i+1],
+						z: track.values[i+2]
+					}
+				};
+				
+				if(step == 4) // quaternion
+					smartKey.value.w = track.values[i + 3];
+				
+				smartTrack.push(smartKey);
+			}
+			
+			clip.objectTracks[objectName][transform] = {
+				smartTrack,
+				track
+			};
 		});
 		
 		this.clips[name] = clip;
+	}
+	this.rebuildClipTracks = (name) => {
+		const clip = this.clips[name];
+		
+		if(!clip) {
+			console.error('Unknown clip to rebuild', name);
+			return;
+		}
+		if(!clip.objectTracks) {
+			console.error('No object tracks on clip for rebuild', name);
+			return;
+		}
+		
+		const rebuiltTracks = [];
+		
+		for(let objectName in clip.objectTracks) {
+			const objectTrack = clip.objectTracks[objectName];
+			
+			for(let track in objectTrack) {
+				const trackName = `${objectName}.${track}`;
+				const smartTrack = objectTrack[track].smartTrack;
+				const rebuiltTrack = {
+					name: trackName,
+					type: track == 'quaternion' ? 'quaternion' : 'vector',
+					times: [],
+					values: []
+				};
+				
+				smartTrack
+				.sort((a, b) => a.time - b.time)
+				.forEach(key => {
+					rebuiltTrack.times.push(key.time);
+					rebuiltTrack.values.push(...[key.value.x, key.value.y, key.value.z]);
+					if(rebuiltTrack.type == 'quaternion')
+						rebuiltTrack.values.push(key.value.w);
+				});
+				
+				rebuiltTracks.push(rebuiltTrack);
+			}
+		}
+		
+		clip.tracks = rebuiltTracks;
 	}
 	this.getClipUUID = (clipName) => {
 		return component.properties.clips.find(uuid => {
@@ -188,30 +248,34 @@ function AnimationState({d3dobject, clip}) {
 	
 	this.updateListener = () => this.listener?.(this);
 	this.updateTransforms = (time) => {
-		if(time === undefined) time = this.normalizedTime;
+		if(time === undefined) 
+			time = this.time;
 		
 		for(let name in this.clip.objectTracks) {
-			const d3dtarget = this.d3dobject.findDeep(name)[0];
-			const track = this.clip.objectTracks[name];
+			const d3dtarget = this.d3dobject.findDeep(name)[0]; // TODO: Support . path finding
+			const objectTrack = this.clip.objectTracks[name];
 			
-			if(!d3dtarget || !track)
+			if(!d3dtarget || !objectTrack)
 				continue;
 			
 			const trackPos = interpolateClip(
 				time,
-				track.position.values,
+				objectTrack.position.track.times,
+				objectTrack.position.track.values,
 				'vector',
 				this.tween
 			);
 			const trackScl = interpolateClip(
 				time,
-				track.scale.values,
+				objectTrack.scale.track.times,
+				objectTrack.scale.track.values,
 				'vector',
 				this.tween
 			);
 			const trackRot = interpolateClip(
 				time,
-				track.quaternion.values,
+				objectTrack.quaternion.track.times,
+				objectTrack.quaternion.track.values,
 				'quaternion',
 				this.tween
 			);

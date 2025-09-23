@@ -36,6 +36,9 @@ export default function AnimationInspector() {
 	const [currentTime, setCurrentTime] = useState(0);
 	const [playing, setPlaying] = useState(false);
 	const [scrubbing, setScrubbing] = useState(false);
+	const [clipDuration, setClipDuration] = useState(0);
+	const [startKeyframePos, setStartKeyframePos] = useState({x: 0, y: 0});
+	const [draggingKey, setDraggingKey] = useState(false);
 	
 	const frameWidth = 10 * (resolution + 0.5);
 	const duration = activeClip?.duration ?? 0;
@@ -87,11 +90,11 @@ export default function AnimationInspector() {
 		if(!clipState)
 			return;
 		
-		clipState.updateTransforms(currentTime);
+		clipState.updateTransforms(currentTime * activeClip.duration);
 	}, [currentTime]);
 	
 	useEffect(() => {
-		//console.log(activeClip);
+		console.log(activeClip);
 		
 		// Undo scrub effects
 		const handleClickOutside = (e) => {
@@ -138,20 +141,20 @@ export default function AnimationInspector() {
 		}
 		setSelectedKeys([]);
 	}
-	const selectKey = (keyId) => {
+	const selectKey = (keyObj) => {
 		_events.invoke('deselect-assets');
 		
-		if(!selectedKeys.includes(keyId)) {
+		if(!selectedKeys.find(k => k.id == keyObj.id)) {
 			if(_input.getKeyDown('shift')) {
-				setSelectedKeys([...selectedKeys, keyId]);
+				setSelectedKeys([...selectedKeys, keyObj]);
 			}else{
-				setSelectedKeys([keyId]);
+				setSelectedKeys([keyObj]);
 			}
 		}else
 		if(_input.getKeyDown('shift')) {
 			const sel = [...selectedKeys];
 			
-			sel.splice(sel.indexOf(keyId), 1);
+			sel.splice(sel.findIndex(k => k.id == keyObj.id), 1);
 			
 			setSelectedKeys(sel);
 		}
@@ -182,6 +185,52 @@ export default function AnimationInspector() {
 			setPlaying(true);
 		}
 	}
+	const updateMouseMove = (e) => {
+		updateKeyframeMove(e);
+		updateScrub(e);
+	}
+	const updateKeyframeMove = (e) => {
+		if(!draggingKey || selectedKeys.length < 1 || !(e.buttons & 1))
+			return;
+		
+		const deltaX = e.pageX - startKeyframePos.x;
+		const w = frameWidth;
+		const movePlaces = Math.floor(
+			Math.abs(deltaX / w)
+		) * (deltaX > 0 ? 1 : -1);
+		
+		if(!movePlaces)
+			return;
+		
+		selectedKeys.forEach(key => {
+			const objectTrack = key.objectTrack;
+			const oldTime = key.time;
+			let newTime = key.time + (1/fps*movePlaces);
+			
+			if(newTime < 0)
+				newTime = 0;
+			
+			const key_Pos = objectTrack.position.smartTrack.find(
+				k => approx(k.time, oldTime)
+			);
+			const key_Rot = objectTrack.quaternion.smartTrack.find(
+				k => approx(k.time, oldTime)
+			);
+			const key_Scl = objectTrack.scale.smartTrack.find(
+				k => approx(k.time, oldTime)
+			);
+			
+			key_Pos.time = newTime;
+			key_Rot.time = newTime;
+			key_Scl.time = newTime;
+			key.time = newTime;
+			
+			// Rebuild the actual native three animation clip tracks based on our own spec
+			selectedObject.animation.rebuildClipTracks(activeClip.name);
+		});
+		
+		setStartKeyframePos({x: e.pageX, y: e.pageY});
+	}
 	const updateScrub = (e, override = false) => {
 		if(!scrubbing && !override) return;
 		if(!_input.getMouseButtonDown(0) && !override) return;
@@ -200,7 +249,7 @@ export default function AnimationInspector() {
 	const updateZoom = (e) => {
 		const baseSens = 0.0015;
 		const sens = e.shiftKey ? baseSens * 4 : baseSens;
-		const min = 0.05;
+		const min = 0.005;
 		const max = 2;
 		
 		const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
@@ -322,7 +371,7 @@ export default function AnimationInspector() {
 								if(!v) v = 0.1;
 								
 								activeClip.duration = v;
-								setActiveClip({...activeClip});
+								setClipDuration(v); // only for state changes
 							}}
 							onKeyDown={autoBlur}
 							placeholder='Secs'
@@ -377,7 +426,7 @@ export default function AnimationInspector() {
 				const steps = Math.floor(duration / stepSec);
 				
 				// marker width in px for one step
-				const stepWidth = timeMarkerWidth * stepSec * fps;
+				const stepWidth = stepSec * fps * frameWidth;
 				
 				// emit markers at 0, stepSec, 2*stepSec, ... < duration
 				for (let k = 0; k < steps; k++) {
@@ -450,8 +499,10 @@ export default function AnimationInspector() {
 					<div 
 						className='tracks'
 						onClick={e => {
-							setSelectedKeys([]);
-							setSelectedTracks([]);
+							if(!e.shiftKey) {
+								setSelectedKeys([]);
+								setSelectedTracks([]);
+							}
 						}}
 					>
 						<div className='tracks-topbar'>
@@ -472,24 +523,32 @@ export default function AnimationInspector() {
 					for(let i = 0; i < keysCount; i++) {
 						const classes = ['key'];
 						const time = i / keysCount * duration;
-						const keyId = `${objectName}_${i}`;
 						
-						const key_Pos = objectTrack.position.times.find(
-							t => approx(t, time)
-						) !== undefined;
-						const key_Rot = objectTrack.quaternion.times.find(
-							t => approx(t, time)
-						) !== undefined;
-						const key_Scl = objectTrack.scale.times.find(
-							t => approx(t, time)
-						) !== undefined;
+						const key_Pos = objectTrack.position.smartTrack.find(
+							k => approx(k.time, time)
+						);
+						const key_Rot = objectTrack.quaternion.smartTrack.find(
+							k => approx(k.time, time)
+						);
+						const key_Scl = objectTrack.scale.smartTrack.find(
+							k => approx(k.time, time)
+						);
 						
-						const isFramed = key_Pos || key_Rot || key_Scl;
+						const isFramed = (
+							key_Pos !== undefined || 
+							key_Rot !== undefined || 
+							key_Scl !== undefined
+						);
+						const keyId = key_Pos;
+						const keyObj = {
+							id: keyId,
+							objectTrack, time
+						};
 						
 						if(isFramed)
 							classes.push('key--framed');
 							
-						if(selectedKeys.includes(keyId))
+						if(selectedKeys.find(k => k.id == keyId))
 							classes.push('key--selected');
 							
 						keys.push(
@@ -498,10 +557,21 @@ export default function AnimationInspector() {
 								className={classes.join(' ')} 
 								style={{width: frameWidth}}
 								onMouseDown={e => {
-									if(!isFramed) return;
 									e.preventDefault();
 									e.stopPropagation();
-									selectKey(keyId);
+									
+									if(!isFramed)  {
+										if(!e.shiftKey)
+											setSelectedKeys([]);
+										return;
+									}
+									
+									setDraggingKey(true);
+									selectKey(keyObj);
+									setStartKeyframePos({x: e.pageX, y: e.pageY});
+								}}
+								onMouseUp={e => {
+									setDraggingKey(false);
 								}}
 							></div>
 						)
@@ -542,14 +612,14 @@ export default function AnimationInspector() {
 			</>
 		)
 	}
-	console.log(resolution);
+	
 	return (
 		<div 
 			ref={animationEditorRef}
 			className='animation-editor no-select'
 			onMouseDown={updateScrub}
 			onMouseUp={() => setScrubbing(false)}
-			onMouseMove={updateScrub}
+			onMouseMove={updateMouseMove}
 			onWheel={updateZoom}
 		>
 			{drawAnimationEditor()}

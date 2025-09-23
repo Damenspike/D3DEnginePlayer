@@ -1493,6 +1493,9 @@ export default class D3DObject {
 	}
 	
 	setAnimatedTransform({position, quaternion, scale}) {
+		if(!position || !quaternion || !scale)
+			return;
+		
 		if(!this.__preAnimationState) {
 			this.__preAnimationState = {
 				position: this.position.clone(),
