@@ -38,6 +38,7 @@ export default class D3DEditorState {
 		this.currentStep = -1;
 		this.clipboard = null;
 		this.animationDefaultFps = 60;
+		this.animationEditorInFocus = false;
 	}
 
 	setTool(tool) {
@@ -412,6 +413,10 @@ export default class D3DEditorState {
 		}
 		
 		this.openCodeEditor(this.selectedObjects[0] ?? _editor.focus);
+	}
+	
+	delete() {
+		_events.invoke('delete-action');
 	}
 	
 	async importFile(file, destDir) {

@@ -85,6 +85,9 @@ export default function CodeEditor({isOpen, theme}) {
 			objectsOpenList.unshift(window._root);
 		
 		objectsOpenList.forEach(d3dobject => {
+			if(!d3dobject || d3dobject.__deleted)
+				return;
+				
 			const classNames = ['tab', 'no-select'];
 			
 			if(d3dobject == objectOpen)

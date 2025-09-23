@@ -12,7 +12,7 @@ import {
 const { path } = D3D;
 
 const protectedNames = [
-	'_root', 'Input', 'position', 'rotation', 'scale', 'name', 'parent', 'children', 'threeObj', 'scenes', 'zip', 'forward', 'right', 'up', 'quaternion', 'onEnterFrame', 'onAddedToScene', 'manifest', 'scenes', '__origin', '__componentInstances', '__onInternalEnterFrame', '__onEditorEnterFrame'
+	'_root', 'Input', 'position', 'rotation', 'scale', 'name', 'parent', 'children', 'threeObj', 'scenes', 'zip', 'forward', 'right', 'up', 'quaternion', 'onEnterFrame', 'onAddedToScene', 'manifest', 'scenes', '__origin', '__componentInstances', '__onInternalEnterFrame', '__onEditorEnterFrame', '__deleted'
 ]
 
 export default class D3DObject {
@@ -1478,6 +1478,8 @@ export default class D3DObject {
 			
 		this.parent.children.splice(idx, 1);
 		this.parent.object3d.remove(this.object3d);
+		
+		this.__deleted = true;
 		
 		delete this.parent[this.name];
 		delete _root.superIndex[this.uuid];

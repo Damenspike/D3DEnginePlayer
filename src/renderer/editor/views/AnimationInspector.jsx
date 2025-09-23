@@ -8,8 +8,7 @@ import {
 } from 'react-icons/md';
 
 import { 
-	fileNameNoExt,
-	approx
+	fileNameNoExt
 } from '../../../engine/d3dutility.js';
 
 const autoBlur = (e) => {
@@ -38,6 +37,7 @@ export default function AnimationInspector() {
 	const [scrubbing, setScrubbing] = useState(false);
 	const [clipDuration, setClipDuration] = useState(0);
 	const [startKeyframePos, setStartKeyframePos] = useState({x: 0, y: 0});
+	const [startKeyframePos_, setStartKeyframePos_] = useState({x: 0, y: 0});
 	const [draggingKey, setDraggingKey] = useState(false);
 	
 	const frameWidth = 10 * (resolution + 0.5);
@@ -103,6 +103,7 @@ export default function AnimationInspector() {
 				!animationEditorRef.current.contains(e.target)
 			) {
 				console.log('Clicked outside of animation editor, resetting transforms...');
+				_editor.animationEditorInFocus = false;
 				
 				if(!selectedObject || !activeClip)
 					return;
@@ -121,6 +122,22 @@ export default function AnimationInspector() {
 			document.removeEventListener('mousedown', handleClickOutside);
 		};
 	}, [activeClip]);
+	
+	useEffect(() => {
+		if(selectedKeys.length > 0)
+			_editor.animationEditorInFocus = true;
+		
+		const onDelete = () => {
+			selectedKeys.forEach(key => deleteKey(key));
+			setSelectedKeys([]);
+		}
+		
+		_events.on('delete-action', onDelete);
+		
+		return () => {
+			_events.un('delete-action', onDelete);
+		}
+	}, [selectedKeys]);
 	
 	const selectTrack = (trackName) => {
 		_events.invoke('deselect-assets');
@@ -141,22 +158,24 @@ export default function AnimationInspector() {
 		}
 		setSelectedKeys([]);
 	}
-	const selectKey = (keyObj) => {
+	const selectKey = (key) => {
 		_events.invoke('deselect-assets');
 		
-		if(!selectedKeys.find(k => k.id == keyObj.id)) {
+		if(!selectedKeys.includes(key)) {
 			if(_input.getKeyDown('shift')) {
-				setSelectedKeys([...selectedKeys, keyObj]);
+				setSelectedKeys([...selectedKeys, key]);
 			}else{
-				setSelectedKeys([keyObj]);
+				setSelectedKeys([key]);
 			}
 		}else
 		if(_input.getKeyDown('shift')) {
 			const sel = [...selectedKeys];
 			
-			sel.splice(sel.findIndex(k => k.id == keyObj.id), 1);
+			sel.splice(sel.indexOf(key), 1);
 			
 			setSelectedKeys(sel);
+		}else{
+			setSelectedKeys([key]);
 		}
 		setSelectedTracks([]);
 	}
@@ -185,6 +204,11 @@ export default function AnimationInspector() {
 			setPlaying(true);
 		}
 	}
+	const updateKeyDown = (e) => {
+		if(e.key === 'Delete' || e.key === 'Backspace') {
+			console.log('Delete action');
+		}
+	}
 	const updateMouseMove = (e) => {
 		updateKeyframeMove(e);
 		updateScrub(e);
@@ -199,37 +223,42 @@ export default function AnimationInspector() {
 			Math.abs(deltaX / w)
 		) * (deltaX > 0 ? 1 : -1);
 		
-		if(!movePlaces)
-			return;
-		
 		selectedKeys.forEach(key => {
 			const objectTrack = key.objectTrack;
-			const oldTime = key.time;
-			let newTime = key.time + (1/fps*movePlaces);
+			const oldTime = key.startDragTime;
+			let newTime = oldTime + (1/fps*movePlaces);
 			
 			if(newTime < 0)
 				newTime = 0;
+				
+			const newFrameNumber = Math.floor(newTime * fps);
 			
 			const key_Pos = objectTrack.position.smartTrack.find(
-				k => approx(k.time, oldTime)
+				k => k.keyNumber == key.keyNumber
 			);
 			const key_Rot = objectTrack.quaternion.smartTrack.find(
-				k => approx(k.time, oldTime)
+				k => k.keyNumber == key.keyNumber
 			);
 			const key_Scl = objectTrack.scale.smartTrack.find(
-				k => approx(k.time, oldTime)
+				k => k.keyNumber == key.keyNumber
 			);
 			
-			key_Pos.time = newTime;
-			key_Rot.time = newTime;
-			key_Scl.time = newTime;
-			key.time = newTime;
+			if(key_Pos)
+				key_Pos.time = newTime;
 			
-			// Rebuild the actual native three animation clip tracks based on our own spec
-			selectedObject.animation.rebuildClipTracks(activeClip.name);
+			if(key_Rot)
+				key_Rot.time = newTime;
+			
+			if(key_Scl)
+				key_Scl.time = newTime;
+			
+			key.time = newTime;
 		});
 		
-		setStartKeyframePos({x: e.pageX, y: e.pageY});
+		// Rebuild the actual native three animation clip tracks based on our own spec
+		selectedObject.animation.rebuildClipTracks(activeClip.name);
+		
+		setStartKeyframePos_({x: e.pageX, y: e.pageY}); // hack
 	}
 	const updateScrub = (e, override = false) => {
 		if(!scrubbing && !override) return;
@@ -258,6 +287,39 @@ export default function AnimationInspector() {
 			const scale = Math.pow(1 - sens, e.deltaY);
 			return clamp(prev * scale, min, max);
 		});
+	}
+	const deleteKey = (key) => {
+		const frameNumber = Math.floor(key.time * fps);
+		const objectTrack = key.objectTrack;
+		
+		const keyE_Pos = objectTrack.position.smartTrack.find(
+			k => Math.floor(k.time * fps) == frameNumber
+		);
+		const keyE_Rot = objectTrack.quaternion.smartTrack.find(
+			k => Math.floor(k.time * fps) == frameNumber
+		);
+		const keyE_Scl = objectTrack.scale.smartTrack.find(
+			k => Math.floor(k.time * fps) == frameNumber
+		);
+		
+		if(keyE_Pos) {
+			objectTrack.position.smartTrack.splice(
+				objectTrack.position.smartTrack.indexOf(keyE_Pos),
+				1
+			);
+		}
+		if(keyE_Rot) {
+			objectTrack.quaternion.smartTrack.splice(
+				objectTrack.quaternion.smartTrack.indexOf(keyE_Rot),
+				1
+			);
+		}
+		if(keyE_Scl) {
+			objectTrack.scale.smartTrack.splice(
+				objectTrack.scale.smartTrack.indexOf(keyE_Scl),
+				1
+			);
+		}
 	}
 	
 	const drawAnimationEditor = () => {
@@ -516,65 +578,72 @@ export default function AnimationInspector() {
 				
 				const rows = [];
 				
+				const drawKey = (key, frameNumber, keyed) => {
+					const classes = ['key'];
+					
+					if(keyed)
+						classes.push('key--framed');
+					
+					if(selectedKeys.includes(key))
+						classes.push('key--selected');
+					
+					return (
+						<div 
+							key={frameNumber}
+							className={classes.join(' ')} 
+							style={{width: frameWidth}}
+							onMouseDown={e => {
+								e.preventDefault();
+								e.stopPropagation();
+								
+								if(!keyed)  {
+									if(!e.shiftKey)
+										setSelectedKeys([]);
+									return;
+								}
+								
+								key.startDragTime = key.time;
+								
+								setDraggingKey(true);
+								selectKey(key);
+								setStartKeyframePos({x: e.pageX, y: e.pageY});
+							}}
+							onMouseUp={e => {
+								setDraggingKey(false);
+							}}
+						></div>
+					)
+				}
+				
 				for(let objectName in objectTracks) {
 					const objectTrack = objectTracks[objectName];
-					const keys = [];
+					const drawKeys = [];
+					const keys = {};
+					const frameNumberNoOverwrite = [];
+					
+					const addKeyedFrame = (key) => {
+						const { time } = key;
+						const frameNumber = Math.floor(time * fps);
+						
+						if(frameNumberNoOverwrite.includes(frameNumber))
+							return;
+						
+						if(selectedKeys.includes(key))
+							frameNumberNoOverwrite.push(frameNumber);
+						
+						keys[frameNumber] = drawKey(key, frameNumber, true);
+					}
+					
+					objectTrack.position.smartTrack.forEach(key => addKeyedFrame(key));
+					objectTrack.quaternion.smartTrack.forEach(key => addKeyedFrame(key));
+					objectTrack.scale.smartTrack.forEach(key => addKeyedFrame(key));
 					
 					for(let i = 0; i < keysCount; i++) {
-						const classes = ['key'];
-						const time = i / keysCount * duration;
-						
-						const key_Pos = objectTrack.position.smartTrack.find(
-							k => approx(k.time, time)
-						);
-						const key_Rot = objectTrack.quaternion.smartTrack.find(
-							k => approx(k.time, time)
-						);
-						const key_Scl = objectTrack.scale.smartTrack.find(
-							k => approx(k.time, time)
-						);
-						
-						const isFramed = (
-							key_Pos !== undefined || 
-							key_Rot !== undefined || 
-							key_Scl !== undefined
-						);
-						const keyId = key_Pos;
-						const keyObj = {
-							id: keyId,
-							objectTrack, time
-						};
-						
-						if(isFramed)
-							classes.push('key--framed');
-							
-						if(selectedKeys.find(k => k.id == keyId))
-							classes.push('key--selected');
-							
-						keys.push(
-							<div 
-								key={keys.length}
-								className={classes.join(' ')} 
-								style={{width: frameWidth}}
-								onMouseDown={e => {
-									e.preventDefault();
-									e.stopPropagation();
-									
-									if(!isFramed)  {
-										if(!e.shiftKey)
-											setSelectedKeys([]);
-										return;
-									}
-									
-									setDraggingKey(true);
-									selectKey(keyObj);
-									setStartKeyframePos({x: e.pageX, y: e.pageY});
-								}}
-								onMouseUp={e => {
-									setDraggingKey(false);
-								}}
-							></div>
-						)
+						if(keys[i]) {
+							drawKeys.push(keys[i]);
+							continue;
+						}
+						drawKeys.push(drawKey(null, i, false))
 					}
 					
 					rows.push(
@@ -583,7 +652,7 @@ export default function AnimationInspector() {
 							className='track'
 							style={{width: timingBarWidth}}
 						>
-							{keys}
+							{drawKeys}
 						</div>
 					)
 				};
@@ -621,6 +690,7 @@ export default function AnimationInspector() {
 			onMouseUp={() => setScrubbing(false)}
 			onMouseMove={updateMouseMove}
 			onWheel={updateZoom}
+			onKeyDown={updateKeyDown}
 		>
 			{drawAnimationEditor()}
 		</div>

@@ -114,8 +114,17 @@ export default function Inspector() {
 	}, [dummyObject]);
 	
 	useEffect(() => {
-		_editor.onDeleteKey = () => deleteSelectedObjects();
+		const onDelete = () => {
+			if(!_editor.animationEditorInFocus)
+				deleteSelectedObjects();
+		}
+		
+		_events.on('delete-action', onDelete);
 		_editor.selectNoAssets = () => setSelectedAssetPaths(new Set());
+		
+		return () => {
+			_events.un('delete-action', onDelete);
+		}
 	}, [_editor.selectedObjects, selectedAssetPaths]);
 	
 	useEffect(() => {

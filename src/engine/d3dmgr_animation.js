@@ -103,6 +103,9 @@ export default function AnimationManager(d3dobject, component) {
 				const t = track.times[Math.floor(i / step)];
 				const smartKey = {
 					time: t,
+					objectName: objectName,
+					objectTrack: clip.objectTracks[objectName],
+					keyNumber: smartTrack.length,
 					value: {
 						x: track.values[i],
 						y: track.values[i+1],
