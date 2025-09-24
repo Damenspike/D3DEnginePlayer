@@ -12,7 +12,7 @@ import {
 const { path } = D3D;
 
 const protectedNames = [
-	'_root', 'Input', 'position', 'rotation', 'scale', 'name', 'parent', 'children', 'threeObj', 'scenes', 'zip', 'forward', 'right', 'up', 'quaternion', 'onEnterFrame', 'onAddedToScene', 'manifest', 'scenes', '__origin', '__componentInstances', '__onInternalEnterFrame', '__onEditorEnterFrame', '__deleted'
+	'_root', 'Input', 'position', 'rotation', 'scale', 'name', 'parent', 'children', 'threeObj', 'scenes', 'zip', 'forward', 'right', 'up', 'quaternion', 'onEnterFrame', 'onAddedToScene', 'manifest', 'scenes', '__origin', '__componentInstances', '__onInternalEnterFrame', '__onEditorEnterFrame', '__deleted', '__animatedTransformChange'
 ]
 
 export default class D3DObject {
@@ -308,18 +308,35 @@ export default class D3DObject {
 	setupDefaultMethods() {
 		if(window._editor) {
 			this.__onEditorEnterFrame = () => {
-				if(!this.lastMatrixWorld) {
-					this.lastMatrixWorld = new THREE.Matrix4().copy(this.object3d.matrixWorld);
+				if(!this.lastMatrixLocal) {
+					this.lastMatrixLocal = new THREE.Matrix4().copy(this.object3d.matrix);
 					return;
 				}
+			
+				const pos = new THREE.Vector3();
+				const rot = new THREE.Quaternion();
+				const scl = new THREE.Vector3();
 				
-				if(!this.object3d.matrixWorld.equals(this.lastMatrixWorld)) {
-					this.__onTransformationChange();
-					this.onTransformationChange?.();
+				const lastPos = new THREE.Vector3();
+				const lastRot = new THREE.Quaternion();
+				const lastScl = new THREE.Vector3();
+				
+				this.object3d.matrix.decompose(pos, rot, scl);
+				this.lastMatrixLocal.decompose(lastPos, lastRot, lastScl);
+				
+				const changed = [];
+				if (!pos.equals(lastPos)) changed.push('pos');
+				if (!rot.equals(lastRot)) changed.push('rot');
+				if (!scl.equals(lastScl)) changed.push('scl');
+				
+				if(!this.object3d.matrix.equals(this.lastMatrixLocal)) {
+					this.__onTransformationChange(changed);
+					this.onTransformationChange?.(changed);
 					_editor.updateInspector?.();
+					_events.invoke('matrix-changed', this, changed);
 				}
 				
-				this.lastMatrixWorld = new THREE.Matrix4().copy(this.object3d.matrixWorld);
+				this.lastMatrixLocal = new THREE.Matrix4().copy(this.object3d.matrix);
 				
 				if(this.__finishedSyncing) {
 					this.__syncing = false;
@@ -1455,16 +1472,35 @@ export default class D3DObject {
 		return res;
 	}
 	traverse(callback) {
-		callback(this);
-	
+		if (callback(this) === false)
+			return false;
+			
 		if (this.children && this.children.length) {
 			for (let i = 0; i < this.children.length; i++) {
 				const child = this.children[i];
 				if (child && typeof child.traverse === 'function') {
-					child.traverse(callback);
+					if (child.traverse(callback) === false)
+						return false;
 				}
 			}
 		}
+		
+		return true;
+	}
+	containsChild(d3dobject) {
+		if (!d3dobject || d3dobject === this)
+			return false;
+			
+		let found = false;
+		
+		this.traverse(obj => {
+			if (obj === d3dobject) {
+				found = true;
+				return false;
+			}
+		});
+		
+		return found;
 	}
 	
 	delete() {

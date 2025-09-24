@@ -21,6 +21,7 @@ export default class D3DTransformGizmo {
 		this.mode = 'translate';				// 'translate' | 'rotate' | 'scale'
 		this.space = 'local';					// 'local' | 'world'
 		this.snap = { translate: 0, rotate: 0, scale: 0 }; // 0 = off
+		this.mouseOver = false;
 	
 		// --- gizmo scene (overlay) ---
 		this._gizmoScene = new THREE.Scene();
@@ -444,7 +445,11 @@ export default class D3DTransformGizmo {
 	_registerHandle(obj) {
 		this._handles[obj.name] = obj;
 		obj.userData.handle = obj.name;
-		obj.traverse(o => { o.userData.handle = obj.name; });
+		obj.userData.isGizmo = true; 
+		obj.traverse(o => { 
+			o.userData.handle = obj.name; 
+			o.userData.isGizmo = true;
+		});
 		obj.raycast = THREE.Mesh.prototype.raycast;
 	}
 
@@ -636,7 +641,7 @@ export default class D3DTransformGizmo {
 		if (this._hover && this._handles[this._hover]) this._setHandleHot(this._handles[this._hover], false);
 		this._hover = id;
 		if (id && this._handles[id]) this._setHandleHot(this._handles[id], true);
-	
+		this.mouseOver = !!id;
 		this._setActiveVisibility(); // <--- keep view ring updated
 	}
 
@@ -652,8 +657,12 @@ export default class D3DTransformGizmo {
 		this._active = this._hover;
 		this._dragging = true;
 		this._setActiveVisibility();
+		
 		this.beginMatrixWorld = this.object.matrixWorld.clone();
-	
+		this.beginPos = this.object.position.clone();
+		this.beginRot = this.object.quaternion.clone();
+		this.beginScl = this.object.scale.clone();
+		
 		const id = this._active;
 		const worldPos = this._group.getWorldPosition(new THREE.Vector3());
 		const worldQuat = this._group.getWorldQuaternion(new THREE.Quaternion());
@@ -767,6 +776,18 @@ export default class D3DTransformGizmo {
 				const oldMatrixWorld = this.beginMatrixWorld.clone();
 				const newMatrixWorld = this.object.matrixWorld.clone();
 				const object = this.object;
+				
+				const changed = [];
+				if (this.beginPos && !object.position.equals(this.beginPos))
+					changed.push('pos');
+				
+				if (this.beginRot && !object.quaternion.equals(this.beginRot))
+					changed.push('rot');
+				
+				if (this.beginScl && !object.scale.equals(this.beginScl))
+					changed.push('scl');
+				
+				_events.invoke('transform-changed', this.d3dobject, changed);
 				
 				if (!oldMatrixWorld.equals(newMatrixWorld)) {
 					_editor.addStep({

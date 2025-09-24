@@ -32,7 +32,7 @@ export default function CodeEditor({isOpen, theme}) {
 	useEffect(() => {
 		
 		const onSelectedObjects = objects => {
-			if(objects.length < 1)
+			if(!isOpen || objects.length < 1)
 				return;
 			
 			const defObject = objects[0];
@@ -123,8 +123,8 @@ export default function CodeEditor({isOpen, theme}) {
 					key={rows.length}
 					onClick={selectMe}
 				>
-					{d3dobject.name}
 					{d3dobject != _root && drawClose()}
+					{d3dobject.name}
 				</div>
 			)
 		});

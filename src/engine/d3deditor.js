@@ -516,8 +516,7 @@ function setupSelection(renderer, camera) {
 			_editor.setSelection(selectedObjects);
 		}
 	});
-
-	// --- Helper: single click select ---
+	
 	function singleClickSelect(event) {
 		const r = renderer.domElement.getBoundingClientRect();
 		const mouse = new THREE.Vector2();
@@ -526,6 +525,10 @@ function setupSelection(renderer, camera) {
 
 		raycaster.setFromCamera(mouse, camera);
 		const intersects = raycaster.intersectObjects(scene.children, true);
+		
+		if (_editor.gizmo.mouseOver) {
+			return;
+		}
 
 		if (intersects.length > 0) {
 			const d3dobjects = [];

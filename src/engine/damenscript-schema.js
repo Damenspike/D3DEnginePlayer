@@ -17,7 +17,7 @@ export const FORBIDDEN_PROPS = [
 	   'caller','callee','arguments',
 	   'call','apply','bind', '__script',
 	   '__onInternalEnterFrame', '__onEditorEnterFrame',
-	   '__componentInstances', '__deleted'
+	   '__componentInstances', '__deleted', '__animatedTransformChange'
 ]
 export const D3D_OBJECT_SCHEMA = {
 	name: {

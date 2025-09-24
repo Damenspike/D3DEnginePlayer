@@ -23,6 +23,7 @@ export default function ConsoleView() {
 				<div 
 					className={classes.join(' ')} 
 					onClick={() => setTab(id)}
+					key={rows.length}
 				>
 					{tabName}
 				</div>

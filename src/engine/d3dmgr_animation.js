@@ -163,6 +163,8 @@ export default function AnimationManager(d3dobject, component) {
 						rebuiltTrack.values.push(key.value.w);
 				});
 				
+				objectTrack[track].track = rebuiltTrack; // re-assign the track to the new one
+				
 				rebuiltTracks.push(rebuiltTrack);
 			}
 		}

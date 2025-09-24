@@ -39,6 +39,7 @@ export default function AnimationInspector() {
 	const [startKeyframePos, setStartKeyframePos] = useState({x: 0, y: 0});
 	const [startKeyframePos_, setStartKeyframePos_] = useState({x: 0, y: 0});
 	const [draggingKey, setDraggingKey] = useState(false);
+	const [recording, setRecording] = useState(false);
 	
 	const frameWidth = 10 * (resolution + 0.5);
 	const duration = activeClip?.duration ?? 0;
@@ -67,6 +68,69 @@ export default function AnimationInspector() {
 		});
 		
 	}, []);
+	
+	useEffect(() => {
+		
+		const onTransformChanged = (d3dobject, changed) => {
+			if(!recording || (!selectedObject.containsChild(d3dobject) && d3dobject != selectedObject))
+				return;
+			
+			const objectName = d3dobject.name;
+			const frameNumber = Math.floor((currentTime * duration) * fps);
+			
+			let objectTrack = activeClip.objectTracks[objectName];
+			
+			if(!objectTrack) {
+				console.warn('todo no track for this object', objectName);
+				return;
+			}
+			
+			const key_Pos = objectTrack.position.smartTrack.find(
+				k => Math.floor(k.time * fps) == frameNumber
+			);
+			const key_Rot = objectTrack.quaternion.smartTrack.find(
+				k => Math.floor(k.time * fps) == frameNumber
+			);
+			const key_Scl = objectTrack.scale.smartTrack.find(
+				k => Math.floor(k.time * fps) == frameNumber
+			);
+			
+			if(key_Pos && changed.includes('pos')) {
+				key_Pos.value = {
+					x: d3dobject.position.x,
+					y: d3dobject.position.y,
+					z: d3dobject.position.z
+				}
+			}
+			if(key_Rot && changed.includes('rot')) {
+				key_Rot.value = {
+					x: d3dobject.quaternion.x,
+					y: d3dobject.quaternion.y,
+					z: d3dobject.quaternion.z,
+					w: d3dobject.quaternion.w
+				}
+			}
+			if(key_Scl && changed.includes('scl')) {
+				key_Scl.value = {
+					x: d3dobject.scale.x,
+					y: d3dobject.scale.y,
+					z: d3dobject.scale.z
+				}
+			}
+			
+			console.log(changed, objectName);
+			
+			// Rebuild the actual native three animation clip tracks based on our own spec
+			selectedObject.animation.rebuildClipTracks(activeClip.name);
+		}
+		
+		_events.on('transform-changed', onTransformChanged);
+		
+		return () => {
+			_events.un('transform-changed', onTransformChanged);
+		}
+		
+	}, [selectedObject, activeClip, recording]);
 	
 	useEffect(() => {
 		if(!animManager) {
@@ -100,7 +164,8 @@ export default function AnimationInspector() {
 		const handleClickOutside = (e) => {
 			if (
 				animationEditorRef.current && 
-				!animationEditorRef.current.contains(e.target)
+				!animationEditorRef.current.contains(e.target) && 
+				!recording
 			) {
 				console.log('Clicked outside of animation editor, resetting transforms...');
 				_editor.animationEditorInFocus = false;
@@ -121,7 +186,7 @@ export default function AnimationInspector() {
 		return () => {
 			document.removeEventListener('mousedown', handleClickOutside);
 		};
-	}, [activeClip]);
+	}, [activeClip, recording]);
 	
 	useEffect(() => {
 		if(selectedKeys.length > 0)
@@ -222,16 +287,19 @@ export default function AnimationInspector() {
 		const movePlaces = Math.floor(
 			Math.abs(deltaX / w)
 		) * (deltaX > 0 ? 1 : -1);
+		const timeDelta = 1/fps*movePlaces;
+		const frameNumberDelta = Math.floor(timeDelta * fps);
 		
 		selectedKeys.forEach(key => {
 			const objectTrack = key.objectTrack;
 			const oldTime = key.startDragTime;
-			let newTime = oldTime + (1/fps*movePlaces);
+			const oldFrameNumber = key.startFrameNumber;
+			let newTime = oldTime + timeDelta;
 			
 			if(newTime < 0)
 				newTime = 0;
 				
-			const newFrameNumber = Math.floor(newTime * fps);
+			const newFrameNumber = oldFrameNumber + frameNumberDelta;
 			
 			const key_Pos = objectTrack.position.smartTrack.find(
 				k => k.keyNumber == key.keyNumber
@@ -320,6 +388,9 @@ export default function AnimationInspector() {
 				1
 			);
 		}
+		
+		// Rebuild the actual native three animation clip tracks based on our own spec
+		selectedObject.animation.rebuildClipTracks(activeClip.name);
 	}
 	
 	const drawAnimationEditor = () => {
@@ -335,6 +406,11 @@ export default function AnimationInspector() {
 		}
 		
 		const drawOptions = () => {
+			const recordingButtonClasses = ['play-button', 'record-button'];
+			
+			if(recording)
+				recordingButtonClasses.push('record-button--active');
+			
 			const drawSelect = () => {
 				const rows = [];
 				
@@ -395,7 +471,8 @@ export default function AnimationInspector() {
 					</div>
 					<div className='ib mrx'>
 						<button
-							className='play-button record-button'
+							className={recordingButtonClasses.join(' ')}
+							onClick={() => setRecording(!recording)}
 						>
 							<MdFiberManualRecord />
 						</button>
@@ -463,12 +540,15 @@ export default function AnimationInspector() {
 			const objectTracks = activeClip.objectTracks;
 				
 			const drawPlayHead = () => {
-				let x = (timingBarWidth * currentTime) + 4;
-				if(x > timingBarWidth)
-					x = timingBarWidth - 6;
+				const classes = ['playhead'];
+				
+				if(recording)
+					classes.push('playhead--recording');
+				
+				let x = timingBarWidth * currentTime;
 				return (
 					<div 
-						className='playhead'
+						className={classes.join(' ')}
 						style={{transform: `translateX(${x}px)`}}
 					></div>
 				)
@@ -539,6 +619,9 @@ export default function AnimationInspector() {
 					const objectTrack = objectTracks[objectName];
 					const classes = ['track'];
 					
+					if(recording)
+						classes.push('track--recording')
+					
 					if(selectedTracks.includes(objectName))
 						classes.push('track--selected')
 					
@@ -587,29 +670,36 @@ export default function AnimationInspector() {
 					if(selectedKeys.includes(key))
 						classes.push('key--selected');
 					
+					if(key)	
+						key.frameNumber = frameNumber;
+					
 					return (
 						<div 
 							key={frameNumber}
 							className={classes.join(' ')} 
 							style={{width: frameWidth}}
 							onMouseDown={e => {
-								e.preventDefault();
-								e.stopPropagation();
+								setStartKeyframePos({x: e.pageX, y: e.pageY});
 								
-								if(!keyed)  {
+								if(!keyed) {
 									if(!e.shiftKey)
 										setSelectedKeys([]);
 									return;
 								}
 								
-								key.startDragTime = key.time;
+								[key, ...selectedKeys].forEach(k => {
+									k.startDragTime = k.time;
+									k.startFrameNumber = k.frameNumber;
+								})
 								
 								setDraggingKey(true);
-								selectKey(key);
-								setStartKeyframePos({x: e.pageX, y: e.pageY});
 							}}
 							onMouseUp={e => {
 								setDraggingKey(false);
+								const dx = Math.abs(startKeyframePos.x - e.pageX);
+								
+								if(keyed && dx < 5)
+									selectKey(key); // select key if no dragging happened
 							}}
 						></div>
 					)

@@ -681,7 +681,7 @@ body.dark {
 		align-items: center;
 		width: 16px;     
 		height: 16px;
-		margin-left: 6px; 
+		margin-right: 6px; 
 		border-radius: 50%;
 		background: white;
 		color: black; 
@@ -719,7 +719,7 @@ body.dark {
 	padding: 6px 8px;
 	color: #ccc;
 	
-	width: calc(100% - 50px);
+	width: calc(100% - 70px);
 	
 	.tab {
 		display: inline-block;
@@ -819,8 +819,12 @@ body.dark {
 			display: flex;
 			align-items: center;
 		}
+		.track--recording {
+			color: red;
+		}
 		.track--selected {
 			background: #0099ff !important;
+			color: white !important;
 		}
 		.playhead {
 			position: absolute;
@@ -828,6 +832,9 @@ body.dark {
 			top: 0px;
 			height: 100%;
 			border-left: 1px solid #0099ff;
+		}
+		.playhead--recording {
+			border-color: red;
 		}
 	}
 	.timing-bar {
@@ -859,5 +866,10 @@ body.dark {
 	.play-button:hover {
 		color: white;
 		background: #0099ff !important;
+	}
+	.record-button--active {
+		svg {
+			color: rgb(255, 0, 0);
+		}
 	}
 }
