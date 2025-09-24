@@ -255,9 +255,9 @@ function AnimationState({d3dobject, clip}) {
 	this.updateTransforms = (time) => {
 		if(time === undefined) 
 			time = this.time;
-		
+			
 		for(let name in this.clip.objectTracks) {
-			const d3dtarget = this.d3dobject.findDeep(name)[0]; // TODO: Support . path finding
+			const d3dtarget = this.findAnimationTarget(name);
 			const objectTrack = this.clip.objectTracks[name];
 			
 			if(!d3dtarget || !objectTrack)
@@ -301,5 +301,13 @@ function AnimationState({d3dobject, clip}) {
 			
 			d3dtarget.resetAnimationTransform();
 		}
+	}
+	this.setNormalTime = (t) => {
+		this.time = t * this.clip.duration;
+	}
+	this.findAnimationTarget = (name) => {
+		return (name == this.d3dobject.name) ? 
+			this.d3dobject : 
+			this.d3dobject.findDeep(name)[0]; // TODO: Support . path finding
 	}
 }

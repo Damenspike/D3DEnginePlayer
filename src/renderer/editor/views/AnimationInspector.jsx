@@ -18,6 +18,8 @@ const autoBlur = (e) => {
 	}
 }
 
+var originTransforms = {};
+
 export default function AnimationInspector() {
 	const defObject = _editor.selectedObjects[0] ?? _editor.focus.rootParent;
 	
@@ -71,18 +73,31 @@ export default function AnimationInspector() {
 	
 	useEffect(() => {
 		
-		const onTransformChanged = (d3dobject, changed) => {
+		const onTransformChanged = (d3dobject, changed, originTransform) => {
 			if(!recording || (!selectedObject.containsChild(d3dobject) && d3dobject != selectedObject))
 				return;
 			
 			const objectName = d3dobject.name;
 			const frameNumber = Math.floor((currentTime * duration) * fps);
+			const t = currentTime * activeClip.duration;
+			
+			// Store origin transform
+			if(!originTransforms[objectName]) {
+				originTransforms[objectName] = d3dobject;
+				if(!d3dobject.__preAnimationTransform)
+					d3dobject.__preAnimationTransform = originTransform;
+			}
 			
 			let objectTrack = activeClip.objectTracks[objectName];
 			
 			if(!objectTrack) {
-				console.warn('todo no track for this object', objectName);
-				return;
+				objectTrack = {
+					position: {smartTrack: [], track: []},
+					quaternion: {smartTrack: [], track: []},
+					scale: {smartTrack: [], track: []}
+				}
+				
+				activeClip.objectTracks[objectName] = objectTrack;
 			}
 			
 			const key_Pos = objectTrack.position.smartTrack.find(
@@ -95,6 +110,20 @@ export default function AnimationInspector() {
 				k => Math.floor(k.time * fps) == frameNumber
 			);
 			
+			if(!key_Pos && changed.includes('pos')) {
+				// Create new keyframe
+				objectTrack.position.smartTrack.push({
+					time: t,
+					objectName,
+					objectTrack,
+					keyNumber: objectTrack.position.smartTrack.length,
+					value: {
+						x: d3dobject.position.x,
+						y: d3dobject.position.y,
+						z: d3dobject.position.z
+					}
+				})
+			}else
 			if(key_Pos && changed.includes('pos')) {
 				key_Pos.value = {
 					x: d3dobject.position.x,
@@ -102,6 +131,22 @@ export default function AnimationInspector() {
 					z: d3dobject.position.z
 				}
 			}
+			
+			if(!key_Rot && changed.includes('rot')) {
+				// Create new keyframe
+				objectTrack.quaternion.smartTrack.push({
+					time: t,
+					objectName,
+					objectTrack,
+					keyNumber: objectTrack.quaternion.smartTrack.length,
+					value: {
+						x: d3dobject.quaternion.x,
+						y: d3dobject.quaternion.y,
+						z: d3dobject.quaternion.z,
+						w: d3dobject.quaternion.w
+					}
+				})
+			}else
 			if(key_Rot && changed.includes('rot')) {
 				key_Rot.value = {
 					x: d3dobject.quaternion.x,
@@ -110,6 +155,21 @@ export default function AnimationInspector() {
 					w: d3dobject.quaternion.w
 				}
 			}
+			
+			if(!key_Scl && changed.includes('scl')) {
+				// Create new keyframe
+				objectTrack.scale.smartTrack.push({
+					time: t,
+					objectName,
+					objectTrack,
+					keyNumber: objectTrack.scale.smartTrack.length,
+					value: {
+						x: d3dobject.scale.x,
+						y: d3dobject.scale.y,
+						z: d3dobject.scale.z
+					}
+				})
+			}else
 			if(key_Scl && changed.includes('scl')) {
 				key_Scl.value = {
 					x: d3dobject.scale.x,
@@ -118,10 +178,10 @@ export default function AnimationInspector() {
 				}
 			}
 			
-			console.log(changed, objectName);
-			
 			// Rebuild the actual native three animation clip tracks based on our own spec
 			selectedObject.animation.rebuildClipTracks(activeClip.name);
+			
+			setStartKeyframePos_({...startKeyframePos_}); // hack
 		}
 		
 		_events.on('transform-changed', onTransformChanged);
@@ -130,7 +190,21 @@ export default function AnimationInspector() {
 			_events.un('transform-changed', onTransformChanged);
 		}
 		
-	}, [selectedObject, activeClip, recording]);
+	}, [selectedObject, activeClip, recording, currentTime]);
+	
+	useEffect(() => {
+		
+		if(!recording) {
+			for(let i in originTransforms) {
+				const d3dobject = originTransforms[i];
+				
+				// Restore original transforms
+				d3dobject.resetAnimationTransform();
+			}
+			originTransforms = {};
+		}
+		
+	}, [recording]);
 	
 	useEffect(() => {
 		if(!animManager) {
@@ -155,6 +229,7 @@ export default function AnimationInspector() {
 			return;
 		
 		clipState.updateTransforms(currentTime * activeClip.duration);
+		clipState.setNormalTime(currentTime);
 	}, [currentTime]);
 	
 	useEffect(() => {
@@ -189,12 +264,14 @@ export default function AnimationInspector() {
 	}, [activeClip, recording]);
 	
 	useEffect(() => {
-		if(selectedKeys.length > 0)
+		if(selectedTracks.length > 0 || selectedKeys.length > 0)
 			_editor.animationEditorInFocus = true;
 		
 		const onDelete = () => {
 			selectedKeys.forEach(key => deleteKey(key));
+			selectedTracks.forEach(track => deleteTrack(track));
 			setSelectedKeys([]);
+			setSelectedTracks([]);
 		}
 		
 		_events.on('delete-action', onDelete);
@@ -202,7 +279,7 @@ export default function AnimationInspector() {
 		return () => {
 			_events.un('delete-action', onDelete);
 		}
-	}, [selectedKeys]);
+	}, [selectedTracks, selectedKeys]);
 	
 	const selectTrack = (trackName) => {
 		_events.invoke('deselect-assets');
@@ -388,6 +465,20 @@ export default function AnimationInspector() {
 				1
 			);
 		}
+		
+		// Rebuild the actual native three animation clip tracks based on our own spec
+		selectedObject.animation.rebuildClipTracks(activeClip.name);
+	}
+	const deleteTrack = (track) => {
+		const objectTrack = activeClip.objectTracks[track];
+		const clipState = selectedObject.animation.getClipState(activeClip.name);
+		
+		if(clipState) {
+			const d3dtarget = clipState.findAnimationTarget(track);
+			d3dtarget.resetAnimationTransform();
+		}
+		
+		delete activeClip.objectTracks[track];
 		
 		// Rebuild the actual native three animation clip tracks based on our own spec
 		selectedObject.animation.rebuildClipTracks(activeClip.name);

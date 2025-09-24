@@ -1531,28 +1531,30 @@ export default class D3DObject {
 	}
 	
 	setAnimatedTransform({position, quaternion, scale}) {
-		if(!position || !quaternion || !scale)
-			return;
-		
-		if(!this.__preAnimationState) {
-			this.__preAnimationState = {
+		if(!this.__preAnimationTransform) {
+			this.__preAnimationTransform = {
 				position: this.position.clone(),
 				quaternion: this.quaternion.clone(),
 				scale: this.scale.clone()
 			}
 		}
 		
-		this.position = position;
-		this.quaternion = quaternion;
-		this.scale = scale;
+		if(position)
+			this.position = position;
+		
+		if(quaternion)
+			this.quaternion = quaternion;
+			
+		if(scale)
+			this.scale = scale;
 	}
 	resetAnimationTransform() {
-		if(this.__preAnimationState) {
-			this.position = this.__preAnimationState.position;
-			this.quaternion = this.__preAnimationState.quaternion;
-			this.scale = this.__preAnimationState.scale;
+		if(this.__preAnimationTransform) {
+			this.position = this.__preAnimationTransform.position;
+			this.quaternion = this.__preAnimationTransform.quaternion;
+			this.scale = this.__preAnimationTransform.scale;
 			
-			this.__preAnimationState = null;
+			this.__preAnimationTransform = null;
 		}
 	}
 }

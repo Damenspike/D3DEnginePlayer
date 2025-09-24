@@ -259,6 +259,17 @@ export default function Inspector() {
 										}
 									});
 									object.position.copy(newPosition);
+									
+									_events.invoke(
+										'transform-changed', 
+										object, 
+										['pos'], 
+										{
+											position: oldPosition,
+											quaternion: object.quaternion,
+											scale: object.scale
+										}
+									);
 								}} 
 							/>
 						</div>
@@ -286,8 +297,18 @@ export default function Inspector() {
 											object.rotation.copy(newRotation);
 										}
 									});
-									
 									object.rotation.copy(newRotation);
+									
+									_events.invoke(
+										'transform-changed', 
+										object, 
+										['rot'], 
+										{
+											position: object.position,
+											quaternion: oldRotation,
+											scale: object.scale
+										}
+									);
 								}} 
 							/>
 						</div>
@@ -307,8 +328,18 @@ export default function Inspector() {
 											object.position.copy(newScale);
 										}
 									});
-									
 									object.scale.copy(newScale);
+									
+									_events.invoke(
+										'transform-changed', 
+										object, 
+										['scl'], 
+										{
+											position: object.position,
+											quaternion: object.quaternion,
+											scale: oldScale
+										}
+									);
 								}} 
 							/>
 						</div>

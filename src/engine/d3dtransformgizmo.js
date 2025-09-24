@@ -787,7 +787,11 @@ export default class D3DTransformGizmo {
 				if (this.beginScl && !object.scale.equals(this.beginScl))
 					changed.push('scl');
 				
-				_events.invoke('transform-changed', this.d3dobject, changed);
+				_events.invoke('transform-changed', this.d3dobject, changed, {
+					position: this.beginPos,
+					quaternion: this.beginRot,
+					scale: this.beginScl
+				});
 				
 				if (!oldMatrixWorld.equals(newMatrixWorld)) {
 					_editor.addStep({
