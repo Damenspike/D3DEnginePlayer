@@ -103,6 +103,7 @@ function getExtension(path) {
 	return path.slice(lastDot + 1).toLowerCase();
 }
 
+addIPCListener('select-all');
 addIPCListener('delete');
 addIPCListener('undo');
 addIPCListener('redo');

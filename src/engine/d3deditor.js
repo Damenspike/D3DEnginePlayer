@@ -879,6 +879,7 @@ _editor.moveObjectToCameraView = moveObjectToCameraView;
 
 window._events = new D3DEventSystem();
 
+D3D.setEventListener('select-all', () => _editor.selectAll());
 D3D.setEventListener('delete', () => _editor.delete());
 D3D.setEventListener('undo', () => _editor.undo());
 D3D.setEventListener('redo', () => _editor.redo());

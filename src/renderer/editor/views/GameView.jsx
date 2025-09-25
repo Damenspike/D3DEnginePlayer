@@ -5,8 +5,10 @@ import { loadD3DProj } from '../../../engine/d3deditor.js';
 const MIME = 'application/x-d3d-objectrow';
 
 export default function GameView() {
-	const ref = useRef(null);
+	const gameRef = useRef(null);
 
+	_editor.gameRef = gameRef;
+	
 	const unpack = useCallback((e) => {
 		try {
 			return JSON.parse(e.dataTransfer.getData(MIME) || '{}');
@@ -35,7 +37,7 @@ export default function GameView() {
 			return;
 
 		// Screen → local coords
-		const host = ref.current;
+		const host = gameRef.current;
 		if (!host)
 			return;
 
@@ -47,7 +49,7 @@ export default function GameView() {
 	}, [unpack]);
 
 	useEffect(() => {
-		const element = ref.current;
+		const element = gameRef.current;
 		if (!element)
 			return;
 
@@ -80,6 +82,10 @@ export default function GameView() {
 		D3D.getCurrentProjectURI().then(uri => {
 			loadD3DProj(uri);
 		});
+		
+		_events.on('select-all', () => {
+			// select all in game view
+		})
 
 		return () => observer.disconnect();
 	}, []);
@@ -88,7 +94,7 @@ export default function GameView() {
 		<div
 			id="game-container"
 			className="game"
-			ref={ref}
+			ref={gameRef}
 			tabIndex={0}
 			onDragOver={onDragOver}
 			onDrop={onDrop}

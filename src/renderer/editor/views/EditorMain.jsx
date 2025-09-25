@@ -13,6 +13,9 @@ export default function EditorMain({theme}) {
 	useResizable(inspRef, 'x');
 	useResizable(consoleRef, 'y');
 	
+	_editor.inspRef = inspRef;
+	_editor.consoleRef = consoleRef;
+	
 	useEffect(() => {
 		_editor.showCodeEditor = () => setCodeEditorOpen(true);
 		_editor.hideCodeEditor = () => setCodeEditorOpen(false);

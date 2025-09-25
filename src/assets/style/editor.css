@@ -782,6 +782,7 @@ body.dark {
 		.tracks {
 			flex: 0 1 300px;
 			min-width: 200px;
+			outline: none;
 			
 			background: rgba(243, 243, 243, 1);
 			border-right: 1px solid rgb(225, 225, 225);
@@ -798,12 +799,13 @@ body.dark {
 			flex-grow: 1;
 			overflow-x: scroll;
 			position: relative;
+			outline: none;
 			
 			.key {
 				display: inline-block;
 				vertical-align: top;
 				height: 100%;
-				outline: 0.1px solid rgba(232, 232, 232, 1);
+				outline: 0.1px solid rgba(195, 195, 195, 1);
 			}
 			.key--framed {
 				background: #b3b3b3;

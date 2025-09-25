@@ -38,7 +38,6 @@ export default class D3DEditorState {
 		this.currentStep = -1;
 		this.clipboard = null;
 		this.animationDefaultFps = 60;
-		this.animationEditorInFocus = false;
 	}
 
 	setTool(tool) {
@@ -413,6 +412,23 @@ export default class D3DEditorState {
 		}
 		
 		this.openCodeEditor(this.selectedObjects[0] ?? _editor.focus);
+	}
+	
+	selectAll() {
+		const el = document.activeElement;
+	
+		if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+			el.select();
+		}else
+		if (el.isContentEditable) {
+			const r = document.createRange();
+			r.selectNodeContents(el);
+			const sel = window.getSelection();
+			sel.removeAllRanges();
+			sel.addRange(r);
+		}else{
+			_events.invoke('select-all');
+		}
 	}
 	
 	delete() {

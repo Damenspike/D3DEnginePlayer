@@ -25,6 +25,8 @@ export default function AnimationInspector() {
 	
 	const animationEditorRef = useRef();
 	const timingBarRef = useRef();
+	const keyTracksRef = useRef();
+	const tracksRef = useRef();
 	
 	const [selectedObject, setSelectedObject] = useState(defObject);
 	const [animManager, setAnimManager] = useState(defObject?.getComponent('Animation'));
@@ -45,9 +47,8 @@ export default function AnimationInspector() {
 	
 	const frameWidth = 10 * (resolution + 0.5);
 	const duration = activeClip?.duration ?? 0;
-	const keysCount = duration * fps;
-	const timingBarWidth = keysCount * frameWidth;
-	const timeMarkerWidth = timingBarWidth / (duration / resolution);
+	const totalFrames = Math.round(duration * fps);
+	const timingBarWidth = totalFrames * frameWidth;
 	
 	useEffect(() => {
 		
@@ -183,14 +184,23 @@ export default function AnimationInspector() {
 			
 			setStartKeyframePos_({...startKeyframePos_}); // hack
 		}
+		const onSelectAll = () => {
+			if(keyTracksRef.current.contains(document.activeElement))
+				selectAllKeyframes();
+			
+			if(tracksRef.current.contains(document.activeElement))
+				selectAllTracks();
+		}
 		
 		_events.on('transform-changed', onTransformChanged);
+		_events.on('select-all', onSelectAll);
 		
 		return () => {
 			_events.un('transform-changed', onTransformChanged);
+			_events.un('select-all', onSelectAll);
 		}
 		
-	}, [selectedObject, activeClip, recording, currentTime]);
+	}, [selectedObject, activeClip, recording, currentTime, keyTracksRef, tracksRef]);
 	
 	useEffect(() => {
 		
@@ -243,7 +253,6 @@ export default function AnimationInspector() {
 				!recording
 			) {
 				console.log('Clicked outside of animation editor, resetting transforms...');
-				_editor.animationEditorInFocus = false;
 				
 				if(!selectedObject || !activeClip)
 					return;
@@ -264,12 +273,59 @@ export default function AnimationInspector() {
 	}, [activeClip, recording]);
 	
 	useEffect(() => {
-		if(selectedTracks.length > 0 || selectedKeys.length > 0)
-			_editor.animationEditorInFocus = true;
-		
 		const onDelete = () => {
-			selectedKeys.forEach(key => deleteKey(key));
-			selectedTracks.forEach(track => deleteTrack(track));
+			if(selectedKeys.length > 0) {
+				const deleteResults = [];
+				selectedKeys.forEach(key => {
+					deleteResults.push(deleteKey(key));
+				});
+				
+				_editor.addStep({
+					name: 'Delete key(s)',
+					undo: () => {
+						deleteResults.forEach(({ 
+							objectTrack,
+							keyE_Pos,
+							keyE_Rot,
+							keyE_Scl 
+						}) => {
+							keyE_Pos && objectTrack.position.smartTrack.push(keyE_Pos);
+							keyE_Rot && objectTrack.quaternion.smartTrack.push(keyE_Rot);
+							keyE_Scl && objectTrack.scale.smartTrack.push(keyE_Scl);
+						});
+						// Rebuild the actual native three animation clip tracks based on our own spec
+						selectedObject.animation.rebuildClipTracks(activeClip.name);
+						setSelectedKeys([...selectedKeys]);
+					},
+					redo: () => {
+						deleteResults.forEach(({doDelete}) => doDelete());
+						setSelectedKeys([...selectedKeys]);
+					}
+				});
+			}
+			if(selectedTracks.length > 0) {
+				const deleteResults = [];
+				selectedTracks.forEach(track => {
+					deleteResults.push(deleteTrack(track));
+				});
+				
+				_editor.addStep({
+					name: 'Delete track(s)',
+					undo: () => {
+						deleteResults.forEach(({track, deletedTrack}) => {
+							activeClip.objectTracks[track] = deletedTrack;
+						});
+						// Rebuild the actual native three animation clip tracks based on our own spec
+						selectedObject.animation.rebuildClipTracks(activeClip.name);
+						setSelectedTracks([...selectedTracks]);
+					},
+					redo: () => {
+						deleteResults.forEach(({doDelete}) => doDelete());
+						setSelectedTracks([...selectedTracks]);
+					}
+				});
+			}
+			
 			setSelectedKeys([]);
 			setSelectedTracks([]);
 		}
@@ -281,6 +337,27 @@ export default function AnimationInspector() {
 		}
 	}, [selectedTracks, selectedKeys]);
 	
+	const selectAllTracks = () => {
+		const tracks = [];
+		
+		for(let objectName in activeClip.objectTracks) {
+			tracks.push(objectName);
+		}
+		
+		setSelectedTracks(tracks);
+	}
+	const selectAllKeyframes = () => {
+		const keys = [];
+		
+		for(let objectName in activeClip.objectTracks) {
+			const objectTrack = activeClip.objectTracks[objectName];
+			objectTrack.position.smartTrack.forEach(key => keys.push(key));
+			objectTrack.quaternion.smartTrack.forEach(key => keys.push(key));
+			objectTrack.scale.smartTrack.forEach(key => keys.push(key));
+		}
+		
+		setSelectedKeys(keys);
+	}
 	const selectTrack = (trackName) => {
 		_events.invoke('deselect-assets');
 		
@@ -412,13 +489,13 @@ export default function AnimationInspector() {
 		const rect = timingBarRef.current.getBoundingClientRect();
 		const x = e.clientX - rect.left;
 		
-		let time = x / timingBarWidth;
-		if(time < 0) time = 0;
-		if(time > 1) time = 1;
+		let t = x / timingBarWidth;
+		if (t < 0) t = 0;
+		if (t > 1) t = 1;
 		
-		const frameDur = 1 / fps / 2;
-		const snappedTime = Math.round(time / frameDur) * frameDur;
-		setCurrentTime(snappedTime);
+		// snap in normalized space using integer frames
+		const snapped = Math.round(t * totalFrames) / totalFrames;
+		setCurrentTime(snapped);
 	}
 	const updateZoom = (e) => {
 		const baseSens = 0.0015;
@@ -447,27 +524,49 @@ export default function AnimationInspector() {
 			k => Math.floor(k.time * fps) == frameNumber
 		);
 		
-		if(keyE_Pos) {
-			objectTrack.position.smartTrack.splice(
-				objectTrack.position.smartTrack.indexOf(keyE_Pos),
-				1
-			);
-		}
-		if(keyE_Rot) {
-			objectTrack.quaternion.smartTrack.splice(
-				objectTrack.quaternion.smartTrack.indexOf(keyE_Rot),
-				1
-			);
-		}
-		if(keyE_Scl) {
-			objectTrack.scale.smartTrack.splice(
-				objectTrack.scale.smartTrack.indexOf(keyE_Scl),
-				1
-			);
+		const doDelete = () => {
+			if(keyE_Pos) {
+				objectTrack.position.smartTrack.splice(
+					objectTrack.position.smartTrack.indexOf(keyE_Pos),
+					1
+				);
+			}
+			if(keyE_Rot) {
+				objectTrack.quaternion.smartTrack.splice(
+					objectTrack.quaternion.smartTrack.indexOf(keyE_Rot),
+					1
+				);
+			}
+			if(keyE_Scl) {
+				objectTrack.scale.smartTrack.splice(
+					objectTrack.scale.smartTrack.indexOf(keyE_Scl),
+					1
+				);
+			}
+			// Rebuild the actual native three animation clip tracks based on our own spec
+			selectedObject.animation.rebuildClipTracks(activeClip.name);
 		}
 		
-		// Rebuild the actual native three animation clip tracks based on our own spec
-		selectedObject.animation.rebuildClipTracks(activeClip.name);
+		doDelete();
+		
+		const deletedKeys = [];
+		
+		if(keyE_Pos)
+			deletedKeys.push(keyE_Pos);
+			
+		if(keyE_Rot)
+			deletedKeys.push(keyE_Rot);
+		
+		if(keyE_Scl)
+			deletedKeys.push(keyE_Scl);
+		
+		return {
+			objectTrack,
+			keyE_Pos,
+			keyE_Rot,
+			keyE_Scl,
+			doDelete
+		};
 	}
 	const deleteTrack = (track) => {
 		const objectTrack = activeClip.objectTracks[track];
@@ -478,10 +577,19 @@ export default function AnimationInspector() {
 			d3dtarget.resetAnimationTransform();
 		}
 		
-		delete activeClip.objectTracks[track];
+		const doDelete = () => {
+			delete activeClip.objectTracks[track];
+			
+			// Rebuild the actual native three animation clip tracks based on our own spec
+			selectedObject.animation.rebuildClipTracks(activeClip.name);
+		}
 		
-		// Rebuild the actual native three animation clip tracks based on our own spec
-		selectedObject.animation.rebuildClipTracks(activeClip.name);
+		doDelete();
+		
+		return {
+			deletedTrack: objectTrack,
+			track, doDelete
+		}
 	}
 	
 	const drawAnimationEditor = () => {
@@ -647,62 +755,70 @@ export default function AnimationInspector() {
 			const drawTimingBar = () => {
 				const rows = [];
 				const duration = activeClip.duration; // seconds
-				
-				// choose a nice step in seconds based on resolution
+			
+				// Pick step (s)
 				let stepSec;
 				if (resolution > 0.75) stepSec = 0.1;
 				else if (resolution > 0.4) stepSec = 0.25;
 				else if (resolution > 0.2) stepSec = 0.5;
 				else stepSec = 1;
-				
-				// how many full steps fit strictly before the end
-				const steps = Math.floor(duration / stepSec);
-				
-				// marker width in px for one step
-				const stepWidth = stepSec * fps * frameWidth;
-				
-				// emit markers at 0, stepSec, 2*stepSec, ... < duration
+			
+				// Work in whole frames
+				const stepFrames = Math.max(1, Math.round(stepSec * fps));
+				const steps = Math.floor(totalFrames / stepFrames);
+			
+				// Label precision from step
+				const labelDecimals = Math.max(0, (String(stepSec).split('.')[1] || '').length);
+			
+				const px = f => Math.round(f * frameWidth); // snap frame index → px
+			
 				for (let k = 0; k < steps; k++) {
-					const secs = k * stepSec; // integer * step => stable
-				
+					const x0 = px(k * stepFrames);
+					const x1 = px((k + 1) * stepFrames);
+					const segW = Math.max(0, x1 - x0);
+			
+					const secs = (k * stepFrames) / fps;
+					let label = secs.toFixed(labelDecimals)
+						.replace(/(\.\d*?)0+$/, '$1')
+						.replace(/\.$/, '');
+			
 					rows.push(
 						<div
 							key={`t-${k}`}
 							className="time-marker"
-							style={{ width: stepWidth }}
+							style={{ width: segW }}
 						>
-							{Math.round(secs * 100) / 100}s
+							{label}s
 						</div>
 					);
 				}
-				
-				// tail to fill up to exact duration (no label)
-				const tailSec = duration - steps * stepSec;
-				if (tailSec > 0) {
+			
+				// Tail to exact end (no label)
+				const remFrames = totalFrames - steps * stepFrames;
+				if (remFrames > 0) {
+					const x0 = px(steps * stepFrames);
+					const x1 = px(totalFrames);
 					rows.push(
 						<div
 							key="t-tail"
 							className="time-marker"
-							style={{ width: timeMarkerWidth * tailSec * fps }}
+							style={{ width: Math.max(0, x1 - x0) }}
 						/>
 					);
 				}
-				
+			
 				return (
 					<div 
 						ref={timingBarRef}
-						className='timing-bar' 
-						style={{width: timingBarWidth}}
-						onMouseDown={e => {
-							updateScrub(e, true);
-							setScrubbing(true);
-						}}
+						className="timing-bar"
+						style={{ width: timingBarWidth }}
+						onMouseDown={e => { updateScrub(e, true); setScrubbing(true); }}
 						onMouseUp={() => setScrubbing(false)}
 					>
 						{rows}
 					</div>
-				)
-			}
+				);
+			};
 			const drawTracks = () => {
 				const rows = [];
 				
@@ -733,6 +849,8 @@ export default function AnimationInspector() {
 				
 				return (
 					<div 
+						ref={tracksRef} 
+						tabIndex={0}
 						className='tracks'
 						onClick={e => {
 							if(!e.shiftKey) {
@@ -819,7 +937,7 @@ export default function AnimationInspector() {
 					objectTrack.quaternion.smartTrack.forEach(key => addKeyedFrame(key));
 					objectTrack.scale.smartTrack.forEach(key => addKeyedFrame(key));
 					
-					for(let i = 0; i < keysCount; i++) {
+					for(let i = 0; i < totalFrames; i++) {
 						if(keys[i]) {
 							drawKeys.push(keys[i]);
 							continue;
@@ -839,7 +957,11 @@ export default function AnimationInspector() {
 				};
 				
 				return (
-					<div className='keytracks'>
+					<div 
+						ref={keyTracksRef} 
+						className='keytracks'
+						tabIndex={0}
+					>
 						{drawTimingBar()}
 						{drawPlayHead()}
 						{rows}

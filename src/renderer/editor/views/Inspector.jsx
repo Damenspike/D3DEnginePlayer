@@ -115,7 +115,10 @@ export default function Inspector() {
 	
 	useEffect(() => {
 		const onDelete = () => {
-			if(!_editor.animationEditorInFocus)
+			if(
+				_editor.inspRef.current.contains(document.activeElement) || 
+				_editor.gameRef.current.contains(document.activeElement)
+			)
 				deleteSelectedObjects();
 		}
 		

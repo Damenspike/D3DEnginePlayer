@@ -210,6 +210,9 @@ function startNewProject() {
 	if(!newProjectWindow) createNewProjectWindow()
 	else newProjectWindow.show()
 }
+function sendSelectAll() {
+	editorWindow.webContents.send('select-all');
+}
 function sendDelete() {
 	editorWindow.webContents.send('delete');
 }
@@ -321,7 +324,12 @@ const menuTemplate = [
 				click: () => sendDupe()
 			},
 			{ type: 'separator' },
-			{ role: 'selectall', id: 'selectAll' }
+			{
+				id: 'selectAll',
+				label: 'Select All',
+				accelerator: 'CmdOrCtrl+A',
+				click: () => sendSelectAll()
+			}
 		]
 	},
 	{
