@@ -754,68 +754,116 @@ export default function AnimationInspector() {
 			}
 			const drawTimingBar = () => {
 				const rows = [];
-				const duration = activeClip.duration; // seconds
+				const duration = activeClip.duration;
 			
-				// Pick step (s)
-				let stepSec;
-				if (resolution > 0.75) stepSec = 0.1;
-				else if (resolution > 0.4) stepSec = 0.25;
-				else if (resolution > 0.2) stepSec = 0.5;
-				else stepSec = 1;
+				// integer frames & exact bar width
+				const totalF = Math.max(0, Math.round(duration * fps));
+				const barW   = totalF * frameWidth;
 			
-				// Work in whole frames
-				const stepFrames = Math.max(1, Math.round(stepSec * fps));
-				const steps = Math.floor(totalFrames / stepFrames);
+				// choose step based on zoom (keep labels readable)
+				const MIN_LABEL_PX = 80;
+				const minFrames = Math.max(1, Math.ceil(MIN_LABEL_PX / frameWidth));
+				const niceSecs = [1/120, 1/60, 0.02, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10];
+				const candFrames = Array.from(new Set(niceSecs.map(s => Math.max(1, Math.round(s * fps))))).sort((a,b)=>a-b);
+				const stepF = candFrames.find(f => f >= minFrames) || minFrames;
 			
-				// Label precision from step
+				const stepSec = stepF / fps;
 				const labelDecimals = Math.max(0, (String(stepSec).split('.')[1] || '').length);
 			
-				const px = f => Math.round(f * frameWidth); // snap frame index → px
+				const px = f => Math.round(f * frameWidth);
+				const truncFmt = (secs, d) => {
+					const m = 10 ** d;
+					let s = (Math.floor(secs * m) / m).toFixed(d);
+					return s.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+				};
 			
-				for (let k = 0; k < steps; k++) {
-					const x0 = px(k * stepFrames);
-					const x1 = px((k + 1) * stepFrames);
-					const segW = Math.max(0, x1 - x0);
-			
-					const secs = (k * stepFrames) / fps;
-					let label = secs.toFixed(labelDecimals)
-						.replace(/(\.\d*?)0+$/, '$1')
-						.replace(/\.$/, '');
-			
-					rows.push(
-						<div
-							key={`t-${k}`}
-							className="time-marker"
-							style={{ width: segW }}
-						>
-							{label}s
-						</div>
-					);
+				// --- background segments (flex children) ---
+				{
+					const fullSegs = Math.floor(totalF / stepF);
+					for (let k = 0; k < fullSegs; k++) {
+						const x0 = px(k * stepF);
+						const x1 = px((k + 1) * stepF);
+						rows.push(
+							<div
+								key={`seg-${k}`}
+								className="time-marker"
+								style={{ width: Math.max(0, x1 - x0) }}
+							/>
+						);
+					}
+					// last partial segment (if any)
+					if (totalF % stepF) {
+						const x0 = px(fullSegs * stepF);
+						const x1 = px(totalF);
+						rows.push(
+							<div
+								key="seg-tail"
+								className="time-marker"
+								style={{ width: Math.max(0, x1 - x0) }}
+							/>
+						);
+					}
 				}
 			
-				// Tail to exact end (no label)
-				const remFrames = totalFrames - steps * stepFrames;
-				if (remFrames > 0) {
-					const x0 = px(steps * stepFrames);
-					const x1 = px(totalFrames);
-					rows.push(
-						<div
-							key="t-tail"
-							className="time-marker"
-							style={{ width: Math.max(0, x1 - x0) }}
-						/>
-					);
-				}
+				// --- boundary ticks & labels (absolute, still use time-marker) ---
+				const ticks = [];
+				for (let f = 0; f <= totalF; f += stepF) ticks.push(f);
+				if (ticks[ticks.length - 1] !== totalF) ticks.push(totalF); // ensure end
+			
+				const overlay = (
+					<div
+						key="overlay"
+						style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
+					>
+						{ticks.map((f, i) => {
+							const isEnd = (f === totalF);
+							const secs  = isEnd ? duration : (f / fps);
+							const label = truncFmt(secs, isEnd ? Math.max(labelDecimals, 2) : labelDecimals) + 's';
+							const left  = px(f);
+			
+							return (
+								<div
+									key={`tick-${f}-${i}`}
+									className="time-marker"
+									style={{
+										position: 'absolute',
+										left: `${left}px`,
+										top: 0,
+										height: '100%',
+										width: 0,
+										borderLeft: '1px solid rgba(0,0,0,0.25)',
+										pointerEvents: 'none',
+										display: 'flex',
+										alignItems: 'center'
+									}}
+									title={label}
+								>
+									<div
+										style={{
+											position: 'absolute',
+											fontSize: 12,
+											userSelect: 'none',
+											whiteSpace: 'nowrap'
+										}}
+									>
+										{label}
+									</div>
+								</div>
+							);
+						})}
+					</div>
+				);
 			
 				return (
 					<div 
 						ref={timingBarRef}
 						className="timing-bar"
-						style={{ width: timingBarWidth }}
+						style={{ width: barW, position: 'relative' }}
 						onMouseDown={e => { updateScrub(e, true); setScrubbing(true); }}
 						onMouseUp={() => setScrubbing(false)}
 					>
 						{rows}
+						{overlay}
 					</div>
 				);
 			};
@@ -909,6 +957,8 @@ export default function AnimationInspector() {
 								
 								if(keyed && dx < 5)
 									selectKey(key); // select key if no dragging happened
+								
+								e.stopPropagation();
 							}}
 						></div>
 					)
@@ -990,7 +1040,11 @@ export default function AnimationInspector() {
 			ref={animationEditorRef}
 			className='animation-editor no-select'
 			onMouseDown={updateScrub}
-			onMouseUp={() => setScrubbing(false)}
+			onMouseUp={() => {
+				setSelectedKeys([]);
+				setSelectedTracks([]);
+				setScrubbing(false);
+			}}
 			onMouseMove={updateMouseMove}
 			onWheel={updateZoom}
 			onKeyDown={updateKeyDown}
