@@ -19,6 +19,7 @@ const autoBlur = (e) => {
 }
 
 var originTransforms = {};
+var onFinishDraggingKeys;
 
 export default function AnimationInspector() {
 	const defObject = _editor.selectedObjects[0] ?? _editor.focus.rootParent;
@@ -44,6 +45,12 @@ export default function AnimationInspector() {
 	const [startKeyframePos_, setStartKeyframePos_] = useState({x: 0, y: 0});
 	const [draggingKey, setDraggingKey] = useState(false);
 	const [recording, setRecording] = useState(false);
+	/* AI BOX SELECT */
+	const [isBoxSelecting, setIsBoxSelecting] = useState(false);
+	const [boxStart, setBoxStart] = useState({ x: 0, y: 0 });   // client coords
+	const [boxNow, setBoxNow] = useState({ x: 0, y: 0 });       // client coords
+	const [boxPrimed, setBoxPrimed] = useState(false);
+	/* AI BOX SELECT */
 	
 	const frameWidth = 10 * (resolution + 0.5);
 	const duration = activeClip?.duration ?? 0;
@@ -337,6 +344,19 @@ export default function AnimationInspector() {
 		}
 	}, [selectedTracks, selectedKeys]);
 	
+	/* AI BOX SELECT */
+	// clientX -> frame index (0..totalFrames)
+	const clientToFrame = (clientX) => {
+		if (!keyTracksRef.current) return 0;
+		const rect = keyTracksRef.current.getBoundingClientRect();
+		const x = (clientX - rect.left) + keyTracksRef.current.scrollLeft;
+		return Math.max(0, Math.min(Math.round(x / frameWidth), Math.round(duration * fps)));
+	};
+	
+	// vertical overlap check
+	const rectsOverlapY = (aTop, aBot, bTop, bBot) => !(aBot <= bTop || aTop >= bBot);
+	/* AI BOX SELECT */
+	
 	const selectAllTracks = () => {
 		const tracks = [];
 		
@@ -377,27 +397,47 @@ export default function AnimationInspector() {
 		}
 		setSelectedKeys([]);
 	}
-	const selectKey = (key) => {
+	const selectKey = (e, key) => {
 		_events.invoke('deselect-assets');
-		
-		if(!selectedKeys.includes(key)) {
-			if(_input.getKeyDown('shift')) {
-				setSelectedKeys([...selectedKeys, key]);
-			}else{
-				setSelectedKeys([key]);
-			}
-		}else
-		if(_input.getKeyDown('shift')) {
-			const sel = [...selectedKeys];
-			
-			sel.splice(sel.indexOf(key), 1);
-			
-			setSelectedKeys(sel);
-		}else{
-			setSelectedKeys([key]);
+	
+		// collect all keys at this frame for the same objectTrack
+		const frame = Math.floor(key.time * fps);
+		const objectTrack = key.objectTrack;
+	
+		const group = [];
+		objectTrack.position.smartTrack.forEach(k => {
+			if (Math.floor(k.time * fps) === frame) group.push(k);
+		});
+		objectTrack.quaternion.smartTrack.forEach(k => {
+			if (Math.floor(k.time * fps) === frame) group.push(k);
+		});
+		objectTrack.scale.smartTrack.forEach(k => {
+			if (Math.floor(k.time * fps) === frame) group.push(k);
+		});
+	
+		const add = e.shiftKey;
+		const sub = e.ctrlKey || e.metaKey;
+	
+		if (sub) {
+			// subtract: remove all from group
+			setSelectedKeys(selectedKeys.filter(k => !group.includes(k)));
+			setSelectedTracks([]);
+			return;
 		}
+	
+		if (add) {
+			// add: merge in group
+			const merged = [...selectedKeys];
+			for (const g of group) if (!merged.includes(g)) merged.push(g);
+			setSelectedKeys(merged);
+			setSelectedTracks([]);
+			return;
+		}
+	
+		// replace: set only this group
+		setSelectedKeys(group);
 		setSelectedTracks([]);
-	}
+	};
 	const openTrack = (trackName) => {
 		const d3dobject = selectedObject.findDeep(trackName)[0];
 		if(!d3dobject) {
@@ -444,6 +484,8 @@ export default function AnimationInspector() {
 		const timeDelta = 1/fps*movePlaces;
 		const frameNumberDelta = Math.floor(timeDelta * fps);
 		
+		const moveActions = [];
+		
 		selectedKeys.forEach(key => {
 			const objectTrack = key.objectTrack;
 			const oldTime = key.startDragTime;
@@ -465,17 +507,56 @@ export default function AnimationInspector() {
 				k => k.keyNumber == key.keyNumber
 			);
 			
-			if(key_Pos)
-				key_Pos.time = newTime;
+			const doMove = () => {
+				if(key_Pos)
+					key_Pos.time = newTime;
+				
+				if(key_Rot)
+					key_Rot.time = newTime;
+				
+				if(key_Scl)
+					key_Scl.time = newTime;
+				
+				key.time = newTime;
+			}
 			
-			if(key_Rot)
-				key_Rot.time = newTime;
+			doMove();
 			
-			if(key_Scl)
-				key_Scl.time = newTime;
-			
-			key.time = newTime;
+			moveActions.push({
+				undo: () => {
+					if(key_Pos)
+						key_Pos.time = oldTime;
+					
+					if(key_Rot)
+						key_Rot.time = oldTime;
+					
+					if(key_Scl)
+						key_Scl.time = oldTime;
+						
+					key.time = oldTime;
+				},
+				redo: () => doMove()
+			})
 		});
+		
+		onFinishDraggingKeys = () => {
+			_editor.addStep({
+				name: 'Move keyframe(s)',
+				undo: () => {
+					moveActions.forEach(a => a.undo())
+					
+					selectedObject.animation.rebuildClipTracks(activeClip.name);
+					setStartKeyframePos_({x: e.pageX, y: e.pageY}); // hack
+				},
+				redo: () => {
+					moveActions.forEach(a => a.redo())
+					
+					selectedObject.animation.rebuildClipTracks(activeClip.name);
+					setStartKeyframePos_({x: e.pageX, y: e.pageY}); // hack
+				}
+			})
+			onFinishDraggingKeys = null;
+		}
 		
 		// Rebuild the actual native three animation clip tracks based on our own spec
 		selectedObject.animation.rebuildClipTracks(activeClip.name);
@@ -484,7 +565,10 @@ export default function AnimationInspector() {
 	}
 	const updateScrub = (e, override = false) => {
 		if(!scrubbing && !override) return;
-		if(!_input.getMouseButtonDown(0) && !override) return;
+		if((e.buttons & 1) !== 1 && !override) {
+			setScrubbing(false);
+			return;
+		}
 	
 		const rect = timingBarRef.current.getBoundingClientRect();
 		const x = e.clientX - rect.left;
@@ -777,33 +861,6 @@ export default function AnimationInspector() {
 					return s.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
 				};
 			
-				// --- background segments (flex children) ---
-				{
-					const fullSegs = Math.floor(totalF / stepF);
-					for (let k = 0; k < fullSegs; k++) {
-						const x0 = px(k * stepF);
-						const x1 = px((k + 1) * stepF);
-						rows.push(
-							<div
-								key={`seg-${k}`}
-								className="time-marker"
-								style={{ width: Math.max(0, x1 - x0) }}
-							/>
-						);
-					}
-					// last partial segment (if any)
-					if (totalF % stepF) {
-						const x0 = px(fullSegs * stepF);
-						const x1 = px(totalF);
-						rows.push(
-							<div
-								key="seg-tail"
-								className="time-marker"
-								style={{ width: Math.max(0, x1 - x0) }}
-							/>
-						);
-					}
-				}
 			
 				// --- boundary ticks & labels (absolute, still use time-marker) ---
 				const ticks = [];
@@ -828,26 +885,11 @@ export default function AnimationInspector() {
 									style={{
 										position: 'absolute',
 										left: `${left}px`,
-										top: 0,
-										height: '100%',
-										width: 0,
-										borderLeft: '1px solid rgba(0,0,0,0.25)',
-										pointerEvents: 'none',
-										display: 'flex',
-										alignItems: 'center'
+										top: 7
 									}}
 									title={label}
 								>
-									<div
-										style={{
-											position: 'absolute',
-											fontSize: 12,
-											userSelect: 'none',
-											whiteSpace: 'nowrap'
-										}}
-									>
-										{label}
-									</div>
+									{label}
 								</div>
 							);
 						})}
@@ -859,8 +901,14 @@ export default function AnimationInspector() {
 						ref={timingBarRef}
 						className="timing-bar"
 						style={{ width: barW, position: 'relative' }}
-						onMouseDown={e => { updateScrub(e, true); setScrubbing(true); }}
-						onMouseUp={() => setScrubbing(false)}
+						onMouseDown={e => { 
+							updateScrub(e, true); 
+							setScrubbing(true); 
+							e.stopPropagation();
+						}}
+						onMouseUp={e => {
+							setScrubbing(false);
+						}}
 					>
 						{rows}
 						{overlay}
@@ -901,7 +949,7 @@ export default function AnimationInspector() {
 						tabIndex={0}
 						className='tracks'
 						onClick={e => {
-							if(!e.shiftKey) {
+							if(!e.shiftKey && !e.ctrlKey && !e.metaKey) {
 								setSelectedKeys([]);
 								setSelectedTracks([]);
 							}
@@ -936,13 +984,13 @@ export default function AnimationInspector() {
 							className={classes.join(' ')} 
 							style={{width: frameWidth}}
 							onMouseDown={e => {
+								if (keyed) // dont let the keytracks start draw a box
+									e.stopPropagation();
+								
 								setStartKeyframePos({x: e.pageX, y: e.pageY});
 								
-								if(!keyed) {
-									if(!e.shiftKey)
-										setSelectedKeys([]);
+								if(!keyed)
 									return;
-								}
 								
 								[key, ...selectedKeys].forEach(k => {
 									k.startDragTime = k.time;
@@ -955,10 +1003,14 @@ export default function AnimationInspector() {
 								setDraggingKey(false);
 								const dx = Math.abs(startKeyframePos.x - e.pageX);
 								
-								if(keyed && dx < 5)
-									selectKey(key); // select key if no dragging happened
+								if(keyed && dx < 5) {
+									// select key if no dragging happened
+									selectKey(e, key); 
+									
+									e.stopPropagation();
+								}
 								
-								e.stopPropagation();
+								onFinishDraggingKeys?.();
 							}}
 						></div>
 					)
@@ -1005,7 +1057,7 @@ export default function AnimationInspector() {
 						</div>
 					)
 				};
-				
+				/*
 				return (
 					<div 
 						ref={keyTracksRef} 
@@ -1015,6 +1067,134 @@ export default function AnimationInspector() {
 						{drawTimingBar()}
 						{drawPlayHead()}
 						{rows}
+					</div>
+				)
+				*/
+				
+				return (
+					<div
+						ref={keyTracksRef}
+						className='keytracks'
+						tabIndex={0}
+						onMouseDown={e => {
+							if (e.button !== 0) return;
+							e.stopPropagation(); // prevent outer editor clearing selection on mouseup later
+							setBoxPrimed(true);
+							setIsBoxSelecting(false);
+							setBoxStart({ x: e.clientX, y: e.clientY });
+							setBoxNow({ x: e.clientX, y: e.clientY });
+					
+							// replace selection unless Shift is held
+							if (!e.shiftKey && !e.ctrlKey && !e.metaKey) {
+								setSelectedKeys([]);
+								setSelectedTracks([]);
+							}
+						}}
+						onMouseMove={e => {
+							// if we haven't started, check threshold
+							if (boxPrimed && !isBoxSelecting) {
+								const dx = Math.abs(e.clientX - boxStart.x);
+								const dy = Math.abs(e.clientY - boxStart.y);
+								if (dx > 3 || dy > 3) setIsBoxSelecting(true);
+							}
+							if (!isBoxSelecting) return;
+							setBoxNow({ x: e.clientX, y: e.clientY });
+						}}
+						onMouseUp={e => {
+							e.stopPropagation();        // don't let outer editor clear selection
+							const wasSelecting = isBoxSelecting;
+							setBoxPrimed(false);
+							setIsBoxSelecting(false);
+					
+							if (!wasSelecting) return;  // simple click: let key cell handlers do their thing
+					
+							// compute horizontal frame range (inclusive)
+							const fA = clientToFrame(boxStart.x);
+							const fB = clientToFrame(e.clientX);
+							const fMin = Math.min(fA, fB);
+							const fMax = Math.max(fA, fB);
+					
+							// compute vertical rect in client space
+							const yMin = Math.min(boxStart.y, e.clientY);
+							const yMax = Math.max(boxStart.y, e.clientY);
+					
+							// which track rows are overlapped
+							const overlapped = new Set();
+							if (keyTracksRef.current) {
+								const trackEls = keyTracksRef.current.querySelectorAll(':scope > .track');
+								const names = Object.keys(activeClip.objectTracks);
+								for (let i = 0; i < trackEls.length && i < names.length; i++) {
+									const r = trackEls[i].getBoundingClientRect();
+									if (!(yMax <= r.top || yMin >= r.bottom)) overlapped.add(names[i]);
+								}
+							}
+					
+							// gather keys in range
+							const newlySelected = [];
+							for (const name in activeClip.objectTracks) {
+								if (!overlapped.has(name)) continue;
+								const ot = activeClip.objectTracks[name];
+								const pushIfIn = (key) => {
+									const frame = Math.floor(key.time * fps);
+									if (frame >= fMin && frame <= fMax) newlySelected.push(key);
+								};
+								ot.position.smartTrack.forEach(pushIfIn);
+								ot.quaternion.smartTrack.forEach(pushIfIn);
+								ot.scale.smartTrack.forEach(pushIfIn);
+							}
+					
+							// commit selection
+							if (e.shiftKey) {
+								// add keys
+								const merged = [...selectedKeys];
+								for (const k of newlySelected) {
+									if (!merged.includes(k)) merged.push(k);
+								}
+								setSelectedKeys(merged);
+							} else if (e.ctrlKey || e.metaKey) {
+								// remove keys
+								const reduced = selectedKeys.filter(k => !newlySelected.includes(k));
+								setSelectedKeys(reduced);
+							} else {
+								// replace
+								setSelectedKeys(newlySelected);
+							}
+						}}
+						style={{ position: 'relative' }}  // ensure overlay positions correctly
+					>
+						{drawTimingBar()}
+						{drawPlayHead()}
+					
+						{/* your existing rows */}
+						{rows}
+					
+						{/* selection rectangle overlay */}
+						{isBoxSelecting && (() => {
+							// compute overlay rect in keyTracks local space
+							const host = keyTracksRef.current?.getBoundingClientRect();
+							if (!host) return null;
+					
+							const x0 = Math.min(boxStart.x, boxNow.x) - host.left + keyTracksRef.current.scrollLeft;
+							const x1 = Math.max(boxStart.x, boxNow.x) - host.left + keyTracksRef.current.scrollLeft;
+							const y0 = Math.min(boxStart.y, boxNow.y) - host.top  + keyTracksRef.current.scrollTop;
+							const y1 = Math.max(boxStart.y, boxNow.y) - host.top  + keyTracksRef.current.scrollTop;
+					
+							return (
+								<div
+									className="selection-rect"
+									style={{
+										position: 'absolute',
+										left: `${x0}px`,
+										top: `${y0}px`,
+										width: `${Math.max(1, x1 - x0)}px`,
+										height: `${Math.max(1, y1 - y0)}px`,
+										background: 'rgba(0,153,255,0.15)',
+										border: '1px solid rgba(0,153,255,0.7)',
+										pointerEvents: 'none'
+									}}
+								/>
+							);
+						})()}
 					</div>
 				)
 			}
@@ -1040,10 +1220,11 @@ export default function AnimationInspector() {
 			ref={animationEditorRef}
 			className='animation-editor no-select'
 			onMouseDown={updateScrub}
-			onMouseUp={() => {
-				setSelectedKeys([]);
-				setSelectedTracks([]);
-				setScrubbing(false);
+			onMouseUp={e => {
+				if(!e.shiftKey && !e.ctrlKey && !e.metaKey) {
+					setSelectedKeys([]);
+					setSelectedTracks([]);
+				}
 			}}
 			onMouseMove={updateMouseMove}
 			onWheel={updateZoom}
