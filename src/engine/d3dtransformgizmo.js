@@ -660,6 +660,7 @@ export default class D3DTransformGizmo {
 		
 		this.beginMatrixWorld = this.object.matrixWorld.clone();
 		this.beginPos = this.object.position.clone();
+		this.beginRot3 = this.object.rotation.clone();
 		this.beginRot = this.object.quaternion.clone();
 		this.beginScl = this.object.scale.clone();
 		
@@ -789,6 +790,7 @@ export default class D3DTransformGizmo {
 				
 				_events.invoke('transform-changed', this.d3dobject, changed, {
 					position: this.beginPos,
+					rotation: this.beginRot3,
 					quaternion: this.beginRot,
 					scale: this.beginScl
 				});

@@ -1449,6 +1449,18 @@ export default class D3DObject {
 		if(this.symbolId)
 			obj.symbolId = this.symbolId;
 		
+		if(this.__preAnimationTransform) {
+			obj.position.x = this.__preAnimationTransform.position.x;
+			obj.position.y = this.__preAnimationTransform.position.y;
+			obj.position.z = this.__preAnimationTransform.position.z;
+			obj.rotation.x = this.__preAnimationTransform.rotation.x;
+			obj.rotation.y = this.__preAnimationTransform.rotation.y;
+			obj.rotation.z = this.__preAnimationTransform.rotation.z;
+			obj.scale.x = this.__preAnimationTransform.scale.x;
+			obj.scale.y = this.__preAnimationTransform.scale.y;
+			obj.scale.z = this.__preAnimationTransform.scale.z;
+		}
+		
 		return obj;
 	}
 	getSerializedComponents() {
@@ -1534,6 +1546,7 @@ export default class D3DObject {
 		if(!this.__preAnimationTransform) {
 			this.__preAnimationTransform = {
 				position: this.position.clone(),
+				rotation: this.rotation.clone(),
 				quaternion: this.quaternion.clone(),
 				scale: this.scale.clone()
 			}

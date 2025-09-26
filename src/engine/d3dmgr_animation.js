@@ -82,6 +82,7 @@ export default function AnimationManager(d3dobject, component) {
 	}
 	this.__addLoadedClip = (uuid, name, clip) => {
 		clip.uuid = uuid;
+		clip.name = name;
 		clip.objectTracks = {};
 		clip.tracks.forEach(track => {
 			const objectName = track.name.split('.').slice(0, -1).join('.');
@@ -130,6 +131,27 @@ export default function AnimationManager(d3dobject, component) {
 		
 		this.clips[uuid] = clip;
 	}
+	this.__getSerializableObject = (uuid) => {
+		const clip = this.clips[uuid];
+		
+		return {
+			blendMode: clip.blendMode,
+			duration: clip.duration,
+			name: clip.name,
+			tracks: clip.tracks,
+			uuid: clip.uuid
+		};
+	}
+	this.__saveClip = (uuid) => {
+		if(!this.clipExists(uuid)) {
+			console.warn('Unknown clip for save', uuid);
+			return;
+		}
+		const zip = d3dobject.root.zip;
+		const path = d3dobject.root.resolvePath(uuid);
+		const data = JSON.stringify(this.__getSerializableObject(uuid));
+		_editor.writeFile({path, data});
+	}
 	this.rebuildClipTracks = (uuid) => {
 		const clip = this.clips[uuid];
 		
@@ -173,6 +195,8 @@ export default function AnimationManager(d3dobject, component) {
 		}
 		
 		clip.tracks = rebuiltTracks;
+		
+		this.__saveClip(uuid);
 	}
 	this.getClip = (uuid) => {
 		return this.clips[uuid];

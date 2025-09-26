@@ -269,6 +269,7 @@ export default function Inspector() {
 										['pos'], 
 										{
 											position: oldPosition,
+											rotation: object.rotation,
 											quaternion: object.quaternion,
 											scale: object.scale
 										}
@@ -285,7 +286,8 @@ export default function Inspector() {
 									z: THREE.MathUtils.radToDeg(object.rotation.z)
 								}} 
 								onSave={vector => {
-									const oldRotation = object.rotation.clone();
+									const oldRotation = object.quaternion.clone();
+									const oldRotation3 = object.rotation.clone();
 									const newRotation = new THREE.Euler(
 										THREE.MathUtils.degToRad(vector.x), 
 										THREE.MathUtils.degToRad(vector.y), 
@@ -308,6 +310,7 @@ export default function Inspector() {
 										['rot'], 
 										{
 											position: object.position,
+											rotation: oldRotation3,
 											quaternion: oldRotation,
 											scale: object.scale
 										}
@@ -339,6 +342,7 @@ export default function Inspector() {
 										['scl'], 
 										{
 											position: object.position,
+											rotation: object.rotation,
 											quaternion: object.quaternion,
 											scale: oldScale
 										}

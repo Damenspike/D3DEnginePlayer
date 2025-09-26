@@ -287,8 +287,11 @@ export default function AnimationInspector() {
 			
 			let st;
 			
+			const cb = [...clipboard];
+			const newKeys = [];
+			
 			// Paste the keys at playhead
-			clipboard.forEach(key => {
+			cb.forEach(key => {
 				if(st === undefined)
 					st = key.time;
 					
@@ -307,27 +310,55 @@ export default function AnimationInspector() {
 				
 				const newTime = (currentTime * duration) + timeDiff;
 				
-				if(key_Pos)
-					key.objectTrack.position.smartTrack
-					.push({...key_Pos, time: newTime, keyNumber: key.objectTrack.position.smartTrack.length});
-				
-				if(key_Rot)
-					key.objectTrack.quaternion.smartTrack
-					.push({...key_Rot, time: newTime, keyNumber: key.objectTrack.quaternion.smartTrack.length});
-				
-				if(key_Scl)
-					key.objectTrack.scale.smartTrack
-					.push({...key_Scl, time: newTime, keyNumber: key.objectTrack.scale.smartTrack.length});
+				if(key_Pos) {
+					const newKey = {...key_Pos, time: newTime, keyNumber: key.objectTrack.position.smartTrack.length};
+					
+					key.objectTrack.position.smartTrack.push(newKey);
+					newKeys.push(newKey);
+				}
+				if(key_Rot) {
+					const newKey = {...key_Rot, time: newTime, keyNumber: key.objectTrack.quaternion.smartTrack.length};
+					
+					key.objectTrack.quaternion.smartTrack.push(newKey);
+					newKeys.push(newKey);
+				}
+				if(key_Scl) {
+					const newKey = {...key_Scl, time: newTime, keyNumber: key.objectTrack.scale.smartTrack.length};
+					
+					key.objectTrack.scale.smartTrack.push(newKey);
+					newKeys.push(newKey);
+				}
 					
 				if(!key_Pos && !key_Rot && !key_Scl) {
-					key.smartTrack.push(
-						{...key, time: newTime, keyNumber: key.smartTrack.length}
-					);
+					const newKey = {...key, time: newTime, keyNumber: key.smartTrack.length};
+					
+					key.smartTrack.push(newKey);
+					newKeys.push(newKey);
 				}
 				
 				// Rebuild the actual native three animation clip tracks based on our own spec
 				selectedObject.animation.rebuildClipTracks(activeClip.uuid);
 				setStartKeyframePos_({...startKeyframePos_}); // hack
+			});
+			
+			_editor.addStep({
+				name: 'Paste key(s)',
+				undo: () => {
+					newKeys.forEach(
+						k => deleteKey(k)
+					);
+					
+					selectedObject.animation.rebuildClipTracks(activeClip.uuid);
+					setStartKeyframePos_({...startKeyframePos_}); // hack
+				},
+				redo: () => {
+					newKeys.forEach(k => {
+						k.smartTrack.push(k);
+					});
+					
+					selectedObject.animation.rebuildClipTracks(activeClip.uuid);
+					setStartKeyframePos_({...startKeyframePos_}); // hack
+				}
 			})
 		}
 		
@@ -640,6 +671,9 @@ export default function AnimationInspector() {
 			
 			if(newTime < 0)
 				newTime = 0;
+			
+			if(newTime > duration)
+				newTime = duration;
 				
 			const newFrameNumber = oldFrameNumber + frameNumberDelta;
 			
