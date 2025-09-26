@@ -34,13 +34,14 @@ export default function AnimationInspector() {
 	const [activeClip, setActiveClip] = useState();
 	const [scale, setScale] = useState(1);
 	const [fps, setFps] = useState(_editor.animationDefaultFps);
+	const [clipDuration, setClipDuration] = useState(0);
+	const [fpsTemp, setFpsTemp] = useState(_editor.animationDefaultFps);
 	const [resolution, setResolution] = useState(0.5);
 	const [selectedTracks, setSelectedTracks] = useState([]);
 	const [selectedKeys, setSelectedKeys] = useState([]);
 	const [currentTime, setCurrentTime] = useState(0);
 	const [playing, setPlaying] = useState(false);
 	const [scrubbing, setScrubbing] = useState(false);
-	const [clipDuration, setClipDuration] = useState(0);
 	const [startKeyframePos, setStartKeyframePos] = useState({x: 0, y: 0});
 	const [startKeyframePos_, setStartKeyframePos_] = useState({x: 0, y: 0});
 	const [draggingKey, setDraggingKey] = useState(false);
@@ -234,6 +235,7 @@ export default function AnimationInspector() {
 	
 	useEffect(() => {
 		_editor.animationDefaultFps = fps;
+		setFpsTemp(fps);
 	}, [fps]);
 	
 	useEffect(() => {
@@ -251,6 +253,9 @@ export default function AnimationInspector() {
 	
 	useEffect(() => {
 		console.log(activeClip);
+		
+		// Set duration state for visuals
+		setClipDuration(activeClip?.duration ?? 0);
 		
 		// Undo scrub effects
 		const handleClickOutside = (e) => {
@@ -767,8 +772,12 @@ export default function AnimationInspector() {
 						<input
 							type='number'
 							className='tf tf--nums'
-							value={fps}
+							value={fpsTemp}
 							onChange={e => {
+								let v = Number(e.target.value);
+								setFpsTemp(v);
+							}}
+							onBlur={e => {
 								let v = Number(e.target.value);
 								if(!v) v = 60;
 								if(v < 1) v = 1;
@@ -786,14 +795,19 @@ export default function AnimationInspector() {
 						<input
 							type='number'
 							className='tf tf--nums'
-							value={duration}
+							value={clipDuration}
 							onChange={e => {
+								let v = Number(e.target.value);
+								setClipDuration(v);
+							}}
+							onBlur={e => {
 								let v = Number(e.target.value);
 								if(isNaN(v)) return;
 								if(!v) v = 0.1;
 								
 								activeClip.duration = v;
 								setClipDuration(v); // only for state changes
+								setStartKeyframePos_({...startKeyframePos});
 							}}
 							onKeyDown={autoBlur}
 							placeholder='Secs'
@@ -837,64 +851,76 @@ export default function AnimationInspector() {
 				)
 			}
 			const drawTimingBar = () => {
-				const rows = [];
-				const duration = activeClip.duration;
+			const rows = [];
+			const duration = activeClip.duration;
 			
-				// integer frames & exact bar width
-				const totalF = Math.max(0, Math.round(duration * fps));
-				const barW   = totalF * frameWidth;
+			// integer frames & exact bar width
+			const totalF = Math.max(0, Math.round(duration * fps));
+			const barW   = totalF * frameWidth;
 			
-				// choose step based on zoom (keep labels readable)
-				const MIN_LABEL_PX = 80;
-				const minFrames = Math.max(1, Math.ceil(MIN_LABEL_PX / frameWidth));
-				const niceSecs = [1/120, 1/60, 0.02, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10];
-				const candFrames = Array.from(new Set(niceSecs.map(s => Math.max(1, Math.round(s * fps))))).sort((a,b)=>a-b);
-				const stepF = candFrames.find(f => f >= minFrames) || minFrames;
+			// choose step based on zoom (keep labels readable)
+			const MIN_LABEL_PX = 80;
+			const minFrames = Math.max(1, Math.ceil(MIN_LABEL_PX / frameWidth));
+			const niceSecs = [1/120, 1/60, 0.02, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10];
+			const candFrames = Array.from(
+				new Set(niceSecs.map(s => Math.max(1, Math.round(s * fps))))
+			).sort((a, b) => a - b);
+			const stepF = candFrames.find(f => f >= minFrames) || minFrames;
 			
-				const stepSec = stepF / fps;
-				const labelDecimals = Math.max(0, (String(stepSec).split('.')[1] || '').length);
+			// --- pick decimals safely ---
+			const pickDecimals = (stepF, fps) => {
+				const s = stepF / fps;
+				if (s >= 1)    return 0;
+				if (s >= 0.5)  return 1;
+				if (s >= 0.25) return 2;
+				if (s >= 0.1)  return 2;
+				if (s >= 1/60) return 3;
+				return 3;
+			};
+			const labelDecimals = pickDecimals(stepF, fps);
 			
-				const px = f => Math.round(f * frameWidth);
-				const truncFmt = (secs, d) => {
-					const m = 10 ** d;
-					let s = (Math.floor(secs * m) / m).toFixed(d);
-					return s.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
-				};
+			// --- formatting helper ---
+			const truncFmt = (secs, d) => {
+				const m = 10 ** d;
+				let s = (Math.floor(secs * m + 1e-8) / m).toFixed(d);
+				return s.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+			};
 			
+			const px = f => Math.round(f * frameWidth);
 			
-				// --- boundary ticks & labels (absolute, still use time-marker) ---
-				const ticks = [];
-				for (let f = 0; f <= totalF; f += stepF) ticks.push(f);
-				if (ticks[ticks.length - 1] !== totalF) ticks.push(totalF); // ensure end
+			// --- boundary ticks & labels ---
+			const ticks = [];
+			for (let f = 0; f <= totalF; f += stepF) ticks.push(f);
+			if (ticks[ticks.length - 1] !== totalF) ticks.push(totalF); // ensure end
 			
-				const overlay = (
-					<div
-						key="overlay"
-						style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
-					>
-						{ticks.map((f, i) => {
-							const isEnd = (f === totalF);
-							const secs  = isEnd ? duration : (f / fps);
-							const label = truncFmt(secs, isEnd ? Math.max(labelDecimals, 2) : labelDecimals) + 's';
-							const left  = px(f);
+			const overlay = (
+				<div
+					key="overlay"
+					style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
+				>
+					{ticks.map((f, i) => {
+						const isEnd = (f === totalF);
+						const secs  = isEnd ? duration : (f / fps);
+						const label = truncFmt(secs, isEnd ? Math.max(labelDecimals, 2) : labelDecimals) + 's';
+						const left  = px(f);
 			
-							return (
-								<div
-									key={`tick-${f}-${i}`}
-									className="time-marker"
-									style={{
-										position: 'absolute',
-										left: `${left}px`,
-										top: 7
-									}}
-									title={label}
-								>
-									{label}
-								</div>
-							);
-						})}
-					</div>
-				);
+						return (
+							<div
+								key={`tick-${f}-${i}`}
+								className="time-marker"
+								style={{
+									position: 'absolute',
+									left: `${left}px`,
+									top: 7
+								}}
+								title={label}
+							>
+								{label}
+							</div>
+						);
+					})}
+				</div>
+			);
 			
 				return (
 					<div 
