@@ -1251,7 +1251,7 @@ export default function AnimationInspector() {
 										width: `${Math.max(1, x1 - x0)}px`,
 										height: `${Math.max(1, y1 - y0)}px`,
 										background: 'rgba(0,153,255,0.15)',
-										border: '1px solid rgba(0,153,255,0.7)',
+										border: '1px dashed rgba(0,153,255,0.7)',
 										pointerEvents: 'none'
 									}}
 								/>
