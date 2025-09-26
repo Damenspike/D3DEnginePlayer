@@ -685,7 +685,7 @@ async function addD3DObjectEditor(type) {
 	
 	_editor.setSelection([newd3dobj]);
 }
-function newAsset(extension) {
+function newAsset(extension, data) {
 	const ext = !!extension ? `.${extension}` : '';
 	let name = 'File';
 	switch(extension) {
@@ -695,10 +695,14 @@ function newAsset(extension) {
 		case 'html':
 			name = 'HTML';
 		break;
+		case 'anim':
+			name = 'Animation';
+		break;
 	}
 	
-	addNewFile({
-		name: `${name}${ext}`
+	return addNewFile({
+		name: `${name}${ext}`,
+		data
 	})
 }
 function addNewFile({name, dir, data}) {

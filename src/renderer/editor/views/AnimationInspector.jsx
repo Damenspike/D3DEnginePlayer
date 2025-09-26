@@ -6,6 +6,7 @@ import {
 	MdFastRewind,
 	MdFiberManualRecord
 } from 'react-icons/md';
+import { v4 as uuidv4 } from 'uuid';
 
 import { 
 	fileNameNoExt
@@ -57,6 +58,7 @@ export default function AnimationInspector() {
 	const duration = activeClip?.duration ?? 0;
 	const totalFrames = Math.round(duration * fps);
 	const timingBarWidth = totalFrames * frameWidth;
+	const trackWidth = (totalFrames+1) * frameWidth;
 	
 	useEffect(() => {
 		
@@ -188,7 +190,7 @@ export default function AnimationInspector() {
 			}
 			
 			// Rebuild the actual native three animation clip tracks based on our own spec
-			selectedObject.animation.rebuildClipTracks(activeClip.name);
+			selectedObject.animation.rebuildClipTracks(activeClip.uuid);
 			
 			setStartKeyframePos_({...startKeyframePos_}); // hack
 		}
@@ -242,7 +244,7 @@ export default function AnimationInspector() {
 		if(!selectedObject || !activeClip)
 			return;
 		
-		const clipState = selectedObject.animation.getClipState(activeClip.name);
+		const clipState = selectedObject.animation.getClipState(activeClip.uuid);
 		
 		if(!clipState)
 			return;
@@ -269,7 +271,7 @@ export default function AnimationInspector() {
 				if(!selectedObject || !activeClip)
 					return;
 				
-				const clipState = selectedObject.animation.getClipState(activeClip.name);
+				const clipState = selectedObject.animation.getClipState(activeClip.uuid);
 				
 				if(!clipState)
 					return;
@@ -306,7 +308,7 @@ export default function AnimationInspector() {
 							keyE_Scl && objectTrack.scale.smartTrack.push(keyE_Scl);
 						});
 						// Rebuild the actual native three animation clip tracks based on our own spec
-						selectedObject.animation.rebuildClipTracks(activeClip.name);
+						selectedObject.animation.rebuildClipTracks(activeClip.uuid);
 						setSelectedKeys([...selectedKeys]);
 					},
 					redo: () => {
@@ -328,7 +330,7 @@ export default function AnimationInspector() {
 							activeClip.objectTracks[track] = deletedTrack;
 						});
 						// Rebuild the actual native three animation clip tracks based on our own spec
-						selectedObject.animation.rebuildClipTracks(activeClip.name);
+						selectedObject.animation.rebuildClipTracks(activeClip.uuid);
 						setSelectedTracks([...selectedTracks]);
 					},
 					redo: () => {
@@ -456,10 +458,10 @@ export default function AnimationInspector() {
 	}
 	const togglePlaying = () => {
 		if(playing) {
-			selectedObject.animation.pause(activeClip.name);
+			selectedObject.animation.pause(activeClip.uuid);
 			setPlaying(false);
 		}else{
-			selectedObject.animation.play(activeClip.name, {
+			selectedObject.animation.play(activeClip.uuid, {
 				listener: (state) => {
 					setPlaying(state.playing);
 					setCurrentTime(state.normalizedTime);
@@ -550,13 +552,13 @@ export default function AnimationInspector() {
 				undo: () => {
 					moveActions.forEach(a => a.undo())
 					
-					selectedObject.animation.rebuildClipTracks(activeClip.name);
+					selectedObject.animation.rebuildClipTracks(activeClip.uuid);
 					setStartKeyframePos_({x: e.pageX, y: e.pageY}); // hack
 				},
 				redo: () => {
 					moveActions.forEach(a => a.redo())
 					
-					selectedObject.animation.rebuildClipTracks(activeClip.name);
+					selectedObject.animation.rebuildClipTracks(activeClip.uuid);
 					setStartKeyframePos_({x: e.pageX, y: e.pageY}); // hack
 				}
 			})
@@ -564,7 +566,7 @@ export default function AnimationInspector() {
 		}
 		
 		// Rebuild the actual native three animation clip tracks based on our own spec
-		selectedObject.animation.rebuildClipTracks(activeClip.name);
+		selectedObject.animation.rebuildClipTracks(activeClip.uuid);
 		
 		setStartKeyframePos_({x: e.pageX, y: e.pageY}); // hack
 	}
@@ -633,7 +635,7 @@ export default function AnimationInspector() {
 				);
 			}
 			// Rebuild the actual native three animation clip tracks based on our own spec
-			selectedObject.animation.rebuildClipTracks(activeClip.name);
+			selectedObject.animation.rebuildClipTracks(activeClip.uuid);
 		}
 		
 		doDelete();
@@ -659,7 +661,7 @@ export default function AnimationInspector() {
 	}
 	const deleteTrack = (track) => {
 		const objectTrack = activeClip.objectTracks[track];
-		const clipState = selectedObject.animation.getClipState(activeClip.name);
+		const clipState = selectedObject.animation.getClipState(activeClip.uuid);
 		
 		if(clipState) {
 			const d3dtarget = clipState.findAnimationTarget(track);
@@ -670,7 +672,7 @@ export default function AnimationInspector() {
 			delete activeClip.objectTracks[track];
 			
 			// Rebuild the actual native three animation clip tracks based on our own spec
-			selectedObject.animation.rebuildClipTracks(activeClip.name);
+			selectedObject.animation.rebuildClipTracks(activeClip.uuid);
 		}
 		
 		doDelete();
@@ -712,16 +714,24 @@ export default function AnimationInspector() {
 					</option>
 				)
 				
-				animManager.getClipPaths().forEach(path => {
+				animManager.getClipUUIDs().forEach(uuid => {
+					const path = _root.resolvePath(uuid);
+					const name = fileNameNoExt(path);
 					rows.push(
 						<option 
 							key={rows.length}
-							value={path}
+							value={uuid}
 						>
-							{fileNameNoExt(path)}
+							{name}
 						</option>
 					)
 				});
+				
+				rows.push(
+					<option key="new" value="__new__">
+						New Clip...
+					</option>
+				);
 				
 				return rows;
 			}
@@ -816,8 +826,34 @@ export default function AnimationInspector() {
 					<div className='ib'>
 						<select
 							className="tf"
-							value={activeClip ?? ''}
-							onChange={e => setActiveClip(e.target.value)}
+							value={activeClip?.uuid ?? ''}
+							onChange={async (e) => {
+								let uuid = e.target.value;
+								
+								if(e.target.value == '__new__') {
+									const clip = {
+										blendMode: 2500,
+										duration: 1,
+										name: 'Animation',
+										tracks: [],
+										uuid: uuidv4()
+									};
+									const path = _editor.newAsset(
+										'anim', JSON.stringify(clip)
+									);
+									uuid = _root.resolveAssetId(path);
+									await animManager.addClipFromUUID(uuid);
+								}
+								
+								const clip = animManager.getClip(uuid);
+								
+								if(!clip) {
+									console.error('Unknown clip', uuid);
+									return;
+								}
+								
+								setActiveClip(clip);
+							}}
 						>
 							{drawSelect()}
 						</select>
@@ -1065,7 +1101,7 @@ export default function AnimationInspector() {
 					objectTrack.quaternion.smartTrack.forEach(key => addKeyedFrame(key));
 					objectTrack.scale.smartTrack.forEach(key => addKeyedFrame(key));
 					
-					for(let i = 0; i < totalFrames; i++) {
+					for(let i = 0; i <= totalFrames; i++) {
 						if(keys[i]) {
 							drawKeys.push(keys[i]);
 							continue;
@@ -1077,7 +1113,7 @@ export default function AnimationInspector() {
 						<div 
 							key={rows.length}
 							className='track'
-							style={{width: timingBarWidth}}
+							style={{width: trackWidth}}
 						>
 							{drawKeys}
 						</div>

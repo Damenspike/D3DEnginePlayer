@@ -1563,7 +1563,7 @@ export default function Inspector() {
 						dragData={{ kind: 'asset', path: node.path }}
 						onRename={async (newName) => {
 							try {
-								const newPath = await renameZipFile(zip, node.path, newName);
+								const newPath = await renameZipFile(zip, node.path, newName, updateIndex);
 								setAssetTree(buildTree());
 								setSingleSelection(newPath);
 								_editor.onAssetsUpdated();
@@ -1649,7 +1649,7 @@ export default function Inspector() {
 							}}
 							onRename={async (newName) => {
 								try {
-									const newPath = await renameZipDirectory(zip, node.path, newName);
+									const newPath = await renameZipDirectory(zip, node.path, newName, updateIndex);
 									setAssetTree(buildTree());
 									setSingleSelection(newPath.replace(/\/$/, ''));
 									_editor.onAssetsUpdated();

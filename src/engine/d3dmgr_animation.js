@@ -2,7 +2,8 @@ import Tween from './d3dtween.js';
 
 import {
 	fileNameNoExt,
-	approx
+	approx,
+	isUUID
 } from './d3dutility.js';
 
 import {
@@ -24,8 +25,8 @@ export default function AnimationManager(d3dobject, component) {
 		/////////////////////////////////////////////////
 		
 		// Update timing
-		for(let clipName in this.clipStates) {
-			const clipState = this.clipStates[clipName];
+		for(let uuid in this.clipStates) {
+			const clipState = this.clipStates[uuid];
 			const clip = clipState.clip;
 			
 			if(!clipState.playing) {
@@ -64,24 +65,24 @@ export default function AnimationManager(d3dobject, component) {
 		}
 	}
 	this.__loadClips = () => {
-		component.properties.clips.forEach(uuid => {
-			const path = d3dobject.root.resolvePath(uuid);
-			const baseName = fileNameNoExt(path);
-			_editor.readFile(path)
-			.then(json => {
-				try {
-					const obj = JSON.parse(json);
-					this.addClip(baseName, obj);
-				}catch(e) {
-					console.error(path, 'is a corrupt animation clip');
-					console.error(e);
-				}
-			})
-		})
+		component.properties.clips.forEach(uuid => this.__loadClip(uuid));
 	}
-	this.addClip = (name, clip) => {
-		clip.objectTracks = {};
+	this.__loadClip = async (uuid) => {
+		const path = d3dobject.root.resolvePath(uuid);
+		const baseName = fileNameNoExt(path);
 		
+		try {
+			const json = await _editor.readFile(path);
+			const clipObj = JSON.parse(json);
+			this.__addLoadedClip(uuid, baseName, clipObj);
+		}catch(e) {
+			console.error(path, 'is a corrupt animation clip');
+			console.error(e);
+		}
+	}
+	this.__addLoadedClip = (uuid, name, clip) => {
+		clip.uuid = uuid;
+		clip.objectTracks = {};
 		clip.tracks.forEach(track => {
 			const objectName = track.name.split('.').slice(0, -1).join('.');
 			const transform = track.name.split('.').pop();
@@ -125,10 +126,10 @@ export default function AnimationManager(d3dobject, component) {
 			};
 		});
 		
-		this.clips[name] = clip;
+		this.clips[uuid] = clip;
 	}
-	this.rebuildClipTracks = (name) => {
-		const clip = this.clips[name];
+	this.rebuildClipTracks = (uuid) => {
+		const clip = this.clips[uuid];
 		
 		if(!clip) {
 			console.error('Unknown clip to rebuild', name);
@@ -171,49 +172,57 @@ export default function AnimationManager(d3dobject, component) {
 		
 		clip.tracks = rebuiltTracks;
 	}
-	this.getClipUUID = (clipName) => {
-		return component.properties.clips.find(uuid => {
+	this.getClip = (uuid) => {
+		return this.clips[uuid];
+	}
+	this.resolveClipUUID = (name) => {
+		for(let uuid in this.clips) {
 			const path = d3dobject.root.resolvePath(uuid);
-			const baseName = fileNameNoExt(path);
-			return baseName == clipName;
-		})
+			const fileName = fileNameNoExt(path);
+			
+			if(name == fileName)
+				return uuid;
+		}
 	}
-	this.getClipPath = (clipName) => {
-		const uuid = this.getClipUUID(clipName);
-		const path = d3dobject.root.resolvePath(uuid);
-		return path;
+	this.getClipUUIDs = () => {
+		return [...component.properties.clips];
 	}
-	this.getClipPaths = () => {
-		return component.properties.clips.map(
-			uuid => d3dobject.root.resolvePath(uuid)
-		);
+	this.clipExists = (uuid) => {
+		return !!this.clips[uuid];
 	}
-	this.clipExists = (clipName) => {
-		const clipPath = this.getClipPath(clipName);
-		const exists = !!clipPath;
-		if(!exists)
-			console.warn(clipName, ' does not exist in animation clips')
-		return exists;
-	}
-	this.getClipState = (clipName) => {
-		if(!this.clipExists(clipName))
+	this.getClipState = (uuid) => {
+		if(!uuid || !this.clipExists(uuid))
 			return;
 		
-		if(!this.clipStates[clipName]) {
-			this.clipStates[clipName] = new AnimationState({
-				clip: this.clips[clipName],
+		if(!this.clipStates[uuid]) {
+			this.clipStates[uuid] = new AnimationState({
+				clip: this.clips[uuid],
 				d3dobject
 			});
 		}
-		return this.clipStates[clipName];
+		return this.clipStates[uuid];
 	}
+	this.addClipFromUUID = async (uuid) => {
+		if(!uuid) {
+			console.warn('Unknown animation clip asset', path);
+			return;
+		}
+		component.properties.clips.push(uuid);
+		await this.__loadClip(uuid);
+	}
+	
+	/*
+		Main access from public side
+	*/
 	this.play = (clipName, options) => {
-		if(!this.clipExists(clipName)) {
-			console.warn(clipName, 'clip does not exist');
+		const uuid = isUUID(clipName) ? clipName : this.resolveClipUUID(clipName);
+		
+		if(!uuid || !this.clipExists(uuid)) {
+			console.warn(clipName, uuid, 'clip does not exist');
 			return;
 		}
 		
-		const clipState = this.getClipState(clipName);
+		const clipState = this.getClipState(uuid);
 		clipState.playing = true;
 		
 		// Apply each option or revert back
@@ -223,17 +232,21 @@ export default function AnimationManager(d3dobject, component) {
 		clipState.listener = options?.listener;
 	}
 	this.pause = (clipName) => {
-		if(!this.clipExists(clipName))
+		const uuid = isUUID(clipName) ? clipName : this.resolveClipUUID(clipName);
+		
+		if(!uuid || !this.clipExists(uuid))
 			return;
 		
-		const clip = this.getClipState(clipName);
+		const clip = this.getClipState(uuid);
 		clip.playing = false;
 	}
 	this.stop = (clipName) => {
-		if(!this.clipExists(clipName))
+		const uuid = isUUID(clipName) ? clipName : this.resolveClipUUID(clipName);
+		
+		if(!uuid || !this.clipExists(uuid))
 			return;
 		
-		const clip = this.getClipState(clipName);
+		const clip = this.getClipState(uuid);
 		clip.playing = false;
 		clip.normalizedTime = 0;
 	}

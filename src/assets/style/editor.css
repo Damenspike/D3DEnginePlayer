@@ -808,7 +808,7 @@ body.dark {
 				outline: 0.1px solid rgba(195, 195, 195, 1);
 			}
 			.key--framed {
-				background: #b3b3b3;
+				background: #8c8c8c;
 			}
 			.key--selected {
 				background: #0099ff !important;

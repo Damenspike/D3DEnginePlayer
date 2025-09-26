@@ -391,7 +391,8 @@ const menuTemplate = [
 				submenu: [
 					{ id: 'newAssetEmpty', label: 'Empty File', click: () => sendNewFile() },
 					{ type: 'separator' },
-					{ id: 'newAssetMat', label: 'Material', click: () => sendNewFile('mat') }
+					{ id: 'newAssetMat', label: 'Material', click: () => sendNewFile('mat') },
+					{ id: 'newAssetAnim', label: 'Animation Clip', click: () => sendNewFile('anim') }
 				]
 			},
 			{

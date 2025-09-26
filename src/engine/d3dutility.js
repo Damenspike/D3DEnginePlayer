@@ -90,7 +90,7 @@ export async function moveZipEntry(zip, srcPath, destDir, { updateIndex }) {
 		}
 	}
 }
-export async function renameZipFile(zip, oldPath, newBaseName) {
+export async function renameZipFile(zip, oldPath, newBaseName, updateIndex) {
 	// validate source
 	const src = zip.file(oldPath);
 	if (!src || src.dir) throw new Error('File not found (or is a directory)');
@@ -118,10 +118,15 @@ export async function renameZipFile(zip, oldPath, newBaseName) {
 	const data = await src.async('arraybuffer');
 	zip.file(targetPath, data);
 	zip.remove(oldPath);
+	
+	updateIndex(oldPath, targetPath);
 
 	return targetPath;
 }
-export async function renameZipDirectory(zip, oldDirPath, newBaseName) {
+export async function renameZipDirectory(zip, oldDirPath, newBaseName, updateIndex) {
+	if (typeof updateIndex !== 'function')
+		throw new Error('renameZipDirectory requires updateIndex callback');
+
 	// normalize to have trailing slash
 	if (!oldDirPath.endsWith('/')) oldDirPath += '/';
 
@@ -136,7 +141,7 @@ export async function renameZipDirectory(zip, oldDirPath, newBaseName) {
 	if (!safe) throw new Error('Empty name');
 
 	// compute a unique sibling directory path
-	const newDirPath = uniqueDirPath(zip, parentPath, safe);
+	const newDirPath = uniqueDirPath(zip, parentPath, safe); // ends with '/'
 
 	// no-op if unchanged
 	if (newDirPath === oldDirPath) return oldDirPath;
@@ -144,6 +149,7 @@ export async function renameZipDirectory(zip, oldDirPath, newBaseName) {
 	// collect all entries under the old dir
 	const toRemove = [];
 	const copyPromises = [];
+	const remaps = [];
 
 	zip.forEach((rel, file) => {
 		if (!rel.startsWith(oldDirPath)) return;
@@ -152,19 +158,27 @@ export async function renameZipDirectory(zip, oldDirPath, newBaseName) {
 		const target = newDirPath + suffix;
 
 		if (file.dir) {
-			// ensure subfolder entry exists
 			if (!pathExists(zip, target)) zip.folder(target);
 		} else {
 			copyPromises.push(file.async('arraybuffer').then(buf => zip.file(target, buf)));
 		}
+
 		toRemove.push(rel);
+		remaps.push({ oldRel: rel, newRel: target });
 	});
 
 	await Promise.all(copyPromises);
 
-	// remove old entries (files + folders + the stub itself)
 	toRemove.forEach(p => zip.remove(p));
 	zip.remove(oldDirPath);
+
+	// remap the directory stub itself
+	remaps.push({ oldRel: oldDirPath, newRel: newDirPath });
+
+	// apply remaps
+	for (const { oldRel, newRel } of remaps) {
+		updateIndex(oldRel, newRel);
+	}
 
 	return newDirPath;
 }
@@ -375,4 +389,7 @@ export function getAnimTargets(clip) {
 	}
 
 	return Array.from(targets);
+}
+export function isUUID(str) {
+	return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
 }
