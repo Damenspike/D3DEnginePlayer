@@ -372,18 +372,36 @@ export default class D3DEditorState {
 			}
 		});
 	}
+	gameOrInspectorActive() {
+		return _editor.gameRef.current.contains(document.activeElement) || _editor.inspRef.current.contains(document.activeElement);
+	}
 	copy() {
+		if(!this.gameOrInspectorActive()) {
+			_events.invoke('copy');
+			return;
+		}
+			
 		this.clipboard = this.selectedObjects.map(
 			d3dobject => d3dobject.getSerializableObject()
 		);
 	}
 	cut() {
+		if(!this.gameOrInspectorActive()) {
+			_events.invoke('cut');
+			return;
+		}
+		
 		this.clipboard = this.selectedObjects.map(
 			d3dobject => d3dobject.getSerializableObject()
 		);
 		this.deleteSelectedObjects({action: 'Cut'});
 	}
 	async paste() {
+		if(!this.gameOrInspectorActive()) {
+			_events.invoke('paste');
+			return;
+		}
+		
 		return await this.pasteFrom({clip: this.clipboard});
 	}
 	async pasteFrom({clip = [], action = 'Paste', addStep = true, selectResult = true}) {

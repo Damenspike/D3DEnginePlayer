@@ -107,6 +107,8 @@ export default function AnimationManager(d3dobject, component) {
 					objectName: objectName,
 					objectTrack: clip.objectTracks[objectName],
 					keyNumber: smartTrack.length,
+					smartTrack: smartTrack,
+					transformType: transform,
 					value: {
 						x: track.values[i],
 						y: track.values[i+1],

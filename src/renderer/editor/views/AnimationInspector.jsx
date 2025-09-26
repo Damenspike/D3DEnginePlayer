@@ -21,6 +21,7 @@ const autoBlur = (e) => {
 
 var originTransforms = {};
 var onFinishDraggingKeys;
+var clipboard;
 
 export default function AnimationInspector() {
 	const defObject = _editor.selectedObjects[0] ?? _editor.focus.rootParent;
@@ -121,6 +122,66 @@ export default function AnimationInspector() {
 				k => Math.floor(k.time * fps) == frameNumber
 			);
 			
+			// Ensure start frame presence
+			if(frameNumber > 0) {
+				const startKey_Pos = objectTrack.position.smartTrack.find(
+					k => Math.floor(k.time * fps) == 0
+				);
+				const startKey_Rot = objectTrack.quaternion.smartTrack.find(
+					k => Math.floor(k.time * fps) == 0
+				);
+				const startKey_Scl = objectTrack.scale.smartTrack.find(
+					k => Math.floor(k.time * fps) == 0
+				);
+				
+				if(!startKey_Pos && changed.includes('pos')) {
+					objectTrack.position.smartTrack.push({
+						time: 0,
+						objectName,
+						objectTrack,
+						keyNumber: objectTrack.position.smartTrack.length,
+						smartTrack: objectTrack.position.smartTrack,
+						transformType: 'position',
+						value: {
+							x: originTransform.position.x,
+							y: originTransform.position.y,
+							z: originTransform.position.z
+						}
+					})
+				}
+				if(!startKey_Rot && changed.includes('rot')) {
+					objectTrack.quaternion.smartTrack.push({
+						time: 0,
+						objectName,
+						objectTrack,
+						keyNumber: objectTrack.quaternion.smartTrack.length,
+						smartTrack: objectTrack.quaternion.smartTrack,
+						transformType: 'quaternion',
+						value: {
+							x: originTransform.quaternion.x,
+							y: originTransform.quaternion.y,
+							z: originTransform.quaternion.z,
+							w: originTransform.quaternion.w
+						}
+					})
+				}
+				if(!startKey_Scl && changed.includes('scl')) {
+					objectTrack.scale.smartTrack.push({
+						time: 0,
+						objectName,
+						objectTrack,
+						keyNumber: objectTrack.scale.smartTrack.length,
+						smartTrack: objectTrack.scale.smartTrack,
+						transformType: 'scale',
+						value: {
+							x: originTransform.scale.x,
+							y: originTransform.scale.y,
+							z: originTransform.scale.z
+						}
+					})
+				}
+			}
+			
 			if(!key_Pos && changed.includes('pos')) {
 				// Create new keyframe
 				objectTrack.position.smartTrack.push({
@@ -128,6 +189,8 @@ export default function AnimationInspector() {
 					objectName,
 					objectTrack,
 					keyNumber: objectTrack.position.smartTrack.length,
+					smartTrack: objectTrack.position.smartTrack,
+					transformType: 'position',
 					value: {
 						x: d3dobject.position.x,
 						y: d3dobject.position.y,
@@ -150,6 +213,8 @@ export default function AnimationInspector() {
 					objectName,
 					objectTrack,
 					keyNumber: objectTrack.quaternion.smartTrack.length,
+					smartTrack: objectTrack.quaternion.smartTrack,
+					transformType: 'quaternion',
 					value: {
 						x: d3dobject.quaternion.x,
 						y: d3dobject.quaternion.y,
@@ -174,6 +239,8 @@ export default function AnimationInspector() {
 					objectName,
 					objectTrack,
 					keyNumber: objectTrack.scale.smartTrack.length,
+					smartTrack: objectTrack.scale.smartTrack,
+					transformType: 'scale',
 					value: {
 						x: d3dobject.scale.x,
 						y: d3dobject.scale.y,
@@ -201,16 +268,84 @@ export default function AnimationInspector() {
 			if(tracksRef.current.contains(document.activeElement))
 				selectAllTracks();
 		}
+		const onCopy = () => {
+			if(!animationEditorInFocus()) 
+				return;
+			
+			clipboard = [...selectedKeys];
+		}
+		const onCut = () => {
+			if(!animationEditorInFocus()) 
+				return;
+			
+			onCopy();
+			_events.invoke('delete-action');
+		}
+		const onPaste = () => {
+			if(!animationEditorInFocus()) 
+				return;
+			
+			let st;
+			
+			// Paste the keys at playhead
+			clipboard.forEach(key => {
+				if(st === undefined)
+					st = key.time;
+					
+				const timeDiff = key.time - st;
+				const frameNumber = Math.floor(key.time * fps);
+				const objectTrack = key.objectTrack;
+				const key_Pos = objectTrack.position.smartTrack.find(
+					k => Math.floor(k.time * fps) == frameNumber
+				);
+				const key_Rot = objectTrack.quaternion.smartTrack.find(
+					k => Math.floor(k.time * fps) == frameNumber
+				);
+				const key_Scl = objectTrack.scale.smartTrack.find(
+					k => Math.floor(k.time * fps) == frameNumber
+				);
+				
+				const newTime = (currentTime * duration) + timeDiff;
+				
+				if(key_Pos)
+					key.objectTrack.position.smartTrack
+					.push({...key_Pos, time: newTime, keyNumber: key.objectTrack.position.smartTrack.length});
+				
+				if(key_Rot)
+					key.objectTrack.quaternion.smartTrack
+					.push({...key_Rot, time: newTime, keyNumber: key.objectTrack.quaternion.smartTrack.length});
+				
+				if(key_Scl)
+					key.objectTrack.scale.smartTrack
+					.push({...key_Scl, time: newTime, keyNumber: key.objectTrack.scale.smartTrack.length});
+					
+				if(!key_Pos && !key_Rot && !key_Scl) {
+					key.smartTrack.push(
+						{...key, time: newTime, keyNumber: key.smartTrack.length}
+					);
+				}
+				
+				// Rebuild the actual native three animation clip tracks based on our own spec
+				selectedObject.animation.rebuildClipTracks(activeClip.uuid);
+				setStartKeyframePos_({...startKeyframePos_}); // hack
+			})
+		}
 		
 		_events.on('transform-changed', onTransformChanged);
 		_events.on('select-all', onSelectAll);
+		_events.on('copy', onCopy);
+		_events.on('cut', onCut);
+		_events.on('paste', onPaste);
 		
 		return () => {
 			_events.un('transform-changed', onTransformChanged);
 			_events.un('select-all', onSelectAll);
+			_events.un('copy', onCopy);
+			_events.un('cut', onCut);
+			_events.un('paste', onPaste);
 		}
 		
-	}, [selectedObject, activeClip, recording, currentTime, keyTracksRef, tracksRef]);
+	}, [selectedObject, selectedKeys, activeClip, recording, currentTime, keyTracksRef, tracksRef, animationEditorRef]);
 	
 	useEffect(() => {
 		
@@ -363,6 +498,10 @@ export default function AnimationInspector() {
 	// vertical overlap check
 	const rectsOverlapY = (aTop, aBot, bTop, bBot) => !(aBot <= bTop || aTop >= bBot);
 	/* AI BOX SELECT */
+	
+	const animationEditorInFocus = () => {
+		return animationEditorRef.current.contains(document.activeElement);
+	}
 	
 	const selectAllTracks = () => {
 		const tracks = [];
@@ -680,6 +819,65 @@ export default function AnimationInspector() {
 		return {
 			deletedTrack: objectTrack,
 			track, doDelete
+		}
+	}
+	const boxDragUp = (e) => {
+		const wasSelecting = isBoxSelecting;
+		setBoxPrimed(false);
+		setIsBoxSelecting(false);
+		
+		if (!wasSelecting) return;  // simple click: let key cell handlers do their thing
+		
+		// compute horizontal frame range (inclusive)
+		const fA = clientToFrame(boxStart.x);
+		const fB = clientToFrame(e.clientX);
+		const fMin = Math.min(fA, fB);
+		const fMax = Math.max(fA, fB);
+		
+		// compute vertical rect in client space
+		const yMin = Math.min(boxStart.y, e.clientY);
+		const yMax = Math.max(boxStart.y, e.clientY);
+		
+		// which track rows are overlapped
+		const overlapped = new Set();
+		if (keyTracksRef.current) {
+			const trackEls = keyTracksRef.current.querySelectorAll(':scope > .track');
+			const names = Object.keys(activeClip.objectTracks);
+			for (let i = 0; i < trackEls.length && i < names.length; i++) {
+				const r = trackEls[i].getBoundingClientRect();
+				if (!(yMax <= r.top || yMin >= r.bottom)) overlapped.add(names[i]);
+			}
+		}
+		
+		// gather keys in range
+		const newlySelected = [];
+		for (const name in activeClip.objectTracks) {
+			if (!overlapped.has(name)) continue;
+			const ot = activeClip.objectTracks[name];
+			const pushIfIn = (key) => {
+				const frame = Math.floor(key.time * fps);
+				if (frame >= fMin && frame <= fMax) newlySelected.push(key);
+			};
+			ot.position.smartTrack.forEach(pushIfIn);
+			ot.quaternion.smartTrack.forEach(pushIfIn);
+			ot.scale.smartTrack.forEach(pushIfIn);
+		}
+		
+		// commit selection
+		if (e.shiftKey) {
+			// add keys
+			const merged = [...selectedKeys];
+			for (const k of newlySelected) {
+				if (!merged.includes(k)) merged.push(k);
+			}
+			setSelectedKeys(merged);
+		} else if (e.ctrlKey || e.metaKey) {
+			// remove keys
+			const reduced = selectedKeys.filter(k => !newlySelected.includes(k));
+			setSelectedKeys(reduced);
+		} else {
+			// replace
+			setSelectedKeys(newlySelected);
 		}
 	}
 	
@@ -1162,66 +1360,6 @@ export default function AnimationInspector() {
 							if (!isBoxSelecting) return;
 							setBoxNow({ x: e.clientX, y: e.clientY });
 						}}
-						onMouseUp={e => {
-							e.stopPropagation();        // don't let outer editor clear selection
-							const wasSelecting = isBoxSelecting;
-							setBoxPrimed(false);
-							setIsBoxSelecting(false);
-					
-							if (!wasSelecting) return;  // simple click: let key cell handlers do their thing
-					
-							// compute horizontal frame range (inclusive)
-							const fA = clientToFrame(boxStart.x);
-							const fB = clientToFrame(e.clientX);
-							const fMin = Math.min(fA, fB);
-							const fMax = Math.max(fA, fB);
-					
-							// compute vertical rect in client space
-							const yMin = Math.min(boxStart.y, e.clientY);
-							const yMax = Math.max(boxStart.y, e.clientY);
-					
-							// which track rows are overlapped
-							const overlapped = new Set();
-							if (keyTracksRef.current) {
-								const trackEls = keyTracksRef.current.querySelectorAll(':scope > .track');
-								const names = Object.keys(activeClip.objectTracks);
-								for (let i = 0; i < trackEls.length && i < names.length; i++) {
-									const r = trackEls[i].getBoundingClientRect();
-									if (!(yMax <= r.top || yMin >= r.bottom)) overlapped.add(names[i]);
-								}
-							}
-					
-							// gather keys in range
-							const newlySelected = [];
-							for (const name in activeClip.objectTracks) {
-								if (!overlapped.has(name)) continue;
-								const ot = activeClip.objectTracks[name];
-								const pushIfIn = (key) => {
-									const frame = Math.floor(key.time * fps);
-									if (frame >= fMin && frame <= fMax) newlySelected.push(key);
-								};
-								ot.position.smartTrack.forEach(pushIfIn);
-								ot.quaternion.smartTrack.forEach(pushIfIn);
-								ot.scale.smartTrack.forEach(pushIfIn);
-							}
-					
-							// commit selection
-							if (e.shiftKey) {
-								// add keys
-								const merged = [...selectedKeys];
-								for (const k of newlySelected) {
-									if (!merged.includes(k)) merged.push(k);
-								}
-								setSelectedKeys(merged);
-							} else if (e.ctrlKey || e.metaKey) {
-								// remove keys
-								const reduced = selectedKeys.filter(k => !newlySelected.includes(k));
-								setSelectedKeys(reduced);
-							} else {
-								// replace
-								setSelectedKeys(newlySelected);
-							}
-						}}
 						style={{ position: 'relative' }}  // ensure overlay positions correctly
 					>
 						{drawTimingBar()}
@@ -1287,6 +1425,7 @@ export default function AnimationInspector() {
 					setSelectedKeys([]);
 					setSelectedTracks([]);
 				}
+				boxDragUp(e);
 			}}
 			onMouseMove={updateMouseMove}
 			onWheel={updateZoom}
