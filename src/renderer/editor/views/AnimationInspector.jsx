@@ -936,19 +936,12 @@ export default function AnimationInspector() {
 			const drawSelect = () => {
 				const rows = [];
 				
-				rows.push(
-					<option 
-						key={rows.length}
-						value={''}
-						disabled
-					>
-						Choose a clip
-					</option>
-				)
-				
 				animManager.getClipUUIDs().forEach(uuid => {
 					const path = _root.resolvePath(uuid);
 					const name = fileNameNoExt(path);
+					if(!name || !path)
+						return;
+					
 					rows.push(
 						<option 
 							key={rows.length}
@@ -959,13 +952,22 @@ export default function AnimationInspector() {
 					)
 				});
 				
-				rows.push(
-					<option key="new" value="__new__">
-						New Clip...
-					</option>
+				return (
+					<>
+						<option 
+							key={rows.length}
+							value={''}
+							disabled
+						>
+							Choose a clip
+						</option>
+						{rows}
+						<option disabled>––––––––</option>
+						<option key="new" value="__new__">
+							Add new...
+						</option>
+					</>
 				);
-				
-				return rows;
 			}
 			
 			return (
@@ -1066,13 +1068,14 @@ export default function AnimationInspector() {
 									const clip = {
 										blendMode: 2500,
 										duration: 1,
-										name: 'Animation',
+										name: 'New Clip',
 										tracks: [],
 										uuid: uuidv4()
 									};
-									const path = _editor.newAsset(
-										'anim', JSON.stringify(clip)
-									);
+									const path = _editor.addNewFile({
+										name: `${clip.name}.anim`,
+										data: JSON.stringify(clip)
+									});
 									uuid = _root.resolveAssetId(path);
 									await animManager.addClipFromUUID(uuid);
 								}
