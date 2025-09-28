@@ -3,6 +3,7 @@ import axios from 'axios';
 import JSZip from 'jszip';
 import DamenScript from './damenscript.js';
 import D3DComponents from './d3dcomponents.js';
+import D3DConsole from './d3dconsole.js';
 import { v4 as uuidv4 } from 'uuid';
 import { importModelFromZip } from './glb-instancer.js';
 import { ensureRigAndBind } from './rig-binding.js';
@@ -625,10 +626,10 @@ export default class D3DObject {
 			parent: this.parent,
 			self: this,
 			console: {
-				log: (...args) => console.log(`[${this.name}]`, ...args),
-				warn: (...args) => console.warn(`[${this.name}]`, ...args),
-				error: (...args) => console.error(`[${this.name}]`, ...args),
-				assert: (...args) => console.assert(...args)
+				log: (...args) => D3DConsole.log(`[${this.name}]`, ...args),
+				warn: (...args) => D3DConsole.warn(`[${this.name}]`, ...args),
+				error: (...args) => D3DConsole.error(`[${this.name}]`, ...args),
+				assert: (...args) => D3DConsole.assert(...args)
 			},
 			Vector3: (...args) => new THREE.Vector3(...args),
 			Vector2: (...args) => new THREE.Vector2(...args),
@@ -652,7 +653,7 @@ export default class D3DObject {
 		this.updateComponents();
 		this.checkSymbols();
 	}
-	addComponent(type, properties) {
+	addComponent(type, properties = {}) {
 		if(this.components.find(c => c.type == type)) {
 			console.error(`${this.name} already has a ${type} component`);
 			return;
@@ -708,7 +709,7 @@ export default class D3DObject {
 		const component = this.components.find(c => c.type == type);
 		
 		return !!component;
-	}
+	}a
 	async updateComponents() {
 		const zip = this.root.zip;
 		const components = [...this.components];
@@ -895,16 +896,22 @@ export default class D3DObject {
 							console.warn(`Model file not found: ${modelPath}`);
 						} else {
 							try {
-								// Use robust importer (handles .glb/.gltf, external files in zip, and skin fallbacks)
-								const { gltf, scene } = await importModelFromZip(zip, modelPath);
+								const { gltf, scene } = await importModelFromZip(
+									zip, modelPath
+								);
 								
 								scene.traverse(o => {
+									if(this.name == 'EivenWaveGLB')
+										console.log(o.material, this.name);
 									if (o.isSkinnedMesh) {
 										o.frustumCulled = false;
-								
-										// belt & braces: make sure skinning is enabled on materials
+										
 										const mats = Array.isArray(o.material) ? o.material : [o.material];
-										for (const m of mats) if (m && 'skinning' in m) m.skinning = true;
+										
+										for (const m of mats) {
+											if (m && 'skinning' in m) 
+												m.skinning = true;
+										}
 									}
 								});
 				

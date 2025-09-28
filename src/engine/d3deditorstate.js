@@ -38,6 +38,7 @@ export default class D3DEditorState {
 		this.currentStep = -1;
 		this.clipboard = null;
 		this.animationDefaultFps = 60;
+		this.console = [];
 	}
 
 	setTool(tool) {
@@ -262,7 +263,7 @@ export default class D3DEditorState {
 		D3D.setDirty(dirty);
 	}
 	
-	async __save() {
+	async __save(projectURI) {
 		const zip = _root?.zip;
 		
 		if(!zip)
@@ -319,7 +320,7 @@ export default class D3DEditorState {
 		// -- Save zip itself --
 		const zipData = await zip.generateAsync({ type: 'uint8array' });
 		
-		await D3D.saveProjectFile(zipData);
+		await D3D.saveProjectFile(zipData, projectURI);
 		
 		console.log('Project saved!');
 	}

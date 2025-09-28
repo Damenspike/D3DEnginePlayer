@@ -274,6 +274,7 @@ export default function AnimationManager(d3dobject, component) {
 		
 		const clip = this.getClipState(uuid);
 		clip.playing = false;
+		clip.time = 0;
 		clip.normalizedTime = 0;
 	}
 	

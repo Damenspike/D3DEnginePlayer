@@ -266,44 +266,33 @@ function afterRenderHideObjects() {
 }
 
 function startAnimationLoop(composer, outlinePass) {
-	function animate() {
+	function animate(nowMs) {
+		_time.tick(nowMs); // updates _time.delta (seconds) + _time.now
+
 		updateObject([
 			'onEditorEnterFrame',
 			'__onEditorEnterFrame',
 			'__onInternalEnterFrame'
 		], _root);
 
-		requestAnimationFrame(animate);
-
-		_time.delta = _time.now - _time.lastRender;
-		_time.lastRender = _time.now;
-
-		outlinePass.selectedObjects = _editor.selectedObjects.map(d3dobj => d3dobj.object3d);
+		outlinePass.selectedObjects = _editor.selectedObjects.map(d => d.object3d);
 		composer.render();
-		
-		if(_editor.gizmo)
+
+		if (_editor.gizmo) 
 			_editor.gizmo.update();
-		
+
 		if (_editor.focus != _root) {
 			afterRenderHideObjects();
-		
-			// 1) draw the screen-space gray layer ABOVE the greyscaled scene
 			_editor.renderer.autoClear = false;
 			_editor.renderer.render(_editor._overlayScene, _editor._overlayCam);
-			
-			// 2) now clear depth so focus redraw can overwrite
 			_editor.renderer.clearDepth();
 			_editor.renderer.render(_root.object3d, _editor.camera);
-		
-			// 3) gizmo on top
 			_editor.renderer.clearDepth();
 			_editor.renderer.render(_editor.gizmo._group, _editor.camera);
-		
 			_editor.renderer.autoClear = true;
-		
 			afterRenderShowObjects();
 		}
-		
+
 		updateObject([
 			'onEditorExitFrame',
 			'__onEditorExitFrame',
@@ -311,12 +300,14 @@ function startAnimationLoop(composer, outlinePass) {
 		], _root);
 		
 		_input._afterRenderFrame?.();
+
+		requestAnimationFrame(animate);
 	}
 
-	_time.lastRender = _time.now;
-	
-	updateObject(['onEditorStart', '__onEditorStart'], _root);
-	animate();
+	// init
+	_time.tick(performance.now());
+	updateObject(['onEditorStart','__onEditorStart'], _root);
+	requestAnimationFrame(animate);
 }
 
 function setupResize(renderer, camera) {
@@ -814,9 +805,9 @@ function moveObjectToCameraView(d3dobject, distance = 1) {
 	
 	d3dobject.worldPosition = { x: spawnPos.x, y: spawnPos.y, z: spawnPos.z };
 }
-async function saveProject() {
+async function saveProject(projectURI) {
 	try {
-		await _editor.__save();
+		await _editor.__save(projectURI);
 	}catch(e) {
 		_editor.showError({
 			message: `Error saving project. ${e}`
@@ -866,6 +857,33 @@ function onAssetDeleted(path) {
 		console.log(`Deleted ${desymbolised} instance(s) of ${path}`);
 	}
 }
+async function onImportAssets(paths) {
+	const files = await D3D.readAsFiles(paths);
+	for(const f of files) {
+		await _editor.importFile(f, 'assets');
+	}
+	onAssetsUpdated();
+}
+function onAnimate() {
+	_editor.selectedObjects.forEach(d3dobject => {
+		if(d3dobject.hasComponent('Animation'))
+			return;
+		
+		d3dobject.addComponent('Animation');
+	});
+	_editor.updateInspector();
+}
+function onConsoleMessage({ level, message }) {
+	_editor.console.push({ level, message });
+
+	const maxLog = 10000;
+	
+	if (_editor.console.length > maxLog) {
+		_editor.console.splice(0, _editor.console.length - maxLog);
+	}
+
+	_events.invoke('editor-console', _editor.console);
+}
 
 // INTERNAL
 
@@ -880,6 +898,7 @@ _editor.newAsset = newAsset;
 _editor.clearDirectory = clearDirectory;
 _editor.saveProject = saveProject;
 _editor.moveObjectToCameraView = moveObjectToCameraView;
+_editor.onConsoleMessage = onConsoleMessage;
 
 window._events = new D3DEventSystem();
 
@@ -889,9 +908,8 @@ D3D.setEventListener('undo', () => _editor.undo());
 D3D.setEventListener('redo', () => _editor.redo());
 D3D.setEventListener('dupe', () => _editor.dupe());
 D3D.setEventListener('edit-code', () => _editor.editCode());
-D3D.setEventListener('save-project', () => saveProject());
+D3D.setEventListener('save-project', (projectURI) => saveProject(projectURI));
 D3D.setEventListener('request-save-and-close', () => saveProjectAndClose());
-D3D.setEventListener('import-asset', () => null); // idk how to do this yet
 
 D3D.setEventListener('add-object', (type) => addD3DObjectEditor(type));
 D3D.setEventListener('symbolise-object', (type) => symboliseSelectedObject(type));
@@ -900,3 +918,6 @@ D3D.setEventListener('focus-object', (type) => _editor.focusOnSelectedObjects?.(
 D3D.setEventListener('set-tool', (type) => _editor.setTool(type));
 D3D.setEventListener('set-transform-tool', (type) => _editor.setTransformTool(type));
 D3D.setEventListener('new-asset', (extension) => _editor.newAsset(extension));
+D3D.setEventListener('menu-import-assets', onImportAssets);
+D3D.setEventListener('animate', onAnimate);
+D3D.setEventListener('csm', onConsoleMessage);

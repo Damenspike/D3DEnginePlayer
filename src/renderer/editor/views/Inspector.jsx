@@ -54,12 +54,21 @@ const autoBlur = (e) => {
 }
 let onSelectFile;
 
+const Tabs = {
+	All: 'all',
+	Assets: 'assets',
+	Scene: 'scene',
+	Object: 'object',
+	Project: 'project'
+}
+
 export default function Inspector() {
 	const _editor = window._editor;
 	const _root = window._root;
 	const zip = _root?.zip;
 	const THREE = window.THREE;
 	
+	const [tab, setTab] = useState(Tabs.All);
 	const [object, setObject] = useState();
 	const [dummyObject, setDummyObject] = useState();
 	const [dummyProject, setDummyProject] = useState();
@@ -198,6 +207,7 @@ export default function Inspector() {
 				title="Object" 
 				expanded={objectInspectorExpanded}
 				onExpand={() => setObjectInspectorExpanded(!objectInspectorExpanded)}
+				alwaysOpen={tab != Tabs.All}
 			>
 				<div className="field">
 					<label>Name</label>
@@ -865,7 +875,11 @@ export default function Inspector() {
 	}
 	const drawProjectInspector = () => {
 		return (
-			<InspectorCell id="insp-cell-project" title="Project">
+			<InspectorCell 
+				id="insp-cell-project" 
+				title="Project"
+				alwaysOpen={tab != Tabs.All}
+			>
 				<div className="field">
 					<label>Project name</label>
 					
@@ -1263,6 +1277,7 @@ export default function Inspector() {
 				title="Scene" 
 				expanded={sceneInspectorExpanded}
 				onExpand={() => setSceneInspectorExpanded(!sceneInspectorExpanded)}
+				alwaysOpen={tab != Tabs.All}
 			>
 				{sceneInspectorExpanded && (
 					<div className="tools-section assets-insp-tools">
@@ -1788,6 +1803,7 @@ export default function Inspector() {
 			<InspectorCell
 				id="insp-cell-assets"
 				title="Assets"
+				alwaysOpen={tab != Tabs.All}
 				expanded={assetsInspectorExpanded}
 				onExpand={() => setAssetsInspectorExpanded(!assetsInspectorExpanded)}
 				onDragOver={(e) => {
@@ -1899,7 +1915,7 @@ export default function Inspector() {
 				</div>
 			</InspectorCell>
 		);
-	};
+	}
 	const drawMediaInspector = () => {
 		const uri = selectedAssetPaths.values().next().value;
 		const ext = getExtension(uri);
@@ -1924,19 +1940,50 @@ export default function Inspector() {
 				title="Media" 
 				expanded={mediaInspectorExpanded}
 				onExpand={() => setMediaInspectorExpanded(!mediaInspectorExpanded)}
+				alwaysOpen={tab != Tabs.All}
 			>
 				{drawnControls}
 			</InspectorCell>
 		)
 	}
 	
+	const drawTabButtons = () => {
+		const rows = [];
+		
+		for(let tabName in Tabs) {
+			const id = Tabs[tabName];
+			const classes = ['tab'];
+			
+			if(tab == id)
+				classes.push('tab--selected');
+			
+			rows.push(
+				<div 
+					className={classes.join(' ')} 
+					onClick={() => setTab(id)}
+					key={rows.length}
+				>
+					{tabName}
+				</div>
+			)
+		}
+		
+		return rows;
+	}
+	
 	return (
-		<>
-			{_root && drawAssetInspector()}
-			{_root && drawSceneInspector()}
-			{object && drawObjectInspector()}
-			{selectedAssetPaths.size == 1 && drawMediaInspector()}
-			{_editor.project && _editor.focus == _root && drawProjectInspector()}
+		<div className='insp-view'>
+			<div className='tabs'>
+				{drawTabButtons()}
+			</div>
+			
+			<div className={`insp-view-${tab}`}>
+				{(tab == 'assets' || tab == 'all') && _root && drawAssetInspector()}
+				{(tab == 'scene' || tab == 'all') && _root && drawSceneInspector()}
+				{(tab == 'object' || tab == 'all') && object && drawObjectInspector()}
+				{selectedAssetPaths.size == 1 && drawMediaInspector()}
+				{(tab == 'project' || tab == 'all') && _editor.project && _editor.focus == _root && drawProjectInspector()}
+			</div>
 			
 			<div style={{height: 45}} />
 			
@@ -1951,6 +1998,6 @@ export default function Inspector() {
 				allowImport={true}
 				selectedAsset={assetExplorerSelected}
 			/>
-		</>
+		</div>
 	)
 }

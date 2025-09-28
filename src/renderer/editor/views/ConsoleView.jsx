@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import AnimationInspector from './AnimationInspector.jsx';
+import ConsoleInspector from './ConsoleInspector.jsx';
 
 const Tabs = {
 	Console: 'console',
@@ -35,9 +36,7 @@ export default function ConsoleView() {
 	const drawTabContent = () => {
 		switch(tab) {
 			case Tabs.Console: {
-				return (
-					<p>Console here</p>
-				)
+				return <ConsoleInspector />
 			}
 			case Tabs.Animation: {
 				return <AnimationInspector />

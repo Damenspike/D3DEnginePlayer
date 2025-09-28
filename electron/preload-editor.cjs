@@ -45,6 +45,16 @@ contextBridge.exposeInMainWorld('D3D', {
 	updateEditorWindow: (options) => ipcRenderer.send('update-editor-window', options),
 	updateEditorStatus: (options) => ipcRenderer.send('editor-status', options),
 	
+	readAsFiles: async (paths) => {
+		const files = [];
+		for (const p of paths) {
+			const buf = await fs.readFile(p);
+			const name = path.basename(p);
+			const file = new File([new Blob([buf])], name);
+			files.push(file);
+		}
+		return files;
+	},
 	readFile: async (filePath) => {
 		const ext = getExtension(filePath);
 		
@@ -54,8 +64,9 @@ contextBridge.exposeInMainWorld('D3D', {
 		const b64 = await fs.readFile(filePath);
 		return Uint8Array.from(Buffer.from(b64, 'base64'));
 	},
-	saveProjectFile: async (uint8array) => {
-		const projectURI = await ipcRenderer.invoke('get-current-project-uri');
+	saveProjectFile: async (uint8array, projectURI) => {
+		if(projectURI === undefined)
+			projectURI = await ipcRenderer.invoke('get-current-project-uri');
 		
 		if(!projectURI)
 			throw new Error('Unknown project URI');
@@ -118,4 +129,6 @@ addIPCListener('set-tool');
 addIPCListener('set-transform-tool');
 addIPCListener('new-asset');
 addIPCListener('request-save-and-close');
-addIPCListener('import-asset');
+addIPCListener('menu-import-assets');
+addIPCListener('animate');
+addIPCListener('csm');

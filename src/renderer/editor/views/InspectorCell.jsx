@@ -4,7 +4,7 @@ import { HiPlus } from "react-icons/hi";
 
 export default function InspectorCell({ 
 	id, title, defaultOpen = true, children,
-	expanded = false, onExpand = null, onDragOver = null, onDrop = null
+	expanded = false, onExpand = null, onDragOver = null, onDrop = null, alwaysOpen = null
 }) {
 	const key = 'insp-collapsed:' + (id || '');
 	const [open, setOpen] = useState(defaultOpen);
@@ -23,15 +23,28 @@ export default function InspectorCell({
 	
 	if(!init)
 		return;
+	
+	const isOpen = alwaysOpen ? true : open;
 
 	return (
-		<div className={`inspector-cell${open ? '' : ' collapsed'} shade`} id={id} tabIndex={1}>
+		<div className={`inspector-cell${isOpen ? '' : ' collapsed'} shade`} id={id} tabIndex={1}>
 			<div className="insp-title" role="button" tabIndex={0}
-				onClick={() => setOpen(!open)}
-				onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(!open); } }}
+				onClick={() => {
+					if(alwaysOpen)
+						return;
+					setOpen(!open)
+				}}
+				onKeyDown={e => { 
+					if(alwaysOpen)
+						return;
+					if (e.key === 'Enter' || e.key === ' ') { 
+						e.preventDefault(); 
+						setOpen(!open); 
+					}
+				}}
 			>
 				{title}
-				{onExpand && open && (
+				{onExpand && isOpen && (
 					<button 
 						className={`insp-expand ${expanded ? 'insp-expand--expanded' : ''}`}
 						onClick={e => {
@@ -44,7 +57,7 @@ export default function InspectorCell({
 					</button>
 				)}
 			</div>
-			{open && (
+			{isOpen && (
 				<div 
 					className="insp-body"
 					onDragOver={onDragOver}

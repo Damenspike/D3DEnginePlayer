@@ -104,6 +104,16 @@ body.dark {
 			background: rgba(0, 0, 0, 0.6);
 		}
 	}
+	.console-inspector {
+		background: rgba(0, 0, 0, 0.2);
+		
+		.console-entry-warn {
+			color: #e5bc36;
+		}
+		.console-entry-error {
+			color: #ec4848;
+		}
+	}
 	.object-row:hover {
 		background: rgba(0, 0, 0, 0.3);
 	}
@@ -508,8 +518,12 @@ body.dark {
 .shade {
 	background: rgba(0, 0, 0, 0.08);
 }
+.insp-view-all {
+	.scene-objects-list {
+		max-height: 250px;
+	}
+}
 .scene-objects-list {
-	max-height: 250px;
 	overflow-x: hidden;
 	overflow-y: scroll;
 	border-radius: 7px;
@@ -745,20 +759,20 @@ body.dark {
 .console-view {
 	height: 100%;
 	overflow: hidden;
-	
+}
+.console-view, .insp-view {
 	.tabs {
 		background: none;
 		width: 100%;
 	}
 	.tab-content {
-		transform: translateY(-8px);
 		padding-left: 5px;
 		padding-right: 5px;
-		
 		height: 100%;
 	}
 }
 .animation-editor {
+	transform: translateY(-8px);
 	position: relative;
 	display: flow-root;
 	height: 100%;
@@ -873,4 +887,30 @@ body.dark {
 			color: rgb(255, 0, 0);
 		}
 	}
+}
+.console-inspector {
+	background: rgb(244, 244, 244);
+	padding: 5px;
+	border-radius: 10px;
+	height: calc(100% - 97px);
+	overflow-y: scroll;
+	user-select: all !important;
+	
+	.console-entry {
+		font-family: monospace;
+	}
+	.console-entry-warn {
+		color: #b89628;
+	}
+	.console-entry-error {
+		color: #b13535;
+	}
+}
+.console-inspector {
+	user-select: text !important;
+	-webkit-user-select: text !important;
+}
+.console-inspector * {
+	user-select: text !important;
+	-webkit-user-select: text !important;
 }

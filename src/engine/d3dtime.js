@@ -1,16 +1,22 @@
 export default class D3DTime {
 	get fps() {
-		return 1 / this.delta;
+		return this.delta > 0 ? 1 / this.delta : 0;
 	}
 	get now() {
-		return new Date().getTime() / 1000;
+		return this._nowMs / 1000;
 	}
 	get nowms() {
-		return new Date().getTime();
+		return this._nowMs;
 	}
-	
 	constructor() {
-		this.lastRender = 0;
-		this.delta = 0;
+		this._nowMs = performance.now();
+		this.delta = 0;      // seconds
+	}
+	tick(nowMs) {            // call once per RAF
+		const last = this._nowMs;
+		this._nowMs = nowMs;
+		const d = (nowMs - last) / 1000;
+		// cap pathological hitches (tab switch, breakpoint, etc.)
+		this.delta = d > 0.1 ? 0.1 : (d >= 0 ? d : 0);
 	}
 }

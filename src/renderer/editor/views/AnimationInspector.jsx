@@ -1305,6 +1305,9 @@ export default function AnimationInspector() {
 									selectKey(e, key); 
 									
 									e.stopPropagation();
+								}else
+								if(dx > 5) {
+									e.stopPropagation();
 								}
 								
 								onFinishDraggingKeys?.();

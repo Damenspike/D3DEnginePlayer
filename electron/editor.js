@@ -95,6 +95,8 @@ async function createEditorWindow() {
 		title: 'Damen3D Editor',
 		width,
 		height,
+		minWidth: 1200,
+		minHeight: 600,
 		resizable: true,
 		webPreferences: {
 			preload: path.join(__dirname, 'preload-editor.cjs'),
@@ -240,6 +242,23 @@ function sendFocusObject() {
 function sendSaveProject() {
 	editorWindow.webContents.send('save-project');
 }
+function sendSaveProjectAs() {
+	dialog.showSaveDialog(editorWindow, {
+		title: 'Save Project As',
+		defaultPath: lastOpenedProjectUri,
+		buttonLabel: 'Save',
+		filters: [
+			{ name: 'Damen3D Project', extensions: ['d3dproj'] }
+		],
+		properties: ['showOverwriteConfirmation']
+	}).then(result => {
+		if (!result.canceled && result.filePath) {
+			editorWindow.webContents.send('save-project', result.filePath);
+		}
+	}).catch(err => {
+		console.error('Save As dialog failed:', err);
+	});
+}
 function sendSetTool(type) {
 	editorWindow.webContents.send('set-tool', type);
 }
@@ -252,8 +271,11 @@ function sendNewFile(extension) {
 function sendEditCode() {
 	editorWindow.webContents.send('edit-code');
 }
-function sendImportAsset() {
-	editorWindow.webContents.send('import-asset');
+function sendImportAssets(paths) {
+	editorWindow.webContents.send('menu-import-assets', paths);
+}
+function sendAnimate() {
+	editorWindow.webContents.send('animate');
 }
 
 // --- Menu ---
@@ -289,6 +311,12 @@ const menuTemplate = [
 				label: 'Save',
 				accelerator: 'CmdOrCtrl+S',
 				click: () => sendSaveProject()
+			},
+			{
+				id: 'saveas',
+				label: 'Save As',
+				accelerator: 'CmdOrCtrl+Shift+S',
+				click: () => sendSaveProjectAs()
 			}
 		]
 	},
@@ -350,8 +378,7 @@ const menuTemplate = [
 					{ type: 'separator' },
 					{ id: 'newObjectCamera', label: 'Camera', click: () => sendAddObject('camera') },
 					{ id: 'newObjectDirLight', label: 'Directional Light', click: () => sendAddObject('dirlight') },
-					{ id: 'newObjectPointLight', label: 'Point Light', click: () => sendAddObject('pntlight') },
-					{ id: 'newObjectHtmlOverlay', label: 'HTML Overlay', click: () => sendAddObject('html') }
+					{ id: 'newObjectPointLight', label: 'Point Light', click: () => sendAddObject('pntlight') }
 				]
 			},
 			{ type: 'separator' },
@@ -364,7 +391,7 @@ const menuTemplate = [
 			{
 				id: 'symbolise',
 				label: 'Symbolise',
-				accelerator: 'CmdOrCtrl+Shift+S',
+				accelerator: 'CmdOrCtrl+Shift+Y',
 				click: () => sendSymboliseObject()
 			},
 			{
@@ -373,6 +400,12 @@ const menuTemplate = [
 				accelerator: 'CmdOrCtrl+Shift+D',
 				click: () => sendDesymboliseObject()
 			},
+			{
+				id: 'animate',
+				label: 'Animate',
+				click: () => sendAnimate()
+			},
+			{ type: 'separator' },
 			{
 				id: 'code',
 				label: 'Code',
@@ -397,8 +430,16 @@ const menuTemplate = [
 			},
 			{
 				id: 'importAsset',
-				label: 'Import Asset',
-				click: () => sendImportAsset()
+				label: 'Import Asset…',
+				accelerator: 'CmdOrCtrl+I',
+				click: async () => {
+					const { canceled, filePaths } = await dialog.showOpenDialog(editorWindow, {
+						properties: ['openFile', 'multiSelections'],
+					});
+					if (!canceled && filePaths.length) {
+						sendImportAssets(filePaths);
+					}
+				}
 			}
 		]
 	},
