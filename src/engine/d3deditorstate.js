@@ -466,6 +466,7 @@ export default class D3DEditorState {
 	}
 	
 	delete() {
+		console.log('wtf');
 		_events.invoke('delete-action');
 	}
 	

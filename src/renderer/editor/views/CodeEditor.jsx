@@ -14,7 +14,6 @@ import { MdClose } from 'react-icons/md';
 export default function CodeEditor({isOpen, theme}) {
 	const [objectsOpen, setObjectsOpen] = useState([]);
 	const [objectOpen, setObjectOpen] = useState();
-	const [value, setValue] = useState();
 	
 	const editorRef = useRef(null);
 	const panelRef = useRef(null);
@@ -48,7 +47,6 @@ export default function CodeEditor({isOpen, theme}) {
 				setObjectsOpen([d3dobject, ...objectsOpen]);
 			
 			setObjectOpen(d3dobject);
-			setValue(d3dobject.__script ?? '');
 			_editor.showCodeEditor();
 		}
 		
@@ -60,18 +58,11 @@ export default function CodeEditor({isOpen, theme}) {
 	}, [objectsOpen]);
 	
 	useEffect(() => {
-		setValue(objectOpen?.__script ?? '');
+		if(editorRef.current)
+			editorRef.current.setValue(objectOpen?.__script ?? '');
+		else
+			console.warn('Editor is not mounted');
 	}, [objectOpen]);
-	
-	useEffect(() => {
-		
-		if(!objectOpen)
-			return;
-			
-		objectOpen.__script = value;
-		objectOpen.checkSymbols();
-		
-	}, [value]);
 	
 	useEffect(() => {
 		D3D.updateEditorStatus({ codeEditorOpen: isOpen });
@@ -157,14 +148,19 @@ export default function CodeEditor({isOpen, theme}) {
 							height="100%"
 							defaultLanguage="damenscript"
 							language="damenscript"
-							value={value}
-							onChange={v => setValue(v ?? '')}
+							onChange={value => {
+								if(!objectOpen)
+									return;
+								
+								objectOpen.__script = value;
+								objectOpen.checkSymbols();
+							}}
 							beforeMount={(monaco) => {
 								installDamenScript(monaco);
 							}}
 							onMount={(editor, monaco) => {
 								editorRef.current = editor;
-							
+								
 								// Save (keep your KeyS handler if you like)
 								editorRef.current.onKeyDown((e) => {
 									if (e.code === 'KeyS' && (e.ctrlKey || e.metaKey)) {
@@ -205,7 +201,7 @@ export default function CodeEditor({isOpen, theme}) {
 								wordWrap: 'on',
 								renderWhitespace: 'selection',
 								fontLigatures: false,
-								fontSize: 12
+								fontSize: 13
 							}}
 						/>
 					</div>

@@ -4,6 +4,7 @@ import JSZip from 'jszip';
 import DamenScript from './damenscript.js';
 import D3DComponents from './d3dcomponents.js';
 import D3DConsole from './d3dconsole.js';
+import Tween from './d3dtween.js';
 import { v4 as uuidv4 } from 'uuid';
 import { importModelFromZip } from './glb-instancer.js';
 import { ensureRigAndBind } from './rig-binding.js';
@@ -612,6 +613,12 @@ export default class D3DObject {
 		}
 	}
 	runInSandbox(script) {
+		Math.lerp = (a, b, time, easeFn) => {
+			const fn = easeFn || Tween.Linear;
+			const u  = Math.max(0, Math.min(1, time));
+			return a + (b - a) * fn(u);
+		};
+		
 		const sandbox = {
 			_root,
 			_input,
@@ -1671,6 +1678,10 @@ export default class D3DObject {
 		});
 		
 		return found;
+	}
+	lookAt(...params) {
+		if(this.object3d)
+			this.object3d.lookAt(...params)
 	}
 	
 	delete() {

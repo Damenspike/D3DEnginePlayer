@@ -170,7 +170,7 @@ async function createEditorWindow() {
 			case 'a': wc.selectAll(); event.preventDefault(); return;
 			case 'z':
 				if (input.shift) wc.redo(); else wc.undo();
-				event.preventDefault(); return;
+				return;
 		}
 	});
 	
@@ -375,7 +375,7 @@ const menuTemplate = [
 			},
 			{
 				id: 'buildto',
-				label: 'Build To',
+				label: 'Build As',
 				accelerator: 'CmdOrCtrl+Shift+B',
 				click: () => sendBuild({prompt: true, play: false})
 			},

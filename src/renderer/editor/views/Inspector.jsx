@@ -2000,7 +2000,7 @@ export default function Inspector() {
 	
 	return (
 		<div className='insp-view'>
-			<div className='tabs'>
+			<div className='tabs' style={{paddingBottom: 0}}>
 				{drawTabButtons()}
 			</div>
 			
