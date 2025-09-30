@@ -1,11 +1,13 @@
 // GameView.jsx
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { loadD3DProj } from '../../../engine/d3deditor.js';
 
 const MIME = 'application/x-d3d-objectrow';
 
 export default function GameView() {
 	const gameRef = useRef(null);
+	
+	const [objectFrame, setObjectFrame] = useState();
 
 	_editor.gameRef = gameRef;
 	
@@ -85,10 +87,82 @@ export default function GameView() {
 		
 		_events.on('select-all', () => {
 			// select all in game view
+		});
+		_events.on('editor-focus', (focus) => {
+			setObjectFrame(focus);
 		})
 
 		return () => observer.disconnect();
 	}, []);
+	
+	const drawFocusPath = () => {
+		if(!objectFrame)
+			return;
+		
+		const path = [];
+		
+		if(!objectFrame || !objectFrame.parent)
+			return;
+		
+		let stack = [objectFrame];
+		let current = objectFrame;
+		
+		while(current.parent != null) {
+			stack.push(current.parent);
+			current = current.parent;
+		}
+		
+		stack = stack.reverse();
+		stack.forEach(object => {
+			const classes = ['object-path-item'];
+			
+			const drawArrow = () => {
+				if(stack.indexOf(object) == stack.length - 1)
+					return;
+				
+				return (
+					<>
+						&nbsp;
+						&gt;
+						&nbsp;
+					</>
+				)
+			}
+			
+			if(object == _editor.focus) {
+				classes.push('object-path-item--active')
+			}
+			
+			path.push(
+				<React.Fragment key={path.length}>
+					<div 
+						className={classes.join(' ')}
+						onClick={() => {
+							const oldParent = _editor.focus;
+							
+							_editor.focus = object;
+							
+							if(object == (oldParent.parent ?? _root))
+								_editor.setSelection([oldParent]);
+							else
+								_editor.setSelection([]);
+						}}
+					>
+						{object.name}
+					</div>
+					{drawArrow()}
+				</React.Fragment>
+			)
+		});
+		
+		if(path.length > 0) {
+			return (
+				<div className='game-focus-path'>
+					{path}
+				</div>
+			)
+		}
+	}
 
 	return (
 		<div
@@ -99,6 +173,8 @@ export default function GameView() {
 			onDragOver={onDragOver}
 			onDrop={onDrop}
 			style={{ position: 'relative', width: '100%', height: '100%' }}
-		/>
+		>
+			{drawFocusPath()}
+		</div>
 	);
 }

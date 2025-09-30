@@ -182,7 +182,7 @@ body.dark {
 }
 .flex {
 	display: flex;
-	alignItems: center;
+	align-items: center;
 	gap: 5px;
 }
 .slider-value {

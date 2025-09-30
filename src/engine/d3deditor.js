@@ -36,9 +36,11 @@ import D3DComponents from './d3dcomponents.js';
 import D3DEventSystem from './d3devents.js';
 
 window.THREE = THREE;
+window._events = new D3DEventSystem();
 window._input = new D3DInput();
 window._time = new D3DTime();
 window._editor = new D3DEditorState();
+window._host = window._editor;
 
 // Add convenience vectors
 THREE.Vector3.right = new THREE.Vector3(1, 0, 0);
@@ -144,7 +146,7 @@ async function initEditorCamera() {
 		editorAlwaysVisible: true,
 		engineScript: 'd3deditorcamera.js',
 		uuid: '',
-		components: [{ type: 'Camera', properties: {clipNear: 0.0001} }]
+		components: [{ type: 'Camera', properties: {fieldOfView: 60, clipNear: 0.0001} }]
 	});
 	const editorLight = await cameraD3DObj.createObject({
 		name: 'Editor Camera Light',
@@ -596,83 +598,52 @@ async function addD3DObjectEditor(type) {
 		scale: { x: 1, y: 1, z: 1 },
 		components: []
 	}
-	let supported = true;
+	
+	let supported = false;
 	
 	switch(type) {
 		case 'empty':
-			
-		break;
 		case 'camera':
-			newObject.name = 'camera';
-			newObject.components.push({
-				type: 'Camera', 
-				properties: {}
-			});
-		break;
 		case 'dirlight':
-			newObject.name = 'directional light';
-			newObject.components.push({
-				type: 'DirectionalLight', 
-				properties: {}
-			});
-		break;
 		case 'pntlight':
-			newObject.name = 'point light';
-			newObject.components.push({
-				type: 'PointLight', 
-				properties: {}
-			});
-		break;
-		case 'html':
-			newObject.name = 'html overlay';
-			newObject.components.push({
-				type: 'HTML', 
-				properties: {}
-			});
-		break;
 		case 'cube':
-			newObject.name = 'cube';
-			newObject.components.push({
-				type: 'Mesh', 
-				properties: {
-					mesh: _root.resolveAssetId(
-						'Standard/Models/Cube.glb'
-					),
-					materials: [
-						_root.resolveAssetId(
-							'Standard/Materials/Default.mat'
-						)
-					]
-				}
-			});
-		break;
-		default:
-			supported = false;
+			supported = true;
 		break;
 	}
-	
 	if(!supported) {
 		_editor.showError(`Unsupported add object '${type}'`);
 		return;
 	}
 	
-	newObject.components.forEach(component => {
-		const schema = D3DComponents[component.type];
-		
-		if(!schema) {
-			console.warn('Unknown schema for ', component.type);
-			return;
-		}
-		
-		for(let prop in schema.fields) {
-			if(component.properties[prop] !== undefined)
-				continue;
-			
-			component.properties[prop] = schema.fields[prop].def;
-		}
-	});
-	
 	const newd3dobj = await _editor.focus.createObject(newObject);
+	
+	switch(type) {
+		case 'camera':
+			newd3dobj.name = 'camera';
+			newd3dobj.addComponent('Camera');
+		break;
+		case 'dirlight':
+			newd3dobj.name = 'directional light';
+			newd3dobj.addComponent('DirectionalLight');
+		break;
+		case 'pntlight':
+			newd3dobj.name = 'point light';
+			newd3dobj.addComponent('PointLight');
+		break;
+		case 'cube':
+			newd3dobj.name = 'cube';
+			newd3dobj.addComponent('Mesh', {
+				mesh: _root.resolveAssetId(
+					'Standard/Models/Cube.glb'
+				),
+				materials: [
+					_root.resolveAssetId(
+						'Standard/Materials/Default.mat'
+					)
+				]
+			});
+		break;
+	}
 	
 	_editor.setSelection([newd3dobj]);
 }
@@ -795,17 +766,111 @@ async function desymboliseObject(d3dobject) {
 	d3dobject.checkSymbols();
 	_editor.updateInspector();
 }
-function moveObjectToCameraView(d3dobject, distance = 1) {
-	const cameraWorldPos = new THREE.Vector3();
-	_editor.camera.getWorldPosition(cameraWorldPos);
-	
-	const forward = new THREE.Vector3(0, 0, -1)
-		.applyQuaternion(_editor.camera.quaternion).normalize();
-	const spawnPos = cameraWorldPos.clone().add(forward.multiplyScalar(distance));
-	
-	d3dobject.worldPosition = { x: spawnPos.x, y: spawnPos.y, z: spawnPos.z };
+function moveObjectToCameraView(d3dobject, opts = {}) {
+	// options
+	const {
+		client = null,            // {x, y} in client/screen coords
+		ndc = null,               // {x, y} in normalized device coords (-1..1)
+		minDistance = 0.75,       // min distance in front of camera if no hits
+		groundY = 0,              // ground plane Y
+		useGroundFallback = true, // try ground plane if no scene hits
+		excludeSelf = true,       // don't hit the object we're placing
+	} = opts;
+
+	const camera = _editor.camera;
+	const scene  = _editor.scene || d3dobject.object3d?.parent || camera.parent;
+	const renderer = _editor.renderer; // assumed three.js renderer
+	if (!camera) return;
+
+	// --- compute object's bounding radius (for spawn offset) ---
+	const threeObj = d3dobject.object3d || null;
+	let radius = 0.5;
+	if (threeObj) {
+		const box = new THREE.Box3().setFromObject(threeObj);
+		if (box.isEmpty() === false && isFinite(box.min.x) && isFinite(box.max.x)) {
+			const sphere = new THREE.Sphere();
+			box.getBoundingSphere(sphere);
+			if (Number.isFinite(sphere.radius) && sphere.radius > 0) radius = sphere.radius;
+		}
+	}
+
+	// --- build a ray from camera through the requested screen point ---
+	const rc = new THREE.Raycaster();
+
+	// figure out NDC
+	let ndcPoint = new THREE.Vector2(0, 0); // center of screen by default
+	if (ndc && typeof ndc.x === 'number' && typeof ndc.y === 'number') {
+		ndcPoint.set(ndc.x, ndc.y);
+	} else if (client && renderer?.domElement) {
+		// convert client coords to NDC
+		const rect = renderer.domElement.getBoundingClientRect();
+		const x = ((client.x - rect.left) / rect.width) * 2 - 1;
+		const y = -(((client.y - rect.top) / rect.height) * 2 - 1);
+		ndcPoint.set(x, y);
+	}
+	rc.setFromCamera(ndcPoint, camera);
+
+	// --- raycast the scene (skip the object we’re placing, if requested) ---
+	let intersects = [];
+	if (scene) {
+		const all = [];
+		scene.traverse(o => {
+			if (!o || !o.isObject3D) return;
+			if (excludeSelf && threeObj && (o === threeObj || threeObj.children?.includes(o))) return;
+			all.push(o);
+		});
+		intersects = rc.intersectObjects(all, true);
+	}
+
+	// --- choose a spawn point ---
+	let spawn = null;
+
+	// 1) Prefer first geometry hit; nudge back toward camera by radius so it sits on top
+	if (intersects && intersects.length) {
+		spawn = intersects[0].point.clone();
+		// offset back along ray direction so the object rests on the surface
+		spawn.add(rc.ray.direction.clone().multiplyScalar(radius + 0.02));
+	}
+
+	// 2) If no mesh hit, try a ground plane at Y = groundY
+	if (!spawn && useGroundFallback) {
+		const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -groundY);
+		const hit = new THREE.Vector3();
+		if (rc.ray.intersectPlane(plane, hit)) {
+			spawn = hit.clone();
+			// lift slightly by radius
+			spawn.y += radius * 0.5;
+		}
+	}
+
+	// 3) Fallback: put it in front of camera
+	if (!spawn) {
+		const camPos = new THREE.Vector3();
+		camera.getWorldPosition(camPos);
+		const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion).normalize();
+
+		// keep away from near plane & account for object radius
+		const near = camera.near || 0.1;
+		const dist = Math.max(minDistance, near * 2 + radius * 1.5);
+		spawn = camPos.clone().add(forward.multiplyScalar(dist));
+	}
+
+	// --- assign world position to the D3D object ---
+	d3dobject.worldPosition = { x: spawn.x, y: spawn.y, z: spawn.z };
+
+	// Optional: face the camera for convenience (comment out if not desired)
+	// const lookAt = new THREE.Vector3();
+	// camera.getWorldPosition(lookAt);
+	// d3dobject.lookAt = { x: lookAt.x, y: lookAt.y, z: lookAt.z };
 }
 async function saveProject(projectURI) {
+	if(!projectURI) {
+		showError({
+			message: 'Invalid project URI'
+		});
+		console.error('Invalid project URI', projectURI);
+		return;
+	}
 	try {
 		await _editor.__save(projectURI);
 	}catch(e) {
@@ -816,10 +881,22 @@ async function saveProject(projectURI) {
 	
 	_editor.setDirty(false);
 }
-async function saveProjectAndClose() {
-	await saveProject();
+async function saveProjectAndClose(projectURI) {
+	await saveProject(projectURI);
 	_editor.setDirty(false);
 	_editor.closeEditor();
+}
+async function buildProject(buildURI, play = false) {
+	try {
+		await _editor.__build(buildURI, !play);
+	}catch(e) {
+		_editor.showError({
+			message: `Error building project. ${e}`
+		});
+	}
+	
+	if(play)
+		D3D.openPlayer(buildURI);
 }
 
 // Editor events
@@ -900,16 +977,15 @@ _editor.saveProject = saveProject;
 _editor.moveObjectToCameraView = moveObjectToCameraView;
 _editor.onConsoleMessage = onConsoleMessage;
 
-window._events = new D3DEventSystem();
-
 D3D.setEventListener('select-all', () => _editor.selectAll());
 D3D.setEventListener('delete', () => _editor.delete());
 D3D.setEventListener('undo', () => _editor.undo());
 D3D.setEventListener('redo', () => _editor.redo());
 D3D.setEventListener('dupe', () => _editor.dupe());
 D3D.setEventListener('edit-code', () => _editor.editCode());
-D3D.setEventListener('save-project', (projectURI) => saveProject(projectURI));
-D3D.setEventListener('request-save-and-close', () => saveProjectAndClose());
+D3D.setEventListener('save-project', (uri) => saveProject(uri));
+D3D.setEventListener('request-save-and-close', (uri) => saveProjectAndClose(uri));
+D3D.setEventListener('build', (buildURI, play) => buildProject(buildURI, play));
 
 D3D.setEventListener('add-object', (type) => addD3DObjectEditor(type));
 D3D.setEventListener('symbolise-object', (type) => symboliseSelectedObject(type));

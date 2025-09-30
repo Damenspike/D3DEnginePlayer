@@ -162,14 +162,36 @@ export default function CodeEditor({isOpen, theme}) {
 							beforeMount={(monaco) => {
 								installDamenScript(monaco);
 							}}
-							onMount={(editor, monaco) => { 
-								editorRef.current = editor; 
-								
+							onMount={(editor, monaco) => {
+								editorRef.current = editor;
+							
+								// Save (keep your KeyS handler if you like)
 								editorRef.current.onKeyDown((e) => {
 									if (e.code === 'KeyS' && (e.ctrlKey || e.metaKey)) {
 										e.preventDefault();
-										_editor.saveProject();
+										D3D.echoSave();
 									}
+								});
+								
+								const KB = monaco.KeyMod;
+								const K  = monaco.KeyCode;
+							
+								// Ctrl/Cmd + Enter  -> Build
+								editor.addCommand(KB.CtrlCmd | K.Enter, () => {
+									D3D.echoBuild({prompt: false, play: true});
+								});
+								// Support numpad Enter too
+								editor.addCommand(KB.CtrlCmd | K.NumpadEnter, () => {
+									D3D.echoBuild({prompt: false, play: true});
+								});
+								
+								// Ctrl/Cmd + B  -> Build
+								editor.addCommand(KB.CtrlCmd | KB.Shift | K.KeyB, () => {
+									D3D.echoBuild({prompt: false, play: false});
+								});
+								// Ctrl/Cmd + Shift + B  -> Build To
+								editor.addCommand(KB.CtrlCmd | KB.Shift | K.KeyB, () => {
+									D3D.echoBuild({prompt: true, play: false});
 								});
 							}}
 							theme={theme == 'dark' ? 'damenscript-dark' : 'damenscript-light'}
@@ -183,7 +205,7 @@ export default function CodeEditor({isOpen, theme}) {
 								wordWrap: 'on',
 								renderWhitespace: 'selection',
 								fontLigatures: false,
-								fontSize: 14
+								fontSize: 12
 							}}
 						/>
 					</div>

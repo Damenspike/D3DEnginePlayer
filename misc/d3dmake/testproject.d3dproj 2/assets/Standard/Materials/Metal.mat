@@ -1,9 +1,0 @@
-{
-	"name": "Metal",
-	"type": "MeshStandardMaterial",
-	"color": "0xC4C4C4",
-	"metalness": 0.5,
-	"roughness": 0.15,
-	"emissive": 0,
-	"wireframe": false
-}

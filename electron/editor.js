@@ -5,7 +5,8 @@ const {
 	dialog, 
 	ipcMain, 
 	nativeTheme, 
-	screen
+	screen,
+	shell
 } = require('electron');
 const path = require('path');
 const pkg = require('../package.json');
@@ -15,8 +16,10 @@ let editorDirty = false;
 let startWindow;
 let newProjectWindow;
 let editorWindow;
+let gameWindow;
 
 let lastOpenedProjectUri;
+let playerURI;
 let projectOpen = false;
 let inputFieldActive = false;
 let codeEditorActive = false;
@@ -85,6 +88,25 @@ function createNewProjectWindow() {
 		newProjectWindow.webContents.send('theme-changed', nativeTheme.shouldUseDarkColors ? 'dark' : 'light');
 	});
 }
+async function createGameWindow() {
+	// In-editor game window
+	gameWindow = new BrowserWindow({
+		width: 800,
+		height: 600,
+		webPreferences: {
+			preload: path.join(__dirname, 'preload-player.cjs'),
+			contextIsolation: true,
+			nodeIntegration: false,
+			enableRemoteModule: false,
+			sandbox: false
+		}
+	});
+	
+	await gameWindow.loadFile('../dist/player/index.html');
+	
+	gameWindow.on('closed', () => { gameWindow = null; });
+}
+
 async function createEditorWindow() {
 	const { width, height } = screen.getPrimaryDisplay().workAreaSize;
 
@@ -155,7 +177,7 @@ async function createEditorWindow() {
 	if(isDev)
 		await editorWindow.loadURL('http://localhost:5173');
 	else
-		await editorWindow.loadFile('../dist/editor/main/index.html');
+		await editorWindow.loadFile('../dist/editor/index.html');
 
 	setupTheme(editorWindow);
 	return new Promise(resolve => {
@@ -240,7 +262,7 @@ function sendFocusObject() {
 	editorWindow.webContents.send('focus-object');
 }
 function sendSaveProject() {
-	editorWindow.webContents.send('save-project');
+	editorWindow.webContents.send('save-project', lastOpenedProjectUri);
 }
 function sendSaveProjectAs() {
 	dialog.showSaveDialog(editorWindow, {
@@ -276,6 +298,32 @@ function sendImportAssets(paths) {
 }
 function sendAnimate() {
 	editorWindow.webContents.send('animate');
+}
+function sendBuild({prompt, play}) {
+	let uri = lastOpenedProjectUri;
+	if (uri.endsWith('.d3dproj'))
+		uri = uri.slice(0, -'.d3dproj'.length) + '.d3d';
+	
+	if(uri && !prompt) {
+		editorWindow.webContents.send('build', uri, play);
+		return;
+	}
+	
+	dialog.showSaveDialog(editorWindow, {
+		title: 'Build',
+		defaultPath: uri,
+		buttonLabel: 'Save',
+		filters: [
+			{ name: 'Damen3D File', extensions: ['d3d'] }
+		],
+		properties: ['showOverwriteConfirmation']
+	}).then(result => {
+		if (!result.canceled && result.filePath) {
+			editorWindow.webContents.send('build', result.filePath, play);
+		}
+	}).catch(err => {
+		console.error('Build dialog failed:', err);
+	});
 }
 
 // --- Menu ---
@@ -317,7 +365,26 @@ const menuTemplate = [
 				label: 'Save As',
 				accelerator: 'CmdOrCtrl+Shift+S',
 				click: () => sendSaveProjectAs()
-			}
+			},
+			{ type: 'separator' },
+			{
+				id: 'build',
+				label: 'Build',
+				accelerator: 'CmdOrCtrl+B',
+				click: () => sendBuild({prompt: false, play: false})
+			},
+			{
+				id: 'buildto',
+				label: 'Build To',
+				accelerator: 'CmdOrCtrl+Shift+B',
+				click: () => sendBuild({prompt: true, play: false})
+			},
+			{
+				id: 'buildplay',
+				label: 'Build and Play',
+				accelerator: 'CmdOrCtrl+Enter',
+				click: () => sendBuild({prompt: false, play: true})
+			},
 		]
 	},
 	{
@@ -563,7 +630,8 @@ app.on('window-all-closed', () => {
 });
 
 app.on('activate', () => {
-	if (!startWindow) createStartWindow();
+	if (!startWindow) 
+		createStartWindow();
 });
 
 // --- IPC handlers ---
@@ -615,7 +683,7 @@ ipcMain.on('show-error', async (_, { title, message, closeEditorWhenDone }) => {
 		closeEditorWindow();
 });
 
-// Show error dialog
+// Show confirm dialog
 ipcMain.handle('show-confirm', async (
 	event, 
 	{ title = 'Confirm', message = 'Are you sure?' }
@@ -639,6 +707,9 @@ ipcMain.handle('show-confirm', async (
 	return response === 0; // true if "Yes"
 });
 
+// Get player URI
+ipcMain.handle('get-current-game-uri', () => playerURI);
+
 // Update window size/title
 ipcMain.on('update-editor-window', (_, { width, height, title }) => {
 	if (editorWindow && !editorWindow.isDestroyed()) {
@@ -658,3 +729,33 @@ ipcMain.on('set-dirty', (_, isDirty) => {
 	
 	editorWindow.setTitle(editorWindow.d3deditortitle + (isDirty ? ' *' : ''));
 });
+
+ipcMain.on('show-in-finder', (_, uri) => {
+	shell.showItemInFolder(uri);
+});
+
+// Update window size/title
+ipcMain.on('update-window', (_, { width, height, title }) => {
+	if (gameWindow && !gameWindow.isDestroyed()) {
+		gameWindow.setSize(width, height);
+		gameWindow.setTitle(title);
+	}
+});
+
+ipcMain.on('open-player', (_, uri) => {
+	playerURI = uri;
+	createGameWindow();
+});
+
+ipcMain.on('console-message', (_, {level, message}) => {
+	console.log('csm', level, message);
+	editorWindow.webContents.send('csm', {level, message});
+});
+
+ipcMain.on('echo-save', () => {
+	sendSaveProject();
+})
+
+ipcMain.on('echo-build', (_, {prompt, play}) => {
+	sendBuild({prompt, play});
+})

@@ -923,7 +923,14 @@ export default function AnimationInspector() {
 		}
 		if(!animManager) {
 			return (
-				<p>No animation present on {selectedObject.name}</p>
+				<div className='noanim-placeholder'>
+					<button onClick={() => {
+						D3D.invoke('animate');
+						_editor.probeSelection();
+					}}>
+						Animate
+					</button>
+				</div>
 			)
 		}
 		
@@ -970,8 +977,8 @@ export default function AnimationInspector() {
 				);
 			}
 			
-			return (
-				<div className='clip-select'>
+			const drawPlayButtons = () => (
+				<>
 					<div className='ib mr'>
 						<button
 							className='play-button'
@@ -1057,6 +1064,12 @@ export default function AnimationInspector() {
 							placeholder='Secs'
 						/>
 					</div>
+				</>
+			)
+			
+			return (
+				<div className='clip-select'>
+					{activeClip && animManager && drawPlayButtons()}
 					<div className='ib'>
 						<select
 							className="tf"

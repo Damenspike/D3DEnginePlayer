@@ -1,0 +1,27 @@
+{
+  "count": 10,
+  "files": [
+    "assets/EivenWaveGLB.glbcontainer/materials/Eievn_SKin.mat",
+    "assets/EivenWaveGLB.glbcontainer/materials/Main_Cloth.mat",
+    "assets/EivenWaveGLB.glbcontainer/materials/Secondary.mat",
+    "assets/EivenWaveGLB.glbcontainer/materials/Jogger_main.mat",
+    "assets/EivenWaveGLB.glbcontainer/materials/Secondary_jogger.mat",
+    "assets/EivenWaveGLB.glbcontainer/materials/Material.009.mat",
+    "assets/EivenWaveGLB.glbcontainer/materials/Hair.mat",
+    "assets/EivenWaveGLB.glbcontainer/materials/Material.013.mat",
+    "assets/EivenWaveGLB.glbcontainer/materials/Material.004.mat",
+    "assets/EivenWaveGLB.glbcontainer/materials/Drake_trainer.mat"
+  ],
+  "byName": {
+    "Eievn SKin": "assets/EivenWaveGLB.glbcontainer/materials/Eievn_SKin.mat",
+    "Main Cloth": "assets/EivenWaveGLB.glbcontainer/materials/Main_Cloth.mat",
+    "Secondary": "assets/EivenWaveGLB.glbcontainer/materials/Secondary.mat",
+    "Jogger main": "assets/EivenWaveGLB.glbcontainer/materials/Jogger_main.mat",
+    "Secondary jogger": "assets/EivenWaveGLB.glbcontainer/materials/Secondary_jogger.mat",
+    "Material.009": "assets/EivenWaveGLB.glbcontainer/materials/Material.009.mat",
+    "Hair": "assets/EivenWaveGLB.glbcontainer/materials/Hair.mat",
+    "Material.013": "assets/EivenWaveGLB.glbcontainer/materials/Material.013.mat",
+    "Material.004": "assets/EivenWaveGLB.glbcontainer/materials/Material.004.mat",
+    "Drake trainer": "assets/EivenWaveGLB.glbcontainer/materials/Drake_trainer.mat"
+  }
+}

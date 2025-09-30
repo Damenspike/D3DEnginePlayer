@@ -13,7 +13,7 @@ import {
 const { path } = D3D;
 
 const protectedNames = [
-	'_root', 'Input', 'position', 'rotation', 'scale', 'name', 'parent', 'children', 'threeObj', 'scenes', 'zip', 'forward', 'right', 'up', 'quaternion', 'onEnterFrame', 'onAddedToScene', 'manifest', 'scenes', '__origin', '__componentInstances', '__onInternalEnterFrame', '__onEditorEnterFrame', '__deleted', '__animatedTransformChange'
+	'_root', 'Input', 'position', 'rotation', 'scale', 'name', 'parent', 'children', 'threeObj', 'scenes', 'zip', 'forward', 'right', 'up', 'quaternion', 'onEnterFrame', 'onAddedToScene', 'manifest', 'scenes', '__origin', '__componentInstances', '__onInternalEnterFrame', '__onEditorEnterFrame', '__deleted', '__animatedTransformChange', 'mesh', 'animation'
 ]
 
 export default class D3DObject {
@@ -302,9 +302,6 @@ export default class D3DObject {
 	get mesh() {
 		return this.getComponent('Mesh');
 	}
-	get camera() {
-		return this.getComponent('Camera');
-	}
 	
 	setupDefaultMethods() {
 		if(window._editor) {
@@ -333,7 +330,10 @@ export default class D3DObject {
 				if(!this.object3d.matrix.equals(this.lastMatrixLocal)) {
 					this.__onTransformationChange(changed);
 					this.onTransformationChange?.(changed);
-					_editor.updateInspector?.();
+					
+					if(window._editor)
+						window._editor.updateInspector?.();
+					
 					_events.invoke('matrix-changed', this, changed);
 				}
 				
@@ -476,7 +476,7 @@ export default class D3DObject {
 			await child.executeScripts();
 			
 		if(window._editor)
-			_editor.updateInspector();
+			window._editor.updateInspector();
 		
 		await this.checkSymbols();
 		
@@ -600,14 +600,9 @@ export default class D3DObject {
 		
 		this.__script = script;
 		
-		try {
-			if (script && (!window._editor || this.editorOnly)) {
-				this.runInSandbox(script);
-				console.log(`${scriptName} executed in DamenScript sandbox`);
-			}
-		}catch(e) {
-			console.error(e);
-			// send this to editor console too at some point
+		if (script && (!window._editor || this.editorOnly)) {
+			this.runInSandbox(script);
+			console.log(`${scriptName} executed in DamenScript sandbox`);
 		}
 		
 		if (this.children && this.children.length > 0) {
@@ -621,7 +616,8 @@ export default class D3DObject {
 			_root,
 			_input,
 			_time,
-			_editor,
+			Math,
+			_editor: window._editor,
 			root: this.root,
 			parent: this.parent,
 			self: this,
@@ -638,7 +634,12 @@ export default class D3DObject {
 			MathUtils: THREE.MathUtils
 		};
 		
-		DamenScript.run(script, sandbox);
+		try {
+			DamenScript.run(script, sandbox);
+		}catch(e) {
+			D3DConsole.error(`[${this.name}]`, e.name, e.message);
+			console.error(`[${this.name}]`, e);
+		}
 	}
 	setComponentValue(type, field, value) {
 		const component = this.components.find(c => c.type == type);
@@ -655,7 +656,7 @@ export default class D3DObject {
 	}
 	addComponent(type, properties = {}) {
 		if(this.components.find(c => c.type == type)) {
-			console.error(`${this.name} already has a ${type} component`);
+		//	console.error(`${this.name} already has a ${type} component`);
 			return;
 		}
 		if(!D3DComponents[type]) {
@@ -688,6 +689,7 @@ export default class D3DObject {
 		});
 		
 		this.components.push(component);
+		this.updateComponents();
 	}
 	getComponent(type) {
 		const component = this.components.find(c => c.type == type);
@@ -699,6 +701,10 @@ export default class D3DObject {
 			return this.__componentInstances[type];
 		
 		const schema = D3DComponents[component.type];
+		
+		if(!schema.manager)
+			return;
+		
 		const inst = new schema.manager(this, component);
 		
 		this.__componentInstances[type] = inst;
@@ -709,12 +715,12 @@ export default class D3DObject {
 		const component = this.components.find(c => c.type == type);
 		
 		return !!component;
-	}a
+	}
 	async updateComponents() {
 		const zip = this.root.zip;
 		const components = [...this.components];
 		
-		if(_editor && !this.no3DGizmos) {
+		if(window._editor && !this.no3DGizmos) {
 			// Add any gizmo related mesh components
 			components.forEach(component => {
 				const schema = D3DComponents[component.type];
@@ -887,41 +893,230 @@ export default class D3DObject {
 					}
 					break;
 				}
+				case 'SubMesh':
 				case 'Mesh': {
-					// load model from zip if provided
-					if (component.properties.mesh) {
-						const modelPath = this.resolvePath(component.properties.mesh);
-						const zf = zip.file(modelPath);
+					const isSubMesh = (component.type === 'SubMesh');
+				
+					// ----------------- tiny shared helpers -----------------
+					const norm = p => p ? p.replace(/\/+/g, '/').replace(/^\.\//, '') : p;
+					const safeModelBase = (p) => {
+						if (!p) return 'model';
+						const fn = p.split('/').pop() || p;
+						const dot = fn.lastIndexOf('.');
+						const base = dot >= 0 ? fn.slice(0, dot) : fn;
+						return (base.replace(/[^\w\-\.]+/g, '_') || 'model');
+					};
+					const mimeFromExt = (p) => {
+						const ext = (p.split('.').pop() || '').toLowerCase();
+						if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+						if (ext === 'png')  return 'image/png';
+						if (ext === 'webp') return 'image/webp';
+						if (ext === 'ktx2') return 'image/ktx2';
+						return 'application/octet-stream';
+					};
+				
+					// --- color normalizer: accepts number, "#rrggbb", "0xrrggbb", "rrggbb", CSS names ---
+					const fixColor = (val) => {
+						if (val == null) return val;
+						if (typeof val === 'number') return val; // already okay (e.g., 0x555555)
+						const s = String(val).trim();
+						if (!s) return val;
+						if (s.startsWith('#')) return s;                 // "#ffffff" → keep as string
+						if (/^0x/i.test(s)) return parseInt(s.slice(2), 16); // "0xFFFFFF" → number
+						if (/^[0-9a-fA-F]{6}$/.test(s)) return parseInt(s, 16); // "ffffff" → number
+						if (/^\d+$/.test(s)) return Number(s);           // "16777215" → number
+						return s; // CSS color names (e.g., "white", "red") or rgb()/hsl() strings
+					};
+				
+					const readTextByUUID = async (uuid) => {
+						if (!uuid) return null;
+						const rel = this.resolveAssetPath(uuid);
+						if (!rel) return null;
+						const zf = zip.file(norm('assets/' + rel));
+						return zf ? await zf.async('string') : null;
+					};
+					const loadTextureFromRel = async (relPath) => {
+						if (!relPath) return null;
+						const uuid = _root.resolveAssetId(norm(relPath));
+						if (!uuid) return null;
+						const rel = this.resolveAssetPath(uuid);
+						if (!rel) return null;
+						const zf = zip.file(norm('assets/' + rel));
+						if (!zf) return null;
+						const buf = await zf.async('arraybuffer');
+						const blob = new Blob([buf], { type: mimeFromExt(rel) });
+						const bmp  = await createImageBitmap(blob);
+						const tex  = new THREE.Texture(bmp);
+						tex.needsUpdate = true;
+						return tex;
+					};
+					const setMapRel = async (mat, key, relPath, isColor=false) => {
+						if (!(key in mat)) return;
+						if (!relPath) { if (mat[key]) { mat[key].dispose?.(); mat[key]=null; mat.needsUpdate=true; } return; }
+						const tex = await loadTextureFromRel(relPath);
+						if (!tex) return;
+						if (isColor) {
+							if ('colorSpace' in tex) tex.colorSpace = THREE.SRGBColorSpace;
+							else tex.encoding = THREE.sRGBEncoding;
+						}
+						tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
+						mat[key] = tex; mat.needsUpdate = true;
+					};
+					const stripIncompatible = (params, type) => {
+						// pull out our custom/non-ctor fields so they don't hit setValues()
+						const {
+							maps,                  // our nested map refs
+							doubleSided,           // boolean -> becomes side: THREE.DoubleSide
+							mapOffset, mapRepeat,  // vec2 like [x,y]
+							normalMapOffset, normalMapRepeat,
+							...rest
+						} = params;
+					
+						// remove any stray *_Offset/Repeat that might be at top-level
+						delete rest.mapOffset; delete rest.mapRepeat;
+						delete rest.normalMapOffset; delete rest.normalMapRepeat;
+						delete rest.doubleSided; // handled via side below
+						delete rest.maps;        // we handle maps separately
+					
+						// convert doubleSided flag to proper side enum
+						if (doubleSided === true) rest.side = THREE.DoubleSide;
+					
+						// MeshBasicMaterial doesn’t support PBR params or emissive maps
+						if (type === 'MeshBasicMaterial') {
+							delete rest.metalness;
+							delete rest.roughness;
+							delete rest.emissive;
+							delete rest.emissiveIntensity;
+							delete rest.envMapIntensity;
+							// map keys are assigned after construction anyway
+						}
+					
+						// return cleaned ctor params + the pulled custom fields
+						return { ctorParams: rest, pulled: { maps, mapOffset, mapRepeat, normalMapOffset, normalMapRepeat } };
+					};
+					const buildMaterialFromMatUUID = async (uuid) => {
+						if (!uuid) return null;
+						const txt = await readTextByUUID(uuid);
+						if (!txt) return null;
+					
+						let params; try { params = JSON.parse(txt); } catch { return null; }
+						const type = params.type || 'MeshStandardMaterial';
+						const Ctor = THREE[type];
+						if (!Ctor) return null;
+					
+						// normalize colors
+						if ('color'    in params) params.color    = fixColor(params.color);
+						if ('emissive' in params) params.emissive = fixColor(params.emissive);
+					
+						// transparency / side string -> enum
+						if (params.opacity !== undefined && params.opacity < 1 && params.transparent !== true) params.transparent = true;
+						if (typeof params.side === 'string' && THREE[params.side] !== undefined) params.side = THREE[params.side];
+					
+						// split into ctor-safe and custom fields
+						const { ctorParams, pulled } = stripIncompatible({ ...params }, type);
+						const m = new Ctor(ctorParams);
+						if ('toneMapped' in m) m.toneMapped = false;
+					
+						// assign textures after construction
+						const maps = pulled.maps || {};
+						await setMapRel(m, 'map',          maps.map,          true);
+						await setMapRel(m, 'normalMap',    maps.normalMap);
+						await setMapRel(m, 'roughnessMap', maps.roughnessMap);
+						await setMapRel(m, 'metalnessMap', maps.metalnessMap);
+						await setMapRel(m, 'emissiveMap',  maps.emissiveMap,  true);
+						await setMapRel(m, 'aoMap',        maps.aoMap);
+						await setMapRel(m, 'alphaMap',     maps.alphaMap);
+					
+						// apply offsets/repeats only to existing textures
+						if (m.map) {
+							const o = Array.isArray(pulled.mapOffset) ? pulled.mapOffset : [0,0];
+							const r = Array.isArray(pulled.mapRepeat) ? pulled.mapRepeat : [1,1];
+							m.map.offset.fromArray(o);
+							m.map.repeat.fromArray(r);
+						}
+						if (m.normalMap) {
+							const o = Array.isArray(pulled.normalMapOffset) ? pulled.normalMapOffset : [0,0];
+							const r = Array.isArray(pulled.normalMapRepeat) ? pulled.normalMapRepeat : [1,1];
+							m.normalMap.offset.fromArray(o);
+							m.normalMap.repeat.fromArray(r);
+						}
+					
+						m.needsUpdate = true;
+						return m;
+					};
+					const applyMaterialsToThreeMesh = async (threeMesh, matUUIDs) => {
+						const mats = await Promise.all((matUUIDs || []).map(id => buildMaterialFromMatUUID(id)));
+						const groups = threeMesh.geometry?.groups ?? [];
+				
+						if (threeMesh.isSkinnedMesh) {
+							for (const mm of mats) if (mm && 'skinning' in mm) mm.skinning = true;
+							threeMesh.frustumCulled = false;
+						}
+				
+						if (groups.length > 1) {
+							const maxSlot = groups.reduce((m,g)=>Math.max(m,(g.materialIndex??0)),0);
+							const arr = new Array(Math.max(mats.length, maxSlot + 1));
+							for (let i=0;i<arr.length;i++) arr[i] = mats[i] ?? mats[mats.length-1] ?? threeMesh.material ?? null;
+							threeMesh.material = arr;
+							arr.forEach(mm => mm && (mm.needsUpdate = true));
+						} else {
+							const m0 = mats[0] ?? threeMesh.material ?? null;
+							if (m0) { threeMesh.material = m0; threeMesh.material.needsUpdate = true; }
+						}
+					};
+				
+					// =========================
+					// SUBMESH (material-only)
+					// =========================
+					if (isSubMesh) {
+						const node = this.object3d;
+						if (!node || !(node.isMesh || node.isSkinnedMesh)) break;
+						const uuids = component.properties.materials;
+						await applyMaterialsToThreeMesh(node, uuids);
+						break;
+					}
+				
+					// =========================
+					// MESH (load & bind, NO root wrapper; reuse-by-name)
+					// =========================
+					const meshUUID  = component.properties.mesh || null;
+					const modelPath = meshUUID ? this.resolveAssetPath(meshUUID) : null;
+					const modelBase = safeModelBase(modelPath);
+				
+					const needLoad =
+						!!modelPath &&
+						(
+							!this.modelScene ||
+							this._loadedMeshUUID !== meshUUID ||
+							!this.modelScene.parent
+						);
+				
+					let justLoaded = false;
+				
+					if (needLoad) {
+						const zf = zip.file(norm('assets/' + modelPath));
 						if (!zf) {
 							console.warn(`Model file not found: ${modelPath}`);
 						} else {
 							try {
-								const { gltf, scene } = await importModelFromZip(
-									zip, modelPath
-								);
-								
+								const { gltf, scene } = await importModelFromZip(zip, norm('assets/' + modelPath));
+				
 								scene.traverse(o => {
-									if(this.name == 'EivenWaveGLB')
-										console.log(o.material, this.name);
+									o.matrixAutoUpdate = true;
 									if (o.isSkinnedMesh) {
 										o.frustumCulled = false;
-										
 										const mats = Array.isArray(o.material) ? o.material : [o.material];
-										
-										for (const m of mats) {
-											if (m && 'skinning' in m) 
-												m.skinning = true;
-										}
+										for (const m of mats) if (m && 'skinning' in m) m.skinning = true;
 									}
 								});
 				
-								// remove previous model root BEFORE adding the new one
-								if (this.modelScene && this.modelScene.parent) {
-									this.modelScene.parent.remove(this.modelScene);
-								}
+								if (this.modelScene && this.modelScene.parent) this.modelScene.parent.remove(this.modelScene);
 				
 								this.object3d.add(scene);
 								this.modelScene = scene;
+								this._loadedMeshUUID = meshUUID;
+								justLoaded = true;
+				
 								await ensureRigAndBind(this, this.modelScene);
 							} catch (e) {
 								console.error('Failed to import model:', modelPath, e);
@@ -929,188 +1124,144 @@ export default class D3DObject {
 						}
 					}
 				
-					// helpers (UUID-only)
-					const _mimeFromExt = (p) => {
-						const ext = (p.split('.').pop() || '').toLowerCase();
-						if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
-						if (ext === 'png') return 'image/png';
-						if (ext === 'webp') return 'image/webp';
-						if (ext === 'ktx2') return 'image/ktx2';
-						return 'application/octet-stream';
-					};
-				
-					const loadTextureFromUUID = async (uuid) => {
-						if (!uuid) return null;
-						const filePath = this.resolveAssetPath(uuid);
-						const file = zip.file(path.join('assets', filePath));
-						if (!file) return null;
-				
-						const buf = await file.async('arraybuffer');
-						const blob = new Blob([buf], { type: _mimeFromExt(filePath) });
-						const bitmap = await createImageBitmap(blob);
-						const tex = new THREE.Texture(bitmap);
-						tex.needsUpdate = true;
-						return tex;
-					};
-				
-					const setMapUUID = async (mat, key, uuid, isColor = false) => {
-						// only set if the material actually supports this map
-						if (!(key in mat)) return;
-				
-						if (!uuid) {
-							if (mat[key]) {
-								mat[key].dispose?.();
-								mat[key] = null;
-								mat.needsUpdate = true;
-							}
-							return;
-						}
-						const tex = await loadTextureFromUUID(uuid);
-						if (!(tex && tex.isTexture)) {
-							console.warn(`[material] ${key} did not resolve to THREE.Texture`, uuid);
-							return;
-						}
-						if (isColor) {
-							if ('colorSpace' in tex) tex.colorSpace = THREE.SRGBColorSpace;
-							else tex.encoding = THREE.sRGBEncoding;
-						}
-						tex.wrapS = THREE.RepeatWrapping;
-						tex.wrapT = THREE.RepeatWrapping;
-						tex.needsUpdate = true;
-				
-						mat[key] = tex;
-						mat.needsUpdate = true;
-					};
-				
-					// remove params that a given THREE material type doesn't support
-					const stripIncompatibleParams = (params, type) => {
-						// minimal, targeted: avoid Basic warnings
-						if (type === 'MeshBasicMaterial') {
-							delete params.metalness;
-							delete params.roughness;
-							delete params.emissive;
-							delete params.emissiveIntensity;
-							delete params.envMapIntensity;
-							// also don't pass map params in the ctor for Basic
-							delete params.normalMap;
-							delete params.roughnessMap;
-							delete params.metalnessMap;
-							delete params.emissiveMap;
-						}
-						// add more rules here if you introduce other material families
-						return params;
-					};
-				
-					// build & apply materials
-					if (component.properties.materials && component.properties.materials.length > 0 && this.modelScene) {
-						const matPaths = component.properties.materials.map(p => this.resolvePath(p));
-						const matJsons = await Promise.all(matPaths.map(p => zip.file(p)?.async('string')));
-				
-						const materials = await Promise.all(matJsons.map(async (matStr, i) => {
-							if (matStr === undefined) {
-								console.warn(`Material file not found: ${matPaths[i]}`);
-								return null;
-							}
-							if (!matStr) {
-								matStr = JSON.stringify({
-									"name": "Fallback Material",
-									"type": "MeshBasicMaterial",
-									"color": 0xFF00FF,
-									"metalness": 0.0,
-									"roughness": 0.5,
-									"emissive": 0,
-									"wireframe": false
-								});
-								console.log('Using fallback material as ', matPaths[i], ' not valid');
-							}
-				
-							const params = JSON.parse(matStr);
-							const type = params.type;
-							const Ctor = THREE[type];
-							if (!Ctor) {
-								console.warn(`Unknown material type: ${type}`);
-								return null;
-							}
-				
-							// normalize numeric colors
-							if (params.color != null) params.color = Number(params.color);
-							if (params.emissive != null) params.emissive = Number(params.emissive);
-				
-							// transparency
-							if (params.opacity !== undefined && params.opacity < 1 && params.transparent !== true) {
-								params.transparent = true;
-							}
-				
-							if (typeof params.side === 'string' && THREE[params.side] !== undefined) {
-								params.side = THREE[params.side];
-							}
-				
-							// keep UUIDs to assign after construction
-							const {
-								map, normalMap, roughnessMap, metalnessMap, emissiveMap, alphaMap,
-								...rest
-							} = params;
-				
-							// strip incompatible ctor params
-							const baseParams = stripIncompatibleParams({ ...rest }, type);
-				
-							const m = new Ctor(baseParams);
-				
-							// helpful for gizmos / UI materials so they don't get greyed by post/ACES
-							if ('toneMapped' in m) m.toneMapped = false;
-				
-							// assign textures only if the material supports those props
-							await setMapUUID(m, 'map', map, /*isColor*/ true);
-							await setMapUUID(m, 'normalMap', normalMap);
-							await setMapUUID(m, 'roughnessMap', roughnessMap);
-							await setMapUUID(m, 'metalnessMap', metalnessMap);
-							await setMapUUID(m, 'emissiveMap', emissiveMap, /*isColor*/ true);
-							await setMapUUID(m, 'alphaMap', alphaMap);
-				
-							if (m.map) {
-								m.map.offset.fromArray(params.mapOffset || [0, 0]);
-								m.map.repeat.fromArray(params.mapRepeat || [1, 1]);
-							}
-							if (m.normalMap) {
-								m.normalMap.offset.fromArray(params.normalMapOffset || [0, 0]);
-								m.normalMap.repeat.fromArray(params.normalMapRepeat || [1, 1]);
-							}
-				
-							m.needsUpdate = true;
-							return m;
-						}));
-				
-						const root = this.modelScene;
-				
-						root.traverse(n => {
-							if (!n.isMesh) return;
-				
-							const groups = n.geometry?.groups ?? [];
-				
-							// Multi-submesh (indexed by geometry.groups[*].materialIndex)
-							if (groups.length > 1) {
-								const maxIdx = groups.reduce((m, g) => Math.max(m, g.materialIndex ?? 0), 0);
-				
-								// Start from existing materials so we don't nuke ones you didn't supply
-								const current = Array.isArray(n.material) ? n.material : [n.material];
-								const arr = new Array(Math.max(current.length, maxIdx + 1));
-				
-								for (let i = 0; i < arr.length; i++) {
-									arr[i] = materials[i] ?? current[i] ?? current[0] ?? materials[0] ?? current[0] ?? null;
+					if (!this.modelScene) break;
+					
+					// --- APPLY Mesh-level materials to this object's immediate mesh object3d(s) ---
+					{
+						const meshLevel = component.properties?.materials;
+						if (Array.isArray(meshLevel) && meshLevel.length > 0) {
+							const host = this.object3d;
+							if (host) {
+								// prefer the host itself if it's a mesh; otherwise apply to any immediate mesh children (depth 1)
+								const targets = [];
+								if (host.isMesh || host.isSkinnedMesh) {
+									targets.push(host);
+								} else if (Array.isArray(host.children)) {
+									for (const c of host.children) {
+										if (c && (c.isMesh || c.isSkinnedMesh)) targets.push(c);
+									}
 								}
-				
-								n.material = arr;
-								arr.forEach(m => m && (m.needsUpdate = true));
-								return;
+					
+								// preserve array index order exactly as provided
+								for (const t of targets) {
+									await applyMaterialsToThreeMesh(t, meshLevel);
+								}
 							}
-				
-							// Single-submesh → use first provided material if present
-							if (materials[0]) {
-								n.material = materials[0];
-								n.material.needsUpdate = true;
-							}
-						});
+						}
 					}
+				
+					// Build material-name -> .mat UUID map (once per load)
+					const buildMatMap = async () => {
+						const fullPath   = norm('assets/' + modelPath);
+						const container  = fullPath.replace(/\/[^\/]*$/, '/'); // container dir
+						const matsDir    = container + 'materials/';
+						const manifest   = matsDir + 'materials.index.json';
+				
+						const map = new Map();
+						const mf  = zip.file(manifest);
+						if (mf) {
+							try {
+								const txt = await mf.async('string');
+								const json = JSON.parse(txt);
+								if (json?.byName) {
+									for (const k of Object.keys(json.byName)) {
+										const rel = norm(json.byName[k]);
+										const uuid = _root.resolveAssetId(rel);
+										if (uuid) map.set(k, uuid);
+									}
+								}
+							} catch {}
+						}
+						return map;
+					};
+				
+					// Reuse-by-name binder (no D3D root node; we place GLTF root's children under host)
+					const sceneRoot = this.modelScene;
+				
+					const stableKeyFor = (node) => {
+						const idxs = [];
+						let n = node;
+						while (n && n.parent && n !== sceneRoot) {
+							const i = n.parent.children.indexOf(n);
+							idxs.push(i < 0 ? 0 : i);
+							n = n.parent;
+						}
+						idxs.reverse();
+						return idxs.join('/') || '0';
+					};
+					const sanitizeName = (raw, modelBase, key) => {
+						let name = (raw && raw.trim()) ? raw : `${modelBase}_${key}`;
+						if (/^root$/i.test(name)) 
+							name = `Container`;  // never raw "root"
+						return name.replace(/[^\w\-\.]+/g, '_');
+					};
+					const findByName = (parent, name) => {
+						if (!Array.isArray(parent.children)) return null;
+						for (const c of parent.children) if (c.name === name) return c;
+						return null;
+					};
+					const setLocalTRS = (d3d, node) => {
+						const pos = node.position, quat = node.quaternion, scl = node.scale;
+						const eul = new THREE.Euler().setFromQuaternion(quat, 'XYZ');
+						d3d.position = { x: pos.x, y: pos.y, z: pos.z };
+						d3d.rotation = { x: eul.x, y: eul.y, z: eul.z };
+						d3d.scale    = { x: scl.x, y: scl.y, z: scl.z };
+					};
+				
+					if (justLoaded) {
+						const matNameToUUID = await buildMatMap();
+				
+						const bindChildrenDirect = async (threeParent, d3dHost) => {
+							const tKids = threeParent.children.slice();
+						
+							for (const child of tKids) {
+								const rawName = child.name || child.type || '';
+								// detect root-like nodes (common in glTF)
+								if (/^root$/i.test(rawName)) {
+									// skip creating a D3D wrapper, recurse into its kids directly
+									await bindChildrenDirect(child, d3dHost);
+									continue;
+								}
+						
+								const key  = stableKeyFor(child);
+								const want = sanitizeName(rawName, modelBase, key);
+						
+								// reuse existing child by sanitized name; create only if missing
+								let d3dChild = findByName(d3dHost, want);
+								if (!d3dChild) {
+									d3dChild = await d3dHost.createObject({ name: want });
+									d3dChild.__auto_gltf = true;
+						
+									// init TRS once on first creation
+									setLocalTRS(d3dChild, child);
+								}
+						
+								// bind THREE node; let gizmo edits be visible
+								child.matrixAutoUpdate = true;
+								d3dChild.replaceObject3D(child);
+						
+								// ensure SubMesh once for mesh nodes, seeded by imported .mat names
+								if (child.isMesh || child.isSkinnedMesh) {
+									const hasSub = !!d3dChild.hasComponent('SubMesh')
+									if (!hasSub) {
+										const mats  = Array.isArray(child.material) ? child.material : [child.material];
+										const uuids = mats.map(m => {
+											const nm = m?.name || null;
+											return (nm && matNameToUUID.has(nm)) ? matNameToUUID.get(nm) : null;
+										});
+										d3dChild.addComponent('SubMesh', { materials: uuids });
+									}
+								}
+						
+								// recurse: glue children under this d3dChild
+								await bindChildrenDirect(child, d3dChild);
+							}
+						};
+						
+						await bindChildrenDirect(sceneRoot, this);
+						this.traverse(d3d => d3d.updateComponents());
+					}
+				
 					break;
 				}
 			}
@@ -1525,6 +1676,9 @@ export default class D3DObject {
 	delete() {
 		if(this.parent == null)
 			throw new Error("Can't delete _root");
+			
+		if(this.__auto_gltf)
+			throw new Error("Can't delete managed object");
 		
 		const idx = this.parent.children.indexOf(this);
 		
@@ -1540,6 +1694,17 @@ export default class D3DObject {
 		delete _root.superIndex[this.uuid];
 		
 		this.checkSymbols();
+	}
+	async readFile(path) {
+		const zip = this.zip;
+		if(!zip)
+			return;
+		
+		const file = zip.file(path);
+		if (!file) 
+			return null;
+	
+		return await file.async('string');
 	}
 	
 	isValidName(str) {

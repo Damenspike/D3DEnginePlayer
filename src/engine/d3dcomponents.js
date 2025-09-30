@@ -9,8 +9,24 @@ const D3DComponents = {
 				label: 'Model',
 				type: 'file',
 				format: 'model',
-				def: ''
+				def: '',
+				readOnly: true
 			},
+			'_meshKeys': {
+				label: '',
+				type: 'none',
+				def: []
+			},
+			'materials': { 
+				label: 'Materials', 
+				type: 'file[]',
+				format: 'material',
+				def: []
+			}
+		}
+	},
+	SubMesh: {
+		fields: {
 			'materials': { 
 				label: 'Materials', 
 				type: 'file[]',
@@ -74,7 +90,7 @@ const D3DComponents = {
 			'color': {
 				label: 'Color',
 				type: 'color',
-				def: '#ffffff'
+				def: '0xFFFFFF'
 			},
 			'intensity': { 
 				label: 'Intensity', 
@@ -102,7 +118,7 @@ const D3DComponents = {
 			'color': {
 				label: 'Color',
 				type: 'color',
-				def: '#ffffff'
+				def: '0xFFFFFF'
 			},
 			'intensity': { 
 				label: 'Intensity', 
@@ -142,7 +158,7 @@ const D3DComponents = {
 			'color': {
 				label: 'Color',
 				type: 'color',
-				def: '#ffffff'
+				def: '0xFFFFFF'
 			},
 			'intensity': { 
 				label: 'Intensity', 
@@ -176,17 +192,6 @@ const D3DComponents = {
 			materials: [
 				'Standard/Materials/__Editor/GizmoLight3D.mat'
 			]
-		}
-	},
-	HTML: {
-		name: 'HTML Overlay',
-		fields: {
-			'source': {
-				label: 'Source',
-				type: 'file',
-				format: 'html',
-				def: ''
-			}
 		}
 	},
 	Animation: {

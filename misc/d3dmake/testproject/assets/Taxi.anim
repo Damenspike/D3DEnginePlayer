@@ -1,0 +1,1 @@
+{"blendMode":2500,"duration":1,"name":"Taxi","tracks":[{"name":"A6MZero.position","type":"vector","times":[0,1],"values":[0,0,0,0,0,1.4827995184687723]},{"name":"A6MZero.quaternion","type":"quaternion","times":[],"values":[]},{"name":"A6MZero.scale","type":"vector","times":[],"values":[]}],"uuid":"c3705d2a-0322-45ef-b9bc-f2b31417e2dc"}

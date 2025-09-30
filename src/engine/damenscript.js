@@ -30,10 +30,16 @@ const DamenScript = (() => {
   const isId = c => /[A-Za-z0-9_$]/.test(c);
   const isDigit = c => /[0-9]/.test(c);
 
-  function DSyntax(msg, line=0, col=0){
-	const e = new Error(`${msg}${line?` (line ${line}, col ${col})`:''}`);
-	e.name = 'DamenScriptError';
-	return e;
+  function DSyntax(msg, line=0, col=0) {
+	  const e = new Error(`${msg}${line ? ` (line ${line}, col ${col})` : ''}`);
+	  e.name = 'DamenScriptSyntaxError';
+	  return e;
+  }
+  
+  function DRuntime(msg, line=0, col=0) {
+	  const e = new Error(`${msg}${line && col ? ` (line ${line}, col ${col})` : ''}`);
+	  e.name = 'DamenScriptRuntimeError';
+	  return e;
   }
 
   // ===== Lexer =====
@@ -436,20 +442,20 @@ const DamenScript = (() => {
 	  if (n==='this') return this.get('self'); // `this` -> `self`
 	  if (this.hasLocal(n)) return this.map[n];
 	  if (this.parent) return this.parent.get(n);
-	  throw new Error(`Unknown identifier: ${n}`);
+	  throw DRuntime(`Unknown identifier: ${n}`);
 	}
 	set(n,v){
-	  if (this.hasLocal(n)) { if (this.consts.has(n)) throw new Error(`Cannot assign to const ${n}`); this.map[n]=v; return v; }
+	  if (this.hasLocal(n)) { if (this.consts.has(n)) throw DRuntime(`Cannot assign to const ${n}`); this.map[n]=v; return v; }
 	  if (this.parent) return this.parent.set(n,v);
-	  throw new Error(`Unknown identifier: ${n}`);
+	  throw DRuntime(`Unknown identifier: ${n}`);
 	}
 	declare(kind,n,v){
-	  if (this.hasLocal(n)) throw new Error(`Identifier already declared: ${n}`);
+	  if (this.hasLocal(n)) throw DRuntime(`Identifier already declared: ${n}`);
 	  this.map[n]=v; if (kind==='const') this.consts.add(n);
 	}
   }
 
-  function coerceKey(k){ if (typeof k==='number') return String(k); if (typeof k==='string') return k; throw new Error('Computed key must be string or number'); }
+  function coerceKey(k){ if (typeof k==='number') return String(k); if (typeof k==='string') return k; throw DRuntime('Computed key must be string or number'); }
 
   function evalProgram(ast, rootEnv, { maxSteps = 50_000, maxMillis = null } = {}) {
 	let steps = 0;
@@ -459,10 +465,10 @@ const DamenScript = (() => {
 	const bump = () => {
 	  steps++;
 	  if (maxMillis != null && (now() - start) > maxMillis) {
-		throw new Error('DamenScript: script exceeded time budget');
+		throw DRuntime('DamenScript: script exceeded time budget');
 	  }
 	  if (steps > maxSteps) {
-		throw new Error('DamenScript: script too complex');
+		throw DRuntime('DamenScript: script too complex');
 	  }
 	};
   
@@ -474,8 +480,8 @@ const DamenScript = (() => {
 	const top = new Scope(null);
 	if (rootEnv && typeof rootEnv==='object') for (const k of Object.keys(rootEnv)) top.declare('const', k, rootEnv[k]);
 
-	const getProp=(obj,key,computed=false)=>{ const prop=computed?coerceKey(key):key; if (BLOCKED_PROPS.has(prop)) throw new Error(`Forbidden property: ${prop}`); return obj[prop]; };
-	const setProp=(obj,key,val,computed=false)=>{ const prop=computed?coerceKey(key):key; if (BLOCKED_PROPS.has(prop)) throw new Error(`Forbidden property: ${prop}`); obj[prop]=val; return val; };
+	const getProp=(obj,key,computed=false)=>{ const prop=computed?coerceKey(key):key; if (BLOCKED_PROPS.has(prop)) throw DRuntime(`Forbidden property: ${prop}`); return obj[prop]; };
+	const setProp=(obj,key,val,computed=false)=>{ const prop=computed?coerceKey(key):key; if (BLOCKED_PROPS.has(prop)) throw DRuntime(`Forbidden property: ${prop}`); obj[prop]=val; return val; };
 
 	const RETURN = Symbol('return');
 
@@ -560,7 +566,7 @@ const DamenScript = (() => {
 		case 'ArrayExpression': {
 		  const out=[]; for (const el of node.elements) {
 			if (!el) { out.push(undefined); continue; }
-			if (el.type==='SpreadElement') { const v=evalNode(el.argument, scope); if (Array.isArray(v)) out.push(...v); else throw new Error('Spread in array requires an array'); }
+			if (el.type==='SpreadElement') { const v=evalNode(el.argument, scope); if (Array.isArray(v)) out.push(...v); else throw DRuntime('Spread in array requires an array'); }
 			else out.push(evalNode(el, scope));
 		  } return out;
 		}
@@ -570,8 +576,8 @@ const DamenScript = (() => {
 		  for (const p of node.properties) {
 			if (p.type==='SpreadElement') {
 			  const src=evalNode(p.argument, scope);
-			  if (src && typeof src==='object') { for (const k of Object.keys(src)) { if (BLOCKED_PROPS.has(k)) throw new Error(`Forbidden property: ${k}`); o[k]=src[k]; } }
-			  else throw new Error('Spread in object requires an object');
+			  if (src && typeof src==='object') { for (const k of Object.keys(src)) { if (BLOCKED_PROPS.has(k)) throw DRuntime(`Forbidden property: ${k}`); o[k]=src[k]; } }
+			  else throw DRuntime('Spread in object requires an object');
 			} else {
 			  const key=p.key.name; setProp(o, key, evalNode(p.value, scope), false);
 			}
@@ -593,7 +599,7 @@ const DamenScript = (() => {
 			if (a.type === 'SpreadElement') {
 			  const v = evalNode(a.argument, scope);
 			  if (Array.isArray(v)) args.push(...v);
-			  else throw new Error('Spread in call requires an array');
+			  else throw DRuntime('Spread in call requires an array');
 			} else {
 			  args.push(evalNode(a, scope));
 			}
@@ -610,13 +616,13 @@ const DamenScript = (() => {
 			  const key = calleeNode.property.name;
 			  fn = getProp(obj, key, false);
 			}
-			if (typeof fn !== 'function') throw new Error('Attempt to call non-function ' + calleeNode.property.name);
+			if (typeof fn !== 'function') throw DRuntime('Attempt to call non-function ' + calleeNode.property.name);
 			return fn.apply(obj, args);         // <-- bind `this` to obj
 		  }
 		
 		  // Otherwise, bare call: fn(...), keep `this` undefined
 		  const fn = evalNode(calleeNode, scope);
-		  if (typeof fn !== 'function') throw new Error('Attempt to call non-function');
+		  if (typeof fn !== 'function') throw DRuntime('Attempt to call non-function');
 		  return fn.apply(undefined, args);
 		}
 
@@ -638,7 +644,7 @@ const DamenScript = (() => {
 
 		case 'UnaryExpression': {
 		  const v=evalNode(node.argument, scope);
-		  switch(node.operator){ case '!': return !v; case '+': return +v; case '-': return -v; default: throw new Error(`Unsupported unary ${node.operator}`); }
+		  switch(node.operator){ case '!': return !v; case '+': return +v; case '-': return -v; default: throw DRuntime(`Unsupported unary ${node.operator}`); }
 		}
 
 		case 'UpdateExpression': {
@@ -646,9 +652,9 @@ const DamenScript = (() => {
 		  function read(arg){
 			if (arg.type==='Identifier') return {kind:'id', name:arg.name, value:scope.get(arg.name)};
 			if (arg.type==='MemberExpression'){ const obj=evalNode(arg.object, scope); if (arg.computed){ const key=evalNode(arg.property,scope); return {kind:'mem', obj, key, computed:true, value:getProp(obj,key,true)}; } else { const key=arg.property.name; return {kind:'mem', obj, key, computed:false, value:getProp(obj,key,false)}; } }
-			throw new Error('Invalid update target');
+			throw DRuntime('Invalid update target');
 		  }
-		  const tgt=read(node.argument); const old=Number(tgt.value); if(!Number.isFinite(old)) throw new Error('Update operator on non-number');
+		  const tgt=read(node.argument); const old=Number(tgt.value); if(!Number.isFinite(old)) throw DRuntime('Update operator on non-number');
 		  const val=old+delta; if (tgt.kind==='id') scope.set(tgt.name,val); else setProp(tgt.obj,tgt.key,val,tgt.computed); return node.prefix?val:old;
 		}
 
@@ -658,29 +664,29 @@ const DamenScript = (() => {
 			case '+': return l+r; case '-': return l-r; case '*': return l*r; case '/': return l/r; case '%': return l%r;
 			case '==': return l==r; case '!=': return l!=r; case '===': return l===r; case '!==': return l!==r;
 			case '<': return l<r; case '<=': return l<=r; case '>': return l>r; case '>=': return l>=r;
-			default: throw new Error(`Unsupported binary ${node.operator}`);
+			default: throw DRuntime(`Unsupported binary ${node.operator}`);
 		  }
 		}
 
 		case 'LogicalExpression': {
 		  if (node.operator==='&&'){ const l=evalNode(node.left, scope); return l ? evalNode(node.right, scope) : l; }
 		  if (node.operator==='||'){ const l=evalNode(node.left, scope); return l ? l : evalNode(node.right, scope); }
-		  throw new Error(`Unsupported logical ${node.operator}`);
+		  throw DRuntime(`Unsupported logical ${node.operator}`);
 		}
 
 		case 'AssignmentExpression': {
 		  const op=node.operator; const rhs=evalNode(node.right, scope);
-		  const apply=(op,a,b)=>{ switch(op){ case '=':return b; case '+=':return a+b; case '-=':return a-b; case '*=':return a*b; case '/=':return a/b; case '%=':return a%b; default: throw new Error(`Unsupported assignment operator ${op}`); } };
+		  const apply=(op,a,b)=>{ switch(op){ case '=':return b; case '+=':return a+b; case '-=':return a-b; case '*=':return a*b; case '/=':return a/b; case '%=':return a%b; default: throw DRuntime(`Unsupported assignment operator ${op}`); } };
 
 		  if (node.left.type==='Identifier'){ const name=node.left.name; const cur=(op==='=')?undefined:scope.get(name); const val=apply(op,cur,rhs); return scope.set(name,val); }
 		  if (node.left.type==='MemberExpression'){ const obj=evalNode(node.left.object, scope);
 			if (node.left.computed){ const key=evalNode(node.left.property, scope); const cur=(op==='=')?undefined:getProp(obj,key,true); const val=apply(op,cur,rhs); return setProp(obj,key,val,true); }
 			else { const key=node.left.property.name; const cur=(op==='=')?undefined:getProp(obj,key,false); const val=apply(op,cur,rhs); return setProp(obj,key,val,false); }
 		  }
-		  throw new Error('Invalid assignment target');
+		  throw DRuntime('Invalid assignment target');
 		}
 
-		default: throw new Error(`Unsupported node type ${node.type}`);
+		default: throw DRuntime(`Unsupported node type ${node.type}`);
 	  }
 	}
 

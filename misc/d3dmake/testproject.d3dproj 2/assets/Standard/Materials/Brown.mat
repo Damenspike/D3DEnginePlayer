@@ -1,9 +1,0 @@
-{
-	"name": "Brown",
-	"type": "MeshStandardMaterial",
-	"color": "0x895129",
-	"metalness": 0.0,
-	"roughness": 0.5,
-	"emissive": 0,
-	"wireframe": false
-}

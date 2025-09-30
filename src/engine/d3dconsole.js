@@ -11,21 +11,21 @@ function formatMessage(args) {
 const D3DConsole = {
 	log: (...args) => {
 		console.log(...args);
-		_editor.onConsoleMessage({ level: 'log', message: formatMessage(args) });
+		_host.onConsoleMessage({ level: 'log', message: formatMessage(args) });
 	},
 	warn: (...args) => {
 		console.warn(...args);
-		_editor.onConsoleMessage({ level: 'warn', message: formatMessage(args) });
+		_host.onConsoleMessage({ level: 'warn', message: formatMessage(args) });
 	},
 	error: (...args) => {
 		console.error(...args);
-		_editor.onConsoleMessage({ level: 'error', message: formatMessage(args) });
+		_host.onConsoleMessage({ level: 'error', message: formatMessage(args) });
 	},
 	assert: (condition, ...args) => {
 		console.assert(condition, ...args);
 		if (!condition) {
 			const msg = args.length ? formatMessage(args) : 'Assertion failed';
-			_editor.onConsoleMessage({ level: 'assert', message: msg });
+			_host.onConsoleMessage({ level: 'assert', message: msg });
 		}
 	}
 };

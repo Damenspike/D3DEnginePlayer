@@ -25,7 +25,28 @@ export default function ConsoleInspector() {
 		
 		autoScroll.current = scrollTop + clientHeight >= scrollHeight - 5;
 	};
+	const clearConsole = () => {
+		_editor.console = [];
+		setEditorConsole([]);
+	}
 
+	const drawOptions = () => {
+		const drawClearButton = () => (
+			<div className='clear-console'>
+				<button 
+					onClick={clearConsole}
+					disabled={editorConsole.length < 1}
+				>
+					Clear
+				</button>
+			</div>
+		)
+		return (
+			<>
+				{drawClearButton()}
+			</>
+		)
+	}
 	const drawConsoleLines = () => {
 		const rows = [];
 		
@@ -51,6 +72,7 @@ export default function ConsoleInspector() {
 			className='console-inspector'
 			onScroll={onScroll}
 		>
+			{drawOptions()}
 			{drawConsoleLines()}
 		</div>
 	);

@@ -2,7 +2,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
-const vm = require('vm');
+const { existsSync } = require('fs');
 
 const events = {};
 const fireEvent = (event, ...args) => events[event]?.(...args);
@@ -12,6 +12,9 @@ const addIPCListener = (name) =>
 contextBridge.exposeInMainWorld('D3D', {
 	setEventListener: (event, listener) => {
 		events[event] = listener;
+	},
+	invoke: (event, ...params) => {
+		events[event]?.(...params);
 	},
 	path: {
 		join: (...parts) => path.join(...parts),
@@ -64,25 +67,28 @@ contextBridge.exposeInMainWorld('D3D', {
 		const b64 = await fs.readFile(filePath);
 		return Uint8Array.from(Buffer.from(b64, 'base64'));
 	},
-	saveProjectFile: async (uint8array, projectURI) => {
-		if(projectURI === undefined)
-			projectURI = await ipcRenderer.invoke('get-current-project-uri');
-		
+	echoSave: () => ipcRenderer.send('echo-save'),
+	echoBuild: ({prompt, play}) => ipcRenderer.send('echo-build', {prompt, play}),
+	saveProjectFile: async (uint8array, projectURI, showInFinder = false) => {
 		if(!projectURI)
 			throw new Error('Unknown project URI');
 		
 		const ext = getExtension(projectURI);
 		
-		if(ext != 'd3dproj')
+		if(ext != 'd3dproj' && ext != 'd3d')
 			throw new Error(`Could not write project file of type ${ext}`);
 		
 		const buffer = Buffer.from(uint8array);
 		const dir = path.dirname(projectURI);
-		const { existsSync } = require('fs');
 		if (!existsSync(dir)) {
 			throw new Error(`Save failed: directory does not exist: ${dir}`);
 		}
 		await fs.writeFile(projectURI, buffer);
+		
+		if (showInFinder) {
+			// This works on macOS, Windows and Linux
+			ipcRenderer.send('show-in-finder', projectURI);
+		}
 	},
 	/*writeFile: async (filePath, data) => {
 		const dir = path.dirname(filePath);
@@ -93,6 +99,9 @@ contextBridge.exposeInMainWorld('D3D', {
 		
 		await fs.writeFile(filePath, data);
 	},*/
+	openPlayer: (uri) => ipcRenderer.send('open-player', uri),
+	onConsoleMessage: ({level, message}) => 
+		ipcRenderer.send('console-message', {level, message}),
 	
 	theme: {
 		get: () => ipcRenderer.invoke('get-theme'),
@@ -132,3 +141,4 @@ addIPCListener('request-save-and-close');
 addIPCListener('menu-import-assets');
 addIPCListener('animate');
 addIPCListener('csm');
+addIPCListener('build');

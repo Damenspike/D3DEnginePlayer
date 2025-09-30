@@ -23,6 +23,7 @@ export default class D3DEditorState {
 	set focus(value) {
 		this._focus = value;
 		this.onEditorFocusChanged();
+		_events.invoke('editor-focus', value);
 	}
 	
 	constructor() {
@@ -138,7 +139,6 @@ export default class D3DEditorState {
 		);
 		
 		this.selectedObjects = objects;
-		this.onObjectSelected?.(this.selectedObjects);
 		this.selectNoAssets?.();
 		this.probeSelection();
 	}
@@ -159,7 +159,6 @@ export default class D3DEditorState {
 		);
 		
 		this.selectedObjects.push(...objects);
-		this.onObjectSelected?.(this.selectedObjects);
 		this.selectNoAssets?.();
 		this.probeSelection();
 	}
@@ -178,7 +177,6 @@ export default class D3DEditorState {
 			[...this.selectedObjects]
 		);
 		
-		this.onObjectSelected?.(this.selectedObjects);
 		this.probeSelection();
 	}
 	probeSelection() {
@@ -266,8 +264,34 @@ export default class D3DEditorState {
 	async __save(projectURI) {
 		const zip = _root?.zip;
 		
+		this.__doBuild();
+		
+		///////////////////////////////////
+		// -- Save zip itself --
+		const zipData = await zip.generateAsync({ type: 'uint8array' });
+		
+		await D3D.saveProjectFile(zipData, projectURI);
+		
+		console.log('Project saved!');
+	}
+	async __build(buildURI, openInFinder = true) {
+		const zip = _root?.zip;
+		
+		this.__doBuild();
+		
+		///////////////////////////////////
+		// -- Save zip itself --
+		const zipData = await zip.generateAsync({ type: 'uint8array' });
+		
+		await D3D.saveProjectFile(zipData, buildURI, openInFinder);
+		
+		console.log('Project built!');
+	}
+	__doBuild() {
+		const zip = _root?.zip;
+		
 		if(!zip)
-			throw new Error("No project to save");
+			throw new Error('No project to build');
 		
 		// Save manifest
 		this.writeFile({
@@ -314,15 +338,6 @@ export default class D3DEditorState {
 				data: _root.__script
 			});
 		}
-		
-		
-		///////////////////////////////////
-		// -- Save zip itself --
-		const zipData = await zip.generateAsync({ type: 'uint8array' });
-		
-		await D3D.saveProjectFile(zipData, projectURI);
-		
-		console.log('Project saved!');
 	}
 	
 	deleteSelectedObjects(opts) {

@@ -72,7 +72,7 @@ export default function AnimationManager(d3dobject, component) {
 		const baseName = fileNameNoExt(path);
 		
 		try {
-			const json = await _editor.readFile(path);
+			const json = await d3dobject.root.readFile(path);
 			const clipObj = JSON.parse(json);
 			this.__addLoadedClip(uuid, baseName, clipObj);
 		}catch(e) {
@@ -143,6 +143,9 @@ export default function AnimationManager(d3dobject, component) {
 		};
 	}
 	this.__saveClip = (uuid) => {
+		if(!window._editor)
+			return;
+		
 		if(!this.clipExists(uuid)) {
 			console.warn('Unknown clip for save', uuid);
 			return;

@@ -8,18 +8,20 @@ let gameURI;
 
 function createStartWindow() {
 	startWindow = new BrowserWindow({
-		width: 500,
+		width: 480,
 		height: 300,
 		resizable: false,
 		titleBarStyle: 'hidden',
 		webPreferences: {
-			preload: path.join(__dirname, 'preload.js'),
-			nodeIntegration: true,
-			contextIsolation: false
+			preload: path.join(__dirname, 'preload-player.cjs'),
+			contextIsolation: true,
+			nodeIntegration: false,
+			enableRemoteModule: false,
+			sandbox: false
 		}
 	});
 
-	startWindow.loadFile('src/windows/player/playerstart.html');
+	startWindow.loadFile('../src/windows/player/playerstart.html');
 
 	startWindow.on('closed', () => {
 		startWindow = null;
@@ -43,35 +45,37 @@ async function createGameWindow() {
 		width: 800,
 		height: 600,
 		webPreferences: {
-			preload: path.join(__dirname, 'preload.js'),
+			preload: path.join(__dirname, 'preload-player.cjs'),
 			contextIsolation: true,
-			nodeIntegration: false
+			nodeIntegration: false,
+			enableRemoteModule: false,
+			sandbox: false
 		}
 	});
 
 	if(isDev)
 		await gameWindow.loadURL('http://localhost:5174');
 	else
-		await gameWindow.loadFile(path.join(__dirname, 'dist/player/index.html'));
-
+		await gameWindow.loadFile('../dist/player/index.html');
+	
 	gameWindow.on('closed', () => { gameWindow = null; });
-	return gameWindow.webContents;
 }
 
 async function loadGameURI(uri) {
 	console.log('Loading game URI:', uri);
 	gameURI = uri;
-
+	
 	// Destroy existing game window if present
 	if (gameWindow && !gameWindow.isDestroyed()) {
 		gameWindow.destroy();
 	}
+	
+	await createGameWindow();
+}
 
-	// Create new game window and send URI once loaded
-	const gameWebContents = await createGameWindow();
-	gameWebContents.once('did-finish-load', () => {
-		gameWebContents.send('d3d-load', uri);
-	});
+function closeGameWindow() {
+	if (gameWindow && !gameWindow.isDestroyed()) 
+		gameWindow.destroy();
 }
 
 // --- Menu ---
@@ -126,14 +130,15 @@ const menuTemplate = [
 		label: 'View',
 		submenu: [
 			{
+				id: 'toggleDevTools',
 				label: 'Toggle DevTools',
-				accelerator: 'CmdOrCtrl+Shift+I',
+				accelerator: 'Alt+Cmd+I',
 				click: (_, browserWindow) => {
 					if (browserWindow) browserWindow.webContents.toggleDevTools();
 				}
 			}
 		]
-	}
+	},
 ];
 
 Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate));
@@ -146,7 +151,8 @@ app.on('window-all-closed', () => {
 });
 
 app.on('activate', () => {
-	if (!startWindow) createStartWindow();
+	if (!startWindow) 
+		createStartWindow();
 });
 
 // --- IPC handlers ---
@@ -177,11 +183,12 @@ ipcMain.on('update-window', (_, { width, height, title }) => {
 
 // Close game window
 ipcMain.on('close-game-window', () => {
-	if (gameWindow && !gameWindow.isDestroyed()) gameWindow.destroy();
+	if (gameWindow && !gameWindow.isDestroyed()) 
+		gameWindow.destroy();
 });
 
 // Show error dialog
-ipcMain.on('show-error', async (_, { title, message }) => {
+ipcMain.on('show-error', async (_, { title, message, closeGameWhenDone }) => {
 	const focused = BrowserWindow.getFocusedWindow();
 	if (!focused) return;
 	await dialog.showMessageBox(focused, {
@@ -190,4 +197,34 @@ ipcMain.on('show-error', async (_, { title, message }) => {
 		message: message || 'Unknown error',
 		buttons: ['OK']
 	});
+	
+	if(closeGameWhenDone)
+		closeGameWindow();
 });
+
+// Show confirm dialog
+ipcMain.handle('show-confirm', async (
+	event, 
+	{ title = 'Confirm', message = 'Are you sure?' }
+) => {
+	const win =
+		BrowserWindow.fromWebContents(event.sender) ||
+		BrowserWindow.getFocusedWindow();
+
+	if (!win) return false;
+
+	const { response } = await dialog.showMessageBox(win, {
+		type: 'question',
+		title,
+		message,
+		buttons: ['Yes', 'No'],
+		defaultId: 0,
+		cancelId: 1,
+		normalizeAccessKeys: true
+	});
+
+	return response === 0; // true if "Yes"
+});
+
+// Get game URI
+ipcMain.handle('get-current-game-uri', () => gameURI);

@@ -24,11 +24,6 @@ export async function onAssetDroppedIntoGameView(path, screenPos) {
 
 		case 'glbcontainer':
 		case 'gltfcontainer': {
-			const parent = await _editor.focus.createObject({
-				name: fileNameNoExt(path.endsWith('/') ? path.slice(0, -1) : path)
-			});
-			_editor.moveObjectToCameraView(parent);
-		
 			/*
 				Extract animations
 			*/
@@ -50,15 +45,16 @@ export async function onAssetDroppedIntoGameView(path, screenPos) {
 				if (/\.anim$/i.test(rel)) {
 					animFiles.push(rel);
 				}
-				if (/\.mat$/i.test(rel)) {
-					matFiles.push(rel);
-				}
 			});
 			childFiles.sort();
 			animFiles.sort();
+			
+			let d3dparent;
 		
 			for (const childPath of childFiles) {
-				await _spawnModelFromZip(childPath, zip, parent);
+				const d3dobject = await spawnModelFromZip(childPath, zip, _root);
+				if(!d3dparent)
+					d3dparent = d3dobject;
 			}
 			
 			/*
@@ -71,7 +67,7 @@ export async function onAssetDroppedIntoGameView(path, screenPos) {
 						const clip = JSON.parse(json);
 						const targets = getAnimTargets(clip);
 						
-						parent.addComponent('Animation', {
+						d3dparent.addComponent('Animation', {
 							clips: animFiles.map(path => _root.resolveAssetId(path))
 						});
 					}catch(e) {
@@ -80,14 +76,14 @@ export async function onAssetDroppedIntoGameView(path, screenPos) {
 					}
 				}
 			}
-		
-			_editor.setSelection([parent]);
+			_editor.moveObjectToCameraView(d3dparent);
+			_editor.setSelection([d3dparent]);
 			break;
 		}
 
 		case 'glb':
 		case 'gltf': {
-			const d3d = await _spawnModelFromZip(path, zip, null);
+			const d3d = await spawnModelFromZip(path, zip, null);
 			_editor.moveObjectToCameraView(d3d);
 			_editor.setSelection([d3d]);
 			break;
@@ -99,7 +95,7 @@ export async function onAssetDroppedIntoGameView(path, screenPos) {
    Shared model drop logic
 ------------------------------ */
 
-async function _spawnModelFromZip(assetPath, zip, parent) {
+async function spawnModelFromZip(assetPath, zip, parent) {
 	const trs = await readLocalTRSFromZip(zip, assetPath);
 
 	const d3dobject = await (parent || _editor.focus).createObject({

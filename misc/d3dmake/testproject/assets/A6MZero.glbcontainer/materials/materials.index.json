@@ -1,0 +1,16 @@
+{
+  "count": 5,
+  "files": [
+    "assets/A6MZero.glbcontainer/materials/A6M.mat",
+    "assets/A6MZero.glbcontainer/materials/A6M.2.mat",
+    "assets/A6MZero.glbcontainer/materials/MeshStandardMaterial.mat",
+    "assets/A6MZero.glbcontainer/materials/A6MM.mat",
+    "assets/A6MZero.glbcontainer/materials/A6MM.2.mat"
+  ],
+  "byName": {
+    "A6M": "assets/A6MZero.glbcontainer/materials/A6M.mat",
+    "A6M.2": "assets/A6MZero.glbcontainer/materials/A6M.2.mat",
+    "A6MM": "assets/A6MZero.glbcontainer/materials/A6MM.mat",
+    "A6MM.2": "assets/A6MZero.glbcontainer/materials/A6MM.2.mat"
+  }
+}

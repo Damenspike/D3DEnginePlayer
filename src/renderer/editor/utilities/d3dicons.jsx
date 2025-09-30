@@ -16,7 +16,7 @@ import {
 export function drawIconForObject(object) {
 	if(object.symbol)
 		return <MdOutlineInterests />;
-	if(object.components.find(c => c.type == 'Mesh'))
+	if(object.components.find(c => c.type == 'Mesh' || c.type == 'SubMesh'))
 		return <MdViewInAr />;
 	else
 	if(object.components.find(c => c.type.includes('Light')))

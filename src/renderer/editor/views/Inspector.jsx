@@ -100,27 +100,28 @@ export default function Inspector() {
 			setSelectedAssetPaths(() => new Set());
 			setLastSelectedPath(null);
 		});
+		_events.on('selected-objects', (selectedObjects) => {
+			const selectedObject = selectedObjects[0];
+			setObject(selectedObject);
+		
+			if(!selectedObject) {
+				setDummyObject({});
+			} else {
+				setDummyObject({...selectedObject, name: selectedObject._name});
+			}
+		
+			// Use functional state setter to ensure fresh reference
+			_editor.updateInspector = () => {
+				setDummyObject(prev => prev ? { ...prev } : {});
+			};
+		});
 		
 		_editor.onProjectLoaded = () => {
 			setDummyProject({..._editor.project});
 		}
-		_editor.onObjectSelected = (objects) => {
-			const object = objects[0];
-			
-			setObject(object);
-			
-			if(!object)
-				setDummyObject({});
-			else
-				setDummyObject({...object, name: object.name});
-		}
+		
+		_editor.updateInspector = () => {};
 	}, []);
-	
-	useEffect(() => {
-		_editor.updateInspector = () => {
-			setDummyObject({...dummyObject});
-		}
-	}, [dummyObject]);
 	
 	useEffect(() => {
 		const onDelete = () => {
@@ -201,6 +202,10 @@ export default function Inspector() {
 		/>
 	)
 	const drawObjectInspector = () => {
+		if(!dummyObject.name) {
+			console.error('Fatal: Dummy object name undefined', dummyObject);
+			return;
+		}
 		return (
 			<InspectorCell 
 				id="insp-cell-object" 
@@ -514,6 +519,7 @@ export default function Inspector() {
 								type="text" 
 								value={current ?? ''} 
 								onKeyDown={autoBlur}
+								readOnly={field.readOnly}
 								onChange={e => {
 									let val = e.target.value;
 									
@@ -554,6 +560,7 @@ export default function Inspector() {
 								onKeyDown={autoBlur}
 								min={field.min}
 								max={field.max}
+								readOnly={field.readOnly}
 								onChange={e => {
 									let val = Number(e.target.value) || 0;
 									
@@ -591,6 +598,7 @@ export default function Inspector() {
 									onKeyDown={autoBlur}
 									min={field.min}
 									max={field.max}
+									readOnly={field.readOnly}
 									onChange={e => {
 										let val = Number(e.target.value) || 0;
 										
@@ -628,6 +636,7 @@ export default function Inspector() {
 							<input 
 								type="checkbox" 
 								checked={!!current} 
+								readOnly={field.readOnly}
 								onKeyDown={autoBlur}
 								onChange={e => {
 									const val = !!e.target.checked;
@@ -652,8 +661,9 @@ export default function Inspector() {
 						fieldContent = (
 							<input 
 								type="color" 
-								value={current.replace('0x', '#')}
+								value={String(current).replace('0x', '#')}
 								onKeyDown={autoBlur}
+								readOnly={field.readOnly}
 								onClick={e => {
 									const val = (e.target.value || '#ffffff').replace('#', '0x');
 									
@@ -726,9 +736,12 @@ export default function Inspector() {
 								if(uri.split('/')[1] == 'Standard')
 									return;
 								
+								if(!originURI)
+									return;
+								
 								mrows.push(
 									<ComponentCell 
-										title={originURI}
+										title={fileNameNoExt(originURI)}
 										key={mrows.length} 
 									>
 										{drawMaterialEditor(uri)}
@@ -786,7 +799,10 @@ export default function Inspector() {
 											<div key={idx} className="file-array-row">
 												<div 
 													className='tf'
-													onClick={browse}
+													onClick={() => {
+														if(!field.readOnly)
+															browse();
+													}}
 													tabIndex={0}
 												>
 													{fname && (
@@ -798,13 +814,15 @@ export default function Inspector() {
 														{fname || 'No file selected'}
 													</div>
 												</div>
-												<button
-													title="Browse"
-													onClick={browse}
-												>
-													<MdFolderOpen />
-												</button>
-												{field.type == 'file[]' && (
+												{!field.readOnly && (
+													<button
+														title="Browse"
+														onClick={browse}
+													>
+														<MdFolderOpen />
+													</button>
+												)}
+												{field.type == 'file[]' && !field.readOnly && (
 													<button
 														title="Remove"
 														onClick={() => {
@@ -835,7 +853,10 @@ export default function Inspector() {
 									<div className="file-array-actions">
 										<button
 											title="Add"
-											onClick={browseAndAppend}
+											onClick={() => {
+												if(!field.readOnly)
+													browseAndAppend();
+											}}
 										>
 											<MdAdd />
 										</button>
@@ -847,11 +868,17 @@ export default function Inspector() {
 						);
 						break;
 					}
+					case 'none':
+						fieldContent = null;
+						break;
 					default: {
 						fieldContent = (<i>No editor</i>)
 						break;
 					}
 				}
+				
+				if(!fieldContent)
+					continue;
 				
 				fields.push(
 					<div className='field' key={fields.length}>
