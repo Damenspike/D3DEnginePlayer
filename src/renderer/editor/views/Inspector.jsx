@@ -147,6 +147,14 @@ export default function Inspector() {
 		}
 	}, [assetTree]);
 	
+	useEffect(() => {
+		if(!_root)
+			return;
+		
+		setBgType(_root.object3d.background?.isColor ? 'color' : 'none');
+		setBgColor(_root.object3d.background?.isColor ? `#${_root.object3d.background.getHexString()}` : '#000000');
+	}, [_root]);
+	
 	const update = () => {
 		setDummyObject({...dummyObject});
 		setDummyProject({...dummyProject});
@@ -1594,7 +1602,7 @@ export default function Inspector() {
 		const renderNode = (node, depth = 0, siblings = []) => {
 			const selected = isSelected(node.path);
 			const ext = getExtension(node.name);
-			const displayName = node.name.split('.')[0];
+			const displayName = fileNameNoExt(node.name);
 			
 			if (node.type === 'file') {
 				return (

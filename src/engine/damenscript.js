@@ -9,6 +9,12 @@ import {
 	FORBIDDEN_PROPS
 } from './damenscript-schema.js';
 
+Math.lerp = (a, b, time, easeFn) => {
+	const fn = easeFn || Tween.Linear;
+	const u  = Math.max(0, Math.min(1, time));
+	return a + (b - a) * fn(u);
+};
+
 const DamenScript = (() => {
   // ===== Utilities / Guards =====
   const BLOCKED_PROPS = new Set([...FORBIDDEN_PROPS]);
@@ -490,16 +496,16 @@ const DamenScript = (() => {
 	  for (let i = 0; i < params.length; i++) {
 		const p = params[i];
 		let val;
-		if (i < args.length && args[i] !== undefined) {
-		  val = args[i];
-		} else if (p.default != null) {
-		  // default evaluated in function scope (has access to earlier params)
-		  val = evalNode(p.default, fnScope);
-		} else {
-		  val = undefined;
-		}
-		fnScope.declare('const', p.name, val);
+		if (i < args.length && args[i] !== undefined) val = args[i];
+		else if (p.default != null) val = evalNode(p.default, fnScope);
+		else val = undefined;
+	
+		fnScope.declare('let', p.name, val);   // <- changed to 'let'
 	  }
+	
+	  // Optional: JS-like 'arguments'
+	  fnScope.declare('let', 'arguments', args);
+	
 	  return fnScope;
 	}
 

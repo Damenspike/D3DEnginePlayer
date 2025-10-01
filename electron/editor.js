@@ -89,6 +89,8 @@ function createNewProjectWindow() {
 	});
 }
 async function createGameWindow() {
+	await closeGameWindow();
+	
 	// In-editor game window
 	gameWindow = new BrowserWindow({
 		width: 800,
@@ -212,6 +214,23 @@ function closeEditorWindow() {
 		editorWindow.close();
 	});
 }
+function closeGameWindow() {
+	return new Promise(resolve => {
+		if (!gameWindow) return resolve();
+		
+		// If already destroyed, just cleanup and resolve
+		if (gameWindow.isDestroyed()) {
+			gameWindow = null;
+			return resolve();
+		}
+		
+		gameWindow.once('closed', () => {
+			gameWindow = null;
+			resolve();
+		});
+		gameWindow.close();
+	});
+}
 async function openBrowse() {
 	const { canceled, filePaths } = await dialog.showOpenDialog({
 		title: 'Select a D3D project file',
@@ -235,36 +254,47 @@ function startNewProject() {
 	else newProjectWindow.show()
 }
 function sendSelectAll() {
+	if (!editorWindow.isFocused()) return;
 	editorWindow.webContents.send('select-all');
 }
 function sendDelete() {
+	if (!editorWindow.isFocused()) return;
 	editorWindow.webContents.send('delete');
 }
 function sendUndo() {
+	if (!editorWindow.isFocused()) return;
 	editorWindow.webContents.send('undo');
 }
 function sendRedo() {
+	if (!editorWindow.isFocused()) return;
 	editorWindow.webContents.send('redo');
 }
 function sendDupe() {
+	if (!editorWindow.isFocused()) return;
 	editorWindow.webContents.send('dupe');
 }
 function sendAddObject(type) {
+	if (!editorWindow.isFocused()) return;
 	editorWindow.webContents.send('add-object', type);
 }
 function sendSymboliseObject() {
+	if (!editorWindow.isFocused()) return;
 	editorWindow.webContents.send('symbolise-object');
 }
 function sendDesymboliseObject() {
+	if (!editorWindow.isFocused()) return;
 	editorWindow.webContents.send('desymbolise-object');
 }
 function sendFocusObject() {
+	if (!editorWindow.isFocused()) return;
 	editorWindow.webContents.send('focus-object');
 }
 function sendSaveProject() {
+	if (!editorWindow.isFocused()) return;
 	editorWindow.webContents.send('save-project', lastOpenedProjectUri);
 }
 function sendSaveProjectAs() {
+	if (!editorWindow.isFocused()) return;
 	dialog.showSaveDialog(editorWindow, {
 		title: 'Save Project As',
 		defaultPath: lastOpenedProjectUri,
@@ -282,24 +312,31 @@ function sendSaveProjectAs() {
 	});
 }
 function sendSetTool(type) {
+	if (!editorWindow.isFocused()) return;
 	editorWindow.webContents.send('set-tool', type);
 }
 function sendSetTransformTool(type) {
+	if (!editorWindow.isFocused()) return;
 	editorWindow.webContents.send('set-transform-tool', type);
 }
 function sendNewFile(extension) {
+	if (!editorWindow.isFocused()) return;
 	editorWindow.webContents.send('new-asset', extension);
 }
 function sendEditCode() {
+	if (!editorWindow.isFocused()) return;
 	editorWindow.webContents.send('edit-code');
 }
 function sendImportAssets(paths) {
+	if (!editorWindow.isFocused()) return;
 	editorWindow.webContents.send('menu-import-assets', paths);
 }
 function sendAnimate() {
+	if (!editorWindow.isFocused()) return;
 	editorWindow.webContents.send('animate');
 }
 function sendBuild({prompt, play}) {
+	if (!editorWindow.isFocused()) return;
 	let uri = lastOpenedProjectUri;
 	if (uri.endsWith('.d3dproj'))
 		uri = uri.slice(0, -'.d3dproj'.length) + '.d3d';

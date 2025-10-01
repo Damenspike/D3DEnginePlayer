@@ -570,6 +570,9 @@ export default class D3DObject {
 	
 		const objects = [...scene.objects];
 		
+		if(this.object3d.isScene)
+			this.object3d.background = new THREE.Color(scene.background || '#000000');
+		
 		// Create all objects
 		for (const objData of objects) {
 			await this.createObject(objData, false);
@@ -613,12 +616,6 @@ export default class D3DObject {
 		}
 	}
 	runInSandbox(script) {
-		Math.lerp = (a, b, time, easeFn) => {
-			const fn = easeFn || Tween.Linear;
-			const u  = Math.max(0, Math.min(1, time));
-			return a + (b - a) * fn(u);
-		};
-		
 		const sandbox = {
 			_root,
 			_input,

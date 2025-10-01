@@ -1,6 +1,6 @@
 export const KEYWORDS = [
 	'let','const','function','return','if','else','for','while','break','continue',
-	'true','false','null','import','from','export','struct','enum','match',
+	'true','false','null','undefined','import','from','export','struct','enum','match',
 	'case','default','try','catch','finally','throw', 'this', 'root', '_root', 'parent'
 ]
 export const TYPE_KEYWORDS = [

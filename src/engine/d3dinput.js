@@ -23,6 +23,7 @@ export default class D3DInput {
 		this._onMouseUp = this._onMouseUp.bind(this);
 		this._onMouseMove = this._onMouseMove.bind(this);
 		this._onPointerLockChange = this._onPointerLockChange.bind(this);
+		this._onPointerLockError = this._onPointerLockError.bind(this);
 		this._onWheel = this._onWheel.bind(this);
 		this._onBlur = this._onBlur.bind(this);
 		this._onVisibility = this._onVisibility.bind(this);
@@ -35,6 +36,7 @@ export default class D3DInput {
 		window.addEventListener('wheel', this._onWheel, { passive: true });
 
 		document.addEventListener('pointerlockchange', this._onPointerLockChange);
+		document.addEventListener('pointerlockerror', this._onPointerLockError);
 		window.addEventListener('blur', this._onBlur);
 		document.addEventListener('visibilitychange', this._onVisibility);
 		
@@ -118,8 +120,21 @@ export default class D3DInput {
 		this._pointerLockListeners.forEach(listener => listener({ ...e, pressedEsc: exited }));
 	}
 
-	_onBlur() { this._clearKeyState(); }
-	_onVisibility() { if (document.hidden) this._clearKeyState(); }
+	_onPointerLockError(e) {
+		console.warn('pointerlockerror', e);
+	}
+
+	_onBlur() { 
+		this._clearKeyState(); 
+		this.exitPointerLock();
+	}
+
+	_onVisibility() { 
+		if (document.hidden) {
+			this._clearKeyState();
+			this.exitPointerLock();
+		}
+	}
 
 	_clearKeyState() {
 		this._keys = {};
@@ -197,6 +212,30 @@ export default class D3DInput {
 		return this._isEditableTarget({ target: el });
 	}
 
+	/* --- Pointer lock API --- */
+	isPointerLocked() {
+		return document.pointerLockElement === _container3d;
+	}
+
+	requestPointerLock() {
+		if (!_container3d || typeof _container3d.requestPointerLock !== 'function')
+			return;
+		
+		// ensure the game container has focus so Esc and movement route correctly
+		if (_container3d.focus) _container3d.focus();
+
+		try {
+			// unadjustedMovement is optional; remove if problematic on your platform
+			_container3d.requestPointerLock({ unadjustedMovement: true });
+		} catch (err) {
+			console.warn('requestPointerLock error:', err);
+		}
+	}
+
+	exitPointerLock() {
+		if (document.exitPointerLock) document.exitPointerLock();
+	}
+
 	/* --- Loop --- */
 	_afterRenderFrame() {
 		this._mouseDelta.x = 0;
@@ -209,6 +248,16 @@ export default class D3DInput {
 	_onMouseDown(e) {
 		if (this._mouseFrozen) return;
 		this.mouse.buttons[e.button] = true;
+
+		// Attempt to enter lock on user gesture if enabled
+		if (this.mouseLock) {
+			if (this.getCursorOverGame() && !this.getInputFieldInFocus()) {
+				if (!this.isPointerLocked()) {
+					this.requestPointerLock();
+				}
+			}
+		}
+
 		this._mouseDownListeners.forEach(listener => listener(e));
 	}
 
@@ -222,8 +271,11 @@ export default class D3DInput {
 		if (this._mouseFrozen) return;
 		this.mouse.x = e.clientX;
 		this.mouse.y = e.clientY;
+
+		// In pointer lock, movementX/Y are relative deltas; outside, they still work but may be smoothed by OS
 		this._mouseDelta.x = e.movementX;
 		this._mouseDelta.y = e.movementY;
+
 		this._mouseMoveListeners.forEach(listener => listener(e));
 	}
 
@@ -284,6 +336,7 @@ export default class D3DInput {
 		window.removeEventListener('mousemove', this._onMouseMove);
 		window.removeEventListener('wheel', this._onWheel);
 		document.removeEventListener('pointerlockchange', this._onPointerLockChange);
+		document.removeEventListener('pointerlockerror', this._onPointerLockError);
 		window.removeEventListener('blur', this._onBlur);
 		document.removeEventListener('visibilitychange', this._onVisibility);
 
