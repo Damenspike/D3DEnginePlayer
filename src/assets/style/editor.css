@@ -117,6 +117,12 @@ body.dark {
 	.object-row:hover {
 		background: rgba(0, 0, 0, 0.3);
 	}
+	.code-present:hover {
+		background: rgb(255, 255, 255) !important;
+		svg {
+			color: black !important;
+		}
+	}
 	.insp-expand {
 		color: rgba(255, 255, 255, 0.84) !important;
 	}
@@ -529,10 +535,34 @@ body.dark {
 	border-radius: 7px;
 	
 	.object-row {
+		position: relative;
 		padding: 5px;
 		cursor: pointer;
 		font-size: 14px;
 		border: 2px solid rgba(0, 0, 0, 0);
+		
+		.code-present {
+			position: absolute;
+			right: 5px;
+			top: 50%;
+			transform: translateY(-50%);
+			
+			opacity: 0.5;
+			width: 20px;
+			height: 20px;
+			align-content: center;
+			svg {
+				margin: 0px;
+				padding-left: 2px;
+			}
+		}
+		.code-present:hover {
+			background: black;
+			border-radius: 50px;
+			svg {
+				color: white;
+			}
+		}
 		
 		svg {
 			vertical-align: middle;

@@ -16,7 +16,7 @@ import {
 	MdFolderSpecial,
 	MdLightbulbOutline,
 	MdPhotoCamera,
-	MdHtml,
+	MdHtml, MdCode,
 	MdFolder, MdInsertDriveFile, MdExpandMore, MdChevronRight,
 	MdUpload, MdCreateNewFolder, MdRefresh, MdDeleteForever,
 	MdOutlineInterests, MdTexture, MdDirectionsWalk
@@ -1148,7 +1148,21 @@ export default function Inspector() {
 							//_editor.focusOnSelectedObjects();
 							_editor.setSelection([]);
 						}}
-					/>
+					>
+						{
+							!!object.__script && (
+								<div 
+									className='code-present'
+									onClick={(e) => {
+										_editor.openCode(object);
+										e.stopPropagation();
+									}}
+								>
+									<MdCode />
+								</div>
+							)
+						}
+					</ObjectRow>
 				)
 			})
 			

@@ -448,6 +448,12 @@ export default class D3DEditorState {
 		
 		this.openCodeEditor(this.selectedObjects[0] ?? _editor.focus);
 	}
+	openCode(d3dobj) {
+		if(!d3dobj)
+			return;
+		
+		this.openCodeEditor(d3dobj);
+	}
 	
 	selectAll() {
 		const el = document.activeElement;

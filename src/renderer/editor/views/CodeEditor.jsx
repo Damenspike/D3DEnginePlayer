@@ -31,7 +31,7 @@ export default function CodeEditor({isOpen, theme}) {
 	useEffect(() => {
 		
 		const onSelectedObjects = objects => {
-			if(!isOpen || objects.length < 1)
+			if(!isOpen || objects.length < 1 || !isOpen)
 				return;
 			
 			const defObject = objects[0];
@@ -55,7 +55,7 @@ export default function CodeEditor({isOpen, theme}) {
 		return () => {
 			_events.un('selected-objects', onSelectedObjects);
 		}
-	}, [objectsOpen]);
+	}, [objectsOpen, isOpen]);
 	
 	useEffect(() => {
 		if(editorRef.current)
@@ -154,6 +154,7 @@ export default function CodeEditor({isOpen, theme}) {
 								
 								objectOpen.__script = value;
 								objectOpen.checkSymbols();
+								_editor.updateInspector();
 							}}
 							beforeMount={(monaco) => {
 								installDamenScript(monaco);
