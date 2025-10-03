@@ -153,7 +153,7 @@ export default function Inspector() {
 		
 		setBgType(_root.object3d.background?.isColor ? 'color' : 'none');
 		setBgColor(_root.object3d.background?.isColor ? `#${_root.object3d.background.getHexString()}` : '#000000');
-	}, [_root]);
+	}, [_root?.object3d?.background?.isColor]);
 	
 	const update = () => {
 		setDummyObject({...dummyObject});
