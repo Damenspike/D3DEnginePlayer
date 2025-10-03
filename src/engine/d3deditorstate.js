@@ -300,7 +300,10 @@ export default class D3DEditorState {
 		});
 		
 		// Save scene graph
-		_root.scene.background = _root.object3d.background?.isColor ? (`#${_root.object3d.background.getHexString()}`) : null; // texture support TODO
+		_root.scene.background = {
+			isColor: _root.object3d.background?.isColor == true,
+			color: _root.object3d.background?.isColor ? (`#${_root.object3d.background.getHexString()}`) : null
+		}
 		_root.scene.objects = [];
 		
 		_root.children.forEach(child => {

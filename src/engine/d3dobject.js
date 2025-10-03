@@ -444,7 +444,7 @@ export default class D3DObject {
 		////////////////////////
 		
 		// COMPONENT SETUP
-		objData.components.forEach(c => child.addComponent(c.type, c.properties));
+		objData.components.forEach(c => child.addComponent(c.type, c.properties, false));
 		
 		if(objData.engineScript)
 			child.engineScript = objData.engineScript;
@@ -570,7 +570,7 @@ export default class D3DObject {
 	
 		const objects = [...scene.objects];
 		
-		if(this.object3d.isScene)
+		if(this.object3d.isScene && scene.background?.isColor)
 			this.object3d.background = new THREE.Color(scene.background || '#000000');
 		
 		// Create all objects
@@ -658,7 +658,7 @@ export default class D3DObject {
 		this.updateComponents();
 		this.checkSymbols();
 	}
-	addComponent(type, properties = {}) {
+	addComponent(type, properties = {}, doUpdateAll = true) {
 		if(this.components.find(c => c.type == type)) {
 		//	console.error(`${this.name} already has a ${type} component`);
 			return;
@@ -696,7 +696,7 @@ export default class D3DObject {
 		this.__componentInstances[type] = inst;
 		
 		this.components.push(component);
-		this.updateComponents();
+		doUpdateAll && this.updateComponents();
 	}
 	removeComponent(type) {
 		// Not tried yet
@@ -726,7 +726,7 @@ export default class D3DObject {
 	}
 	async updateComponents() {
 		const zip = this.root.zip;
-		const components = [...this.components];
+		const components = this.components;
 		
 		if(window._editor && !this.no3DGizmos) {
 			// Add any gizmo related mesh components
@@ -738,7 +738,7 @@ export default class D3DObject {
 					this.addComponent('Mesh', {
 						'mesh': _root.resolveAssetId(gizmo3d.mesh),
 						'materials': gizmo3d.materials.map(path => _root.resolveAssetId(path))
-					});
+					}, false);
 				}
 			})
 		}
@@ -917,7 +917,9 @@ export default class D3DObject {
 			
 			d3dobject.__script = objData.script;
 			d3dobject.components = structuredClone(objData.components);
-			d3dobject.updateComponents();
+			
+			d3dobject.__componentInstances = {}; // remove all instances for rebuild
+			await d3dobject.updateComponents();
 			
 			if(updateChildren) {
 				const childrenSynced = [];

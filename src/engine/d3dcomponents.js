@@ -65,7 +65,7 @@ const D3DComponents = {
 				type: 'number',
 				min: 1,
 				max: 10000000,
-				def: 100000
+				def: 2000
 			}
 		},
 		gizmo3d: {
