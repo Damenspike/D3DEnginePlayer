@@ -331,9 +331,9 @@ function sendImportAssets(paths) {
 	if (!editorWindow.isFocused()) return;
 	editorWindow.webContents.send('menu-import-assets', paths);
 }
-function sendAnimate() {
+function sendAddComponent(type) {
 	if (!editorWindow.isFocused()) return;
-	editorWindow.webContents.send('animate');
+	editorWindow.webContents.send('add-component', type);
 }
 function sendBuild({prompt, play}) {
 	if (!editorWindow.isFocused()) return;
@@ -465,8 +465,8 @@ const menuTemplate = [
 		]
 	},
 	{
-		label: 'Objects',
-		id: 'objects',
+		label: 'Object',
+		id: 'object',
 		submenu: [
 			{
 				id: 'newObject',
@@ -487,6 +487,22 @@ const menuTemplate = [
 			},
 			{ type: 'separator' },
 			{
+				id: 'addcomponent',
+				label: 'Add Component',
+				submenu: [
+					{
+						id: 'animation',
+						label: 'Animation',
+						click: () => sendAddComponent('Animation')
+					},
+					{
+						id: 'rigidbody',
+						label: 'Rigidbody',
+						click: () => sendAddComponent('Rigidbody')
+					},
+				]
+			},
+			{
 				id: 'focusObject',
 				label: 'Focus',
 				accelerator: 'F',
@@ -503,11 +519,6 @@ const menuTemplate = [
 				label: 'Desymbolise',
 				accelerator: 'CmdOrCtrl+Shift+D',
 				click: () => sendDesymboliseObject()
-			},
-			{
-				id: 'animate',
-				label: 'Animate',
-				click: () => sendAnimate()
 			},
 			{ type: 'separator' },
 			{

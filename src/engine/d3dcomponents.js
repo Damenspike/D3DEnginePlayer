@@ -1,6 +1,13 @@
 import * as THREE from 'three';
 
 import D3DAnimationManager from './d3dmgr_animation.js';
+import D3DMeshManager from './d3dmgr_mesh.js';
+import D3DCameraManager from './d3dmgr_camera.js';
+import D3DAmbientLightManager from './d3dmgr_ambientlight.js';
+import D3DDirectionalLightManger from './d3dmgr_directionallight.js';
+import D3DPointLightManager from './d3dmgr_pointlight.js';
+import D3DSpotLightManager from './d3dmgr_spotlight.js';
+import D3DRigidbodyManager from './d3dmgr_rigidbody.js';
 
 const D3DComponents = {
 	Mesh: {
@@ -23,7 +30,8 @@ const D3DComponents = {
 				format: 'material',
 				def: []
 			}
-		}
+		},
+		manager: D3DMeshManager
 	},
 	SubMesh: {
 		fields: {
@@ -33,7 +41,8 @@ const D3DComponents = {
 				format: 'material',
 				def: []
 			}
-		}
+		},
+		manager: D3DMeshManager
 	},
 	Camera: {
 		fields: {
@@ -65,7 +74,8 @@ const D3DComponents = {
 			materials: [
 				'Standard/Materials/__Editor/Gizmo3D.mat'
 			]
-		}
+		},
+		manager: D3DCameraManager
 	},
 	AmbientLight: {
 		name: 'Ambient Light',
@@ -82,7 +92,8 @@ const D3DComponents = {
 			materials: [
 				'Standard/Materials/__Editor/GizmoLight3D.mat'
 			]
-		}
+		},
+		manager: D3DAmbientLightManager
 	},
 	DirectionalLight: {
 		name: 'Directional Light',
@@ -110,7 +121,8 @@ const D3DComponents = {
 			materials: [
 				'Standard/Materials/__Editor/GizmoLight3D.mat'
 			]
-		}
+		},
+		manager: D3DDirectionalLightManger
 	},
 	PointLight: {
 		name: 'Point Light',
@@ -150,7 +162,8 @@ const D3DComponents = {
 			materials: [
 				'Standard/Materials/__Editor/GizmoLight3D.mat'
 			]
-		}
+		},
+		manager: D3DPointLightManager
 	},
 	SpotLight: {
 		name: 'Spot Light',
@@ -192,7 +205,8 @@ const D3DComponents = {
 			materials: [
 				'Standard/Materials/__Editor/GizmoLight3D.mat'
 			]
-		}
+		},
+		manager: D3DSpotLightManager
 	},
 	Animation: {
 		name: 'Animation',
@@ -205,6 +219,67 @@ const D3DComponents = {
 			}
 		},
 		manager: D3DAnimationManager
+	},
+	Rigidbody: {
+		name: 'Rigidbody',
+		fields: {
+			'kind': { 
+				label: 'Kind', 
+				type: 'select',
+				options: [
+					{
+						name: 'dynamic', 
+						label: 'Dynamic', 
+						description: 'An object that moves under forces, collisions (default)'
+					},
+					{
+						name: 'fixed', 
+						label: 'Fixed',
+						description: 'Static, immovable, like a terrain or floor'
+					},
+					{
+						name: 'kinematicPosition', 
+						label: 'Kinematic',
+						description: 'You drive the transformation manually (e.g. character controller)'
+					}
+				],
+				def: 'dynamic'
+			},
+			'shape': { 
+				label: 'Shape', 
+				type: 'select',
+				options: [
+					{name: 'trimesh', label: 'Mesh'},
+					{name: 'box', label: 'Box'},
+					{name: 'sphere', label: 'Sphere'},
+					{name: 'capsule', label: 'Capsule'},
+					{name: 'convex', label: 'Convex'}
+				],
+				def: 'trimesh'
+			},
+			'friction': {
+				label: 'Friction',
+				type: 'number',
+				min: 0,
+				max: 1,
+				def: 0.5
+			},
+			'bounciness': {
+				label: 'Bounciness',
+				type: 'number',
+				min: 0,
+				max: 1,
+				def: 0.5
+			},
+			'density': {
+				label: 'Density',
+				type: 'number',
+				min: 0,
+				max: Infinity,
+				def: 1
+			}
+		},
+		manager: D3DRigidbodyManager
 	}
 }
 

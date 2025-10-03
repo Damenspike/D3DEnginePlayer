@@ -139,6 +139,6 @@ addIPCListener('set-transform-tool');
 addIPCListener('new-asset');
 addIPCListener('request-save-and-close');
 addIPCListener('menu-import-assets');
-addIPCListener('animate');
+addIPCListener('add-component');
 addIPCListener('csm');
 addIPCListener('build');

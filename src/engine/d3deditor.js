@@ -34,12 +34,16 @@ import D3DInfiniteGrid from './d3dinfinitegrid.js';
 import D3DTransformGizmo from './d3dtransformgizmo.js';
 import D3DComponents from './d3dcomponents.js';
 import D3DEventSystem from './d3devents.js';
+import D3DPhysics from './d3dphysics.js';
 
 window.THREE = THREE;
 window._events = new D3DEventSystem();
 window._input = new D3DInput();
 window._time = new D3DTime();
 window._editor = new D3DEditorState();
+window._physics = new D3DPhysics();
+
+// Host
 window._host = window._editor;
 
 // Add convenience vectors
@@ -276,10 +280,10 @@ function startAnimationLoop(composer, outlinePass) {
 			'__onEditorEnterFrame',
 			'__onInternalEnterFrame'
 		], _root);
-
+		
 		outlinePass.selectedObjects = _editor.selectedObjects.map(d => d.object3d);
 		composer.render();
-
+		
 		if (_editor.gizmo) 
 			_editor.gizmo.update();
 
@@ -941,12 +945,17 @@ async function onImportAssets(paths) {
 	}
 	onAssetsUpdated();
 }
-function onAnimate() {
+function addComponent(type) {
 	_editor.selectedObjects.forEach(d3dobject => {
-		if(d3dobject.hasComponent('Animation'))
+		if(d3dobject.hasComponent(type)) {
+			_editor.showError({
+				title: 'Add Component',
+				message: `Component ${type} already exists on ${d3dobject.name}`
+			});
 			return;
+		}
 		
-		d3dobject.addComponent('Animation');
+		d3dobject.addComponent(type);
 	});
 	_editor.updateInspector();
 }
@@ -994,6 +1003,6 @@ D3D.setEventListener('focus-object', (type) => _editor.focusOnSelectedObjects?.(
 D3D.setEventListener('set-tool', (type) => _editor.setTool(type));
 D3D.setEventListener('set-transform-tool', (type) => _editor.setTransformTool(type));
 D3D.setEventListener('new-asset', (extension) => _editor.newAsset(extension));
+D3D.setEventListener('add-component', (type) => addComponent(type));
 D3D.setEventListener('menu-import-assets', onImportAssets);
-D3D.setEventListener('animate', onAnimate);
 D3D.setEventListener('csm', onConsoleMessage);

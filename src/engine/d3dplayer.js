@@ -6,12 +6,16 @@ import D3DInput from './d3dinput.js';
 import D3DTime from './d3dtime.js';
 import D3DEventSystem from './d3devents.js';
 import D3DConsole from './d3dconsole.js';
+import D3DPhysics from './d3dphysics.js';
 
 window.THREE = THREE;
 window._events = new D3DEventSystem();
 window._input = new D3DInput();
 window._time = new D3DTime();
-window._player = {console: []};
+window._physics = new D3DPhysics();
+window._player = {};
+
+// Host
 window._host = window._player;
 
 // Add convenience vectors
@@ -122,6 +126,9 @@ function startAnimationLoop() {
 			'__onEnterFrame',
 			'__onInternalEnterFrame'
 		], _root);
+		
+		if(_physics.ready)
+			_physics.step(_time.delta);
 		
 		if(!_player.camera) {
 			_root.traverse(d3dobject => {

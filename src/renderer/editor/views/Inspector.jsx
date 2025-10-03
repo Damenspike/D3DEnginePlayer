@@ -876,6 +876,55 @@ export default function Inspector() {
 						);
 						break;
 					}
+					case 'select': {
+						const selRows = [];
+						const currentOption = field.options.find(
+							o => o.name == current
+						);
+						
+						field.options.forEach(option => {
+							selRows.push(
+								<option
+									key={selRows.length}
+									value={option.name}
+								>
+									{option.label}
+								</option>
+							)
+						});
+						
+						fieldContent = (
+							<>
+								<select
+									className='tf'
+									value={current}
+									onChange={e => {
+										const val = e.target.value;
+										
+										addStep(val);
+										
+										dummyComponent.properties[fieldId] = val;
+										
+										object.setComponentValue(
+											component.type,
+											fieldId,
+											val
+										);
+										
+										update();
+									}}
+								>
+									{selRows}
+								</select>
+								{currentOption?.description && (
+									<div className='small gray mt'>
+										{currentOption.description}
+									</div>
+								)}
+							</>	
+						)
+						break;
+					}
 					case 'none':
 						fieldContent = null;
 						break;
