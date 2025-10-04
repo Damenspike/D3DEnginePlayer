@@ -355,4 +355,76 @@ export default function MeshManager(d3dobject, component) {
 			d3dobject.traverse(d3d => d3d.updateComponents());
 		}
 	}
+	this.dispose = async () => {
+		// (Not fully sure whether this is safe)
+		// 1) Remove auto-created D3D children (those we spawned from the GLTF)
+		if (Array.isArray(d3dobject.children)) {
+			for (const child of [...d3dobject.children]) {
+				if (!child || child.__auto_gltf !== true) continue;
+	
+				// drop SubMesh if present
+				try {
+					if (child.hasComponent && child.hasComponent('SubMesh')) {
+						child.removeComponent('SubMesh');
+					}
+				} catch {}
+	
+				// remove from hierarchy (support async deleteChild or sync removeChild)
+				try {
+					if (typeof d3dobject.deleteChild === 'function') {
+						await d3dobject.deleteChild(child);
+					} else if (typeof d3dobject.removeChild === 'function') {
+						d3dobject.removeChild(child);
+					} else {
+						const i = d3dobject.children.indexOf(child);
+						if (i !== -1) d3dobject.children.splice(i, 1);
+					}
+				} catch {}
+			}
+		}
+	
+		// 2) Detach and dispose the imported GLTF scene (if present)
+		const scene = d3dobject.modelScene;
+		if (scene) {
+			// detach from Three graph
+			try { if (scene.parent) scene.parent.remove(scene); } catch {}
+	
+			// free meshes/materials/textures
+			try {
+				scene.traverse(o => {
+					if (!(o && (o.isMesh || o.isSkinnedMesh))) return;
+	
+					// geometry
+					try { o.geometry?.dispose?.(); } catch {}
+	
+					// materials + any bound textures
+					const mats = Array.isArray(o.material) ? o.material : [o.material];
+					for (const m of mats) {
+						if (!m) continue;
+						try {
+							for (const k in m) {
+								const v = m[k];
+								if (v && v.isTexture) { try { v.dispose?.(); } catch {} }
+							}
+							m.dispose?.();
+						} catch {}
+					}
+				});
+			} catch {}
+	
+			// clear refs
+			d3dobject.modelScene = null;
+			d3dobject._loadedMeshUUID = null;
+		}
+	
+		// 3) (Optional) prune any leftover imported Three children on the host
+		if (d3dobject.object3d) {
+			const host = d3dobject.object3d;
+			for (let i = host.children.length - 1; i >= 0; i--) {
+				const o = host.children[i];
+				// remove only likely-imported nodes
+				if (o && (o.isGroup || o.isMesh || o.isSkinnedMesh)) host.remove(o);
+			}
+		}
+	};
 }

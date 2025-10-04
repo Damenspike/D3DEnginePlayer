@@ -257,7 +257,7 @@ export default function AnimationInspector() {
 			}
 			
 			// Rebuild the actual native three animation clip tracks based on our own spec
-			selectedObject.animation.rebuildClipTracks(activeClip.uuid);
+			selectedObject._animation.rebuildClipTracks(activeClip.uuid);
 			
 			setStartKeyframePos_({...startKeyframePos_}); // hack
 		}
@@ -337,7 +337,7 @@ export default function AnimationInspector() {
 				}
 				
 				// Rebuild the actual native three animation clip tracks based on our own spec
-				selectedObject.animation.rebuildClipTracks(activeClip.uuid);
+				selectedObject._animation.rebuildClipTracks(activeClip.uuid);
 				setStartKeyframePos_({...startKeyframePos_}); // hack
 			});
 			
@@ -348,7 +348,7 @@ export default function AnimationInspector() {
 						k => deleteKey(k)
 					);
 					
-					selectedObject.animation.rebuildClipTracks(activeClip.uuid);
+					selectedObject._animation.rebuildClipTracks(activeClip.uuid);
 					setStartKeyframePos_({...startKeyframePos_}); // hack
 				},
 				redo: () => {
@@ -356,7 +356,7 @@ export default function AnimationInspector() {
 						k.smartTrack.push(k);
 					});
 					
-					selectedObject.animation.rebuildClipTracks(activeClip.uuid);
+					selectedObject._animation.rebuildClipTracks(activeClip.uuid);
 					setStartKeyframePos_({...startKeyframePos_}); // hack
 				}
 			})
@@ -410,7 +410,7 @@ export default function AnimationInspector() {
 		if(!selectedObject || !activeClip)
 			return;
 		
-		const clipState = selectedObject.animation.getClipState(activeClip.uuid);
+		const clipState = selectedObject._animation.getClipState(activeClip.uuid);
 		
 		if(!clipState)
 			return;
@@ -437,7 +437,7 @@ export default function AnimationInspector() {
 				if(!selectedObject || !activeClip)
 					return;
 				
-				const clipState = selectedObject.animation.getClipState(activeClip.uuid);
+				const clipState = selectedObject._animation.getClipState(activeClip.uuid);
 				
 				if(!clipState)
 					return;
@@ -474,7 +474,7 @@ export default function AnimationInspector() {
 							keyE_Scl && objectTrack.scale.smartTrack.push(keyE_Scl);
 						});
 						// Rebuild the actual native three animation clip tracks based on our own spec
-						selectedObject.animation.rebuildClipTracks(activeClip.uuid);
+						selectedObject._animation.rebuildClipTracks(activeClip.uuid);
 						setSelectedKeys([...selectedKeys]);
 					},
 					redo: () => {
@@ -496,7 +496,7 @@ export default function AnimationInspector() {
 							activeClip.objectTracks[track] = deletedTrack;
 						});
 						// Rebuild the actual native three animation clip tracks based on our own spec
-						selectedObject.animation.rebuildClipTracks(activeClip.uuid);
+						selectedObject._animation.rebuildClipTracks(activeClip.uuid);
 						setSelectedTracks([...selectedTracks]);
 					},
 					redo: () => {
@@ -628,10 +628,10 @@ export default function AnimationInspector() {
 	}
 	const togglePlaying = () => {
 		if(playing) {
-			selectedObject.animation.pause(activeClip.uuid);
+			selectedObject._animation.pause(activeClip.uuid);
 			setPlaying(false);
 		}else{
-			selectedObject.animation.play(activeClip.uuid, {
+			selectedObject._animation.play(activeClip.uuid, {
 				listener: (state) => {
 					setPlaying(state.playing);
 					setCurrentTime(state.normalizedTime);
@@ -725,13 +725,13 @@ export default function AnimationInspector() {
 				undo: () => {
 					moveActions.forEach(a => a.undo())
 					
-					selectedObject.animation.rebuildClipTracks(activeClip.uuid);
+					selectedObject._animation.rebuildClipTracks(activeClip.uuid);
 					setStartKeyframePos_({x: e.pageX, y: e.pageY}); // hack
 				},
 				redo: () => {
 					moveActions.forEach(a => a.redo())
 					
-					selectedObject.animation.rebuildClipTracks(activeClip.uuid);
+					selectedObject._animation.rebuildClipTracks(activeClip.uuid);
 					setStartKeyframePos_({x: e.pageX, y: e.pageY}); // hack
 				}
 			})
@@ -739,7 +739,7 @@ export default function AnimationInspector() {
 		}
 		
 		// Rebuild the actual native three animation clip tracks based on our own spec
-		selectedObject.animation.rebuildClipTracks(activeClip.uuid);
+		selectedObject._animation.rebuildClipTracks(activeClip.uuid);
 		
 		setStartKeyframePos_({x: e.pageX, y: e.pageY}); // hack
 	}
@@ -808,7 +808,7 @@ export default function AnimationInspector() {
 				);
 			}
 			// Rebuild the actual native three animation clip tracks based on our own spec
-			selectedObject.animation.rebuildClipTracks(activeClip.uuid);
+			selectedObject._animation.rebuildClipTracks(activeClip.uuid);
 		}
 		
 		doDelete();
@@ -834,7 +834,7 @@ export default function AnimationInspector() {
 	}
 	const deleteTrack = (track) => {
 		const objectTrack = activeClip.objectTracks[track];
-		const clipState = selectedObject.animation.getClipState(activeClip.uuid);
+		const clipState = selectedObject._animation.getClipState(activeClip.uuid);
 		
 		if(clipState) {
 			const d3dtarget = clipState.findAnimationTarget(track);
@@ -845,7 +845,7 @@ export default function AnimationInspector() {
 			delete activeClip.objectTracks[track];
 			
 			// Rebuild the actual native three animation clip tracks based on our own spec
-			selectedObject.animation.rebuildClipTracks(activeClip.uuid);
+			selectedObject._animation.rebuildClipTracks(activeClip.uuid);
 		}
 		
 		doDelete();
@@ -925,7 +925,7 @@ export default function AnimationInspector() {
 			return (
 				<div className='noanim-placeholder'>
 					<button onClick={() => {
-						D3D.invoke('animate');
+						D3D.invoke('add-component', 'Animation');
 						_editor.probeSelection();
 					}}>
 						Animate
@@ -1093,10 +1093,20 @@ export default function AnimationInspector() {
 									await animManager.addClipFromUUID(uuid);
 								}
 								
-								const clip = animManager.getClip(uuid);
+								let clip = animManager.getClip(uuid);
 								
 								if(!clip) {
-									console.error('Unknown clip', uuid);
+									animManager.__loadClip(uuid)
+									.then(() => {
+										clip = animManager.getClip(uuid);
+										
+										if(!clip) {
+											console.error('Unknown clip', uuid);
+											return;
+										}
+										
+										setActiveClip(clip);
+									});
 									return;
 								}
 								

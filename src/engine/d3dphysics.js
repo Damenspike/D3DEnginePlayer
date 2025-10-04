@@ -1,4 +1,3 @@
-// src/engine/d3dphysics.js
 import RAPIER from '@dimforge/rapier3d-compat';
 
 export default class D3DPhysics {
@@ -12,10 +11,17 @@ export default class D3DPhysics {
 		this._toObj  = new Map(); // rb.handle -> d3dobj
 	}
 
-	async init(gravity = { x:0, y:-9.81, z:0 }) {
+	async init(gravity = { x: 0, y: -9.81, z: 0 }) {
 		await RAPIER.init();
 		this.world = new RAPIER.World(gravity);
 		this.ready = true;
+
+		// Configure physics world for stability
+		this.world.integrationParameters.maxVelocityIterations = 8; // Increase for better constraint solving
+		this.world.integrationParameters.maxPositionIterations = 4;
+		this.world.integrationParameters.maxStabilizationIterations = 2;
+		this.world.integrationParameters.erp = 0.3; // Error reduction parameter for contacts
+		this.world.integrationParameters.maxCcdSubsteps = 4; // Enable CCD with more substeps
 	}
 
 	step(dt) {
@@ -49,12 +55,18 @@ export default class D3DPhysics {
 		let desc;
 		if (kind === 'fixed') desc = RAPIER.RigidBodyDesc.fixed();
 		else if (kind === 'kinematicPosition') desc = RAPIER.RigidBodyDesc.kinematicPositionBased();
-		else desc = RAPIER.RigidBodyDesc.dynamic();
+		else {
+			desc = RAPIER.RigidBodyDesc.dynamic();
+			desc.setCcdEnabled(true); // Enable continuous collision detection for dynamic bodies
+		}
 
-		const p = d3dobj.object3d.position;
-		const q = d3dobj.object3d.quaternion;
-		desc.setTranslation(p.x, p.y, p.z);
-		desc.setRotation({ x:q.x, y:q.y, z:q.z, w:q.w });
+		const worldPos = new THREE.Vector3();
+		d3dobj.object3d.getWorldPosition(worldPos);
+		const worldQuat = new THREE.Quaternion();
+		d3dobj.object3d.getWorldQuaternion(worldQuat);
+		desc.setTranslation(worldPos.x, worldPos.y, worldPos.z);
+		desc.setRotation({ x: worldQuat.x, y: worldQuat.y, z: worldQuat.z, w: worldQuat.w });
+		desc.setAdditionalMass(Math.max(0.1, opts.density || 1.0)); // Ensure minimum mass
 
 		const rb = this.world.createRigidBody(desc);
 		const colliders = [];
@@ -95,8 +107,13 @@ export default class D3DPhysics {
 			case 'convex':  desc = RAPIER.ColliderDesc.convexMesh(shape.vertices); break;
 			default:        desc = RAPIER.ColliderDesc.cuboid(0.5, 0.5, 0.5); break;
 		}
+		if (shape.offset) {
+			desc.setTranslation(shape.offset.x, shape.offset.y, shape.offset.z);
+		}
 		if (opts.friction != null) desc.setFriction(opts.friction);
 		if (opts.restitution != null) desc.setRestitution(opts.restitution);
+		desc.setDensity(Math.max(0.1, opts.density || 1.0)); // Ensure minimum density
+		desc.setCollisionGroups(0xFFFF0001); // Default group for better collision filtering
 		return this.world.createCollider(desc, rb);
 	}
 
@@ -118,13 +135,15 @@ export default class D3DPhysics {
 		rb.setNextKinematicRotation(quat);
 	}
 
-	// -------------------- Character Controller (optional) --------------------
+	// -------------------- Character Controller --------------------
 
 	createKCC(snap = 0.01, maxClimbDeg = 50, minSlideDeg = 50) {
 		const kcc = this.world.createCharacterController(snap);
 		kcc.setSlideEnabled(true);
 		kcc.setMaxSlopeClimbAngle(maxClimbDeg * Math.PI / 180);
 		kcc.setMinSlopeSlideAngle(minSlideDeg * Math.PI / 180);
+		kcc.enableAutostep(0.5, 0.2, true); // Allow climbing small steps
+		kcc.enableSnapToGround(snap); // Ensure character stays grounded
 		return kcc;
 	}
 

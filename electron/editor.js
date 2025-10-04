@@ -500,6 +500,16 @@ const menuTemplate = [
 						label: 'Rigidbody',
 						click: () => sendAddComponent('Rigidbody')
 					},
+					{
+						id: 'charcontroller',
+						label: 'Character Controller',
+						click: () => sendAddComponent('CharacterController')
+					},
+					{
+						id: 'tpc',
+						label: 'Third Person Camera',
+						click: () => sendAddComponent('ThirdPersonCamera')
+					}
 				]
 			},
 			{
@@ -537,8 +547,6 @@ const menuTemplate = [
 				id: 'newAsset',
 				label: 'New Asset',
 				submenu: [
-					{ id: 'newAssetEmpty', label: 'Empty File', click: () => sendNewFile() },
-					{ type: 'separator' },
 					{ id: 'newAssetMat', label: 'Material', click: () => sendNewFile('mat') },
 					{ id: 'newAssetAnim', label: 'Animation Clip', click: () => sendNewFile('anim') }
 				]

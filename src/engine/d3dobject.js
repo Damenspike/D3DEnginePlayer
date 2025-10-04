@@ -295,11 +295,14 @@ export default class D3DObject {
 	}
 	
 	// Component shorthand
-	get animation() {
+	get _animation() {
 		return this.getComponent('Animation');
 	}
-	get mesh() {
+	get _mesh() {
 		return this.getComponent('Mesh');
+	}
+	get _rigidbody() {
+		return this.getComponent('Rigidbody');
 	}
 	
 	setupDefaultMethods() {
@@ -358,7 +361,7 @@ export default class D3DObject {
 			//// FOR EXAMPLE ANIMATION
 			//////////////////////////////////////////////
 			if(this.hasComponent('Animation')) {
-				const animation = this.animation;
+				const animation = this._animation;
 				animation.__advanceFrame();
 			}
 		}
@@ -571,7 +574,7 @@ export default class D3DObject {
 		const objects = [...scene.objects];
 		
 		if(this.object3d.isScene && scene.background?.isColor)
-			this.object3d.background = new THREE.Color(scene.background || '#000000');
+			this.object3d.background = new THREE.Color(scene.background.color || '#000000');
 		
 		// Create all objects
 		for (const objData of objects) {
@@ -620,6 +623,7 @@ export default class D3DObject {
 			_root,
 			_input,
 			_time,
+			_physics,
 			Math,
 			_editor: window._editor,
 			root: this.root,
@@ -689,6 +693,7 @@ export default class D3DObject {
 				component.properties[i] = schemaField.def;
 		}
 		fieldsToDelete.forEach(field => {
+			if(field.startsWith('__')) return;
 			delete component.properties[field];
 		});
 		
@@ -698,17 +703,16 @@ export default class D3DObject {
 		this.components.push(component);
 		doUpdateAll && this.updateComponents();
 	}
-	removeComponent(type) {
-		// Not tried yet
-		//
+	async removeComponent(type) {
 		const component = this.getComponent(type);
 		
 		if(!component)
 			return;
 		
-		component.dispose();
+		if(typeof component.dispose == 'function')
+			await component.dispose();
 		
-		this.components.splice(this.components.indexOf(component), 1);
+		this.components.splice(this.components.findIndex(c => c.type == type), 1);
 		delete this.__componentInstances[type];
 	}
 	getComponent(type) {
@@ -737,7 +741,8 @@ export default class D3DObject {
 				if(gizmo3d) {
 					this.addComponent('Mesh', {
 						'mesh': _root.resolveAssetId(gizmo3d.mesh),
-						'materials': gizmo3d.materials.map(path => _root.resolveAssetId(path))
+						'materials': gizmo3d.materials.map(path => _root.resolveAssetId(path)),
+						'__editorOnly': true
 					}, false);
 				}
 			})
@@ -1107,10 +1112,15 @@ export default class D3DObject {
 		return obj;
 	}
 	getSerializedComponents() {
-		return this.components.map(component => ({
+		return this.components
+		.filter(component => !component.properties.__editorOnly)
+		.map(component => this.getSerializedComponent(component))
+	}
+	getSerializedComponent(component) {
+		return {
 			type: component.type,
-			properties: component.properties
-		}))
+			properties: structuredClone(component.properties)
+		};
 	}
 	
 	find(name) {

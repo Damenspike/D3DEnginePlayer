@@ -459,6 +459,38 @@ export default function Inspector() {
 				console.warn(`Unknown component for '${idx}'`);
 				return;
 			}
+			if(component.properties.__editorOnly)
+				return;
+			
+			const deleteComponent = () => {
+				const componentSerialized = object.getSerializedComponent(component);
+				
+				const doDelete = (addStep = true) => {
+					addStep && _editor.addStep({
+						name: 'Delete component',
+						undo: () => {
+							object.addComponent(
+								component.type,
+								componentSerialized.properties
+							);
+							update();
+						},
+						redo: () => {
+							doDelete(false);
+							update();
+						}
+					});
+					object.removeComponent(component.type);
+					
+					update();
+				}
+				
+				_editor.showConfirm({
+					title: 'Delete Component',
+					message: `Are you sure you want to delete ${component.type} off this object?`,
+					onConfirm: doDelete
+				})
+			}
 			
 			for(let fieldId in schema.fields) {
 				const field = schema.fields[fieldId];
@@ -940,6 +972,11 @@ export default function Inspector() {
 					<div className='field' key={fields.length}>
 						<label>{field.label}</label>
 						{fieldContent}
+						{field.description && (
+							<div className='small gray mt'>
+								{field.description}
+							</div>
+						)}
 					</div>
 				);
 			}
@@ -947,6 +984,17 @@ export default function Inspector() {
 			rows.push(
 				<ComponentCell 
 					title={schema.name || component.type}
+					bar={!schema.persistent && (
+						<div 
+							className='component-delete'
+							onClick={(e) => {
+								e.stopPropagation();
+								deleteComponent();
+							}}
+						>
+							<MdDelete />
+						</div>
+					)}
 					key={rows.length} 
 				>
 					{fields}
@@ -2070,19 +2118,21 @@ export default function Inspector() {
 	
 	return (
 		<div className='insp-view'>
-			<div className='tabs' style={{paddingBottom: 0}}>
-				{drawTabButtons()}
+			<div className='tabs-container'>
+				<div className='tabs'>
+					{drawTabButtons()}
+				</div>
 			</div>
 			
-			<div className={`insp-view-${tab}`}>
+			<div className={`insp-itself insp-view-${tab}`}>
 				{(tab == 'assets' || tab == 'all') && _root && drawAssetInspector()}
 				{(tab == 'scene' || tab == 'all') && _root && drawSceneInspector()}
 				{(tab == 'object' || tab == 'all') && object && drawObjectInspector()}
 				{selectedAssetPaths.size == 1 && drawMediaInspector()}
 				{(tab == 'project' || tab == 'all') && _editor.project && _editor.focus == _root && drawProjectInspector()}
+				
+				<div style={{height: 45}} />
 			</div>
-			
-			<div style={{height: 45}} />
 			
 			<AssetExplorerDialog
 				isOpen={assetExplorerOpen}

@@ -16,7 +16,8 @@ import {
 	clearDir,
 	fileName,
 	fileNameNoExt,
-	isDirectory
+	isDirectory,
+	upperFirst
 } from './d3dutility.js';
 import {
 	readLocalTRSFromZip
@@ -85,6 +86,14 @@ _editor.showConfirm = showConfirm;
 export async function loadD3DProj(uri) {
 	// Init root
 	await initRoot(uri);
+	
+	if(!_root.manifest?.editorConfig) {
+		_editor.showError({
+			title: 'Project Error',
+			message: 'This is not a valid project'
+		});
+		return;
+	}
 
 	// Setup renderer
 	const renderer = initRenderer();
@@ -141,8 +150,10 @@ function initRenderer() {
 async function initEditorCamera() {
 	const cameraD3DObj = await _root.createObject({
 		name: '__EDITOR_CAMERA',
-		position: { x: 0, y: 2, z: 0 },
-		rotation: { x: 0, y: 0, z: 0 },
+		position: _root.manifest.editorConfig.lastCameraPosition ?? 
+			{ x: 0, y: 2, z: 0 },
+		rotation: _root.manifest.editorConfig.lastCameraRotation ?? 
+			{ x: 0, y: 0, z: 0 },
 		scale: { x: 1, y: 1, z: 1 },
 		editorOnly: true,
 		noSelect: true,
@@ -276,9 +287,9 @@ function startAnimationLoop(composer, outlinePass) {
 		_time.tick(nowMs); // updates _time.delta (seconds) + _time.now
 
 		updateObject([
-			'onEditorEnterFrame',
+			'__onInternalEnterFrame',
 			'__onEditorEnterFrame',
-			'__onInternalEnterFrame'
+			'onEditorEnterFrame'
 		], _root);
 		
 		outlinePass.selectedObjects = _editor.selectedObjects.map(d => d.object3d);
@@ -292,7 +303,10 @@ function startAnimationLoop(composer, outlinePass) {
 			_editor.renderer.autoClear = false;
 			_editor.renderer.render(_editor._overlayScene, _editor._overlayCam);
 			_editor.renderer.clearDepth();
+			const oldBG = _root.object3d.background;
+			_root.object3d.background = null;
 			_editor.renderer.render(_root.object3d, _editor.camera);
+			_root.object3d.background = oldBG;
 			_editor.renderer.clearDepth();
 			_editor.renderer.render(_editor.gizmo._group, _editor.camera);
 			_editor.renderer.autoClear = true;
@@ -300,9 +314,9 @@ function startAnimationLoop(composer, outlinePass) {
 		}
 
 		updateObject([
-			'onEditorExitFrame',
+			'__onInternalExitFrame',
 			'__onEditorExitFrame',
-			'__onInternalExitFrame'
+			'onEditorExitFrame'
 		], _root);
 		
 		_input._afterRenderFrame?.();
@@ -522,6 +536,12 @@ function setupSelection(renderer, camera) {
 
 		raycaster.setFromCamera(mouse, camera);
 		const intersects = raycaster.intersectObjects(scene.children, true);
+		const isDoubleClick = _time.now - _editor.lastSingleClick < 0.25 && _editor.lastSingleClick > 0;
+		
+		if(!isDoubleClick)
+			_editor.lastSingleClick = _time.now;
+		else
+			_editor.lastSingleClick = 0;
 		
 		if (_editor.gizmo.mouseOver)
 			return;
@@ -557,12 +577,35 @@ function setupSelection(renderer, camera) {
 			if(selectedObject) {
 				if (_input.getKeyDown('shift')) 
 					_editor.addSelection([selectedObject]);
-				else 
-					_editor.setSelection([selectedObject]);
-			}else
+				else {
+					if(isDoubleClick) {
+						_editor.focus = selectedObject;
+						_editor.setSelection([]);
+					}else
+						_editor.setSelection([selectedObject]);
+				}
+			}else{
+				if(isDoubleClick) {
+					const oldFocus = _editor.focus;
+					_editor.focus = _editor.focus.parent;
+					
+					if(oldFocus != _root)
+						_editor.setSelection([oldFocus]);
+				}else{
+					_editor.setSelection([]);
+				}
+			}
+		}else{
+			if(isDoubleClick) {
+				const oldFocus = _editor.focus;
+				_editor.focus = _editor.focus.parent;
+				
+				if(oldFocus != _root)
+					_editor.setSelection([oldFocus]);
+			}else{
 				_editor.setSelection([]);
-		}else
-			_editor.setSelection([]);
+			}
+		}
 	}
 }
 
@@ -611,6 +654,10 @@ async function addD3DObjectEditor(type) {
 		case 'dirlight':
 		case 'pntlight':
 		case 'cube':
+		case 'capsule':
+		case 'sphere':
+		case 'pyramid':
+		case 'plane':
 			supported = true;
 		break;
 	}
@@ -635,10 +682,14 @@ async function addD3DObjectEditor(type) {
 			newd3dobj.addComponent('PointLight');
 		break;
 		case 'cube':
-			newd3dobj.name = 'cube';
+		case 'capsule':
+		case 'sphere':
+		case 'pyramid':
+		case 'plane':
+			newd3dobj.name = type;
 			newd3dobj.addComponent('Mesh', {
 				mesh: _root.resolveAssetId(
-					'Standard/Models/Cube.glb'
+					`Standard/Models/${upperFirst(type)}.glb`
 				),
 				materials: [
 					_root.resolveAssetId(
@@ -899,8 +950,10 @@ async function buildProject(buildURI, play = false) {
 		});
 	}
 	
-	if(play)
+	if(play) {
 		D3D.openPlayer(buildURI);
+		_events.invoke('clear-console');
+	}
 }
 
 // Editor events

@@ -1,6 +1,11 @@
 import React, { useEffect, useState } from 'react';
 
-export default function ComponentCell({ title, defaultOpen = true, children }) {
+export default function ComponentCell({ 
+	title, 
+	children,
+	bar,
+	defaultOpen = true 
+}) {
 	const [open, setOpen] = useState(defaultOpen);
 
 	return (
@@ -15,6 +20,7 @@ export default function ComponentCell({ title, defaultOpen = true, children }) {
 				}}
 			>
 				{title}
+				{bar}
 			</div>
 			{open && <div className="insp-body">{children}</div>}
 		</div>

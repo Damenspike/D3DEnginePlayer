@@ -8,6 +8,8 @@ import D3DDirectionalLightManger from './d3dmgr_directionallight.js';
 import D3DPointLightManager from './d3dmgr_pointlight.js';
 import D3DSpotLightManager from './d3dmgr_spotlight.js';
 import D3DRigidbodyManager from './d3dmgr_rigidbody.js';
+import D3DCharacterControllerManager from './d3dmgr_charactercontroller.js';
+import D3DThirdPersonCameraManager from './d3dmgr_thirdpersoncamera.js';
 
 const D3DComponents = {
 	Mesh: {
@@ -31,6 +33,7 @@ const D3DComponents = {
 				def: []
 			}
 		},
+		persistent: true,
 		manager: D3DMeshManager
 	},
 	SubMesh: {
@@ -255,7 +258,14 @@ const D3DComponents = {
 					{name: 'capsule', label: 'Capsule'},
 					{name: 'convex', label: 'Convex'}
 				],
-				def: 'trimesh'
+				def: 'trimesh',
+				description: 'The type of shape this object will use in physics interactions'
+			},
+			'shapeBias': {
+				label: 'Bias', 
+				type: 'number',
+				def: 1,
+				description: 'Affects the scale of the generated physics shape'
 			},
 			'friction': {
 				label: 'Friction',
@@ -280,6 +290,96 @@ const D3DComponents = {
 			}
 		},
 		manager: D3DRigidbodyManager
+	},
+	CharacterController: {
+		name: 'Character Controller',
+		fields: {
+			'moveSpeed': {
+				label: 'Move speed',
+				type: 'number',
+				min: 0,
+				max: Infinity,
+				def: 2
+			},
+			'turnSpeed': {
+				label: 'Turn speed',
+				type: 'number',
+				min: 0,
+				max: Infinity,
+				def: 8
+			},
+			'jumpHeight': {
+				label: 'Jump height',
+				type: 'number',
+				min: 0,
+				max: Infinity,
+				def: 6
+			},
+			'gravityStrength': {
+				label: 'Gravitational strength',
+				type: 'number',
+				min: 0,
+				max: Infinity,
+				def: 1
+			}
+		},
+		manager: D3DCharacterControllerManager
+	},
+	ThirdPersonCamera: {
+		name: 'Third Person Camera',
+		fields: {
+			'targetName': {
+				label: 'Target name',
+				description: 'Instance name of the target object (.target property pointing to an object instance overrides this value)',
+				type: 'string',
+				def: ''
+			},
+			'distance': {
+				label: 'Distance',
+				description: 'Distance from target',
+				type: 'number',
+				min: 0,
+				max: Infinity,
+				def: 1
+			},
+			'height': {
+				label: 'Height',
+				description: 'Y offset from target position',
+				type: 'number',
+				min: 0,
+				max: Infinity,
+				def: 0.5
+			},
+			'rotateSpeed': {
+				label: 'Rotate speed',
+				type: 'number',
+				min: 0,
+				max: Infinity,
+				def: 1
+			},
+			'zoomSpeed': {
+				label: 'Zoom speed',
+				type: 'number',
+				min: 0,
+				max: Infinity,
+				def: 1
+			},
+			'minDist': {
+				label: 'Minimum distance',
+				type: 'number',
+				min: 0,
+				max: Infinity,
+				def: 0.25
+			},
+			'maxDist': {
+				label: 'Maximum distance',
+				type: 'number',
+				min: 0,
+				max: Infinity,
+				def: 6
+			}
+		},
+		manager: D3DThirdPersonCameraManager
 	}
 }
 

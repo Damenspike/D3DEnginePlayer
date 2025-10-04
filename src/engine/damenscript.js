@@ -56,7 +56,7 @@ const DamenScript = (() => {
   const PUNCT = new Set(['(',')','{','}','[',']',';',',','.',':','?']);
   const TWO_CHAR_OPS = new Set([
 	'==','!=','<=','>=','&&','||','===','!==','++','--','=>',
-	'+=','-=','*=','/=','%='
+	'+=','-=','*=','/=','%=', '??'
   ]);
   const ONE_CHAR_OPS = new Set(['=','+','-','*','/','%','<','>','!']);
 
@@ -266,9 +266,28 @@ const DamenScript = (() => {
 	}
 
 	function Conditional(){
-	  let test = LogicalOr();
-	  if (match('punc','?')) { const consequent=Expression(); expect('punc',':'); const alternate=Conditional(); return { type:'ConditionalExpression', test, consequent, alternate }; }
-	  return test;
+		let test = Nullish();
+		if (match('punc','?')) {
+			const consequent = Expression();
+			expect('punc',':');
+			const alternate = Conditional();
+			return { type:'ConditionalExpression', test, consequent, alternate };
+		}
+		return test;
+	}
+	
+	function Nullish(){
+		let n = LogicalOr();
+		while (true) {
+			const t = peek();
+			if (t.type === 'op' && t.value === '??') {
+				next();
+				n = { type:'NullishCoalesceExpression', left:n, right:LogicalOr() };
+				continue;
+			}
+			break;
+		}
+		return n;
 	}
 
 	function LogicalOr(){ let n=LogicalAnd(); while(match('op','||')) n={type:'LogicalExpression',operator:'||',left:n,right:LogicalAnd()}; return n; }
@@ -287,35 +306,109 @@ const DamenScript = (() => {
 	}
 
 	function Postfix(){
-	  let node = Primary();
-
-	  // postfix ++/--
-	  if (peek().type==='op' && (peek().value==='++'||peek().value==='--')) {
-		const t = next();
-		if (!(node.type==='Identifier'||node.type==='MemberExpression')) throw DSyntax('Invalid update target', t.line, t.col);
-		node = { type:'UpdateExpression', operator:t.value, argument:node, prefix:false };
-	  }
-
-	  // chain: member/call
-	  while (true) {
-		if (match('punc','.')) {
-		  const id = expect('ident').value;
-		  node = { type:'MemberExpression', object:node, property:{type:'Identifier',name:id}, computed:false };
-		  continue;
+		let node = Primary();
+	
+		// postfix ++/--
+		if (peek().type==='op' && (peek().value==='++'||peek().value==='--')) {
+			const t = next();
+			if (!(node.type==='Identifier'||node.type==='MemberExpression'))
+				throw DSyntax('Invalid update target', t.line, t.col);
+			node = { type:'UpdateExpression', operator:t.value, argument:node, prefix:false };
 		}
-		if (match('punc','[')) {
-		  const prop = Expression(); expect('punc',']');
-		  node = { type:'MemberExpression', object:node, property:prop, computed:true };
-		  continue;
+	
+		// chain: member/call (with optional chaining support)
+		while (true) {
+			// OPTIONAL MEMBER: a?.b
+			if (peek().type==='punc' && peek().value==='?' &&
+				tokens[pos+1] && tokens[pos+1].type==='punc' && tokens[pos+1].value==='.' &&
+				tokens[pos+2] && tokens[pos+2].type==='ident') {
+				next(); // '?'
+				next(); // '.'
+				const id = expect('ident').value;
+				node = {
+					type: 'MemberExpression',
+					object: node,
+					property: { type:'Identifier', name:id },
+					computed: false,
+					optional: true
+				};
+				continue;
+			}
+	
+			// OPTIONAL COMPUTED MEMBER: a?.[expr]
+			if (peek().type==='punc' && peek().value==='?' &&
+				tokens[pos+1] && tokens[pos+1].type==='punc' && tokens[pos+1].value==='.' &&
+				tokens[pos+2] && tokens[pos+2].type==='punc' && tokens[pos+2].value==='[') {
+				next(); // '?'
+				next(); // '.'
+				expect('punc','[');
+				const prop = Expression();
+				expect('punc',']');
+				node = {
+					type: 'MemberExpression',
+					object: node,
+					property: prop,
+					computed: true,
+					optional: true
+				};
+				continue;
+			}
+	
+			// OPTIONAL CALL on current node: a?.(args) or a.b?.(args)
+			if (peek().type==='punc' && peek().value==='?' &&
+				tokens[pos+1] && tokens[pos+1].type==='punc' && tokens[pos+1].value==='.' &&
+				tokens[pos+2] && tokens[pos+2].type==='punc' && tokens[pos+2].value==='(') {
+				next(); // '?'
+				next(); // '.'
+				expect('punc','(');
+				const args = [];
+				if (!(peek().type==='punc' && peek().value===')')) {
+					do {
+						if (match('spread','...'))
+							args.push({ type:'SpreadElement', argument:Expression() });
+						else
+							args.push(Expression());
+					} while (match('punc',','));
+				}
+				expect('punc',')');
+				node = { type:'CallExpression', callee: node, arguments: args, optional: true };
+				continue;
+			}
+	
+			// NORMAL MEMBER: a.b
+			if (match('punc','.')) {
+				const id = expect('ident').value;
+				node = { type:'MemberExpression', object:node, property:{type:'Identifier',name:id}, computed:false };
+				continue;
+			}
+	
+			// NORMAL COMPUTED MEMBER: a[expr]
+			if (match('punc','[')) {
+				const prop = Expression();
+				expect('punc',']');
+				node = { type:'MemberExpression', object:node, property:prop, computed:true };
+				continue;
+			}
+	
+			// NORMAL CALL: a(...)
+			if (match('punc','(')) {
+				const args=[];
+				if (!(peek().type==='punc' && peek().value===')')) {
+					do {
+						if (match('spread','...'))
+							args.push({type:'SpreadElement',argument:Expression()});
+						else
+							args.push(Expression());
+					} while (match('punc',','));
+				}
+				expect('punc',')');
+				node = { type:'CallExpression', callee:node, arguments:args };
+				continue;
+			}
+	
+			break;
 		}
-		if (match('punc','(')) {
-		  const args=[]; if (!(peek().type==='punc' && peek().value===')')) { do { if (match('spread','...')) args.push({type:'SpreadElement',argument:Expression()}); else args.push(Expression()); } while (match('punc',',')); }
-		  expect('punc',')'); node = { type:'CallExpression', callee:node, arguments:args };
-		  continue;
-		}
-		break;
-	  }
-	  return node;
+		return node;
 	}
 
 	// Arrow helpers
@@ -442,23 +535,84 @@ const DamenScript = (() => {
 
   // ===== Evaluator =====
   class Scope {
-	constructor(parent=null){ this.parent=parent; this.map=Object.create(null); this.consts=new Set(); }
-	hasLocal(n){ return Object.prototype.hasOwnProperty.call(this.map,n); }
-	get(n){
-	  if (n==='this') return this.get('self'); // `this` -> `self`
-	  if (this.hasLocal(n)) return this.map[n];
-	  if (this.parent) return this.parent.get(n);
-	  throw DRuntime(`Unknown identifier: ${n}`);
-	}
-	set(n,v){
-	  if (this.hasLocal(n)) { if (this.consts.has(n)) throw DRuntime(`Cannot assign to const ${n}`); this.map[n]=v; return v; }
-	  if (this.parent) return this.parent.set(n,v);
-	  throw DRuntime(`Unknown identifier: ${n}`);
-	}
-	declare(kind,n,v){
-	  if (this.hasLocal(n)) throw DRuntime(`Identifier already declared: ${n}`);
-	  this.map[n]=v; if (kind==='const') this.consts.add(n);
-	}
+	  constructor(parent=null){
+		  this.parent = parent;
+		  this.map = Object.create(null);
+		  this.consts = new Set();
+	  }
+	  
+	  hasLocal(n){
+		  return Object.prototype.hasOwnProperty.call(this.map, n);
+	  }
+	  
+	  _getSelf(){
+		  let s = this;
+		  
+		  while (s) {
+			  if (s.hasLocal('self'))
+				  return s.map['self'];
+			  
+			  s = s.parent;
+		  }
+		  
+		  return undefined;
+	  }
+	  
+	  get(n){
+		  if (n === 'this')
+			  return this.get('self'); // `this` -> `self`
+		  
+		  if (this.hasLocal(n))
+			  return this.map[n];
+		  
+		  if (this.parent)
+			  return this.parent.get(n);
+		  
+		  // --- fallback: resolve from `self` (aka `this`) if present
+		  const selfObj = this._getSelf();
+		  
+		  if (selfObj && typeof selfObj === 'object') {
+			  if (BLOCKED_PROPS.has(n))
+				  throw DRuntime(`Forbidden property: ${n}`);
+			  
+			  if (Object.prototype.hasOwnProperty.call(selfObj, n))
+				  return selfObj[n];
+		  }
+		  
+		  throw DRuntime(`Unknown identifier: ${n}`);
+	  }
+	  
+	  set(n, v) {
+		  if (this.hasLocal(n)) {
+			  if (this.consts.has(n))
+				  throw DRuntime(`Cannot assign to const ${n}`);
+			  this.map[n] = v;
+			  return v;
+		  }
+		  if (this.parent)
+			  return this.parent.set(n, v);
+	  
+		  // fallback: assign into self (even if not present yet)
+		  const selfObj = this._getSelf();
+		  if (selfObj && typeof selfObj === 'object') {
+			  if (BLOCKED_PROPS.has(n))
+				  throw DRuntime(`Forbidden property: ${n}`);
+			  selfObj[n] = v; // <-- create or update
+			  return v;
+		  }
+	  
+		  throw DRuntime(`Unknown identifier: ${n}`);
+	  }
+	  
+	  declare(kind, n, v){
+		  if (this.hasLocal(n))
+			  throw DRuntime(`Identifier already declared: ${n}`);
+		  
+		  this.map[n] = v;
+		  
+		  if (kind === 'const')
+			  this.consts.add(n);
+	  }
   }
 
   function coerceKey(k){ if (typeof k==='number') return String(k); if (typeof k==='string') return k; throw DRuntime('Computed key must be string or number'); }
@@ -591,45 +745,79 @@ const DamenScript = (() => {
 		}
 
 		case 'MemberExpression': {
-		  const obj=evalNode(node.object, scope);
-		  if (node.computed){ const key=evalNode(node.property, scope); return getProp(obj,key,true); }
-		  else { const key=node.property.name; return getProp(obj,key,false); }
+			const obj = evalNode(node.object, scope);
+		
+			if (node.optional && (obj == null))
+				return undefined;
+		
+			if (node.computed) {
+				const key = evalNode(node.property, scope);
+				return getProp(obj, key, true);
+			} else {
+				const key = node.property.name;
+				return getProp(obj, key, false);
+			}
 		}
 
 		case 'CallExpression': {
-		  const calleeNode = node.callee;
+			const calleeNode = node.callee;
 		
-		  // Gather args first
-		  const args = [];
-		  for (const a of node.arguments) {
-			if (a.type === 'SpreadElement') {
-			  const v = evalNode(a.argument, scope);
-			  if (Array.isArray(v)) args.push(...v);
-			  else throw DRuntime('Spread in call requires an array');
-			} else {
-			  args.push(evalNode(a, scope));
+			function evalArgs(){
+				const out = [];
+				for (const a of node.arguments) {
+					if (a.type === 'SpreadElement') {
+						const v = evalNode(a.argument, scope);
+						if (Array.isArray(v)) out.push(...v);
+						else throw DRuntime('Spread in call requires an array');
+					} else {
+						out.push(evalNode(a, scope));
+					}
+				}
+				return out;
 			}
-		  }
 		
-		  // If it's a member call (obj.fn(...)), bind `this` to obj
-		  if (calleeNode.type === 'MemberExpression') {
-			const obj = evalNode(calleeNode.object, scope);
-			let fn;
-			if (calleeNode.computed) {
-			  const key = evalNode(calleeNode.property, scope);
-			  fn = getProp(obj, key, true);
-			} else {
-			  const key = calleeNode.property.name;
-			  fn = getProp(obj, key, false);
+			if (calleeNode.type === 'MemberExpression') {
+				const obj = evalNode(calleeNode.object, scope);
+		
+				if (calleeNode.optional && (obj == null))
+					return undefined;
+		
+				let fn;
+				if (calleeNode.computed) {
+					const key = evalNode(calleeNode.property, scope);
+					fn = getProp(obj, key, true);
+				} else {
+					const key = calleeNode.property.name;
+					fn = getProp(obj, key, false);
+				}
+		
+				if (node.optional && (fn == null))
+					return undefined;
+		
+				if (typeof fn !== 'function')
+					throw DRuntime('Attempt to call non-function ' + (calleeNode.computed ? '' : calleeNode.property.name));
+		
+				const args = evalArgs();
+				return fn.apply(obj, args);
 			}
-			if (typeof fn !== 'function') throw DRuntime('Attempt to call non-function ' + calleeNode.property.name);
-			return fn.apply(obj, args);         // <-- bind `this` to obj
-		  }
 		
-		  // Otherwise, bare call: fn(...), keep `this` undefined
-		  const fn = evalNode(calleeNode, scope);
-		  if (typeof fn !== 'function') throw DRuntime('Attempt to call non-function');
-		  return fn.apply(undefined, args);
+			const fn = evalNode(calleeNode, scope);
+		
+			if (node.optional && (fn == null))
+				return undefined;
+		
+			if (typeof fn !== 'function')
+				throw DRuntime('Attempt to call non-function');
+		
+			const args = evalArgs();
+			return fn.apply(undefined, args);
+		}
+		
+		case 'NullishCoalesceExpression': {
+			const l = evalNode(node.left, scope);
+			if (l !== null && l !== undefined)
+				return l;
+			return evalNode(node.right, scope);
 		}
 
 		case 'ArrowFunctionExpression': {

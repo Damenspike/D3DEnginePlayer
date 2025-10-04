@@ -43,7 +43,7 @@ body.light {
 	color: #222;
 }
 body.dark {
-	background: #222;
+	background: rgb(45, 45, 45);
 	color: #eee;
 	
 	.logo {
@@ -202,6 +202,9 @@ body.dark {
 }
 .gray {
 	color: rgb(109, 109, 109);
+}
+.shade {
+	background: rgba(0, 0, 0, 0.08);
 }
 
 button {

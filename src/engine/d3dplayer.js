@@ -51,6 +51,9 @@ function closePlayer() {
 
 // Main loader
 export async function loadD3D(uri) {
+	// Wait for physics to initialise
+	await _physics.init();
+	
 	// Init root
 	await initRoot(uri);
 
@@ -122,9 +125,9 @@ function startAnimationLoop() {
 		_time.tick(nowMs); // updates _time.delta (seconds) + _time.now
 		
 		updateObject([
-			'onEnterFrame',
+			'__onInternalEnterFrame',
 			'__onEnterFrame',
-			'__onInternalEnterFrame'
+			'onEnterFrame'
 		], _root);
 		
 		if(_physics.ready)
@@ -139,6 +142,12 @@ function startAnimationLoop() {
 			});
 		}
 		
+		updateObject([
+			'__onInternalBeforeRender',
+			'__onBeforeRender',
+			'onBeforeRender'
+		], _root);
+		
 		const camera3d = _player.camera?.object3d;
 		const renderer = _player.renderer;
 		
@@ -148,9 +157,9 @@ function startAnimationLoop() {
 			console.warn('No camera found for rendering');
 		
 		updateObject([
-			'onExitFrame',
+			'__onInternalExitFrame',
 			'__onExitFrame',
-			'__onInternalExitFrame'
+			'onExitFrame'
 		], _root);
 		
 		_input._afterRenderFrame?.();

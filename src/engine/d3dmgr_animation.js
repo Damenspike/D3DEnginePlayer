@@ -30,8 +30,10 @@ export default function AnimationManager(d3dobject, component) {
 			const clip = clipState.clip;
 			
 			if(!clipState.playing) {
-				if(clipState.wasPlaying)
+				if(clipState.wasPlaying) {
 					clipState.updateListener();
+					clipState.updateTransforms();
+				}
 					
 				clipState.wasPlaying = false;
 				continue;
@@ -290,7 +292,7 @@ function AnimationState({d3dobject, clip}) {
 	this.speed = 1;
 	this.clip = clip;
 	this.wrapMode = WRAP_MODE_ONCE;
-	this.tween = Tween.Linear;
+	this.tween = Tween.EaseInOut;
 	this.listener = () => null;
 	this.d3dobject = d3dobject;
 	

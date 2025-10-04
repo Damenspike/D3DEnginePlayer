@@ -21,9 +21,10 @@ export default class D3DEditorState {
 		return this._focus ?? _root;
 	}
 	set focus(value) {
-		this._focus = value;
+		this._focus = value ?? _root;
 		this.onEditorFocusChanged();
 		_events.invoke('editor-focus', value);
+		_editor.updateInspector();
 	}
 	
 	constructor() {
@@ -40,6 +41,7 @@ export default class D3DEditorState {
 		this.clipboard = null;
 		this.animationDefaultFps = 60;
 		this.console = [];
+		this.lastSingleClick = 0;
 	}
 
 	setTool(tool) {
@@ -254,7 +256,11 @@ export default class D3DEditorState {
 			_editor.__dupeInspector?.(); // inspector handle possible asset duplication
 			return;
 		}
-		return await this.pasteFrom({clip: this.selectedObjects, action: 'Duplicate'});
+		const clipboard = [];
+		this.selectedObjects.forEach(d3dobject => {
+			clipboard.push(d3dobject.getSerializableObject());
+		});
+		return await this.pasteFrom({clip: clipboard, action: 'Duplicate'});
 	}
 	
 	setDirty(dirty) {
@@ -292,6 +298,20 @@ export default class D3DEditorState {
 		
 		if(!zip)
 			throw new Error('No project to build');
+		
+		_root.manifest.editorConfig = {
+			lastCameraPosition: {
+				x: _editor.camera.position.x,
+				y: _editor.camera.position.y,
+				z: _editor.camera.position.z
+			},
+			lastCameraRotation: {
+				x: _editor.camera.rotation.x,
+				y: _editor.camera.rotation.y,
+				z: _editor.camera.rotation.z
+			},
+			lastScene: _root.scenes.indexOf(_root.scene)
+		}
 		
 		// Save manifest
 		this.writeFile({

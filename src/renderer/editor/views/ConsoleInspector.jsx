@@ -9,6 +9,7 @@ export default function ConsoleInspector() {
 		_events.on('editor-console', (ec) => {
 			setEditorConsole([...ec]);
 		});
+		_events.on('clear-console', clearConsole);
 	}, []);
 
 	useEffect(() => {
@@ -50,14 +51,27 @@ export default function ConsoleInspector() {
 	const drawConsoleLines = () => {
 		const rows = [];
 		
+		// Deduplicate entries and count occurrences
+		const uniqueEntries = new Map();
 		editorConsole.forEach(({ level, message }) => {
+			const key = `${level}:${message}`;
+			const entry = uniqueEntries.get(key) || { level, message, count: 0 };
+			entry.count += 1;
+			uniqueEntries.set(key, entry);
+		});
+		
+		// Render unique entries with count badge
+		Array.from(uniqueEntries.values()).forEach(({ level, message, count }, index) => {
 			const classes = ['console-entry', `console-entry-${level}`];
-			
+			const c = count < 1000 ? count : '999+'
 			rows.push(
-				<div 
-					key={rows.length}
+				<div
+					key={index}
 					className={classes.join(' ')}
 				>
+					{count > 1 && (
+						<span className="console-count-badge">{c}</span>
+					)}
 					{message}
 				</div>
 			);
@@ -69,7 +83,7 @@ export default function ConsoleInspector() {
 	return (
 		<div 
 			ref={scrollRef}
-			className='console-inspector'
+			className='console-inspector shade'
 			onScroll={onScroll}
 		>
 			{drawOptions()}

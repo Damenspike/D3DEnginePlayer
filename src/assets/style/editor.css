@@ -25,7 +25,7 @@ body.dark {
 		}
 	}
 	.shade {
-		background: rgba(0, 0, 0, 0.22);
+		background: rgba(0, 0, 0, 0.2);
 	}
 	.inspector-cell {
 		.insp-title {
@@ -40,11 +40,11 @@ body.dark {
 	}
 	.tabs {
 		.tab {
-	 		background: rgba(255, 255, 255, 0.14);
+	 		background: rgba(0, 0, 0, 0.4);
 			color: white;
 		}
 		.tab:hover {
-			background: rgba(255, 255, 255, 0.24);
+			background: rgba(0, 0, 0, 1);
 		}
 	}
 	.asset-dialog {
@@ -68,16 +68,16 @@ body.dark {
 	}
 	.animation-editor {
 		.timeline {
-			background: rgb(10, 10, 10);
+			background: rgb(35, 35, 35);
 		}
 		.timing-bar {
-			background: rgba(255, 255, 255, 0.05);
+			background: rgba(0, 0, 0, 0.2);
 		}
 		.time-marker {
 			border-color: rgb(103, 103, 103);
 		}
 		.tracks {
-			background: rgba(255, 255, 255, 0.05);
+			background: rgba(0, 0, 0, 0.1);
 			border-color: rgb(31, 31, 31);
 			
 			.track {
@@ -105,13 +105,14 @@ body.dark {
 		}
 	}
 	.console-inspector {
-		background: rgba(0, 0, 0, 0.2);
-		
 		.console-entry-warn {
 			color: #e5bc36;
 		}
 		.console-entry-error {
 			color: #ec4848;
+		}
+		.console-count-badge {
+			color: white;
 		}
 	}
 	.object-row:hover {
@@ -137,6 +138,10 @@ body.dark {
 	.insp-expand--expanded:hover {
 		color: black !important;
 		background: white !important;
+	}
+	.insp-view .tabs-container {
+		background: rgb(45, 45, 45);
+		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 	}
 }
 
@@ -326,6 +331,13 @@ body.dark {
 	.insp-body {
 		padding-top: 5px;
 	}
+}
+.component-delete {
+	float: right;
+	opacity: 0.5;
+}
+.component-delete:hover {
+	opacity: 1;
 }
 .material-editor-cell {
 	margin: 0px !important;
@@ -790,11 +802,30 @@ body.dark {
 	height: 100%;
 	overflow: hidden;
 }
-.console-view, .insp-view {
+.insp-view {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	overflow: hidden;
+	
 	.tabs {
-		background: none;
-		width: 100%;
+		width: 100% !important;
 	}
+}
+.insp-view .tabs-container {
+	position: sticky;
+	top: 0;
+	z-index: 2;
+	background: #eee;
+	border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+.insp-itself {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	margin-top: -5px;
+}
+.console-view, .insp-view {
 	.tab-content {
 		padding-left: 5px;
 		padding-right: 5px;
@@ -919,7 +950,6 @@ body.dark {
 	}
 }
 .console-inspector {
-	background: rgb(244, 244, 244);
 	padding: 5px;
 	border-radius: 10px;
 	height: calc(100% - 97px);
@@ -940,6 +970,21 @@ body.dark {
 		top: 5px;
 		right: 5px;
 	}
+	.console-count-badge {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 18px;
+		height: 16px;
+		margin-left: 8px;
+		padding: 0 4px;
+		background-color: rgba(255, 255, 255, 0.342);
+		color: #000;
+		border-radius: 8px;
+		font-size: 10px;
+		font-weight: bold;
+		vertical-align: middle;
+	}
 }
 .console-inspector {
 	user-select: text !important;
@@ -953,7 +998,7 @@ body.dark {
 	position: absolute;
 	top: 5px;
 	left: 5px;
-	background: rgba(0, 0, 0, 0.838);
+	background: rgba(0, 0, 0, 0.672);
 	color: white;
 	padding: 5px;
 	border-radius: 10px;

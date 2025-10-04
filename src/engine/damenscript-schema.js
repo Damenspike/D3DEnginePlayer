@@ -4,7 +4,7 @@ export const KEYWORDS = [
 	'case','default','try','catch','finally','throw', 'this', 'root', '_root', 'parent'
 ]
 export const TYPE_KEYWORDS = [
-	'number','string','bool','Vector2','Vector3','Vector4','MathUtils','Box3'
+	'number','string','bool','Vector2','Vector3','Vector4','MathUtils','Box3','Quaternion'
 ]
 export const FORBIDDEN_KEYWORDS = [
 	'window','document','globalThis',
@@ -17,7 +17,7 @@ export const FORBIDDEN_PROPS = [
 	   'caller','callee','arguments',
 	   'call','apply','bind', '__script',
 	   '__onInternalEnterFrame', '__onEditorEnterFrame',
-	   '__componentInstances', '__deleted', '__animatedTransformChange'
+	   '__componentInstances', '__deleted', '__animatedTransformChange', '_animation', '_mesh', '_camera', '_directionallight', '_ambientlight', '_pointlight'
 ]
 export const D3D_OBJECT_SCHEMA = {
 	name: {
