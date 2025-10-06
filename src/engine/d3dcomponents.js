@@ -380,6 +380,59 @@ const D3DComponents = {
 			}
 		},
 		manager: D3DThirdPersonCameraManager
+	},
+	Graphic2D: {
+		name: 'Graphic 2D',
+		fields: {
+			'_points': {
+				label: '',
+				type: 'none',
+				def: []
+			},
+			'_pivotPoint': {
+				label: '',
+				type: 'none',
+				def: {x: 0, y: 0}
+			},
+			'line': {
+				label: 'Line',
+				type: 'boolean',
+				def: true
+			},
+			'lineWidth': {
+				label: 'Line width',
+				type: 'number',
+				min: 0,
+				max: 100,
+				def: 1,
+				condition: c => c.properties.line == true
+			},
+			'lineColor': {
+				label: 'Line color',
+				type: 'colora',
+				def: '#ffffff',
+				condition: c => c.properties.line == true
+			},
+			'fill': {
+				label: 'Fill',
+				type: 'boolean',
+				def: true
+			},
+			'fillColor': {
+				label: 'Fill color',
+				type: 'colora',
+				def: '#ffffffff',
+				condition: c => c.properties.fill == true
+			},
+			'borderRadius': {
+				label: 'Border radius',
+				type: 'number',
+				min: 0,
+				max: Infinity,
+				def: 0
+			}
+		},
+		manager: function() {}
 	}
 }
 

@@ -206,6 +206,27 @@ body.dark {
 .shade {
 	background: rgba(0, 0, 0, 0.08);
 }
+.sidebyside {
+	display: flex;
+	align-items: flex-start; /* vertically center */
+	justify-content: space-between; /* push left and right apart */
+	width: 100%;
+	gap: 10px;
+	
+	.left-side {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		justify-content: center;
+		flex: 1 1 auto;
+	}
+	.right-side {
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		flex: 0 0 auto;
+	}
+}
 
 button {
 	background: #0099ff;

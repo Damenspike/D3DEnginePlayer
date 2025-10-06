@@ -6,6 +6,7 @@ import VectorInput from './VectorInput.jsx';
 import AssetExplorerDialog from './AssetExplorerDialog.jsx';
 import ObjectRow from './ObjectRow.jsx';
 import MaterialEditor from './MaterialEditor.jsx';
+import ColorPicker from './ColorPicker.jsx';
 
 import { 
 	MdDelete, 
@@ -503,6 +504,11 @@ export default function Inspector() {
 					dummyComponent.properties['minimaterial']?.enabled)
 					continue;
 				
+				if(typeof field.condition == 'function') {
+					if(field.condition(dummyComponent) === false)
+						continue;
+				}
+				
 				const addStep = (val) => {
 					const oldValue = component.properties[fieldId];
 					const newValue = val;
@@ -726,6 +732,32 @@ export default function Inspector() {
 									
 									addStepManual(e.target.oldValue, val);
 									e.target.oldValue = val;
+								}}
+							/>
+						);
+						break;
+					}
+					case 'colora': {
+						fieldContent = (
+							<ColorPicker
+								value={String(current).replace('0x', '#')}
+								onKeyDown={autoBlur}
+								readOnly={field.readOnly}
+								onClick={val => {
+									dummyComponent.__oldValue = val;
+								}}
+								onChange={val => {
+									dummyComponent.properties[fieldId] = val;
+									
+									object.setComponentValue(
+										component.type,
+										fieldId,
+										val
+									);
+								}}
+								onBlur={val => {
+									addStepManual(dummyComponent.__oldValue, val);
+									dummyComponent.__oldValue = val;
 								}}
 							/>
 						);
@@ -970,9 +1002,20 @@ export default function Inspector() {
 				
 				fields.push(
 					<div className='field' key={fields.length}>
-						<label>{field.label}</label>
-						{fieldContent}
-						{field.description && (
+						<div className='sidebyside'>
+							<div className='left-side'>
+								<label>{field.label}</label>
+								{field.description && field.description?.length < 100 && (
+									<div className='small gray mt'>
+										{field.description}
+									</div>
+								)}
+							</div>
+							<div className='right-side'>
+								{fieldContent}
+							</div>
+						</div>
+						{field.description?.length > 100 && (
 							<div className='small gray mt'>
 								{field.description}
 							</div>

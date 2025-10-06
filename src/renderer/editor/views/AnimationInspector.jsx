@@ -517,6 +517,15 @@ export default function AnimationInspector() {
 		}
 	}, [selectedTracks, selectedKeys]);
 	
+	useEffect(() => {
+		const el = keyTracksRef.current;
+		if (!el) 
+			return;
+		
+		el.addEventListener('wheel', updateZoom, { passive: false });
+		return () => el.removeEventListener('wheel', updateZoom);
+	}, [keyTracksRef.current]);
+	
 	/* AI BOX SELECT */
 	// clientX -> frame index (0..totalFrames)
 	const clientToFrame = (clientX) => {
@@ -762,6 +771,8 @@ export default function AnimationInspector() {
 		setCurrentTime(snapped);
 	}
 	const updateZoom = (e) => {
+		e.preventDefault();
+		
 		const baseSens = 0.0015;
 		const sens = e.shiftKey ? baseSens * 4 : baseSens;
 		const min = 0.005;
@@ -924,6 +935,9 @@ export default function AnimationInspector() {
 		if(!animManager) {
 			return (
 				<div className='noanim-placeholder'>
+					<p>
+						{selectedObject.name} is not animated
+					</p>
 					<button onClick={() => {
 						D3D.invoke('add-component', 'Animation');
 						_editor.probeSelection();
@@ -1145,82 +1159,82 @@ export default function AnimationInspector() {
 				)
 			}
 			const drawTimingBar = () => {
-			const rows = [];
-			const duration = activeClip.duration;
-			
-			// integer frames & exact bar width
-			const totalF = Math.max(0, Math.round(duration * fps));
-			const barW   = totalF * frameWidth;
-			
-			// choose step based on zoom (keep labels readable)
-			const MIN_LABEL_PX = 80;
-			const minFrames = Math.max(1, Math.ceil(MIN_LABEL_PX / frameWidth));
-			const niceSecs = [1/120, 1/60, 0.02, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10];
-			const candFrames = Array.from(
-				new Set(niceSecs.map(s => Math.max(1, Math.round(s * fps))))
-			).sort((a, b) => a - b);
-			const stepF = candFrames.find(f => f >= minFrames) || minFrames;
-			
-			// --- pick decimals safely ---
-			const pickDecimals = (stepF, fps) => {
-				const s = stepF / fps;
-				if (s >= 1)    return 0;
-				if (s >= 0.5)  return 1;
-				if (s >= 0.25) return 2;
-				if (s >= 0.1)  return 2;
-				if (s >= 1/60) return 3;
-				return 3;
-			};
-			const labelDecimals = pickDecimals(stepF, fps);
-			
-			// --- formatting helper ---
-			const truncFmt = (secs, d) => {
-				const m = 10 ** d;
-				let s = (Math.floor(secs * m + 1e-8) / m).toFixed(d);
-				return s.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
-			};
-			
-			const px = f => Math.round(f * frameWidth);
-			
-			// --- boundary ticks & labels ---
-			const ticks = [];
-			for (let f = 0; f <= totalF; f += stepF) ticks.push(f);
-			if (ticks[ticks.length - 1] !== totalF) ticks.push(totalF); // ensure end
-			
-			const overlay = (
-				<div
-					key="overlay"
-					style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
-				>
-					{ticks.map((f, i) => {
-						const isEnd = (f === totalF);
-						const secs  = isEnd ? duration : (f / fps);
-						const label = truncFmt(secs, isEnd ? Math.max(labelDecimals, 2) : labelDecimals) + 's';
-						const left  = px(f);
-			
-						return (
-							<div
-								key={`tick-${f}-${i}`}
-								className="time-marker"
-								style={{
-									position: 'absolute',
-									left: `${left}px`,
-									top: 7
-								}}
-								title={label}
-							>
-								{label}
-							</div>
-						);
-					})}
-				</div>
-			);
-			
+				const rows = [];
+				const duration = activeClip.duration;
+				
+				// integer frames & exact bar width
+				const totalF = Math.max(0, Math.round(duration * fps));
+				const barW   = totalF * frameWidth;
+				
+				// choose step based on zoom (keep labels readable)
+				const MIN_LABEL_PX = 80;
+				const minFrames = Math.max(1, Math.ceil(MIN_LABEL_PX / frameWidth));
+				const niceSecs = [1/120, 1/60, 0.02, 0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10];
+				const candFrames = Array.from(
+					new Set(niceSecs.map(s => Math.max(1, Math.round(s * fps))))
+				).sort((a, b) => a - b);
+				const stepF = candFrames.find(f => f >= minFrames) || minFrames;
+				
+				// --- pick decimals safely ---
+				const pickDecimals = (stepF, fps) => {
+					const s = stepF / fps;
+					if (s >= 1)    return 0;
+					if (s >= 0.5)  return 1;
+					if (s >= 0.25) return 2;
+					if (s >= 0.1)  return 2;
+					if (s >= 1/60) return 3;
+					return 3;
+				};
+				const labelDecimals = pickDecimals(stepF, fps);
+				
+				// --- formatting helper ---
+				const truncFmt = (secs, d) => {
+					const m = 10 ** d;
+					let s = (Math.floor(secs * m + 1e-8) / m).toFixed(d);
+					return s.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+				};
+				
+				const px = f => Math.round(f * frameWidth);
+				
+				// --- boundary ticks & labels ---
+				const ticks = [];
+				for (let f = 0; f <= totalF; f += stepF) ticks.push(f);
+				if (ticks[ticks.length - 1] !== totalF) ticks.push(totalF); // ensure end
+				
+				const overlay = (
+					<div
+						key="overlay"
+						style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
+					>
+						{ticks.map((f, i) => {
+							const isEnd = (f === totalF);
+							const secs  = isEnd ? duration : (f / fps);
+							const label = truncFmt(secs, isEnd ? Math.max(labelDecimals, 2) : labelDecimals) + 's';
+							const left  = px(f);
+				
+							return (
+								<div
+									key={`tick-${f}-${i}`}
+									className="time-marker"
+									style={{
+										position: 'absolute',
+										left: `${left}px`,
+										top: 7
+									}}
+									title={label}
+								>
+									{label}
+								</div>
+							);
+						})}
+					</div>
+				);
+				
 				return (
 					<div 
 						ref={timingBarRef}
 						className="timing-bar"
-						style={{ width: barW, position: 'relative' }}
+						style={{ width: barW }}
 						onMouseDown={e => { 
 							updateScrub(e, true); 
 							setScrubbing(true); 
@@ -1380,19 +1394,6 @@ export default function AnimationInspector() {
 						</div>
 					)
 				};
-				/*
-				return (
-					<div 
-						ref={keyTracksRef} 
-						className='keytracks'
-						tabIndex={0}
-					>
-						{drawTimingBar()}
-						{drawPlayHead()}
-						{rows}
-					</div>
-				)
-				*/
 				
 				return (
 					<div
@@ -1491,7 +1492,6 @@ export default function AnimationInspector() {
 				boxDragUp(e);
 			}}
 			onMouseMove={updateMouseMove}
-			onWheel={updateZoom}
 			onKeyDown={updateKeyDown}
 		>
 			{drawAnimationEditor()}

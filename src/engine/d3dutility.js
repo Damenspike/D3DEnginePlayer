@@ -399,3 +399,36 @@ export function upperFirst(str) {
 	
 	return str.charAt(0).toUpperCase() + str.slice(1);
 }
+// Convert numeric 0xRRGGBBAA (or 0xRRGGBB) → picker input ('0xRRGGBBAA')
+export function numToHex(n) {
+	// Clamp into 32-bit unsigned int
+	const v = Number(n) >>> 0;
+
+	// Split into channels
+	const r = (v >> 24) & 0xFF;
+	const g = (v >> 16) & 0xFF;
+	const b = (v >> 8)  & 0xFF;
+	const a = v & 0xFF;
+
+	// If alpha channel is zero (no alpha info), default to FF (opaque)
+	const alpha = (n > 0xFFFFFF) ? a : 0xFF;
+
+	// Repack with alpha
+	const rgba = (r << 24) | (g << 16) | (b << 8) | alpha;
+
+	return '0x' + rgba.toString(16).toUpperCase().padStart(8, '0');
+}
+
+// Convert picker output ('0xRRGGBBAA') → numeric 0xRRGGBBAA
+export function hexToNum(s) {
+	if (!s) return 0xFFFFFFFF;
+	if (s.startsWith('#')) s = '0x' + s.slice(1);
+
+	let v = Number(s);
+	if (!Number.isFinite(v)) v = 0xFFFFFFFF;
+
+	// If no alpha (0xRRGGBB), shift left and add 0xFF
+	if (String(s).length <= 8) v = (v << 8) | 0xFF;
+
+	return v >>> 0;
+}
