@@ -490,7 +490,7 @@ export default function Inspector() {
 					title: 'Delete Component',
 					message: `Are you sure you want to delete ${component.type} off this object?`,
 					onConfirm: doDelete
-				})
+				}) 
 			}
 			
 			for(let fieldId in schema.fields) {
