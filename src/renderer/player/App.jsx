@@ -42,7 +42,7 @@ export default function App() {
 	
 	return (
 		<div
-			id="game-container"
+			id="game3d-container"
 			className="game"
 			ref={gameRef}
 			style={{ position: 'relative', width: '100%', height: '100%' }}

@@ -36,6 +36,7 @@ import D3DTransformGizmo from './d3dtransformgizmo.js';
 import D3DComponents from './d3dcomponents.js';
 import D3DEventSystem from './d3devents.js';
 import D3DPhysics from './d3dphysics.js';
+import D2DRenderer from './d2drenderer.js';
 
 window.THREE = THREE;
 window._events = new D3DEventSystem();
@@ -95,35 +96,35 @@ export async function loadD3DProj(uri) {
 		return;
 	}
 
-	// Setup renderer
-	const renderer = initRenderer();
+	// Setup renderers
+	initRenderers();
 
 	// Setup editor camera
-	const camera = await initEditorCamera();
+	await initEditorCamera();
 	
 	// Configure editor state
-	initEditorConfig(camera);
+	initEditorConfig();
 	
 	// Init focus overlay
 	initFocusOverlay();
 
 	// Setup composer and passes
-	const { composer, outlinePass, grayPass } = initComposer(renderer, camera);
+	initComposer();
 
 	// Start update + render loop
-	startAnimationLoop(composer, outlinePass);
+	startAnimationLoop();
 
 	// Setup resize handling
-	setupResize(renderer, camera);
+	setupResize();
 	
 	// Step clipboard
 	setupClipboard();
 
 	// Update editor window title
 	D3D.updateEditorWindow({ title: _root.manifest.name });
-
+	
 	// Enable object selection via raycasting
-	setupSelection(renderer, camera);
+	setupSelection();
 }
 
 /* ---------------- Helper Functions ---------------- */
@@ -134,17 +135,25 @@ async function initRoot(uri) {
 	await root.load(uri);
 }
 
-function initRenderer() {
+function initRenderers() {
 	const scene = _root.object3d;
-	const renderer = new THREE.WebGLRenderer({ antialias: true });
-	renderer.setPixelRatio(window.devicePixelRatio);
-	renderer.setSize(_container3d.clientWidth, _container3d.clientHeight);
-	renderer.outputEncoding = THREE.sRGBEncoding;
-	renderer.toneMapping = THREE.ACESFilmicToneMapping;
-	renderer.toneMappingExposure = 1.0;
-	_container3d.appendChild(renderer.domElement);
-	_editor.renderer = renderer;
-	return renderer;
+	const renderer3d = new THREE.WebGLRenderer({ antialias: true });
+	const renderer2d = new D2DRenderer({root: _root});
+	
+	renderer3d.setPixelRatio(window.devicePixelRatio);
+	renderer3d.setSize(_container3d.clientWidth, _container3d.clientHeight);
+	renderer3d.outputEncoding = THREE.sRGBEncoding;
+	renderer3d.toneMapping = THREE.ACESFilmicToneMapping;
+	renderer3d.toneMappingExposure = 1.0;
+	
+	renderer2d.setPixelRatio(window.devicePixelRatio);
+	renderer2d.setSize(_container2d.clientWidth, _container2d.clientHeight);
+	
+	_container3d.appendChild(renderer3d.domElement);
+	_container2d.appendChild(renderer2d.domElement);
+	
+	_editor.renderer3d = renderer3d;
+	_editor.renderer2d = renderer2d;
 }
 
 async function initEditorCamera() {
@@ -179,11 +188,13 @@ async function initEditorCamera() {
 	});
 	
 	_editor.editorLight = editorLight;
-	
-	return cameraD3DObj.object3d;
+	_editor.camera = cameraD3DObj.object3d;
+	_editor.cameraD3D = cameraD3DObj;
 }
 
-function initComposer(renderer, camera) {
+function initComposer() {
+	const renderer = _editor.renderer3d;
+	const camera = _editor.camera;
 	const scene = _root.object3d;
 	const composer = new EffectComposer(renderer);
 	
@@ -219,14 +230,14 @@ function initComposer(renderer, camera) {
 	
 	// Assign values if needed
 	_editor.grayPass = grayPass;
-
-	return { composer, outlinePass };
+	_editor.outlinePass = outlinePass;
+	_editor.gammaCorrectionPass = gammaCorrectionPass;
+	_editor.renderPass = renderPass;
 }
 
-function initEditorConfig(camera) {
+function initEditorConfig() {
 	_editor.project = _root.manifest;
 	_editor.config = _editor.project.editorConfig;
-	_editor.camera = camera;
 	_editor.gridHelper = addGridHelper();
 	_editor.setTool('select'); // default tool
 	_editor.setTransformTool('translate'); // default tool
@@ -282,7 +293,12 @@ function afterRenderHideObjects() {
 	});
 }
 
-function startAnimationLoop(composer, outlinePass) {
+function startAnimationLoop() {
+	const renderer3d = _editor.renderer3d;
+	const renderer2d = _editor.renderer2d;
+	const composer = _editor.composer;
+	const outlinePass = _editor.outlinePass;
+	
 	function animate(nowMs) {
 		_time.tick(nowMs); // updates _time.delta (seconds) + _time.now
 
@@ -293,23 +309,25 @@ function startAnimationLoop(composer, outlinePass) {
 		], _root);
 		
 		outlinePass.selectedObjects = _editor.selectedObjects.map(d => d.object3d);
-		composer.render();
+	
+		composer.render(); // render 3d
+		renderer2d.render(); // render 2d
 		
 		if (_editor.gizmo) 
 			_editor.gizmo.update();
 
 		if (_editor.focus != _root) {
 			afterRenderHideObjects();
-			_editor.renderer.autoClear = false;
-			_editor.renderer.render(_editor._overlayScene, _editor._overlayCam);
-			_editor.renderer.clearDepth();
+			renderer3d.autoClear = false;
+			renderer3d.render(_editor._overlayScene, _editor._overlayCam);
+			renderer3d.clearDepth();
 			const oldBG = _root.object3d.background;
 			_root.object3d.background = null;
-			_editor.renderer.render(_root.object3d, _editor.camera);
+			renderer3d.render(_root.object3d, _editor.camera);
 			_root.object3d.background = oldBG;
-			_editor.renderer.clearDepth();
-			_editor.renderer.render(_editor.gizmo._group, _editor.camera);
-			_editor.renderer.autoClear = true;
+			renderer3d.clearDepth();
+			renderer3d.render(_editor.gizmo._group, _editor.camera);
+			renderer3d.autoClear = true;
 			afterRenderShowObjects();
 		}
 
@@ -330,11 +348,16 @@ function startAnimationLoop(composer, outlinePass) {
 	requestAnimationFrame(animate);
 }
 
-function setupResize(renderer, camera) {
+function setupResize() {
+	const renderer = _editor.renderer3d;
+	const renderer2d = _editor.renderer2d;
+	const camera = _editor.camera;
+	
 	const resizeUpdate = () => {
 		const width = _container3d.clientWidth;
 		const height = _container3d.clientHeight;
 		renderer.setSize(width, height);
+		renderer2d.setSize(_container2d.clientWidth, _container2d.clientHeight);
 		if (camera) {
 			camera.aspect = width / height;
 			camera.updateProjectionMatrix();
@@ -370,7 +393,9 @@ function setupClipboard() {
 	}, true);
 }
 
-function setupSelection(renderer, camera) {
+function setupSelection() {
+	const renderer = _editor.renderer3d;
+	const camera = _editor.camera;
 	const scene = _root.object3d;
 	const raycaster = new THREE.Raycaster();
 
@@ -612,7 +637,7 @@ function setupSelection(renderer, camera) {
 function setupTransformGizmo() {
 	const scene = _root.object3d;
 	const camera = _editor.camera;
-	const renderer = _editor.renderer;
+	const renderer = _editor.renderer3d;
 	
 	// create once
 	const gizmo = new D3DTransformGizmo({
@@ -834,7 +859,7 @@ function moveObjectToCameraView(d3dobject, opts = {}) {
 
 	const camera = _editor.camera;
 	const scene  = _editor.scene || d3dobject.object3d?.parent || camera.parent;
-	const renderer = _editor.renderer; // assumed three.js renderer
+	const renderer = _editor.renderer3d; // assumed three.js renderer
 	if (!camera) return;
 
 	// --- compute object's bounding radius (for spawn offset) ---

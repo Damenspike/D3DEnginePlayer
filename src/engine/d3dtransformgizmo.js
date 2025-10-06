@@ -486,8 +486,8 @@ export default class D3DTransformGizmo {
 		// keep Line2 thickness correct
 		if (this._rotLineMats) {
 			const v = new THREE.Vector2();
-			if (_editor?.renderer?.getDrawingBufferSize) _editor.renderer.getDrawingBufferSize(v);
-			else _editor.renderer.getSize(v);
+			if (_editor?.renderer?.getDrawingBufferSize) _editor.renderer3d.getDrawingBufferSize(v);
+			else _editor.renderer3d.getSize(v);
 			for (const m of this._rotLineMats) m.resolution.set(v.x, v.y);
 		}
 	
@@ -584,7 +584,7 @@ export default class D3DTransformGizmo {
 		let w = 0, h = 0;
 		if (_editor?.renderer?.getDrawingBufferSize) {
 			const v = new THREE.Vector2();
-			_editor.renderer.getDrawingBufferSize(v);
+			_editor.renderer3d.getDrawingBufferSize(v);
 			w = v.x; h = v.y;
 		} else {
 			const r = this.dom.getBoundingClientRect();

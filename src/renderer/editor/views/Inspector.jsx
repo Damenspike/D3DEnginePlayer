@@ -126,10 +126,7 @@ export default function Inspector() {
 	
 	useEffect(() => {
 		const onDelete = () => {
-			if(
-				_editor.inspRef.current.contains(document.activeElement) || 
-				_editor.gameRef.current.contains(document.activeElement)
-			)
+			if(_editor.gameOrInspectorActive())
 				deleteSelectedObjects();
 		}
 		
@@ -509,6 +506,9 @@ export default function Inspector() {
 						continue;
 				}
 				
+				let desc = field.description;
+				let sideBySide = true;
+				
 				const addStep = (val) => {
 					const oldValue = component.properties[fieldId];
 					const newValue = val;
@@ -765,6 +765,8 @@ export default function Inspector() {
 					}
 					case 'file':
 					case 'file[]': {
+						sideBySide = false;
+						
 						const current = Array.isArray(dummyComponent.properties[fieldId])
 							? dummyComponent.properties[fieldId]
 							: [dummyComponent.properties[fieldId]];
@@ -956,6 +958,9 @@ export default function Inspector() {
 							)
 						});
 						
+						if(currentOption.description)
+							desc = currentOption.description;
+						
 						fieldContent = (
 							<>
 								<select
@@ -979,11 +984,6 @@ export default function Inspector() {
 								>
 									{selRows}
 								</select>
-								{currentOption?.description && (
-									<div className='small gray mt'>
-										{currentOption.description}
-									</div>
-								)}
 							</>	
 						)
 						break;
@@ -1000,28 +1000,37 @@ export default function Inspector() {
 				if(!fieldContent)
 					continue;
 				
-				fields.push(
-					<div className='field' key={fields.length}>
-						<div className='sidebyside'>
-							<div className='left-side'>
-								<label>{field.label}</label>
-								{field.description && field.description?.length < 100 && (
-									<div className='small gray mt'>
-										{field.description}
-									</div>
-								)}
-							</div>
-							<div className='right-side'>
-								{fieldContent}
+				if(sideBySide) {
+					fields.push(
+						<div className='field' key={fields.length}>
+							<div className='sidebyside'>
+								<div className='left-side'>
+									<label>{field.label}</label>
+									{desc && (
+										<div className='small gray desc'>
+											{desc}
+										</div>
+									)}
+								</div>
+								<div className='right-side'>
+									{fieldContent}
+								</div>
 							</div>
 						</div>
-						{field.description?.length > 100 && (
-							<div className='small gray mt'>
-								{field.description}
-							</div>
-						)}
-					</div>
-				);
+					);
+				}else{
+					fields.push(
+						<div className='field' key={fields.length}>
+							<label>{field.label}</label>
+							{desc && (
+								<div className='small gray mt'>
+									{desc}
+								</div>
+							)}
+							{fieldContent}
+						</div>
+					);
+				}
 			}
 			
 			rows.push(
@@ -1238,6 +1247,9 @@ export default function Inspector() {
 			
 			objects.forEach(object => {
 				const selected = _editor.selectedObjects.includes(object);
+				
+				if((_editor.mode == '3D' && !object.is3D) || (_editor.mode == '2D' && !object.is2D))
+					return;
 				
 				rows.push(
 					<ObjectRow

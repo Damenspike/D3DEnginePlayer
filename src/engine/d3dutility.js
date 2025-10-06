@@ -432,3 +432,23 @@ export function hexToNum(s) {
 
 	return v >>> 0;
 }
+export function hexToRgba(str, fallback = 'rgba(255,255,255,1)') {
+	if (!str) return fallback;
+	let s = String(str).trim();
+	if (s.startsWith('0x')) s = '#' + s.slice(2);
+	if (!s.startsWith('#')) return s;
+	if (s.length === 7) {
+		const r = parseInt(s.slice(1, 3), 16);
+		const g = parseInt(s.slice(3, 5), 16);
+		const b = parseInt(s.slice(5, 7), 16);
+		return `rgba(${r},${g},${b},1)`;
+	}
+	if (s.length === 9) {
+		const r = parseInt(s.slice(1, 3), 16);
+		const g = parseInt(s.slice(3, 5), 16);
+		const b = parseInt(s.slice(5, 7), 16);
+		const a = parseInt(s.slice(7, 9), 16) / 255;
+		return `rgba(${r},${g},${b},${a})`;
+	}
+	return fallback;
+}

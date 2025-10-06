@@ -24,7 +24,22 @@ export default class D3DEditorState {
 		this._focus = value ?? _root;
 		this.onEditorFocusChanged();
 		_events.invoke('editor-focus', value);
-		_editor.updateInspector();
+		_editor.updateInspector?.();
+	}
+	get mode() {
+		if(this._mode != '2D' && this._mode != '3D')
+			return '3D'; // default
+		
+		return this._mode;
+	}
+	set mode(value) {
+		if(value != '2D' && value != '3D')
+			value = '3D';
+		
+		this._mode = value;
+		_events.invoke('editor-mode', value);
+		_editor.updateInspector?.();
+		_editor.setSelection([]);
 	}
 	
 	constructor() {
@@ -42,8 +57,12 @@ export default class D3DEditorState {
 		this.animationDefaultFps = 60;
 		this.console = [];
 		this.lastSingleClick = 0;
+		this._mode = '3D';
 	}
 
+	setMode(mode) {
+		this.mode = mode;
+	}
 	setTool(tool) {
 		if (Object.values(Tools).includes(tool)) {
 			this.tool = tool;
@@ -51,16 +70,7 @@ export default class D3DEditorState {
 			console.warn(`Invalid tool: ${tool}. Falling back to default.`);
 			this.tool = Tools.Select;
 		}
-	
-		// Remove active class from all tools
-		Object.values(Tools).forEach(t => {
-			const el = document.getElementById(`tool-${t}`);
-			if (el) el.classList.remove('tool-option--active');
-		});
-	
-		// Add active class to selected tool
-		const activeEl = document.getElementById(`tool-${this.tool}`);
-		if (activeEl) activeEl.classList.add('tool-option--active');
+		_events.invoke('editor-tool', tool);
 	}
 	
 	setTransformTool(tool) {
@@ -71,15 +81,7 @@ export default class D3DEditorState {
 			this.transformTool = TransformTools.Translate;
 		}
 		
-		// Remove active class from all tools
-		Object.values(TransformTools).forEach(t => {
-			const el = document.getElementById(`ttool-${t}`);
-			if (el) el.classList.remove('tool-option--active');
-		});
-		
-		// Add active class to selected tool
-		const activeEl = document.getElementById(`ttool-${this.transformTool}`);
-		if (activeEl) activeEl.classList.add('tool-option--active');
+		_events.invoke('editor-transform-tool', tool);
 		
 		if(this.gizmo) {
 			switch(this.transformTool) {
@@ -413,7 +415,7 @@ export default class D3DEditorState {
 		});
 	}
 	gameOrInspectorActive() {
-		return _editor.gameRef.current.contains(document.activeElement) || _editor.inspRef.current.contains(document.activeElement);
+		return _editor.game3dRef.current.contains(document.activeElement) || _editor.game2dRef.current.contains(document.activeElement) || _editor.inspRef.current.contains(document.activeElement);
 	}
 	copy() {
 		if(!this.gameOrInspectorActive()) {

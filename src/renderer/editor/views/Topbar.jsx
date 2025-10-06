@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 
 import { 
 	MdNavigation,
@@ -10,6 +10,10 @@ import {
 import { BiExpand } from "react-icons/bi";
 
 export default function Topbar() {
+	const [_tool, setTool] = useState(_editor.tool);
+	const [_transformTool, setTransformTool] = useState(_editor.transformTool);
+	const [_mode, setMode] = useState(_editor.mode);
+	
 	useEffect(() => {
 		function onKey(e) {
 			const el = document.activeElement;
@@ -22,64 +26,110 @@ export default function Topbar() {
 		document.addEventListener('keydown', onKey);
 		return () => document.removeEventListener('keydown', onKey);
 	}, []);
+	
+	useEffect(() => {
+		_events.on('editor-tool', tool => setTool(tool));
+		_events.on('editor-transform-tool', tool => setTransformTool(tool));
+		_events.on('editor-mode', mode => setMode(mode));
+	}, []);
+	
+	useEffect(() => {
+		_editor.setTool(_tool);
+	}, [_tool]);
+	
+	useEffect(() => {
+		_editor.setMode(_mode);
+	}, [_mode]);
+	
+	useEffect(() => {
+		_editor.setTransformTool(_transformTool);
+	}, [_transformTool]);
+	
+	const drawToolButton = (content, activeCondition, onClick) => {
+		const classes = ['tool-option', 'no-select'];
+		
+		if(activeCondition() == true)
+			classes.push('tool-option--active');
+		
+		return (
+			<div 
+				className={classes.join(' ')}
+				onClick={onClick} 
+				tabIndex={0}
+			>
+				{content}
+			</div>
+		)
+	}
 
 	return (
 		<div className="topbar" id="topbar-view">
 			<div className="tools-section">
-				<div 
-					className="tool-option no-select" 
-					id="tool-select" 
-					onClick={() => _editor.setTool('select')} 
-					tabIndex={0}
-				>
-					<MdNavigation />
-				</div>
-				<div 
-					className="tool-option no-select" 
-					id="tool-pan" 
-					onClick={() => _editor.setTool('pan')} 
-					tabIndex={0}
-				>
-					<MdCameraswitch />
-				</div>
+				{
+					drawToolButton(
+						(<MdNavigation />),
+						() => _tool == 'select',
+						() => setTool('select')
+					)
+				}
+				{
+					drawToolButton(
+						(<MdCameraswitch />),
+						() => _tool == 'pan',
+						() => setTool('pan')
+					)
+				}
 			</div>
 
 			<div className="tools-section">
-				<div 
-					className="tool-option no-select" 
-					id="ttool-translate"
-					onClick={() => _editor.setTransformTool('translate')} 
-					tabIndex={0}
-				>
-					<MdOpenWith />
-				</div>
-				<div 
-					className="tool-option no-select" 
-					id="ttool-rotate"
-					onClick={() => _editor.setTransformTool('rotate')} 
-					tabIndex={0}
-				>
-					<MdOutlineSync />
-				</div>
-				<div 
-					className="tool-option no-select" 
-					id="ttool-scale"
-					onClick={() => _editor.setTransformTool('scale')} 
-					tabIndex={0}
-				>
-					<BiExpand />
-				</div>
+				{
+					drawToolButton(
+						(<MdOpenWith />),
+						() => _transformTool == 'translate',
+						() => setTransformTool('translate')
+					)
+				}
+				{
+					drawToolButton(
+						(<MdOutlineSync />),
+						() => _transformTool == 'rotate',
+						() => setTransformTool('rotate')
+					)
+				}
+				{
+					drawToolButton(
+						(<BiExpand />),
+						() => _transformTool == 'scale',
+						() => setTransformTool('scale')
+					)
+				}
 			</div>
 			
 			<div className="tools-section">
-				<div 
-					className="tool-option no-select" 
-					id="tool-code"
-					onClick={() => _editor.editCode()} 
-					tabIndex={0}
-				>
-					<MdCode />
-				</div>
+				{
+					drawToolButton(
+						(<div className='btn-2d-3d'>2D</div>),
+						() => _mode == '2D',
+						() => setMode('2D')
+					)
+				}
+				{
+					drawToolButton(
+						(<div className='btn-2d-3d'>3D</div>),
+						() => _mode == '3D',
+						() => setMode('3D')
+					)
+				}
+			</div>
+			
+			<div className="tools-section">
+				{
+					drawToolButton(
+						(<MdCode />),
+						() => false,
+						() => _editor.editCode()
+					)
+				}
 			</div>
 		</div>
 	);

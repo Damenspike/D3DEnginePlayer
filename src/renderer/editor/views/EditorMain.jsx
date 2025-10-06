@@ -7,6 +7,7 @@ import useResizable from '../hooks/useResizable.js';
 
 export default function EditorMain({theme}) {
 	const [codeEditorOpen, setCodeEditorOpen] = useState(false);
+	const [editorMode, setEditorMode] = useState(_editor.mode);
 	
 	const inspRef = useRef(null);
 	const consoleRef = useRef(null);
@@ -19,6 +20,7 @@ export default function EditorMain({theme}) {
 	useEffect(() => {
 		_editor.showCodeEditor = () => setCodeEditorOpen(true);
 		_editor.hideCodeEditor = () => setCodeEditorOpen(false);
+		_events.on('editor-mode', m => setEditorMode(m));
 	}, []);
 
 	return (
@@ -27,7 +29,7 @@ export default function EditorMain({theme}) {
 				<Inspector />
 			</div>
 			<div className="center-column">
-				<GameView />
+				<GameView editorMode={editorMode} setEditorMode={setEditorMode} />
 				<div className="console resizable no-select" ref={consoleRef}>
 					<ConsoleView />
 				</div>

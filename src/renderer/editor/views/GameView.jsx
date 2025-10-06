@@ -4,12 +4,14 @@ import { loadD3DProj } from '../../../engine/d3deditor.js';
 
 const MIME = 'application/x-d3d-objectrow';
 
-export default function GameView() {
-	const gameRef = useRef(null);
+export default function GameView({editorMode}) {
+	const game3dRef = useRef(null);
+	const game2dRef = useRef(null);
 	
 	const [objectFrame, setObjectFrame] = useState();
 
-	_editor.gameRef = gameRef;
+	_editor.game3dRef = game3dRef;
+	_editor.game2dRef = game2dRef;
 	
 	const unpack = useCallback((e) => {
 		try {
@@ -39,7 +41,7 @@ export default function GameView() {
 			return;
 
 		// Screen → local coords
-		const host = gameRef.current;
+		const host = game3dRef.current;
 		if (!host)
 			return;
 
@@ -51,20 +53,23 @@ export default function GameView() {
 	}, [unpack]);
 
 	useEffect(() => {
-		const element = gameRef.current;
-		if (!element)
+		const element3d = game3dRef.current;
+		const element2d = game2dRef.current;
+		
+		if (!element3d || !element2d)
 			return;
 
-		window._container3d = element;
+		window._container3d = element3d;
+		window._container2d = element2d;
 
 		const observer = new ResizeObserver(() => {
-			const w = element.clientWidth;
-			const h = element.clientHeight;
+			const w = element3d.clientWidth;
+			const h = element3d.clientHeight;
 
 			if (w <= 0 || h <= 0 || !window._editor)
 				return;
 
-			const r = window._editor.renderer;
+			const r = window._editor.renderer3d;
 			const cam = window._editor.camera;
 			const comp = window._editor.composer;
 
@@ -79,7 +84,7 @@ export default function GameView() {
 				cam.updateProjectionMatrix();
 			}
 		});
-		observer.observe(element);
+		observer.observe(element3d);
 
 		D3D.getCurrentProjectURI().then(uri => {
 			loadD3DProj(uri);
@@ -90,7 +95,7 @@ export default function GameView() {
 		});
 		_events.on('editor-focus', (focus) => {
 			setObjectFrame(focus);
-		})
+		});
 
 		return () => observer.disconnect();
 	}, []);
@@ -166,14 +171,28 @@ export default function GameView() {
 
 	return (
 		<div
-			id="game-container"
-			className="game"
-			ref={gameRef}
-			tabIndex={0}
+			className='game-master-container'
 			onDragOver={onDragOver}
 			onDrop={onDrop}
-			style={{ position: 'relative', width: '100%', height: '100%' }}
 		>
+			<div
+				id='game3d-container'
+				className='game'
+				ref={game3dRef}
+				tabIndex={0}
+				style={{ 
+					display: editorMode == '3D' ? 'block' : 'none',
+				}}
+			/>
+			<div
+				id='game2d-container'
+				className='game'
+				ref={game2dRef}
+				tabIndex={0}
+				style={{ 
+					display: editorMode == '2D' ? 'block' : 'none',
+				}}
+			/>
 			{drawFocusPath()}
 		</div>
 	);

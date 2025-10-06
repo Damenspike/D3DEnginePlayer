@@ -218,13 +218,20 @@ body.dark {
 		flex-direction: column;
 		align-items: flex-start;
 		justify-content: center;
-		flex: 1 1 auto;
+		flex: 0 0 auto;
+		min-width: 120px;
+		
+		.desc {
+			max-width: 180px;
+			padding-right: 10px;
+			font-size: 13px;
+		}
 	}
 	.right-side {
 		display: flex;
 		align-items: center;
 		justify-content: flex-end;
-		flex: 0 0 auto;
+		flex: 1 1 auto;
 	}
 }
 

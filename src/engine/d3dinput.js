@@ -194,13 +194,35 @@ export default class D3DInput {
 	getControllerAxisArrowsOnly() { return this.getControllerAxis(false); }
 
 	getIsGameInFocus() {
-		return _container3d?.matches?.(':focus') === true;
+		return _container3d.contains(document.activeElement);
 	}
 
 	getCursorOverGame() {
-		if(this.assetExplorerOpen)
-			return false;
+		return this.getCursorOverGame3D() || this.getCursorOverGame2D();
+	}
+	getCursorOverGame3D() {
+		if(window._editor) {
+			if(this.assetExplorerOpen)
+				return false;
 			
+			if(_editor.mode != '3D')
+				return false;
+		}
+		
+		return this.getCursorOverGameBound();
+	}
+	getCursorOverGame2D() {
+		if(window._editor) {
+			if(this.assetExplorerOpen)
+				return false;
+			
+			if(_editor.mode != '2D')
+				return false;
+		}
+		
+		return this.getCursorOverGameBound();
+	}
+	getCursorOverGameBound() {
 		const pos = this.getMousePosition();
 		const rect = _container3d.getBoundingClientRect();
 		return pos.x >= rect.left && pos.x <= rect.right && pos.y >= rect.top && pos.y <= rect.bottom;
