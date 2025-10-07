@@ -457,6 +457,10 @@ export default function Inspector() {
 				console.warn(`Unknown component for '${idx}'`);
 				return;
 			}
+			
+			if(schema.hidden)
+				return;
+				
 			if(component.properties.__editorOnly)
 				return;
 			
@@ -1139,6 +1143,7 @@ export default function Inspector() {
 							}
 							
 							_editor.project.width = val;
+							_editor.renderer2d.refreshSize();
 							update();
 						}}
 					/>
@@ -1168,6 +1173,7 @@ export default function Inspector() {
 							}
 							
 							_editor.project.height = val;
+							_editor.renderer2d.refreshSize();
 							update();
 						}}
 					/>

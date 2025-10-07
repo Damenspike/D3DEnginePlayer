@@ -383,8 +383,9 @@ const D3DComponents = {
 	},
 	Graphic2D: {
 		name: 'Graphic 2D',
+		hidden: true,
 		fields: {
-			'_points': {
+			'_graphics': {
 				label: '',
 				type: 'none',
 				def: []
@@ -394,7 +395,7 @@ const D3DComponents = {
 				type: 'none',
 				def: {x: 0, y: 0}
 			},
-			'line': {
+			/*'line': {
 				label: 'Line',
 				type: 'boolean',
 				def: true
@@ -430,7 +431,7 @@ const D3DComponents = {
 				min: 0,
 				max: Infinity,
 				def: 0
-			}
+			}*/
 		},
 		manager: function() {}
 	}

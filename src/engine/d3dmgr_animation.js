@@ -256,6 +256,9 @@ export default function AnimationManager(d3dobject, component) {
 		const clipState = this.getClipState(uuid);
 		clipState.playing = true;
 		
+		if(options?.interpolation && Tween[options?.interpolation])
+			clipState.tween = Tween[options?.interpolation];
+		
 		// Apply each option or revert back
 		clipState.speed = options?.speed ?? clipState.speed;
 		clipState.wrapMode = options?.wrapMode ?? clipState.wrapMode;

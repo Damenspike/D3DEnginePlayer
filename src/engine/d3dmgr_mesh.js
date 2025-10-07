@@ -1,5 +1,5 @@
 import { importModelFromZip } from './glb-instancer.js';
-import { ensureRigAndBind } from './rig-binding.js';
+//import { ensureRigAndBind } from './rig-binding.js'; // this isnt needed
 
 export default function MeshManager(d3dobject, component) {
 	const zip = d3dobject.root.zip;
@@ -273,7 +273,7 @@ export default function MeshManager(d3dobject, component) {
 					justLoaded = true;
 					
 					// ✅ pass the real D3D host so rig-binding can call createObject on it
-					await ensureRigAndBind(d3dobject, d3dobject.modelScene);
+					//await ensureRigAndBind(d3dobject, d3dobject.modelScene);
 				} catch (e) {
 					console.error('Failed to import model:', modelPath, e);
 				}

@@ -308,14 +308,27 @@ function startAnimationLoop() {
 			'onEditorEnterFrame'
 		], _root);
 		
+		render();
+
+		updateObject([
+			'__onInternalExitFrame',
+			'__onEditorExitFrame',
+			'onEditorExitFrame'
+		], _root);
+		
+		_input._afterRenderFrame?.();
+
+		requestAnimationFrame(animate);
+	}
+	function render() {
 		outlinePass.selectedObjects = _editor.selectedObjects.map(d => d.object3d);
-	
+		
 		composer.render(); // render 3d
 		renderer2d.render(); // render 2d
 		
 		if (_editor.gizmo) 
 			_editor.gizmo.update();
-
+		
 		if (_editor.focus != _root) {
 			afterRenderHideObjects();
 			renderer3d.autoClear = false;
@@ -330,17 +343,9 @@ function startAnimationLoop() {
 			renderer3d.autoClear = true;
 			afterRenderShowObjects();
 		}
-
-		updateObject([
-			'__onInternalExitFrame',
-			'__onEditorExitFrame',
-			'onEditorExitFrame'
-		], _root);
-		
-		_input._afterRenderFrame?.();
-
-		requestAnimationFrame(animate);
 	}
+	
+	_editor.render = render;
 
 	// init
 	_time.tick(performance.now());
@@ -349,24 +354,40 @@ function startAnimationLoop() {
 }
 
 function setupResize() {
-	const renderer = _editor.renderer3d;
+	const renderer3d = _editor.renderer3d;
 	const renderer2d = _editor.renderer2d;
 	const camera = _editor.camera;
 	
 	const resizeUpdate = () => {
-		const width = _container3d.clientWidth;
-		const height = _container3d.clientHeight;
-		renderer.setSize(width, height);
-		renderer2d.setSize(_container2d.clientWidth, _container2d.clientHeight);
+		const width3d = _container3d.clientWidth;
+		const height3d = _container3d.clientHeight;
+		const width2d = _container2d.clientWidth;
+		const height2d = _container2d.clientHeight;
+
+		if (renderer3d)
+			renderer3d.setSize(width3d, height3d);
+		
+		if (renderer2d)
+			renderer2d.setSize(width2d, height2d);
+
 		if (camera) {
-			camera.aspect = width / height;
+			camera.aspect = width3d / height3d;
 			camera.updateProjectionMatrix();
 		}
+		
+		_editor.render();
 	};
 
+	// Observe both containers
 	const resizeObserver = new ResizeObserver(resizeUpdate);
-	window.addEventListener('resize', resizeUpdate);
 	resizeObserver.observe(_container3d);
+	resizeObserver.observe(_container2d);
+	
+	// Also handle window resize (fallback for layout shifts)
+	window.addEventListener('resize', resizeUpdate);
+	
+	// Initial update
+	resizeUpdate();
 }
 
 function setupClipboard() {

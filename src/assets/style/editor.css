@@ -175,6 +175,16 @@ body.dark {
 	border-right: 1px solid #666;
 }
 
+/* DRAW BAR (2D Only) */
+.drawbar {
+	width: 40px;
+	height: 100%;
+	overflow-x: hidden;
+	overflow-y: scroll;
+	flex-shrink: 0;
+	border-right: 1px solid #bbb;
+}
+
 /* CENTER COLUMN */
 .center-column {
 	flex: 1;
@@ -193,6 +203,10 @@ body.dark {
 	padding: 0;
 	margin: 0;
 	background: black;
+	
+	canvas {
+		background: white;
+	}
 }
 .game {
 	position: absolute;

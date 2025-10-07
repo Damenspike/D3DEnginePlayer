@@ -20,16 +20,39 @@ export default class D2DRenderer {
 		this.setSize(this.width, this.height);
 	}
 	
+	refreshSize() {
+		this.setSize(this.width, this.height);
+	}
 	setSize(width, height) {
+		const projectWidth = _editor.project?.width || 760;
+		const projectHeight = _editor.project?.height || 480;
+		
+		// Calculate scale to fit canvas within parent while preserving aspect ratio
+		const scale = Math.min(width / Math.max(projectWidth, 1), height / Math.max(projectHeight, 1)) || 1;
+		const displayWidth = Math.round(projectWidth * scale);
+		const displayHeight = Math.round(projectHeight * scale);
+	
+		// Ensure canvas is positioned absolutely relative to the absolute parent
+		this.domElement.style.position = 'absolute';
+		this.domElement.style.width = `${displayWidth}px`;
+		this.domElement.style.height = `${displayHeight}px`;
+		this.domElement.style.left = `${(width - displayWidth) / 2}px`;
+		this.domElement.style.top = `${(height - displayHeight) / 2}px`;
+	
+		// Set canvas backing store size (accounting for device pixel ratio)
+		this.domElement.width = displayWidth * this.pixelRatio;
+		this.domElement.height = displayHeight * this.pixelRatio;
+		
+		this.viewScale = scale;
 		this.width = width;
 		this.height = height;
-		
-		this.domElement.width = this.width * this.pixelRatio;
-		this.domElement.height = this.height * this.pixelRatio;
-		
+	
+		// Apply transform to context for proper scaling
 		this.ctx.setTransform(
-			this.pixelRatio, 0, 0, this.pixelRatio, 0, 0
-		)
+			this.pixelRatio * scale, 0,
+			0, this.pixelRatio * scale,
+			0, 0
+		);
 	}
 	setPixelRatio(pixelRatio) {
 		this.pixelRatio = Number(pixelRatio) || 1;
@@ -38,7 +61,12 @@ export default class D2DRenderer {
 	clear() {
 		this.ctx.setTransform(1, 0, 0, 1, 0, 0);
 		this.ctx.clearRect(0, 0, this.domElement.width, this.domElement.height);
-		this.ctx.setTransform(this.pixelRatio, 0, 0, this.pixelRatio, 0, 0);
+		
+		this.ctx.setTransform(
+			this.pixelRatio * this.viewScale, 0,
+			0, this.pixelRatio * this.viewScale,
+			0, 0
+		);
 	}
 	render() {
 		this.clear();
@@ -60,46 +88,48 @@ export default class D2DRenderer {
 		return objects;
 	}
 	draw(d3dobject) {
-		const graphics = d3dobject.graphics;
+		const graphic2d = d3dobject.graphic2d;
 		
-		if(!graphics) 
-			return;
-			
-		if(graphics._bitmap)
-			return; // TODO: drawBitmap
-			
-		this.drawVector(d3dobject);
-	}
-	drawVector(d3dobject) {
-		const ctx = this.ctx;
-		const graphics = d3dobject.graphics;
-		
-		if (!graphics) 
+		if(!graphic2d) 
 			return;
 			
 		// TESTING ONLY
-		graphics._points = [
-			{x: 0, y: -40},
-			{x: 30, y: -80},
-			{x: 70, y: -60},
-			{x: 70, y: -10},
-			{x: 0, y: 60},
-			{x: -70, y: -10},
-			{x: -70, y: -60},
-			{x: -30, y: -80},
-			{x: 0, y: -40}
-		];
+		graphic2d._graphics = [
+			{
+				_points: [
+					{x: 0, y: -40},
+					{x: 30, y: -80},
+					{x: 70, y: -60},
+					{x: 70, y: -10},
+					{x: 0, y: 60}
+				],
+				line: true,
+				lineWidth: 2,
+				lineColor: '#0099ff',
+				fill: true,
+				fillColor: '#FF0000'
+			}
+		]
 		
-		const points = graphics._points || [];
+		graphic2d._graphics.forEach(graphic => {
+			if(graphic._bitmap)
+				return; // TODO: drawBitmap
+			else
+				this.drawVector(graphic, d3dobject);
+		});
+	}
+	drawVector(graphic, d3dobject) {
+		const ctx = this.ctx;
+		const points = graphic._points || [];
 		if (points.length < 1) 
 			return;
 	
-		const lineEnabled = graphics.line !== false;
-		const lineWidth = Number(graphics.lineWidth ?? 1);
-		const lineColor = graphics.lineColor ?? '#ffffff';
-		const fillEnabled = graphics.fill !== false;
-		const fillColor = graphics.fillColor ?? '#ffffffff';
-		const borderRadius = Math.max(0, Number(graphics.borderRadius ?? 0));
+		const lineEnabled = graphic.line !== false;
+		const lineWidth = Number(graphic.lineWidth ?? 1);
+		const lineColor = graphic.lineColor ?? '#ffffff';
+		const fillEnabled = graphic.fill !== false;
+		const fillColor = graphic.fillColor ?? '#ffffffff';
+		const borderRadius = Math.max(0, Number(graphic.borderRadius ?? 0));
 	
 		let worldX = 0;
 		let worldY = 0;
@@ -168,7 +198,7 @@ export default class D2DRenderer {
 	
 		buildPath();
 	
-		if (isClosed && fillEnabled) {
+		if (fillEnabled) {
 			ctx.fillStyle = hexToRgba(fillColor);
 			ctx.fill();
 		}

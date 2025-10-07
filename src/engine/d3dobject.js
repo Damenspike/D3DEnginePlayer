@@ -297,17 +297,14 @@ export default class D3DObject {
 		return !this.is2D;
 	}
 	get is2D() {
-		return this.hasComponent('Graphic2D') || this.hasComponent('Text2D');
+		return this.hasComponent('Graphic2D');
 	}
-	get graphics() {
+	get graphic2d() {
 		if(!this.is2D)
 			return;
 		
 		if(this.hasComponent('Graphic2D'))
 			return this.components.find(c => c.type == 'Graphic2D').properties;
-			
-		if(this.hasComponent('Text2D'))
-			return this.components.find(c => c.type == 'Text2D').properties;
 	}
 	
 	// Component shorthand
