@@ -1,4 +1,5 @@
 // d2drenderer.js
+import D2DGizmo from './d2dgizmo.js';
 import {
 	approx,
 	hexToRgba
@@ -18,6 +19,9 @@ export default class D2DRenderer {
 		this.ctx = this.domElement.getContext('2d');
 		
 		this.setSize(this.width, this.height);
+		
+		if(window._editor)
+			this.gizmo = new D2DGizmo(this);
 	}
 	
 	refreshSize() {
@@ -76,6 +80,9 @@ export default class D2DRenderer {
 		
 		for (const d3dobject of d3dobjects) 
 			this.draw(d3dobject);
+		
+		if(this.gizmo)
+			this.gizmo.render();
 	}
 	gather(root) {
 		const objects = [];

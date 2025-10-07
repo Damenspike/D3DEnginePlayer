@@ -143,6 +143,9 @@ body.dark {
 		background: rgb(45, 45, 45);
 		border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 	}
+	.drawbar {
+		border-color: #333;
+	}
 }
 
 /* TOP BAR (top bar) */
@@ -177,12 +180,19 @@ body.dark {
 
 /* DRAW BAR (2D Only) */
 .drawbar {
-	width: 40px;
+	width: 30px;
 	height: 100%;
 	overflow-x: hidden;
 	overflow-y: scroll;
 	flex-shrink: 0;
 	border-right: 1px solid #bbb;
+	padding: 5px;
+	
+	.drawbar-tools {
+		div {
+			margin-bottom: 5px;
+		}
+	}
 }
 
 /* CENTER COLUMN */
