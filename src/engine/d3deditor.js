@@ -138,7 +138,7 @@ async function initRoot(uri) {
 function initRenderers() {
 	const scene = _root.object3d;
 	const renderer3d = new THREE.WebGLRenderer({ antialias: true });
-	const renderer2d = new D2DRenderer({root: _root});
+	const renderer2d = new D2DRenderer({root: _root, addGizmo: true});
 	
 	renderer3d.setPixelRatio(window.devicePixelRatio);
 	renderer3d.setSize(_container3d.clientWidth, _container3d.clientHeight);
@@ -321,13 +321,19 @@ function startAnimationLoop() {
 		requestAnimationFrame(animate);
 	}
 	function render() {
-		outlinePass.selectedObjects = _editor.selectedObjects.map(d => d.object3d);
+		outlinePass.selectedObjects = _editor.selectedObjects
+		.filter(d => !!d.object3d)
+		.map(d => d.object3d);
 		
-		composer.render(); // render 3d
-		renderer2d.render(); // render 2d
-		
-		if (_editor.gizmo) 
+		if(_editor.mode == '3D') {
+			composer.render(); // render 3d
 			_editor.gizmo.update();
+		}
+		
+		if(_editor.mode == '2D') {
+			renderer2d.render(); // render 2d
+			renderer2d.gizmo.render();
+		}
 		
 		if (_editor.focus != _root) {
 			afterRenderHideObjects();

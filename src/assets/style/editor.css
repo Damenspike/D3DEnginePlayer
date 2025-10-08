@@ -292,10 +292,7 @@ body.dark {
 }
 .tool-option--active {
 	background: #0099ff !important;
-	
-	svg {
-		color: white;
-	}
+	color: white !important;
 }
 .inspector-cell {
 	margin: 10px;

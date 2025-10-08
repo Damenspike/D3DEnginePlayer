@@ -207,6 +207,10 @@ export default function Inspector() {
 		/>
 	)
 	const drawObjectInspector = () => {
+		if(dummyObject.part) {
+			// Is a vector part
+			return;
+		}
 		if(!dummyObject.name) {
 			console.error('Fatal: Dummy object name undefined', dummyObject);
 			return;
@@ -1502,7 +1506,7 @@ export default function Inspector() {
 				<div className="scene-objects-list shade">
 					{drawObjects()}
 				</div>
-				{sceneInspectorExpanded && _editor.focus == _root && (
+				{sceneInspectorExpanded && _editor.focus == _root && _editor.mode == '3D' && (
 					drawBackgroundSettings()
 				)}
 			</InspectorCell>

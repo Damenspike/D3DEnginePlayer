@@ -5,7 +5,9 @@ import {
 // Tool enum
 export const Tools = Object.freeze({
 	Select: 'select',
-	Pan: 'pan'
+	Pan: 'pan',
+	Transform: 'transform',
+	Draw: 'draw'
 });
 export const TransformTools = Object.freeze({
 	Translate: 'translate',
@@ -133,7 +135,7 @@ export default class D3DEditorState {
 		const objects = [];
 		
 		selectObjects.forEach(object => {
-			if(this.isPartOfFocus(object))
+			if(object.part || this.isPartOfFocus(object))
 				objects.push(object);
 		});
 		
@@ -153,7 +155,7 @@ export default class D3DEditorState {
 		const objects = [];
 		
 		selectObjects.forEach(object => {
-			if(this.isPartOfFocus(object))
+			if(object.part || this.isPartOfFocus(object))
 				objects.push(object);
 		});
 			

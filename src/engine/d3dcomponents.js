@@ -383,19 +383,13 @@ const D3DComponents = {
 	},
 	Graphic2D: {
 		name: 'Graphic 2D',
-		hidden: true,
 		fields: {
-			'_graphics': {
-				label: '',
-				type: 'none',
-				def: []
-			},
 			'_pivotPoint': {
 				label: '',
 				type: 'none',
 				def: {x: 0, y: 0}
 			},
-			/*'line': {
+			'line': {
 				label: 'Line',
 				type: 'boolean',
 				def: true
@@ -414,6 +408,39 @@ const D3DComponents = {
 				def: '#ffffff',
 				condition: c => c.properties.line == true
 			},
+			'lineCap': {
+				label: 'Line cap',
+				type: 'select',
+				options: [
+					{ name: 'butt',   label: 'Flat' },
+					{ name: 'round',  label: 'Rounded' },
+					{ name: 'square', label: 'Square' }
+				],
+				def: 'round',
+				condition: c => c.properties.line == true
+			},
+			'lineJoin': {
+				label: 'Line join',
+				type: 'select',
+				options: [
+					{ name: 'miter', label: 'Miter (pointed)' },
+					{ name: 'round', label: 'Rounded' },
+					{ name: 'bevel', label: 'Bevel (chamfer)' }
+				],
+				def: 'round',
+				condition: c => c.properties.line == true
+			},
+			'miterLimit': {
+				label: 'Miter limit',
+				type: 'number',
+				min: 1,
+				step: 0.5,
+				def: 10,
+				condition: c => (
+					c.properties.line == true && 
+					c.properties.lineJoin == 'miter'
+				)
+			},
 			'fill': {
 				label: 'Fill',
 				type: 'boolean',
@@ -431,7 +458,7 @@ const D3DComponents = {
 				min: 0,
 				max: Infinity,
 				def: 0
-			}*/
+			}
 		},
 		manager: function() {}
 	}

@@ -295,7 +295,7 @@ function AnimationState({d3dobject, clip}) {
 	this.speed = 1;
 	this.clip = clip;
 	this.wrapMode = WRAP_MODE_ONCE;
-	this.tween = Tween.EaseInOut;
+	this.tween = Tween.Linear;
 	this.listener = () => null;
 	this.d3dobject = d3dobject;
 	

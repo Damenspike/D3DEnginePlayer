@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { 
 	MdNavigation,
-	MdBrush
+	MdBrush,
+	MdTransform
 } from 'react-icons/md';
 
 const DrawTools = [
@@ -44,6 +45,13 @@ export default function DrawBar() {
 					(<MdNavigation />),
 					() => _tool == 'select',
 					() => setTool('select')
+				)
+			}
+			{
+				drawToolButton(
+					(<MdTransform />),
+					() => _tool == 'transform',
+					() => setTool('transform')
 				)
 			}
 			{

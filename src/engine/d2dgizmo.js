@@ -1,368 +1,747 @@
-// d2dgizmo.js
 export default class D2DGizmo {
 	constructor(d2drenderer) {
 		this.d2drenderer = d2drenderer;
-		this.canvas = this.d2drenderer.domElement;
-		this.ctx = this.d2drenderer.ctx;
+		this.canvas = d2drenderer.domElement;
+		this.ctx = d2drenderer.ctx;
 
-		this.isDragging = false;
-		this.dragStart = null;
-		this.dragEnd = null;
+		this.state = {
+			mode: null,            // 'move' | 'rotate' | 'scale' | 'marquee'
+			handle: null,          // scale handle id ('l','r','t','b','tl','tr','br','bl')
+			start: { x: 0, y: 0 },
+			last:  { x: 0, y: 0 },
 
-		this._onPointerDown = this.onPointerDown.bind(this);
-		this._onPointerMove = this.onPointerMove.bind(this);
-		this._onPointerUp = this.onPointerUp.bind(this);
-		this._onDblClick = this.onDblClick.bind(this);
+			// frozen frame during active transform
+			cx: 0, cy: 0, theta: 0,
+			theta0: 0, rotBase: 0,
 
-		this.canvas.addEventListener('pointerdown', this._onPointerDown);
-		this.canvas.addEventListener('pointermove', this._onPointerMove);
-		window.addEventListener('pointerup', this._onPointerUp);
-		this.canvas.addEventListener('dblclick', this._onDblClick);
+			// scale baseline
+			hx0: 1, hy0: 1,        // half extents of OBB in frame
+			p0L: { x: 0, y: 0 },   // mouse start (frame local)
+
+			// originals for current selection + undo/redo
+			orig: null,            // Map(obj -> { pos0:{x,y}, rot0, scl0:{x,y} })
+			stepStart: null,
+			stepEnd: null
+		};
+
+		this._onDown = this._onDown.bind(this);
+		this._onMove = this._onMove.bind(this);
+		this._onUp   = this._onUp.bind(this);
+
+		this.canvas.addEventListener('mousedown', this._onDown);
+		window.addEventListener('mousemove', this._onMove);
+		window.addEventListener('mouseup',   this._onUp);
 	}
 
 	dispose() {
-		this.canvas.removeEventListener('pointerdown', this._onPointerDown);
-		this.canvas.removeEventListener('pointermove', this._onPointerMove);
-		window.removeEventListener('pointerup', this._onPointerUp);
-		this.canvas.removeEventListener('dblclick', this._onDblClick);
+		this.canvas.removeEventListener('mousedown', this._onDown);
+		window.removeEventListener('mousemove', this._onMove);
+		window.removeEventListener('mouseup',   this._onUp);
 	}
 
+	/* ========================= RENDER ========================= */
+
 	render() {
-		// draw marquee if dragging
-		if (!this.isDragging || !this.dragStart || !this.dragEnd) return;
+		const tool = _editor.tool;
+		const ttool = _editor.transformTool; // 'Translate' | 'Rotate' | 'Scale' | 'All'
+		const sel = _editor.selectedObjects.filter(o => o?.is2D);
+		const showMarquee = this.state.mode === 'marquee';
+		if (!sel.length && !showMarquee) return;
 
 		const ctx = this.ctx;
-		const r = this._rectFromPoints(this.dragStart, this.dragEnd);
-
 		ctx.save();
 
-		// work in device pixels
-		ctx.setTransform(1, 0, 0, 1, 0, 0);
-		ctx.strokeStyle = 'rgba(0, 153, 255, 1)';
-		ctx.fillStyle = 'rgba(0, 153, 255, 0.15)';
-		ctx.lineWidth = 1;
-		ctx.beginPath();
-		ctx.rect(r.x, r.y, r.w, r.h);
-		ctx.fill();
-		ctx.stroke();
+		const px = 2 / (this.d2drenderer.pixelRatio * this.d2drenderer.viewScale);
+		ctx.lineWidth = Math.max(px, 1 * px);
+		ctx.strokeStyle = 'rgba(30,144,255,1)';
 
-		// restore project transform
-		ctx.setTransform(
-			this.d2drenderer.pixelRatio * this.d2drenderer.viewScale, 0,
-			0, this.d2drenderer.pixelRatio * this.d2drenderer.viewScale,
-			0, 0
-		);
+		// soft selection feedback
+		for (const o of sel) {
+			const r = this._worldAABB(o);
+			if (!r) continue;
+			ctx.strokeRect(r.minX, r.minY, r.maxX - r.minX, r.maxY - r.minY);
+		}
+
+		// oriented gizmo parts based on transformTool
+		if (sel.length > 0) {
+			let frame = this._selectionFrame(sel);
+			if (!frame) { ctx.restore(); return; }
+			
+			// while dragging, keep frame steady for scale; rotate frame with object in rotate mode
+			if (this.state.mode === 'scale') {
+				frame = { cx: this.state.cx, cy: this.state.cy, theta: this.state.theta };
+			} else if (this.state.mode === 'rotate') {
+				frame = { cx: this.state.cx, cy: this.state.cy, theta: this.state.theta };
+			}
+
+			const obb = this._selectionOBB(sel, frame);
+			if (obb) this._drawGizmo(frame, obb, px, ttool);
+		}
+
+		// marquee
+		if (showMarquee) {
+			const a = this.state.start, b = this.state.last;
+			const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
+			const w = Math.abs(b.x - a.x), h = Math.abs(b.y - a.y);
+			ctx.setLineDash([4 * px, 4 * px]);
+			ctx.strokeStyle = 'rgba(30,144,255,0.9)';
+			ctx.strokeRect(x, y, w, h);
+			ctx.setLineDash([]);
+		}
+
 		ctx.restore();
 	}
 
-	onPointerDown(e) {
-		this.canvas.setPointerCapture?.(e.pointerId);
-
-		const p = this._clientToCanvasPixels(e);
-		this.isDragging = true;
-		this.dragStart = p;
-		this.dragEnd = p;
-	}
-
-	onPointerMove(e) {
-		if (!this.isDragging) return;
-		this.dragEnd = this._clientToCanvasPixels(e);
-		// re-render to update marquee
-		this.d2drenderer.render();
-	}
-
-	onPointerUp(e) {
-		if (!this.isDragging) return;
-
-		const wasDrag = this._dragDistance() > 4;
-		const shift = e.shiftKey;
-
-		if (wasDrag) {
-			// area select
-			const rect = this._rectFromPoints(this.dragStart, this.dragEnd);
-			const hits = this.hitTestRect(rect);
-			this.applySelection(hits, { replace: !shift, toggle: false, add: shift });
-		} else {
-			// single click
-			const pt = this._clientToProjectUnits(e); // for completeness (unused in hit), but we use pixel coords for hit
-			const hit = this.hitTestPoint(this._clientToCanvasPixels(e), { preferStroke: true });
-			if (hit) {
-				if (shift) {
-					// toggle selected state
-					this.applySelection([hit], { replace: false, toggle: true, add: false });
-				} else {
-					this.applySelection([hit], { replace: true, toggle: false, add: false });
-				}
-			} else if (!shift) {
-				// clear selection on empty click
-				_editor.setSelection([]);
-			}
-		}
-
-		this.isDragging = false;
-		this.dragStart = null;
-		this.dragEnd = null;
-
-		this.d2drenderer.render();
-	}
-
-	onDblClick(e) {
-		const hit = this.hitTestPoint(this._clientToCanvasPixels(e), { preferStroke: true });
-		if (!hit) return;
-
-		// If symbol → select the whole d3dobject
-		if (hit.host?.symbol) {
-			_editor.setSelection([hit.host]);
-			this.d2drenderer.render();
-			return;
-		}
-
-		// Non-symbol:
-		// Double-click on a stroke/fill selects the entire graphic (Flash-like "select connected")
-		if (hit.kind === 'vector-part') {
-			const t = {
-				kind: 'vector-part',
-				host: hit.host,
-				part: { type: 'graphic', graphicIndex: hit.part.graphicIndex }
-			};
-			_editor.setSelection([t]);
-			this.d2drenderer.render();
-		}
-	}
-
-	applySelection(items, mode) {
-		// items: array of either d3dobjects or vector-part tokens
-		if (mode.replace) {
-			_editor.setSelection(items);
-			return;
-		}
-		if (mode.toggle) {
-			for (const it of items) {
-				// naive toggle: try remove, else add
-				if (_editor.removeSelection) {
-					_editor.removeSelection([it]);
-				} else {
-					// fallback: if there's addSelection only, just add
-					_editor.addSelection([it]);
-				}
-			}
-			return;
-		}
-		if (mode.add) {
-			_editor.addSelection(items);
-		}
-	}
-
-	/* ---------------------------- Hit Testing ---------------------------- */
-
-	hitTestPoint(pixelPoint, opts = { preferStroke: true }) {
-		// Iterate from topmost (largest z) to back
-		const list = this.d2drenderer
-			.gather(this.d2drenderer.root)
-			.sort((a, b) => b.position.z - a.position.z);
+	_drawGizmo(frame, obb, px, ttool) {
+		const showRotate = (ttool === 'rotate' || _editor.tool === 'transform');
+		const showScale  = (ttool === 'scale'  || _editor.tool === 'transform');
+		// Translate has no visuals; you can still click-drag the object body.
 
 		const ctx = this.ctx;
+		const { cx, cy, theta } = frame;
+		const { minX, minY, maxX, maxY } = obb;
+		const w = maxX - minX, h = maxY - minY;
 
-		for (const d3dobject of list) {
-			const graphic2d = d3dobject.graphic2d;
-			if (!graphic2d || !Array.isArray(graphic2d._graphics)) continue;
+		const hs = 5 * px;         // handle half-size
+		const rotPad = 16 * px;
+		const knobR = 7 * px;
+		const rotRadius = Math.hypot(w, h) * 0.5 + rotPad;
 
-			let world = this._accumulateTransform(d3dobject);
+		ctx.save();
+		ctx.translate(cx, cy);
+		ctx.rotate(theta);
 
-			// set same transform as drawing (device pixels coordinate space)
-			ctx.save();
-			ctx.setTransform(1, 0, 0, 1, 0, 0);
-			ctx.translate(world.pixelTx, world.pixelTy);
-			if (world.rot) ctx.rotate(world.rot);
-			if (world.sx !== 1 || world.sy !== 1) ctx.scale(world.sx, world.sy);
+		// main oriented box (only if scale or rotate are visible; skip for pure Translate)
+		if (showRotate || showScale) {
+			ctx.strokeStyle = 'rgba(30,144,255,1)';
+			ctx.setLineDash([]);
+			ctx.strokeRect(minX, minY, w, h);
+		}
 
-			// test each graphic; prefer stroke first if requested
-			const indices = [...graphic2d._graphics.keys()];
-			const order = opts.preferStroke ? [ 'stroke', 'fill' ] : [ 'fill', 'stroke' ];
+		// scale handles
+		if (showScale) {
+			const handles = [
+				{ n:'tl', x:minX,        y:minY        },
+				{ n:'t',  x:minX + w/2,  y:minY        },
+				{ n:'tr', x:maxX,        y:minY        },
+				{ n:'r',  x:maxX,        y:minY + h/2  },
+				{ n:'br', x:maxX,        y:maxY        },
+				{ n:'b',  x:minX + w/2,  y:maxY        },
+				{ n:'bl', x:minX,        y:maxY        },
+				{ n:'l',  x:minX,        y:minY + h/2  }
+			];
+			for (const p of handles) {
+				ctx.fillStyle = '#fff';
+				ctx.beginPath();
+				ctx.rect(p.x - hs, p.y - hs, hs * 2, hs * 2);
+				ctx.fill();
+				ctx.stroke();
+			}
+		}
 
-			for (const pref of order) {
-				for (const gi of indices) {
-					const g = graphic2d._graphics[gi];
-					const path = this._buildPath2D(g);
+		// rotate ring + 4 knobs
+		if (showRotate) {
+			ctx.setLineDash([6 * px, 6 * px]);
+			ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+			ctx.beginPath();
+			ctx.arc(0, 0, rotRadius, 0, Math.PI * 2);
+			ctx.stroke();
 
-					if (pref === 'stroke' && g.line !== false) {
-						ctx.lineWidth = Math.max(0.001, Number(g.lineWidth ?? 1)) * this.d2drenderer.pixelRatio * this.d2drenderer.viewScale;
-						if (ctx.isPointInStroke(path, pixelPoint.x - world.canvasLeft, pixelPoint.y - world.canvasTop)) {
-							ctx.restore();
-							return this._makeHitToken(d3dobject, g, gi, 'stroke');
-						}
-					}
+			ctx.setLineDash([]);
+			ctx.strokeStyle = 'rgba(30,144,255,1)';
+			ctx.beginPath();
+			ctx.arc(0, 0, rotRadius, 0, Math.PI * 2);
+			ctx.stroke();
 
-					if (pref === 'fill' && g.fill !== false) {
-						if (ctx.isPointInPath(path, pixelPoint.x - world.canvasLeft, pixelPoint.y - world.canvasTop)) {
-							ctx.restore();
-							return this._makeHitToken(d3dobject, g, gi, 'fill');
-						}
-					}
+			ctx.fillStyle = '#fff';
+			for (const a of [0, Math.PI/2, Math.PI, 3*Math.PI/2]) {
+				const kx = Math.cos(a) * rotRadius;
+				const ky = Math.sin(a) * rotRadius;
+				ctx.beginPath();
+				ctx.arc(kx, ky, knobR, 0, Math.PI * 2);
+				ctx.fill();
+				ctx.stroke();
+			}
+		}
+
+		ctx.restore();
+	}
+
+	/* ========================= EVENTS ========================= */
+
+	_onDown(e) {
+		if (e.button !== 0) return;
+
+		const tool  = _editor.tool;
+		const ttool = _editor.transformTool;
+		const canSelect = tool === 'select' || tool === 'transform';
+		if (!canSelect) return;
+		
+		const hit = this._hitGizmo(e, ttool);
+		if (hit) {
+			const p = this._toWorld(e);
+			this.state.start = p;
+			this.state.last  = p;
+			this._captureOriginals();           // for undo
+			this._captureStepStart();           // start snapshot
+		
+			this.state.cx = hit.cx;
+			this.state.cy = hit.cy;
+			this.state.theta = hit.theta || 0;
+			this.state.theta0 = this.state.theta;
+		
+			// baseline extents for scale
+			if (hit.type === 'scale' || hit.type === 'rotate') {
+				const sel = _editor.selectedObjects.filter(o => o?.is2D);
+				const obb = this._selectionOBB(sel, { cx:this.state.cx, cy:this.state.cy, theta:this.state.theta });
+				if (obb) {
+					this.state.hx0 = (obb.maxX - obb.minX) / 2;
+					this.state.hy0 = (obb.maxY - obb.minY) / 2;
+				}
+			}
+		
+			if (hit.type === 'rotate') {
+				this.state.mode = 'rotate';
+				const lp = this._toFrameLocal(p.x, p.y, hit.cx, hit.cy, hit.theta);
+				this.state.rotBase = Math.atan2(lp.y, lp.x);
+				return;
+			}
+			if (hit.type === 'scale') {
+				this.state.mode = 'scale';
+				this.state.handle = hit.handle;
+				this.state.p0L = this._toFrameLocal(p.x, p.y, hit.cx, hit.cy, hit.theta);
+				return;
+			}
+		}
+
+		// Otherwise: select / marquee / move (move allowed in select; and in transform only if Translate/All)
+		this._handleSelection(e);
+	}
+
+	_onMove(e) {
+		if (!this.state.mode) return;
+
+		const p = this._toWorld(e);
+		this.state.last = p;
+
+		if (this.state.mode === 'move') {
+			const dx = p.x - this.state.start.x;
+			const dy = p.y - this.state.start.y;
+			for (const [o, rec] of this.state.orig.entries()) {
+				const pos = o.position || (o.position = { x:0, y:0, z:0 });
+				pos.x = rec.pos0.x + dx;
+				pos.y = rec.pos0.y + dy;
+			}
+		}
+		else if (this.state.mode === 'rotate') {
+			const { cx, cy, theta0 } = this.state;
+			const lp = this._toFrameLocal(p.x, p.y, cx, cy, theta0);
+			const a1 = Math.atan2(lp.y, lp.x);
+			let dAng = a1 - this.state.rotBase;
+
+			// soft snap near 45°
+			dAng = this._snapAngleSoft(dAng);
+
+			this.state.theta = theta0 + dAng;
+
+			for (const [o, rec] of this.state.orig.entries()) {
+				const rot = o.rotation || (o.rotation = { x:0, y:0, z:0 });
+				rot.z = rec.rot0 + dAng;
+			}
+		}
+		else if (this.state.mode === 'scale') {
+			const { handle, p0L, hx0, hy0 } = this.state;
+			const pL = this._toFrameLocal(p.x, p.y, this.state.cx, this.state.cy, this.state.theta);
+			const dx = pL.x - p0L.x;
+			const dy = pL.y - p0L.y;
+
+			let sx = 1, sy = 1;
+			const EPS = 1e-6, MIN = 0.01, MAX = 1000;
+
+			switch (handle) {
+				case 'l': sx = 1 - dx / Math.max(hx0, EPS); break;
+				case 'r': sx = 1 + dx / Math.max(hx0, EPS); break;
+				case 't': sy = 1 - dy / Math.max(hy0, EPS); break;
+				case 'b': sy = 1 + dy / Math.max(hy0, EPS); break;
+
+				case 'tl':
+				case 'tr':
+				case 'bl':
+				case 'br': {
+					// uniform by projecting mouse delta onto that corner's outward diagonal
+					const sign = this._cornerSigns(handle);    // {sx, sy} with ±1
+					const vx = sign.sx * hx0;
+					const vy = sign.sy * hy0;
+					const len0 = Math.hypot(vx, vy) || 1e-6;
+					const nx = vx / len0, ny = vy / len0;
+					const proj = dx * nx + dy * ny;
+					let s = 1 + proj / len0;
+					if (s < MIN) s = MIN;
+					if (s > MAX) s = MAX;
+					sx = sy = s;
+					break;
 				}
 			}
 
-			ctx.restore();
+			sx = Math.min(Math.max(sx, MIN), MAX);
+			sy = Math.min(Math.max(sy, MIN), MAX);
+
+			for (const [o, rec] of this.state.orig.entries()) {
+				const scl = o.scale || (o.scale = { x:1, y:1, z:1 });
+				scl.x = rec.scl0.x * sx;
+				scl.y = rec.scl0.y * sy;
+			}
+		}
+	}
+
+	_onUp() {
+		// marquee doesn't create a transform step/event
+		if (!this.state.mode || this.state.mode === 'marquee') {
+			this.state.mode = null;
+			this.state.handle = null;
+			this.state.stepStart = null;
+			this.state.stepEnd = null;
+			return;
+		}
+	
+		// record "after"
+		const sel = _editor.selectedObjects.filter(o => o?.is2D);
+		const end = [];
+		for (const o of sel) {
+			const pos = o.position || (o.position = { x:0, y:0, z:0 });
+			const rot = o.rotation || (o.rotation = { x:0, y:0, z:0 });
+			const scl = o.scale    || (o.scale    = { x:1, y:1, z:1 });
+			end.push({
+				obj: o,
+				pos: { x: pos.x, y: pos.y },
+				rot: rot.z || 0,
+				scl: { x: scl.x, y: scl.y }
+			});
+		}
+		this.state.stepEnd = end;
+	
+		const start = this.state.stepStart;
+	
+		// fire one transform-changed per object (with EXACT payload you specified)
+		for (const entry of end) {
+			const o = entry.obj;
+			const prev = start.find(s => s.obj === o);
+			if (!prev) continue;
+	
+			const changed = [];
+			if (prev.pos.x !== entry.pos.x || prev.pos.y !== entry.pos.y) changed.push('pos');
+			if (prev.rot !== entry.rot) changed.push('rot');
+			if (prev.scl.x !== entry.scl.x || prev.scl.y !== entry.scl.y) changed.push('scl');
+			if (!changed.length) continue;
+	
+			// set the instance field to match your desired signature exactly
+			this.d3dobject = o;
+	
+			const rec = this.state.orig.get(o);
+			_events.invoke('transform-changed', this.d3dobject, changed, {
+				position:    rec.beginPos,
+				rotation:    rec.beginRot3,
+				quaternion:  rec.beginRot,
+				scale:       rec.beginScl
+			});
+		}
+	
+		// push single undoable step (whole gesture)
+		_editor.addStep({
+			name: 'Transformation',
+			undo: () => this._applySnapshot(start),
+			redo: () => this._applySnapshot(end)
+		});
+	
+		// clear gesture state
+		this.state.mode = null;
+		this.state.handle = null;
+		this.state.stepStart = null;
+		this.state.stepEnd = null;
+	}
+
+	/* ========================= SELECTION / MOVE ========================= */
+
+	_handleSelection(e) {
+		const p = this._toWorld(e);
+		const hit = this._pickTop(p.x, p.y);
+
+		const tool  = _editor.tool;
+		const ttool = _editor.transformTool;
+
+		if (hit) {
+			if (e.shiftKey) {
+				if (_editor.selectedObjects.includes(hit)) _editor.removeSelection([hit]);
+				else _editor.addSelection([hit]);
+			} else {
+				_editor.setSelection([hit]);
+			}
+			
+			const canMove = tool === 'select' || tool === 'transform';
+
+			if (canMove) {
+				this.state.mode = 'move';
+				this.state.start = p;
+				this.state.last  = p;
+				this._captureOriginals();
+				this._captureStepStart();
+			}
+		} else {
+			if (!e.shiftKey) _editor.setSelection([]);
+			this.state.mode = 'marquee';
+			this.state.start = p;
+			this.state.last  = p;
+		}
+	}
+
+	/* ========================= UNDO / SNAPSHOTS ========================= */
+
+	_captureOriginals() {
+		const sel = _editor.selectedObjects.filter(o => o?.is2D);
+		const map = new Map();
+		const snap = [];
+	
+		for (const o of sel) {
+			const pos = o.position || (o.position = { x:0, y:0, z:0 });
+			const rot = o.rotation || (o.rotation = { x:0, y:0, z:0 });
+			const scl = o.scale    || (o.scale    = { x:1, y:1, z:1 });
+	
+			const prev = {
+				obj: o,
+				pos: { x: pos.x, y: pos.y },
+				rot: rot.z || 0,
+				scl: { x: scl.x, y: scl.y }
+			};
+			snap.push(prev);
+	
+			// store originals + the "begin*" payload your event expects
+			map.set(o, {
+				pos0: { x: pos.x, y: pos.y },
+				rot0: rot.z || 0,
+				scl0: { x: scl.x, y: scl.y },
+	
+				beginPos: { x: pos.x, y: pos.y, z: pos.z ?? 0 },
+				beginRot3: { x: 0, y: 0, z: rot.z || 0 },
+				beginRot: this._quatFromZ(rot.z || 0),
+				beginScl: { x: scl.x, y: scl.y, z: scl.z ?? 1 }
+			});
+		}
+	
+		this.state.orig = map;
+		this.state.stepStart = snap;
+		this.state.stepEnd = null;
+	}
+
+	_captureStepStart() {
+		const sel = _editor.selectedObjects.filter(o => o?.is2D);
+		this.state.stepStart = sel.map(o => ({
+			obj: o,
+			pos: { x: o.position?.x || 0, y: o.position?.y || 0 },
+			rot: o.rotation?.z || 0,
+			scl: { x: o.scale?.x ?? 1, y: o.scale?.y ?? 1 }
+		}));
+	}
+
+	_captureStepEnd() {
+		const sel = _editor.selectedObjects.filter(o => o?.is2D);
+		this.state.stepEnd = sel.map(o => ({
+			obj: o,
+			pos: { x: o.position?.x || 0, y: o.position?.y || 0 },
+			rot: o.rotation?.z || 0,
+			scl: { x: o.scale?.x ?? 1, y: o.scale?.y ?? 1 }
+		}));
+	}
+
+	_applySnapshot(snap) {
+		for (const s of snap) {
+			const pos = s.obj.position || (s.obj.position = { x:0, y:0, z:0 });
+			const rot = s.obj.rotation || (s.obj.rotation = { x:0, y:0, z:0 });
+			const scl = s.obj.scale    || (s.obj.scale    = { x:1, y:1, z:1 });
+			pos.x = s.pos.x; pos.y = s.pos.y;
+			rot.z = s.rot;
+			scl.x = s.scl.x; scl.y = s.scl.y;
+		}
+	}
+
+	/* ========================= GIZMO HIT-TEST ========================= */
+
+	_hitGizmo(e, ttool) {
+		const sel = _editor.selectedObjects.filter(o => o?.is2D);
+		if (!sel.length) return null;
+
+		const frame = this._selectionFrame(sel);
+		if (!frame) return null;
+		const obb = this._selectionOBB(sel, frame);
+		if (!obb) return null;
+
+		const allowRotate = (ttool === 'rotate' || _editor.tool === 'transform');
+		const allowScale  = (ttool === 'scale'  || _editor.tool === 'transform');
+
+		const { cx, cy, theta } = frame;
+		const { minX, minY, maxX, maxY } = obb;
+		const w = maxX - minX, h = maxY - minY;
+
+		const px = 2 / (this.d2drenderer.pixelRatio * this.d2drenderer.viewScale);
+		const hs = 6 * px;
+		const knobR = 8 * px;
+		const rotPad = 16 * px;
+		const rotRadius = Math.hypot(w, h) * 0.5 + rotPad;
+
+		const p = this._toWorld(e);
+		const lp = this._toFrameLocal(p.x, p.y, cx, cy, theta);
+
+		if (allowRotate) {
+			// soft ring
+			const dist = Math.hypot(lp.x, lp.y);
+			if (Math.abs(dist - rotRadius) <= knobR * 1.5)
+				return { type:'rotate', cx, cy, theta };
+		}
+
+		if (allowScale) {
+			const handles = [
+				{ n:'tl', x:minX,        y:minY        },
+				{ n:'t',  x:minX + w/2,  y:minY        },
+				{ n:'tr', x:maxX,        y:minY        },
+				{ n:'r',  x:maxX,        y:minY + h/2  },
+				{ n:'br', x:maxX,        y:maxY        },
+				{ n:'b',  x:minX + w/2,  y:maxY        },
+				{ n:'bl', x:minX,        y:maxY        },
+				{ n:'l',  x:minX,        y:minY + h/2  }
+			];
+			for (const h of handles) {
+				if (Math.abs(lp.x - h.x) <= hs && Math.abs(lp.y - h.y) <= hs)
+					return { type:'scale', handle:h.n, cx, cy, theta };
+			}
 		}
 		return null;
 	}
 
-	hitTestRect(pixelRect) {
-		// Basic area select: collect anything whose transformed bounding box intersects rect
-		const list = this.d2drenderer
-			.gather(this.d2drenderer.root)
-			.sort((a, b) => a.position.z - b.position.z);
+	/* ========================= GEOMETRY ========================= */
 
-		const results = [];
+	_selectionFrame(sel) {
+		const aabb = this._selectionAABB(sel);
+		if (!aabb) return null;
+		const cx = (aabb.minX + aabb.maxX) / 2;
+		const cy = (aabb.minY + aabb.maxY) / 2;
 
-		for (const d3dobject of list) {
-			const graphic2d = d3dobject.graphic2d;
-			if (!graphic2d || !Array.isArray(graphic2d._graphics)) continue;
+		let sum = 0, n = 0;
+		for (const o of sel) {
+			const M = this._worldMatrix(o);
+			const ang = Math.atan2(M.b, M.a);
+			if (Number.isFinite(ang)) { sum += ang; n++; }
+		}
+		const theta = n ? (sum / n) : 0;
+		return { cx, cy, theta };
+	}
 
-			const world = this._accumulateTransform(d3dobject);
+	_selectionAABB(objs) {
+		let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+		for (const o of objs) {
+			const r = this._worldAABB(o);
+			if (!r) continue;
+			if (r.minX < minX) minX = r.minX;
+			if (r.minY < minY) minY = r.minY;
+			if (r.maxX > maxX) maxX = r.maxX;
+			if (r.maxY > maxY) maxY = r.maxY;
+		}
+		if (!isFinite(minX)) return null;
+		return { minX, minY, maxX, maxY };
+	}
 
-			for (let gi = 0; gi < graphic2d._graphics.length; gi++) {
-				const g = graphic2d._graphics[gi];
-				const bbox = this._graphicPixelBounds(g, world);
-				if (this._rectsIntersect(pixelRect, bbox)) {
-					// symbol → select object; non-symbol → select graphic part (whole graphic)
-					if (d3dobject.symbol) {
-						results.push(d3dobject);
-					} else {
-						results.push({
-							kind: 'vector-part',
-							host: d3dobject,
-							part: { type: 'graphic', graphicIndex: gi }
-						});
-					}
-				}
+	_selectionOBB(sel, frame) {
+		const { cx, cy, theta } = frame;
+		const c = Math.cos(-theta), s = Math.sin(-theta);
+		let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+		for (const o of sel) {
+			const pts = this._localPoints(o);
+			if (!pts) continue;
+			const M = this._worldMatrix(o);
+			for (const p of pts) {
+				const wp = this._applyMat(M, p.x, p.y);
+				const dx = wp.x - cx, dy = wp.y - cy;
+				const lx = dx * c - dy * s;
+				const ly = dx * s + dy * c;
+				if (lx < minX) minX = lx;
+				if (ly < minY) minY = ly;
+				if (lx > maxX) maxX = lx;
+				if (ly > maxY) maxY = ly;
 			}
 		}
-		return results;
+		if (!isFinite(minX)) return null;
+		return { minX, minY, maxX, maxY };
 	}
 
-	_makeHitToken(d3dobject, g, graphicIndex, which) {
-		if (d3dobject.symbol) {
-			return d3dobject;
-		}
-		return {
-			kind: 'vector-part',
-			host: d3dobject,
-			part: { type: which, graphicIndex }
-		};
-	}
+	_worldAABB(o) {
+		const pts = this._localPoints(o);
+		if (!pts) return null;
+		const M = this._worldMatrix(o);
 
-	_buildPath2D(g) {
-		const pts = g._points || [];
-		const path = new Path2D();
-		if (pts.length < 1) return path;
-
-		// if you want rounded corners for hit too, you can replicate your rounded logic here
-		path.moveTo(pts[0].x, pts[0].y);
-		for (let i = 1; i < pts.length; i++) path.lineTo(pts[i].x, pts[i].y);
-		// treat as closed when first == last
-		const first = pts[0];
-		const last = pts[pts.length - 1];
-		const isClosed = pts.length >= 3 && Math.abs(first.x - last.x) < 1e-6 && Math.abs(first.y - last.y) < 1e-6;
-		if (isClosed) path.closePath();
-		return path;
-	}
-
-	_graphicPixelBounds(g, world) {
-		// transform each point into device pixels and bound
-		const pts = g._points || [];
-		let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
-
-		const cos = Math.cos(world.rot || 0);
-		const sin = Math.sin(world.rot || 0);
-
+		let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 		for (const p of pts) {
-			// local -> scaled -> rotated -> translated (project) -> to canvas pixels
-			let lx = p.x * world.sx;
-			let ly = p.y * world.sy;
-			let rx = lx * cos - ly * sin;
-			let ry = lx * sin + ly * cos;
-			let px = (rx + world.tx) * world.dprScale + world.canvasLeft; // device pixels
-			let py = (ry + world.ty) * world.dprScale + world.canvasTop;
-
-			if (px < minx) minx = px;
-			if (py < miny) miny = py;
-			if (px > maxx) maxx = px;
-			if (py > maxy) maxy = py;
+			const wp = this._applyMat(M, p.x, p.y);
+			if (wp.x < minX) minX = wp.x;
+			if (wp.y < minY) minY = wp.y;
+			if (wp.x > maxX) maxX = wp.x;
+			if (wp.y > maxY) maxY = wp.y;
 		}
-
-		// inflate by stroke width for strokes
-		const lw = Math.max(0.001, Number(g.lineWidth ?? 1)) * world.dprScale * 0.5;
-		minx -= lw; miny -= lw; maxx += lw; maxy += lw;
-
-		return { x: minx, y: miny, w: (maxx - minx), h: (maxy - miny) };
+		return { minX, minY, maxX, maxY };
 	}
 
-	_rectFromPoints(a, b) {
-		const x = Math.min(a.x, b.x);
-		const y = Math.min(a.y, b.y);
-		const w = Math.abs(a.x - b.x);
-		const h = Math.abs(a.y - b.y);
-		return { x, y, w, h };
+	_localPoints(o) {
+		const g = o?.graphic2d;
+		const pts = g?._points;
+		return (Array.isArray(pts) && pts.length) ? pts : null;
 	}
 
-	_rectsIntersect(a, b) {
-		return !(a.x + a.w < b.x || b.x + b.w < a.x || a.y + a.h < b.y || b.y + b.h < a.y);
-	}
-
-	_clientToCanvasPixels(e) {
-		const rect = this.canvas.getBoundingClientRect();
-		const xCss = e.clientX - rect.left;
-		const yCss = e.clientY - rect.top;
-		const scaleX = this.canvas.width / rect.width;
-		const scaleY = this.canvas.height / rect.height;
-		return { x: xCss * scaleX, y: yCss * scaleY };
-	}
-
-	_clientToProjectUnits(e) {
-		// if needed elsewhere
-		const p = this._clientToCanvasPixels(e);
-		const s = this.d2drenderer.pixelRatio * this.d2drenderer.viewScale || 1;
-		return { x: p.x / s, y: p.y / s };
-	}
-
-	_accumulateTransform(d3dobject) {
-		// world transform in project units
-		let tx = 0, ty = 0, sx = 1, sy = 1, rot = 0;
-		let n = d3dobject;
-		while (n) {
-			tx += Number(n.position?.x) || 0;
-			ty += Number(n.position?.y) || 0;
-			sx *= (Number(n.scale?.x) || 1);
-			sy *= (Number(n.scale?.y) || 1);
-			rot += (Number(n.rotation?.z) || 0);
-			n = n.parent;
+	_worldMatrix(o) {
+		if (!o) return { a:1, b:0, c:0, d:1, e:0, f:0 };
+		let M = { a:1, b:0, c:0, d:1, e:0, f:0 };
+		const chain = [];
+		let n = o;
+		while (n) { chain.push(n); n = n.parent; }
+		for (let i = chain.length - 1; i >= 0; --i) {
+			const node = chain[i];
+			const tx = Number(node.position?.x || 0);
+			const ty = Number(node.position?.y || 0);
+			const sx = Number(node.scale?.x ?? 1);
+			const sy = Number(node.scale?.y ?? 1);
+			const rz = Number(node.rotation?.z ?? 0);
+			const cos = Math.cos(rz), sin = Math.sin(rz);
+			const L = { a: cos * sx, b: sin * sx, c: -sin * sy, d: cos * sy, e: tx, f: ty };
+			M = this._mul(M, L);
 		}
+		return M;
+	}
 
-		// mapping project units → device pixels
-		const dprScale = (this.d2drenderer.pixelRatio || 1) * (this.d2drenderer.viewScale || 1);
-
-		// canvas CSS offset in device pixels
-		const rect = this.canvas.getBoundingClientRect();
-		const cssToPixelsX = this.canvas.width / rect.width;
-		const cssToPixelsY = this.canvas.height / rect.height;
-		const canvasLeft = 0; // we already converted to canvas pixel space before subtracting in isPointInPath
-
+	_mul(A, B) {
 		return {
-			tx, ty, sx, sy, rot,
-			dprScale,
-			pixelTx: tx * dprScale,
-			pixelTy: ty * dprScale,
-			canvasLeft: 0,
-			canvasTop: 0
+			a: A.a * B.a + A.c * B.b,
+			b: A.b * B.a + A.d * B.b,
+			c: A.a * B.c + A.c * B.d,
+			d: A.b * B.c + A.d * B.d,
+			e: A.a * B.e + A.c * B.f + A.e,
+			f: A.b * B.e + A.d * B.f + A.f
 		};
 	}
-	_dragDistance() {
-		if (!this.dragStart || !this.dragEnd)
-			return 0;
+
+	_applyMat(M, x, y) {
+		return { x: M.a * x + M.c * y + M.e, y: M.b * x + M.d * y + M.f };
+	}
+
+	_toFrameLocal(wx, wy, cx, cy, theta) {
+		const c = Math.cos(-theta), s = Math.sin(-theta);
+		const dx = wx - cx, dy = wy - cy;
+		return { x: dx * c - dy * s, y: dx * s + dy * c };
+	}
+
+	_toWorld(e) {
+		const rect = this.canvas.getBoundingClientRect();
+		const sx = this.canvas.width / rect.width;
+		const sy = this.canvas.height / rect.height;
+		const cx = (e.clientX - rect.left) * sx;
+		const cy = (e.clientY - rect.top) * sy;
+		const k = this.d2drenderer.pixelRatio * this.d2drenderer.viewScale;
+		return { x: cx / k, y: cy / k };
+	}
+
+	/* ========================= PICKING ========================= */
+
+	_pickTop(wx, wy) {
+		const list = this._all2DInDrawOrder();
+		for (let i = list.length - 1; i >= 0; --i) {
+			const o = list[i];
+			if (this._hitObject(o, wx, wy)) return o;
+		}
+		return null;
+	}
+
+	_all2DInDrawOrder() {
+		const out = [];
+		this.d2drenderer.root.traverse(o => { if (o?.is2D) out.push(o); });
+		out.sort((a, b) => (a.position?.z || 0) - (b.position?.z || 0));
+		return out;
+	}
+
+	_hitObject(o, wx, wy) {
+		const pts = this._localPoints(o);
+		if (!pts || pts.length < 2) return false;
+		const Minv = this._invert(this._worldMatrix(o));
+		const lp = this._applyMat(Minv, wx, wy);
+
+		const closed = this._isClosed(pts);
+		if (closed) return this._pointInPolygon(lp.x, lp.y, pts);
+		const tol = 6 / (this.d2drenderer.pixelRatio * this.d2drenderer.viewScale);
+		return this._pointNearPolyline(lp.x, lp.y, pts, tol);
+	}
+
+	_invert(M) {
+		const det = M.a * M.d - M.b * M.c || 1e-12;
+		const ia =  M.d / det, ib = -M.b / det, ic = -M.c / det, id =  M.a / det;
+		const ie = -(ia * M.e + ic * M.f), iff = -(ib * M.e + id * M.f);
+		return { a: ia, b: ib, c: ic, d: id, e: ie, f: iff };
+	}
+
+	_isClosed(pts) {
+		const a = pts[0], b = pts[pts.length - 1];
+		return Math.abs(a.x - b.x) <= 1e-6 && Math.abs(a.y - b.y) <= 1e-6;
+	}
+
+	_pointInPolygon(x, y, pts) {
+		let inside = false;
+		for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+			const xi = pts[i].x, yi = pts[i].y;
+			const xj = pts[j].x, yj = pts[j].y;
+			const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / ((yj - yi) || 1e-12) + xi);
+			if (intersect) inside = !inside;
+		}
+		return inside;
+	}
+
+	_pointNearPolyline(x, y, pts, tol) {
+		const t2 = tol * tol;
+		for (let i = 0; i < pts.length - 1; i++) {
+			if (this._distSqToSeg(x, y, pts[i], pts[i + 1]) <= t2) return true;
+		}
+		return false;
+	}
+
+	_distSqToSeg(px, py, a, b) {
+		const vx = b.x - a.x, vy = b.y - a.y;
+		const wx = px - a.x, wy = py - a.y;
+		const c1 = vx * wx + vy * wy;
+		if (c1 <= 0) return wx * wx + wy * wy;
+		const c2 = vx * vx + vy * vy;
+		if (c2 <= c1) {
+			const dx = px - b.x, dy = py - b.y;
+			return dx * dx + dy * dy;
+		}
+		const t = c1 / c2;
+		const projx = a.x + t * vx, projy = a.y + t * vy;
+		const dx = px - projx, dy = py - projy;
+		return dx * dx + dy * dy;
+	}
+
+	/* ========================= HELPERS ========================= */
+
+	_cornerSigns(handle) {
+		switch (handle) {
+			case 'tl': return { sx: -1, sy: -1 };
+			case 'tr': return { sx: +1, sy: -1 };
+			case 'br': return { sx: +1, sy: +1 };
+			case 'bl': return { sx: -1, sy: +1 };
+			default:   return { sx: 0,  sy: 0  };
+		}
+	}
+
+	// soft snap to nearest multiple of 45° within ~5°
+	_snapAngleSoft(a, step = Math.PI / 4, tol = Math.PI / 36) {
+		const k = Math.round(a / step) * step;
+		return (Math.abs(a - k) < tol) ? k : a;
+	}
 	
-		const dx = this.dragEnd.x - this.dragStart.x;
-		const dy = this.dragEnd.y - this.dragStart.y;
-		return Math.sqrt(dx * dx + dy * dy);
+	_quatFromZ(rad) {
+		const half = rad * 0.5;
+		return { x: 0, y: 0, z: Math.sin(half), w: Math.cos(half) };
 	}
 }

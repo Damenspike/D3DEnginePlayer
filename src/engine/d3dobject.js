@@ -197,6 +197,10 @@ export default class D3DObject {
 	}
 	
 	get opacity() {
+		if(this.is2D) {
+			return this._2dopacity ?? 1;
+		}
+		
 		let value = 1;
 	
 		function findOpacity(o) {
@@ -227,6 +231,11 @@ export default class D3DObject {
 	}
 	set opacity(value) {
 		const opacity = Math.max(0, Math.min(1, Number(value)));
+		
+		if(this.is2D) {
+			this._2dopacity = opacity;
+			return;
+		}
 		
 		function applyOpacity(o) {
 			if (o.material) {
@@ -478,7 +487,8 @@ export default class D3DObject {
 		this.object3d.add(child.object3d);
 		this.children.push(child);
 		
-		child.visible = true; // invoke visibility events
+		child.visible = objData.visible ?? true;
+		child.opacity = objData.opacity ?? 1;
 		
 		// Recurse for nested objects if any
 		if (objData.children && objData.children.length > 0) {
