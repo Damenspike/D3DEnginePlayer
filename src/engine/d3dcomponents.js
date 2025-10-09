@@ -466,6 +466,12 @@ const D3DComponents = {
 			}
 		},
 		manager: function() {}
+	},
+	Container2D: {
+		name: 'Container 2D',
+		hidden: true,
+		properties: {},
+		manager: function() {}
 	}
 }
 

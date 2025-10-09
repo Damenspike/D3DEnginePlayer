@@ -144,3 +144,6 @@ addIPCListener('csm');
 addIPCListener('build');
 addIPCListener('copy-special');
 addIPCListener('paste-special');
+addIPCListener('group');
+addIPCListener('ungroup');
+addIPCListener('merge');

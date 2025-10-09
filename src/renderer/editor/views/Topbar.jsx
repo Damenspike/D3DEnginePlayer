@@ -5,7 +5,8 @@ import {
 	MdOpenWith,
 	MdOutlineSync,
 	MdCameraswitch,
-	MdCode
+	MdCode,
+	MdPlayArrow
 } from "react-icons/md";
 import { BiExpand } from "react-icons/bi";
 
@@ -45,7 +46,7 @@ export default function Topbar() {
 		_editor.setTransformTool(_transformTool);
 	}, [_transformTool]);
 	
-	const drawToolButton = (content, activeCondition, onClick) => {
+	const drawToolButton = (content, activeCondition, onClick, title = '') => {
 		const classes = ['tool-option', 'no-select'];
 		
 		if(activeCondition() == true)
@@ -55,6 +56,7 @@ export default function Topbar() {
 			<div 
 				className={classes.join(' ')}
 				onClick={onClick} 
+				title={title}
 				tabIndex={0}
 			>
 				{content}
@@ -69,14 +71,16 @@ export default function Topbar() {
 					drawToolButton(
 						(<MdNavigation />),
 						() => _tool == 'select',
-						() => setTool('select')
+						() => setTool('select'),
+						'Select tool'
 					)
 				}
 				{
 					drawToolButton(
 						(<MdCameraswitch />),
 						() => _tool == 'pan',
-						() => setTool('pan')
+						() => setTool('pan'),
+						'3D camera pan tool'
 					)
 				}
 			</div>
@@ -86,21 +90,24 @@ export default function Topbar() {
 					drawToolButton(
 						(<MdOpenWith />),
 						() => _transformTool == 'translate',
-						() => setTransformTool('translate')
+						() => setTransformTool('translate'),
+						'Translate tool'
 					)
 				}
 				{
 					drawToolButton(
 						(<MdOutlineSync />),
 						() => _transformTool == 'rotate',
-						() => setTransformTool('rotate')
+						() => setTransformTool('rotate'),
+						'Rotate tool'
 					)
 				}
 				{
 					drawToolButton(
 						(<BiExpand />),
 						() => _transformTool == 'scale',
-						() => setTransformTool('scale')
+						() => setTransformTool('scale'),
+						'Scale tool'
 					)
 				}
 			</div>
@@ -110,14 +117,16 @@ export default function Topbar() {
 					drawToolButton(
 						(<div className='btn-2d-3d'>2D</div>),
 						() => _mode == '2D',
-						() => setMode('2D')
+						() => setMode('2D'),
+						'2D edit mode'
 					)
 				}
 				{
 					drawToolButton(
 						(<div className='btn-2d-3d'>3D</div>),
 						() => _mode == '3D',
-						() => setMode('3D')
+						() => setMode('3D'),
+						'3D edit mode'
 					)
 				}
 			</div>
@@ -127,7 +136,16 @@ export default function Topbar() {
 					drawToolButton(
 						(<MdCode />),
 						() => false,
-						() => _editor.editCode()
+						() => _editor.editCode(),
+						'Code editor'
+					)
+				}
+				{
+					drawToolButton(
+						(<MdPlayArrow />),
+						() => false,
+						() => D3D.echoBuild({prompt: false, play: true}),
+						'Build and play'
 					)
 				}
 			</div>

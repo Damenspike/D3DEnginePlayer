@@ -343,6 +343,19 @@ function sendPasteSpecial(type) {
 	if (!editorWindow.isFocused()) return;
 	editorWindow.webContents.send('paste-special', type);
 }
+function sendGroupObjects() {
+	if (!editorWindow.isFocused()) return;
+	editorWindow.webContents.send('group');
+}
+function sendUngroupObjects() {
+	if (!editorWindow.isFocused()) return;
+	editorWindow.webContents.send('ungroup');
+}
+function sendMergeObjects() {
+	if (!editorWindow.isFocused()) return;
+	editorWindow.webContents.send('merge');
+}
+
 function sendBuild({prompt, play}) {
 	if (!editorWindow.isFocused()) return;
 	let uri = lastOpenedProjectUri;
@@ -564,6 +577,21 @@ const menuTemplate = [
 				label: 'Desymbolise',
 				accelerator: 'CmdOrCtrl+Shift+D',
 				click: () => sendDesymboliseObject()
+			},
+			{
+				label: 'Group',
+				accelerator: 'CmdOrCtrl+G',
+				click: () => sendGroupObjects()
+			},
+			{
+				label: 'Ungroup',
+				accelerator: 'CmdOrCtrl+Shift+G',
+				click: () => sendUngroupObjects()
+			},
+			{
+				label: 'Merge',
+				accelerator: 'CmdOrCtrl+M',
+				click: () => sendMergeObjects()
 			},
 			{ type: 'separator' },
 			{

@@ -1,6 +1,9 @@
 import {
 	handleImportFile
 } from './d3deditorimporter.js';
+import {
+	getSelectionCenter
+} from './d3dutility.js';
 
 // Tool enum
 export const Tools = Object.freeze({
@@ -598,6 +601,80 @@ export default class D3DEditorState {
 	
 	delete() {
 		_events.invoke('delete-action');
+	}
+	
+	async groupObjects(d3dobjects, containingParent, addStep = true) {
+		if(d3dobjects.length <= 1) {
+			this.showError({
+				title: 'Group',
+				message: 'Multiple objects required'
+			})
+			return;
+		}
+		if(!containingParent)
+			containingParent = this.focus;
+		
+		const center = getSelectionCenter(d3dobjects);
+		const d3dcontainer = await containingParent.createObject({
+			name: 'Group',
+			position: {x: center.x, y: center.y, z: center.z}
+		});
+		
+		if(this.mode == '2D')
+			d3dcontainer.addComponent('Container2D', {}); // make it visible in 2d
+		
+		d3dobjects.forEach(d3dobj => {
+			d3dobj.setParent(d3dcontainer);
+		});
+		
+		this.setSelection([d3dcontainer], false);
+		this.updateInspector?.();
+		
+		addStep && this.addStep({
+			name: 'Group',
+			undo: () => this.ungroupObjects([d3dcontainer], false),
+			redo: () => this.groupObjects(d3dobjects, containingParent, false)
+		});
+	}
+	ungroupObjects(d3dobjects, addStep = true) {
+		const undoables = [];
+		const ungrouped = [];
+		
+		d3dobjects.forEach(d3dobj => {
+			const children = [...d3dobj.children];
+			
+			if(children.length < 1)
+				return;
+			
+			const parent = d3dobj.parent;
+			
+			children.forEach(child => {
+				child.setParent(d3dobj.parent);
+				ungrouped.push(child);
+			});
+			d3dobj.delete();
+			
+			addStep && undoables.push(() => this.groupObjects(children, parent, false));
+		});
+		
+		this.setSelection(ungrouped, false);
+		this.updateInspector?.();
+		
+		addStep && this.addStep({
+			name: 'Ungroup',
+			undo: () => undoables.forEach(u => u()),
+			redo: () => this.ungroupObjects(d3dobjects, false)
+		});
+	}
+	mergeObjects(d3dobjects) {
+		if(d3dobjects.length <= 1) {
+			this.showError({
+				title: 'Merge',
+				message: 'Multiple objects required'
+			})
+			return;
+		}
+		
 	}
 	
 	async importFile(file, destDir) {

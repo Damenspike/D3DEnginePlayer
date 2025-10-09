@@ -306,7 +306,7 @@ export default class D3DObject {
 		return !this.is2D;
 	}
 	get is2D() {
-		return this.hasComponent('Graphic2D');
+		return this.hasComponent('Graphic2D') || this.hasComponent('Container2D');
 	}
 	get graphic2d() {
 		if(!this.is2D)
@@ -484,7 +484,9 @@ export default class D3DObject {
 			_root.superIndex[child.uuid] = child;
 		}
 		
-		this.object3d.add(child.object3d);
+		if(this.object3d) // 2d doesn't have an object3d
+			this.object3d.add(child.object3d);
+		
 		this.children.push(child);
 		
 		child.visible = objData.visible ?? true;
@@ -999,8 +1001,23 @@ export default class D3DObject {
 	}
 	
 	setParent(d3dobject) {
+		if(d3dobject == this.parent) {
+			console.warn('Cant set parent already is parent', this.name, this.parent?.name);
+			return;
+		}
+		
+		if(this.parent && this.parent.children.includes(this)) {
+			// Remove from current parent
+			this.parent.children.splice(this.parent.children.indexOf(this), 1);
+		}
+		
 		this.parent = d3dobject;
-		d3dobject.object3d.add(this.object3d);
+		
+		if(!d3dobject.children.includes(this))
+			d3dobject.children.push(this);
+		
+		if(d3dobject.object3d && this.object3d)
+			d3dobject.object3d.add(this.object3d);
 	}
 	
 	replaceObject3D(newObject3D, { keepChildren = true } = {}) {
@@ -1211,7 +1228,9 @@ export default class D3DObject {
 			throw new Error("Parent doesn't contain child?");
 			
 		this.parent.children.splice(idx, 1);
-		this.parent.object3d.remove(this.object3d);
+		
+		if(this.parent.object3d)
+			this.parent.object3d.remove(this.object3d);
 		
 		this.__deleted = true;
 		

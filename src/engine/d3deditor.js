@@ -994,6 +994,7 @@ async function saveProjectAndClose(projectURI) {
 	_editor.closeEditor();
 }
 async function buildProject(buildURI, play = false) {
+	console.log('Build URI', buildURI);
 	try {
 		await _editor.__build(buildURI, !play);
 	}catch(e) {
@@ -1090,6 +1091,7 @@ _editor.clearDirectory = clearDirectory;
 _editor.saveProject = saveProject;
 _editor.moveObjectToCameraView = moveObjectToCameraView;
 _editor.onConsoleMessage = onConsoleMessage;
+_editor.buildProject = buildProject;
 
 D3D.setEventListener('select-all', () => _editor.selectAll());
 D3D.setEventListener('delete', () => _editor.delete());
@@ -1113,3 +1115,6 @@ D3D.setEventListener('menu-import-assets', onImportAssets);
 D3D.setEventListener('csm', onConsoleMessage);
 D3D.setEventListener('copy-special', (type) => _editor.copySpecial(type));
 D3D.setEventListener('paste-special', (type) => _editor.pasteSpecial(type));
+D3D.setEventListener('group', () => _editor.groupObjects(_editor.selectedObjects));
+D3D.setEventListener('ungroup', () => _editor.ungroupObjects(_editor.selectedObjects));
+D3D.setEventListener('merge', () => _editor.mergeObjects(_editor.selectedObjects));

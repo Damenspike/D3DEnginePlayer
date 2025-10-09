@@ -452,3 +452,23 @@ export function hexToRgba(str, fallback = 'rgba(255,255,255,1)') {
 	}
 	return fallback;
 }
+export function getSelectionCenter(selectedObjects) {
+	if (!selectedObjects || selectedObjects.length === 0) 
+		return new THREE.Vector3(0, 0, 0);
+
+	const center = new THREE.Vector3();
+	let count = 0;
+
+	for (const obj of selectedObjects) {
+		const pos = obj?.object3d?.position;
+		if (pos && pos.isVector3) {
+			center.add(pos);
+			count++;
+		}
+	}
+
+	if (count > 0)
+		center.divideScalar(count);
+
+	return center;
+}
