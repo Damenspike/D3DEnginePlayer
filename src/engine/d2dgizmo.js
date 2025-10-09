@@ -50,6 +50,10 @@ export default class D2DGizmo {
 
 		const ctx = this.ctx;
 		ctx.save();
+		
+		for (const o of sel) {
+			this._drawOriginCross(o);
+		}
 
 		const px = 2 / (this.d2drenderer.pixelRatio * this.d2drenderer.viewScale);
 		ctx.lineWidth = Math.max(px, 1 * px);
@@ -57,7 +61,7 @@ export default class D2DGizmo {
 
 		// soft selection feedback
 		for (const o of sel) {
-			const r = this._worldAABB(o);
+			const r = this._worldAABBDeep(o);
 			if (!r) continue;
 			ctx.strokeRect(r.minX, r.minY, r.maxX - r.minX, r.maxY - r.minY);
 		}
@@ -81,12 +85,25 @@ export default class D2DGizmo {
 		// marquee
 		if (showMarquee) {
 			const a = this.state.start, b = this.state.last;
-			const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
-			const w = Math.abs(b.x - a.x), h = Math.abs(b.y - a.y);
+			const x = Math.min(a.x, b.x);
+			const y = Math.min(a.y, b.y);
+			const w = Math.abs(b.x - a.x);
+			const h = Math.abs(b.y - a.y);
+		
+			ctx.save();
+			ctx.lineWidth = Math.max(px, 1 * px) * 2;
 			ctx.setLineDash([4 * px, 4 * px]);
-			ctx.strokeStyle = 'rgba(30,144,255,0.9)';
+			ctx.strokeStyle = '#0099ff'; // same border color as 3D
+			ctx.fillStyle = 'rgba(0, 150, 255, 0.1)'; // translucent blue fill
+		
+			// fill background
+			ctx.fillRect(x, y, w, h);
+		
+			// stroke outline
 			ctx.strokeRect(x, y, w, h);
+		
 			ctx.setLineDash([]);
+			ctx.restore();
 		}
 
 		ctx.restore();
@@ -166,11 +183,50 @@ export default class D2DGizmo {
 
 		ctx.restore();
 	}
+	
+	_drawOriginCross(o) {
+		const ctx = this.ctx;
+		const px = this._px(1);
+		const size = 1.5;
+		const len = 9 * px * size;
+		const thick = Math.max(1.5 * px * size, 1 * px * size);
+	
+		// world position of the object's local origin (0,0)
+		const M = this._worldMatrix(o);
+		const wp = this._applyMat(M, 0, 0);
+	
+		ctx.save();
+	
+		// multiply blend so it stays visible over any fill
+		const prevOp = ctx.globalCompositeOperation;
+		ctx.globalCompositeOperation = 'invert';
+	
+		ctx.lineWidth = thick;
+		ctx.strokeStyle = 'rgba(0,255,255,1)'; // cyan
+	
+		// cross
+		ctx.beginPath();
+		ctx.moveTo(wp.x - len, wp.y);
+		ctx.lineTo(wp.x + len, wp.y);
+		ctx.moveTo(wp.x, wp.y - len);
+		ctx.lineTo(wp.x, wp.y + len);
+		ctx.stroke();
+	
+		// center dot
+		ctx.beginPath();
+		ctx.arc(wp.x, wp.y, 5 * px, 0, Math.PI * 2);
+		ctx.stroke();
+	
+		// restore
+		ctx.globalCompositeOperation = prevOp;
+		ctx.restore();
+	}
 
 	/* ========================= EVENTS ========================= */
 
 	_onDown(e) {
 		if (e.button !== 0) return;
+		if(this.d2drenderer.edit.hoverPoint) return;
 
 		const tool  = _editor.tool;
 		const ttool = _editor.transformTool;
@@ -223,14 +279,24 @@ export default class D2DGizmo {
 
 		const p = this._toWorld(e);
 		this.state.last = p;
-
+		
+		if (this.state.mode === 'marquee') {
+			this.state.last = this._toWorld(e);
+			return;
+		}
+		
 		if (this.state.mode === 'move') {
-			const dx = p.x - this.state.start.x;
-			const dy = p.y - this.state.start.y;
+			const dWx = p.x - this.state.start.x; // world delta
+			const dWy = p.y - this.state.start.y;
+		
 			for (const [o, rec] of this.state.orig.entries()) {
+				// apply ONLY the linear part (no translation) of parentInv to the delta
+				const dxLocal = rec.parentInv.a * dWx + rec.parentInv.c * dWy;
+				const dyLocal = rec.parentInv.b * dWx + rec.parentInv.d * dWy;
+		
 				const pos = o.position || (o.position = { x:0, y:0, z:0 });
-				pos.x = rec.pos0.x + dx;
-				pos.y = rec.pos0.y + dy;
+				pos.x = rec.pos0.x + dxLocal;
+				pos.y = rec.pos0.y + dyLocal;
 			}
 		}
 		else if (this.state.mode === 'rotate') {
@@ -292,10 +358,28 @@ export default class D2DGizmo {
 				scl.y = rec.scl0.y * sy;
 			}
 		}
+		_editor.updateInspector?.();
 	}
 
 	_onUp() {
-		// marquee doesn't create a transform step/event
+		if (this.state.mode === 'marquee') {
+			const a = this.state.start, b = this.state.last;
+			const rect = this._rectFromPoints(a, b); // {x, y, w, h}
+		
+			const roots = this._marqueeRootsUnderFocus();
+			const newlyHit = [];
+			for (const r of roots) {
+				const bb = this._worldAABBDeep(r);
+				if (!bb) continue;
+				if (this._rectIntersectsAABB(rect, bb)) newlyHit.push(r);
+			}
+		
+			if (!event?.shiftKey)
+				_editor.setSelection([]);
+			if (newlyHit.length)
+				_editor.addSelection(newlyHit);
+		}
+		
 		if (!this.state.mode || this.state.mode === 'marquee') {
 			this.state.mode = null;
 			this.state.handle = null;
@@ -406,24 +490,22 @@ export default class D2DGizmo {
 			const rot = o.rotation || (o.rotation = { x:0, y:0, z:0 });
 			const scl = o.scale    || (o.scale    = { x:1, y:1, z:1 });
 	
-			const prev = {
-				obj: o,
-				pos: { x: pos.x, y: pos.y },
-				rot: rot.z || 0,
-				scl: { x: scl.x, y: scl.y }
-			};
-			snap.push(prev);
+			// parent inverse (so we can convert world delta -> local delta)
+			const parentM   = this._worldMatrix(o.parent || null);
+			const parentInv = this._invert(parentM);
 	
-			// store originals + the "begin*" payload your event expects
 			map.set(o, {
 				pos0: { x: pos.x, y: pos.y },
 				rot0: rot.z || 0,
 				scl0: { x: scl.x, y: scl.y },
+				parentInv
+			});
 	
-				beginPos: { x: pos.x, y: pos.y, z: pos.z ?? 0 },
-				beginRot3: { x: 0, y: 0, z: rot.z || 0 },
-				beginRot: this._quatFromZ(rot.z || 0),
-				beginScl: { x: scl.x, y: scl.y, z: scl.z ?? 1 }
+			snap.push({
+				obj: o,
+				pos: { x: pos.x, y: pos.y },
+				rot: rot.z || 0,
+				scl: { x: scl.x, y: scl.y }
 			});
 		}
 	
@@ -536,26 +618,28 @@ export default class D2DGizmo {
 
 	_selectionAABB(objs) {
 		let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-		for (const o of objs) {
-			const r = this._worldAABB(o);
+	
+		for (const root of objs) {
+			const r = this._worldAABBDeep(root);
 			if (!r) continue;
 			if (r.minX < minX) minX = r.minX;
 			if (r.minY < minY) minY = r.minY;
 			if (r.maxX > maxX) maxX = r.maxX;
 			if (r.maxY > maxY) maxY = r.maxY;
 		}
+	
 		if (!isFinite(minX)) return null;
 		return { minX, minY, maxX, maxY };
 	}
 
-	_selectionOBB(sel, frame) {
+	_selectionOBB(roots, frame) {
 		const { cx, cy, theta } = frame;
 		const c = Math.cos(-theta), s = Math.sin(-theta);
 		let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-
-		for (const o of sel) {
+	
+		const accum = (o) => {
 			const pts = this._localPoints(o);
-			if (!pts) continue;
+			if (!pts || pts.length === 0) return;
 			const M = this._worldMatrix(o);
 			for (const p of pts) {
 				const wp = this._applyMat(M, p.x, p.y);
@@ -567,7 +651,10 @@ export default class D2DGizmo {
 				if (lx > maxX) maxX = lx;
 				if (ly > maxY) maxY = ly;
 			}
-		}
+		};
+	
+		for (const root of roots) this._traverse2D(root, accum);
+	
 		if (!isFinite(minX)) return null;
 		return { minX, minY, maxX, maxY };
 	}
@@ -649,11 +736,27 @@ export default class D2DGizmo {
 
 	_pickTop(wx, wy) {
 		const list = this._all2DInDrawOrder();
+		let d3dobj;
+		
 		for (let i = list.length - 1; i >= 0; --i) {
 			const o = list[i];
-			if (this._hitObject(o, wx, wy)) return o;
+			if (this._hitObject(o, wx, wy)) {
+				d3dobj = o;
+				break;
+			}
 		}
-		return null;
+		
+		if(!d3dobj)
+			return null;
+		
+		// Get the object thats child of _editor.focus
+		while(d3dobj.parent != _editor.focus) {
+			d3dobj = d3dobj.parent;
+			if(!d3dobj)
+				break;
+		}
+		
+		return d3dobj;
 	}
 
 	_all2DInDrawOrder() {
@@ -666,12 +769,39 @@ export default class D2DGizmo {
 	_hitObject(o, wx, wy) {
 		const pts = this._localPoints(o);
 		if (!pts || pts.length < 2) return false;
-		const Minv = this._invert(this._worldMatrix(o));
+	
+		// world → local
+		const Minv = this._worldMatrixInverse(o);
 		const lp = this._applyMat(Minv, wx, wy);
-
+	
 		const closed = this._isClosed(pts);
-		if (closed) return this._pointInPolygon(lp.x, lp.y, pts);
-		const tol = 6 / (this.d2drenderer.pixelRatio * this.d2drenderer.viewScale);
+		const tol = this._px(10); // ~10px buffer in screen space
+	
+		if (closed) {
+			// inside fill OR within tol of the outline counts as a hit
+			if (this._pointInPolygon(lp.x, lp.y, pts)) return true;
+			if (this._pointNearPolyline(lp.x, lp.y, pts, tol)) return true;
+	
+			// also accept clicks within tol of the shape's local AABB (nice for tiny shapes)
+			let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+			for (const p of pts) {
+				if (p.x < minX) minX = p.x;
+				if (p.y < minY) minY = p.y;
+				if (p.x > maxX) maxX = p.x;
+				if (p.y > maxY) maxY = p.y;
+			}
+			if (
+				lp.x >= minX - tol && lp.x <= maxX + tol &&
+				lp.y >= minY - tol && lp.y <= maxY + tol
+			) {
+				// If the point is just outside the fill but near the bbox edge, treat as hit
+				// (keeps selections sticky while editing nearby points).
+				return true;
+			}
+			return false;
+		}
+	
+		// open polylines: near-line within tol
 		return this._pointNearPolyline(lp.x, lp.y, pts, tol);
 	}
 
@@ -743,5 +873,82 @@ export default class D2DGizmo {
 	_quatFromZ(rad) {
 		const half = rad * 0.5;
 		return { x: 0, y: 0, z: Math.sin(half), w: Math.cos(half) };
+	}
+	
+	_px(px = 10) {
+		const k = this.d2drenderer.pixelRatio * this.d2drenderer.viewScale;
+		return px / k;
+	}
+	
+	_worldMatrixInverse(o) {
+		const M = this._worldMatrix(o);
+		const det = M.a * M.d - M.b * M.c || 1e-12;
+		const ia =  M.d / det;
+		const ib = -M.b / det;
+		const ic = -M.c / det;
+		const id =  M.a / det;
+		const ie = -(ia * M.e + ic * M.f);
+		const iff = -(ib * M.e + id * M.f);
+		return { a: ia, b: ib, c: ic, d: id, e: ie, f: iff };
+	}
+	
+	_worldAABBDeep(root) {
+		let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+	
+		this._traverse2D(root, (o) => {
+			const pts = this._localPoints(o);
+			if (!pts || pts.length === 0) return;
+			const M = this._worldMatrix(o);
+			for (const p of pts) {
+				const wp = this._applyMat(M, p.x, p.y);
+				if (wp.x < minX) minX = wp.x;
+				if (wp.y < minY) minY = wp.y;
+				if (wp.x > maxX) maxX = wp.x;
+				if (wp.y > maxY) maxY = wp.y;
+			}
+		});
+	
+		if (!isFinite(minX)) return null;
+		return { minX, minY, maxX, maxY };
+	}
+	
+	_traverse2D(node, fn) {
+		if (!node) return;
+		// visit this node if it's 2D
+		if (node.is2D) fn(node);
+		// depth-first through children (if any)
+		const kids = node.children || node._children || [];
+		for (const c of kids) this._traverse2D(c, fn);
+	}
+	
+	_rectFromPoints(a, b) {
+		const x = Math.min(a.x, b.x);
+		const y = Math.min(a.y, b.y);
+		const w = Math.abs(b.x - a.x);
+		const h = Math.abs(b.y - a.y);
+		return { x, y, w, h };
+	}
+	
+	_rectIntersectsAABB(rect, aabb) {
+		return (
+			aabb.minX < rect.x + rect.w &&
+			aabb.maxX > rect.x &&
+			aabb.minY < rect.y + rect.h &&
+			aabb.maxY > rect.y
+		);
+	}
+	
+	_marqueeRootsUnderFocus() {
+		const roots = new Set();
+		const focus = _editor.focus || this.d2drenderer.root;
+	
+		this._traverse2D(focus, (node) => {
+			if (!node?.is2D) return;
+			let r = node;
+			while (r.parent && r.parent !== focus) r = r.parent;
+			if (r?.is2D) roots.add(r);
+		});
+	
+		return Array.from(roots);
 	}
 }

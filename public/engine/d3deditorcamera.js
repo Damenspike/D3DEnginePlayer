@@ -260,6 +260,6 @@ this.onEditorEnterFrame = () => {
 _editor.focusOnSelectedObjects = () => {
 	const inputFieldInFocus = _input.getInputFieldInFocus();
 	
-	if(!inputFieldInFocus && _editor.selectedObjects.length > 0 && !this._focusTween)
+	if(!inputFieldInFocus && _editor.selectedObjects.length > 0 && _editor.mode == '3D' && !this._focusTween)
 		focusOn(_editor.selectedObjects)
 };

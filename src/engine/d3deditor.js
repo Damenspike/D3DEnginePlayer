@@ -332,7 +332,7 @@ function startAnimationLoop() {
 		
 		if(_editor.mode == '2D') {
 			renderer2d.render(); // render 2d
-			renderer2d.gizmo.render();
+			renderer2d.renderGizmos();
 		}
 		
 		if (_editor.focus != _root) {
@@ -1111,3 +1111,5 @@ D3D.setEventListener('new-asset', (extension) => _editor.newAsset(extension));
 D3D.setEventListener('add-component', (type) => addComponent(type));
 D3D.setEventListener('menu-import-assets', onImportAssets);
 D3D.setEventListener('csm', onConsoleMessage);
+D3D.setEventListener('copy-special', (type) => _editor.copySpecial(type));
+D3D.setEventListener('paste-special', (type) => _editor.pasteSpecial(type));

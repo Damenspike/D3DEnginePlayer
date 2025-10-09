@@ -7,7 +7,9 @@ export const Tools = Object.freeze({
 	Select: 'select',
 	Pan: 'pan',
 	Transform: 'transform',
-	Draw: 'draw'
+	Brush: 'brush',
+	Pencil: 'pencil',
+	Line: 'line'
 });
 export const TransformTools = Object.freeze({
 	Translate: 'translate',
@@ -60,6 +62,7 @@ export default class D3DEditorState {
 		this.console = [];
 		this.lastSingleClick = 0;
 		this._mode = '3D';
+		this.draw2d = {fillColor: '#0099FFFF', lineColor: '#000000FF', brushRadius: 1, lineWidth: 1}
 	}
 
 	setMode(mode) {
@@ -228,6 +231,8 @@ export default class D3DEditorState {
 		} finally {
 			this._isReplaying = false;
 		}
+		
+		this.updateInspector?.();
 	}
 	
 	async redo() {
@@ -245,6 +250,8 @@ export default class D3DEditorState {
 		} finally {
 			this._isReplaying = false;
 		}
+		
+		this.updateInspector?.();
 	}
 	
 	canUndo() { return this.currentStep >= 0; }
@@ -465,6 +472,96 @@ export default class D3DEditorState {
 		selectResult && this.setSelection(pastedObjects, false);
 		
 		return pastedObjects;
+	}
+	copySpecial(type) {
+		const d3dobj = this.selectedObjects[0];
+		
+		if(!d3dobj) {
+			this.showError({
+				title: 'Copy Special',
+				message: 'Please select an object first'
+			})
+			return;
+		}
+		
+		switch(type) {
+			case 'all': 
+				this.clipboardSpecial = {
+					position: d3dobj.position.clone(),
+					rotation: d3dobj.rotation.clone(),
+					scale: d3dobj.scale.clone()
+				};
+			break;
+		}
+	}
+	pasteSpecial(type) {
+		const d3dobj = this.selectedObjects[0];
+		
+		if(!d3dobj) {
+			this.showError({
+				title: 'Paste Special',
+				message: 'Please select an object first'
+			})
+			return;
+		}
+		if(!this.clipboardSpecial) {
+			this.showError({
+				title: 'Paste Special',
+				message: 'There is nothing to paste'
+			})
+			return;
+		}
+		
+		const originTransform = {
+			position: d3dobj.position.clone(),
+			rotation: d3dobj.rotation.clone(),
+			scale: d3dobj.scale.clone()
+		}
+		const clip = {...this.clipboardSpecial};
+		const revPaste = () => {
+			switch(type) {
+				case 'all': 
+					d3dobj.position = originTransform.position;
+					d3dobj.rotation = originTransform.rotation;
+					d3dobj.scale = originTransform.scale;
+				break;
+				case 'position': 
+					d3dobj.position = originTransform.position;
+				break;
+				case 'rotation': 
+					d3dobj.rotation = originTransform.rotation;
+				break;
+				case 'scale': 
+					d3dobj.scale = originTransform.scale;
+				break;
+			}
+		}
+		const doPaste = () => {
+			switch(type) {
+				case 'all': 
+					d3dobj.position = clip.position;
+					d3dobj.rotation = clip.rotation;
+					d3dobj.scale = clip.scale;
+				break;
+				case 'position': 
+					d3dobj.position = clip.position;
+				break;
+				case 'rotation': 
+					d3dobj.rotation = clip.rotation;
+				break;
+				case 'scale': 
+					d3dobj.scale = clip.scale;
+				break;
+			}
+		}
+		
+		this.addStep({
+			name: 'Paste Transform',
+			undo: revPaste,
+			redo: doPaste
+		});
+		
+		doPaste();
 	}
 	
 	editCode() {

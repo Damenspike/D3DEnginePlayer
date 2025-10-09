@@ -1,5 +1,7 @@
 // d2drenderer.js
 import D2DGizmo from './d2dgizmo.js';
+import D2DEdit from './d2dedit.js';
+import D2DDraw from './d2ddraw.js';
 import {
 	approx,
 	hexToRgba
@@ -20,8 +22,11 @@ export default class D2DRenderer {
 		
 		this.setSize(this.width, this.height);
 		
-		if(addGizmo)
+		if(addGizmo) {
 			this.gizmo = new D2DGizmo(this);
+			this.edit = new D2DEdit(this);
+			this.drawer = new D2DDraw(this);
+		}
 	}
 	
 	refreshSize() {
@@ -81,6 +86,11 @@ export default class D2DRenderer {
 		for (const d3dobject of d3dobjects) 
 			this.draw(d3dobject);
 	}
+	renderGizmos() {
+		this.gizmo?.render();
+		this.edit?.render();
+		this.drawer?.render();
+	}
 	gather(root) {
 		const objects = [];
 		root.traverse(d3dobject => {
@@ -97,21 +107,24 @@ export default class D2DRenderer {
 		if(!graphic) 
 			return;
 			
-		graphic._points = [
-			{x: 0, y: -40},
-			{x: 25, y: -65},
-			{x: 50, y: -65},
-			{x: 75, y: -40},
-			{x: 75, y: 0},
-			{x: 37, y: 40},
-			{x: 0, y: 75},
-			{x: -37, y: 40},
-			{x: -75, y: 0},
-			{x: -75, y: -40},
-			{x: -50, y: -65},
-			{x: -25, y: -65},
-			{x: 0, y: -40}
-		]
+		/*if(!graphic._test) {
+			graphic._points = [
+				{x: 0, y: -40},
+				{x: 25, y: -65},
+				{x: 50, y: -65},
+				{x: 75, y: -40},
+				{x: 75, y: 0},
+				{x: 37, y: 40},
+				{x: 0, y: 75},
+				{x: -37, y: 40},
+				{x: -75, y: 0},
+				{x: -75, y: -40},
+				{x: -50, y: -65},
+				{x: -25, y: -65},
+				{x: 0, y: -40}
+			]
+			graphic._test = true;
+		}*/
 			
 		if(graphic._bitmap)
 			return; // TODO: drawBitmap
@@ -120,7 +133,6 @@ export default class D2DRenderer {
 	}
 	drawVector(d3dobject) {
 		const ctx = this.ctx;
-	
 		if (!d3dobject.visible) return;
 	
 		const alpha   = Number.isFinite(d3dobject.opacity) ? Math.max(0, Math.min(1, d3dobject.opacity)) : 1;
@@ -128,54 +140,80 @@ export default class D2DRenderer {
 		const points  = graphic?._points || [];
 		if (points.length < 1) return;
 	
-		const graphicLineEnabled = graphic.line !== false;
-		const graphicLineWidth   = Number(graphic.lineWidth ?? 1);
-		const graphicLineColor   = graphic.lineColor ?? '#ffffff';
-		const lineCap            = graphic.lineCap  ?? 'round';
-		const lineJoin           = graphic.lineJoin ?? 'round';
-		const miterLimit         = Number(graphic.miterLimit ?? 10);
+		const gLineEnabled = graphic.line !== false;
+		const gLineWidth   = Number(graphic.lineWidth ?? 1);
+		const gLineColor   = graphic.lineColor ?? '#ffffff';
+		const lineCap      = graphic.lineCap  ?? 'round';
+		const lineJoin     = graphic.lineJoin ?? 'round';
+		const miterLimit   = Number(graphic.miterLimit ?? 10);
 	
 		const fillEnabled  = graphic.fill !== false;
 		const fillColor    = graphic.fillColor ?? '#ffffffff';
 		const borderRadius = Math.max(0, Number(graphic.borderRadius ?? 0));
 	
-		const firstPoint = points[0];
-		const lastPoint  = points[points.length - 1];
-		const isClosed   = points.length >= 3 && approx(firstPoint.x, lastPoint.x) && approx(firstPoint.y, lastPoint.y);
+		const first = points[0];
+		const last  = points[points.length - 1];
+		const isClosed = points.length >= 3 && approx(first.x, last.x) && approx(first.y, last.y);
 	
-		const buildFillPath = () => {
-			if (!isClosed || borderRadius <= 0 || points.length < 3) {
-				ctx.beginPath();
-				ctx.moveTo(points[0].x, points[0].y);
-				for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
-				if (isClosed) ctx.closePath();
-				return;
-			}
+		const buildRawPath = () => {
+			const p = new Path2D();
+			p.moveTo(points[0].x, points[0].y);
+			for (let i = 1; i < points.length; i++) p.lineTo(points[i].x, points[i].y);
+			if (isClosed) p.closePath();
+			return p;
+		};
+	
+		const buildRoundedPath = () => {
+			if (!isClosed || borderRadius <= 0 || points.length < 3) return null;
 			const base = points.slice(0, -1);
 			const count = base.length;
+			if (count < 3) return null;
+	
 			const get = i => base[(i + count) % count];
-			ctx.beginPath();
+			const p = new Path2D();
+	
 			for (let i = 0; i < count; i++) {
 				const p0 = get(i - 1);
 				const p1 = get(i);
 				const p2 = get(i + 1);
+	
 				const v1x = p1.x - p0.x, v1y = p1.y - p0.y;
 				const v2x = p2.x - p1.x, v2y = p2.y - p1.y;
+	
 				const len1 = Math.hypot(v1x, v1y) || 1;
 				const len2 = Math.hypot(v2x, v2y) || 1;
+	
 				const r = Math.min(borderRadius, len1 / 2, len2 / 2);
-				const inX = p1.x - (v1x / len1) * r;
-				const inY = p1.y - (v1y / len1) * r;
+	
+				const inX  = p1.x - (v1x / len1) * r;
+				const inY  = p1.y - (v1y / len1) * r;
 				const outX = p1.x + (v2x / len2) * r;
 				const outY = p1.y + (v2y / len2) * r;
-				if (i === 0) ctx.moveTo(inX, inY);
-				else ctx.lineTo(inX, inY);
-				ctx.quadraticCurveTo(p1.x, p1.y, outX, outY);
+	
+				if (i === 0) p.moveTo(inX, inY);
+				else p.lineTo(inX, inY);
+	
+				p.quadraticCurveTo(p1.x, p1.y, outX, outY);
 			}
-			ctx.closePath();
+			p.closePath();
+			return p;
 		};
 	
-		// ----- build full world matrix (keeps scale local regardless of rotation)
+		const rawPath     = buildRawPath();
+		const roundedPath = buildRoundedPath();
+		const pathForFill = roundedPath || rawPath;
+	
+		const uniformStroke =
+			gLineEnabled &&
+			points.every(pt =>
+				pt.line === undefined &&
+				pt.lineWidth === undefined &&
+				pt.lineColor === undefined &&
+				pt.lineCap === undefined &&
+				pt.lineJoin === undefined &&
+				pt.miterLimit === undefined
+			);
+	
 		let m = new DOMMatrix();
 		const chain = [];
 		let n = d3dobject;
@@ -188,51 +226,58 @@ export default class D2DRenderer {
 			const rz = Number(o.rotation?.z) || 0;
 			const sx = Number(o.scale?.x) || 1;
 			const sy = Number(o.scale?.y) || 1;
-			// translate → rotate → scale; canvas composes on the right, so points see S then R then T
+			// T * R * S  (right-multiplied → points see S→R→T in local order)
 			m = m.translate(tx, ty).rotate(rz * 180 / Math.PI).scale(sx, sy);
 		}
 	
 		const gs = (this.pixelRatio || 1) * (this.viewScale || 1);
+		const isInFocus = _editor.focus == d3dobject || _editor.focus.containsChild(d3dobject);
+		const masterAlpha = isInFocus ? 1 : 0.2;
 	
 		ctx.save();
-		ctx.globalAlpha *= alpha;
-	
-		// device scale first, then apply world matrix
+		ctx.globalAlpha *= alpha * masterAlpha;
 		ctx.setTransform(gs, 0, 0, gs, 0, 0);
 		ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
 	
-		// fill
-		if (fillEnabled) {
-			buildFillPath();
+		if (fillEnabled && pathForFill) {
 			ctx.fillStyle = hexToRgba(fillColor);
-			ctx.fill();
+			ctx.fill(pathForFill);
 		}
 	
-		// strokes (per-segment overrides supported)
-		const segCount = points.length - 1;
-		for (let i = 0; i < segCount; i++) {
-			const j = i + 1;
-			const a = points[i];
-			const b = points[j];
-			const lineEnabled =
-				(a.line !== false && b.line !== false) && (a.line === true || b.line === true || graphicLineEnabled);
-			if (!lineEnabled) continue;
+		if (uniformStroke && pathForFill) {
+			// BorderRadius affects stroke too (when stroke is uniform)
+			ctx.lineWidth   = Math.max(0.001, gLineWidth);
+			ctx.strokeStyle = hexToRgba(gLineColor);
+			ctx.lineCap     = lineCap;
+			ctx.lineJoin    = lineJoin;
+			ctx.miterLimit  = miterLimit;
+			ctx.stroke(pathForFill);
+		} else {
+			// Per-segment overrides → fall back to straight segments (no rounded joins)
+			const segCount = points.length - 1;
+			for (let i = 0; i < segCount; i++) {
+				const a = points[i];
+				const b = points[i + 1];
+				const strokeOn =
+					(a.line !== false && b.line !== false) && (a.line === true || b.line === true || gLineEnabled);
+				if (!strokeOn) continue;
 	
-			const segWidth = Number(b.lineWidth ?? a.lineWidth ?? graphicLineWidth);
-			const segColor = b.lineColor ?? a.lineColor ?? graphicLineColor;
-			const segCap   = b.lineCap  ?? a.lineCap  ?? lineCap;
-			const segJoin  = b.lineJoin ?? a.lineJoin ?? lineJoin;
-			const segMiter = Number(b.miterLimit ?? a.miterLimit ?? miterLimit);
+				const segWidth = Number(b.lineWidth ?? a.lineWidth ?? gLineWidth);
+				const segColor = b.lineColor ?? a.lineColor ?? gLineColor;
+				const segCap   = b.lineCap  ?? a.lineCap  ?? lineCap;
+				const segJoin  = b.lineJoin ?? a.lineJoin ?? lineJoin;
+				const segMiter = Number(b.miterLimit ?? a.miterLimit ?? miterLimit);
 	
-			ctx.beginPath();
-			ctx.moveTo(a.x, a.y);
-			ctx.lineTo(b.x, b.y);
-			ctx.lineWidth   = Math.max(0.001, segWidth);
-			ctx.strokeStyle = hexToRgba(segColor);
-			ctx.lineCap     = segCap;
-			ctx.lineJoin    = segJoin;
-			ctx.miterLimit  = segMiter;
-			ctx.stroke();
+				ctx.beginPath();
+				ctx.moveTo(a.x, a.y);
+				ctx.lineTo(b.x, b.y);
+				ctx.lineWidth   = Math.max(0.001, segWidth);
+				ctx.strokeStyle = hexToRgba(segColor);
+				ctx.lineCap     = segCap;
+				ctx.lineJoin    = segJoin;
+				ctx.miterLimit  = segMiter;
+				ctx.stroke();
+			}
 		}
 	
 		ctx.restore();

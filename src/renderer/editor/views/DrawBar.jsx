@@ -2,7 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import { 
 	MdNavigation,
 	MdBrush,
-	MdTransform
+	MdTransform,
+	MdOutlineDraw,
+	MdRemove
 } from 'react-icons/md';
 
 const DrawTools = [
@@ -57,8 +59,22 @@ export default function DrawBar() {
 			{
 				drawToolButton(
 					(<MdBrush />),
-					() => _tool == 'draw',
-					() => setTool('draw')
+					() => _tool == 'brush',
+					() => setTool('brush')
+				)
+			}
+			{
+				drawToolButton(
+					(<MdOutlineDraw />),
+					() => _tool == 'pencil',
+					() => setTool('pencil')
+				)
+			}
+			{
+				drawToolButton(
+					(<MdRemove />),
+					() => _tool == 'line',
+					() => setTool('line')
 				)
 			}
 		</div>

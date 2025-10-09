@@ -335,6 +335,14 @@ function sendAddComponent(type) {
 	if (!editorWindow.isFocused()) return;
 	editorWindow.webContents.send('add-component', type);
 }
+function sendCopySpecial(type) {
+	if (!editorWindow.isFocused()) return;
+	editorWindow.webContents.send('copy-special', type);
+}
+function sendPasteSpecial(type) {
+	if (!editorWindow.isFocused()) return;
+	editorWindow.webContents.send('paste-special', type);
+}
 function sendBuild({prompt, play}) {
 	if (!editorWindow.isFocused()) return;
 	let uri = lastOpenedProjectUri;
@@ -443,6 +451,33 @@ const menuTemplate = [
 			{ role: 'cut', id: 'cut' },
 			{ role: 'copy', id: 'copy' },
 			{ role: 'paste', id: 'paste' },
+			{
+				label: 'Copy Transform',
+				accelerator: 'CmdOrCtrl+Shift+T',
+				click: () => sendCopySpecial('all')
+			},
+			{
+				label: 'Paste Transform',
+				submenu: [
+					{
+						label: 'All',
+						accelerator: 'CmdOrCtrl+Shift+V',
+						click: () => sendPasteSpecial('all')
+					},
+					{
+						label: 'Position',
+						click: () => sendPasteSpecial('position')
+					},
+					{
+						label: 'Rotation',
+						click: () => sendPasteSpecial('rotation')
+					},
+					{
+						label: 'Scale',
+						click: () => sendPasteSpecial('scale')
+					}
+				]
+			},
 			{
 				id: 'delete',
 				label: 'Delete',

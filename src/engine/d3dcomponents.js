@@ -384,6 +384,11 @@ const D3DComponents = {
 	Graphic2D: {
 		name: 'Graphic 2D',
 		fields: {
+			'_points': {
+				label: '',
+				type: 'none',
+				def: []
+			},
 			'_pivotPoint': {
 				label: '',
 				type: 'none',

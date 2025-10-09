@@ -142,3 +142,5 @@ addIPCListener('menu-import-assets');
 addIPCListener('add-component');
 addIPCListener('csm');
 addIPCListener('build');
+addIPCListener('copy-special');
+addIPCListener('paste-special');
