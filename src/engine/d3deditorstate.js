@@ -4,6 +4,9 @@ import {
 import {
 	getSelectionCenter
 } from './d3dutility.js';
+import {
+	mergeGraphic2Ds
+} from './d2ddraw.js';
 
 // Tool enum
 export const Tools = Object.freeze({
@@ -12,7 +15,10 @@ export const Tools = Object.freeze({
 	Transform: 'transform',
 	Brush: 'brush',
 	Pencil: 'pencil',
-	Line: 'line'
+	Line: 'line',
+	Square: 'square',
+	Circle: 'circle',
+	Polygon: 'polygon'
 });
 export const TransformTools = Object.freeze({
 	Translate: 'translate',
@@ -666,7 +672,7 @@ export default class D3DEditorState {
 			redo: () => this.ungroupObjects(d3dobjects, false)
 		});
 	}
-	mergeObjects(d3dobjects) {
+	async mergeObjects(d3dobjects, containingParent, addStep = true) {
 		if(d3dobjects.length <= 1) {
 			this.showError({
 				title: 'Merge',
@@ -675,6 +681,59 @@ export default class D3DEditorState {
 			return;
 		}
 		
+		let toMerge = d3dobjects.filter(o => o.is2D);
+		
+		if(toMerge.length != d3dobjects.length) {
+			this.showError({
+				title: 'Merge',
+				message: 'All objects must be 2D'
+			})
+			return;
+		}
+		
+		if(!containingParent)
+			containingParent = this.focus;
+		
+		const center = getSelectionCenter(d3dobjects);
+		let d3dmerged = await containingParent.createObject({
+			name: 'Merged',
+			position: {x: center.x, y: center.y, z: center.z}
+		});
+		const mergedGraphic2D = mergeGraphic2Ds(toMerge.map(o => o.graphic2d));
+		let restorableObjDatas = toMerge.map(o => o.getSerializableObject());
+		
+		// Assign graphic2D to merged container
+		d3dmerged.addComponent('Graphic2D', mergedGraphic2D);
+		
+		// Delete originals
+		toMerge.forEach(d3dobj => d3dobj.delete());
+		
+		this.setSelection([d3dmerged], false);
+		this.updateInspector?.();
+		
+		addStep && this.addStep({
+			name: 'Merge',
+			undo: async () => {
+				const newToMerge = [];
+				
+				d3dmerged.delete();
+				
+				for(let objData of restorableObjDatas) {
+					const restoredD3DObject = await containingParent.createObject(objData);
+					newToMerge.push(restoredD3DObject);
+				}
+				
+				toMerge = newToMerge;
+				this.setSelection(newToMerge, false);
+			},
+			redo: async () => {
+				const result = await this.mergeObjects(toMerge, containingParent, false);
+				restorableObjDatas = result.restorableObjDatas;
+				d3dmerged = result.d3dmerged;
+			}
+		});
+		
+		return {d3dmerged, restorableObjDatas};
 	}
 	
 	async importFile(file, destDir) {

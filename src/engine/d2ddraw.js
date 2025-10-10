@@ -8,11 +8,13 @@ export default class D2DDraw {
 		this.localPoints = [];
 		this.tempObj = null;
 		this.cursor = null;
+		this.cursorLocal = null;
 		this.host = null;
 		this._onDown = this._onDown.bind(this);
 		this._onMove = this._onMove.bind(this);
 		this._onUp = this._onUp.bind(this);
 		this._onBlur = this._onBlur.bind(this);
+		this._onDbl = this._onDbl.bind(this);
 		this._attach();
 	}
 	
@@ -21,6 +23,7 @@ export default class D2DDraw {
 	_attach() {
 		if (!this.canvas) return;
 		this.canvas.addEventListener('mousedown', this._onDown, { passive: false });
+		this.canvas.addEventListener('dblclick', this._onDbl, { passive: false });
 		window.addEventListener('mousemove', this._onMove, { passive: false });
 		window.addEventListener('mouseup', this._onUp, { passive: false });
 		window.addEventListener('blur', this._onBlur, { passive: false });
@@ -29,13 +32,14 @@ export default class D2DDraw {
 	_detach() {
 		if (!this.canvas) return;
 		this.canvas.removeEventListener('mousedown', this._onDown);
+		this.canvas.removeEventListener('dblclick', this._onDbl);
 		window.removeEventListener('mousemove', this._onMove);
 		window.removeEventListener('mouseup', this._onUp);
 		window.removeEventListener('blur', this._onBlur);
 	}
 	
 	_isActive() {
-		const tools = new Set(['brush','pencil','line']);
+		const tools = new Set(['brush','pencil','line','square','circle','polygon']);
 		const t = _editor?.tool;
 		return tools.has(t);
 	}
@@ -93,26 +97,44 @@ export default class D2DDraw {
 		e.preventDefault();
 		this.tool = _editor.tool;
 		this.host = _editor?.active2DHost || _root;
-		this.drawing = true;
-		this.localPoints = [];
 		const c = this._mouseToCanvas(e);
 		this.cursor = c;
 		const p = this._canvasToLocal(c);
-		this.localPoints.push({ x: p.x, y: p.y });
-		if (this.tool === 'line') this.localPoints.push({ x: p.x, y: p.y });
-		this._ensureTemp().then(() => {
-			if (this.tempObj) this.tempObj.visible = false;
-			this._updateTempGraphic(true);
-			this._request();
-		});
+		this.cursorLocal = p;
+		
+		if (this.tool === 'polygon') {
+			if (!this.drawing) {
+				this.drawing = true;
+				this.localPoints = [{ x: p.x, y: p.y }];
+				this._ensureTemp().then(() => { if (this.tempObj) this.tempObj.visible = false; this._updateTempGraphic(true); this._request(); });
+			} else {
+				this.localPoints.push({ x: p.x, y: p.y });
+				this._updateTempGraphic();
+				this._request();
+			}
+			return;
+		}
+		
+		this.drawing = true;
+		this.localPoints = [{ x: p.x, y: p.y }];
+		if (this.tool === 'line' || this.tool === 'square' || this.tool === 'circle') this.localPoints.push({ x: p.x, y: p.y });
+		this._ensureTemp().then(() => { if (this.tempObj) this.tempObj.visible = false; this._updateTempGraphic(true); this._request(); });
 	}
 	
 	_onMove(e) {
 		const c = this._mouseToCanvas(e);
 		this.cursor = c;
-		if (!this.drawing) { this._request(); return; }
 		const p = this._canvasToLocal(c);
-		if (this.tool === 'line') {
+		this.cursorLocal = p;
+		if (!this.drawing) { this._request(); return; }
+		
+		if (this.tool === 'polygon') {
+			this._updateTempGraphic();
+			this._request();
+			return;
+		}
+		
+		if (this.tool === 'line' || this.tool === 'square' || this.tool === 'circle') {
 			this.localPoints[1] = { x: p.x, y: p.y };
 		} else {
 			const last = this.localPoints[this.localPoints.length - 1];
@@ -124,43 +146,38 @@ export default class D2DDraw {
 	
 	_onUp() {
 		if (!this.drawing) return;
-		this.drawing = false;
-		let obj = this.tempObj;
-		this.tempObj = null;
-		if (!obj) return;
-		obj.visible = true;
-		if (this.localPoints.length > 2) this.localPoints = this._simplify(this.localPoints);
-		this._updateTempGraphic();
-		const pts = obj?.graphic2d?._points || [];
-		if (pts.length === 0) { obj.delete?.(); this._request(); return; }
-		if (_editor?.addStep) {
-			const host = obj.parent || this.host || _root;
-			const name = obj.name || 'Draw 2D';
-			const props = { ...(obj.graphic2d || {}) };
-			props._points = (obj.graphic2d?._points || []).map(p => ({ x: p.x, y: p.y }));
-			const components = [{ type: 'Graphic2D', properties: props }];
-			let keep = obj;
-			const undo = async () => { keep?.delete?.(); };
-			const redo = async () => {
-				if (keep && keep.parent) return;
-				keep = await host.createObject({ name, components });
-				_editor?.selectObjects?.([keep]);
-			};
-			_editor.addStep({ label: 'Draw 2D', undo, redo });
+		if (this.tool === 'polygon') { this._request(); return; }
+		this._finalizeShape();
+	}
+	
+	_onDbl(e) {
+		if (!this.drawing) return;
+		if (this.tool !== 'polygon') return;
+		e.preventDefault();
+		if (this.localPoints.length >= 3) {
+			const a = this.localPoints[0];
+			const b = this.localPoints[this.localPoints.length - 1];
+			if (a && b && (a.x !== b.x || a.y !== b.y)) this.localPoints.push({ x: a.x, y: a.y });
 		}
-		_editor?.selectObjects?.([obj]);
-		this._request();
+		this._finalizeShape();
 	}
 	
 	_onBlur() {
-		if (this.drawing) this._onUp();
+		if (this.drawing && this.tool !== 'polygon') this._finalizeShape();
 	}
 	
 	async _ensureTemp() {
 		const host = this.host || _editor?.active2DHost || _root;
-		const name = this.tool === 'brush' ? 'Brush Stroke' : (this.tool === 'pencil' ? 'Pencil Stroke' : 'Line');
+		let name = 'Draw 2D';
+		if (this.tool === 'brush') name = 'Brush Stroke';
+		else if (this.tool === 'pencil') name = 'Pencil Stroke';
+		else if (this.tool === 'line') name = 'Line';
+		else if (this.tool === 'square') name = 'Rectangle';
+		else if (this.tool === 'circle') name = 'Ellipse';
+		else if (this.tool === 'polygon') name = 'Polygon';
+		
 		const props = { _points: [] };
-		if (this.tool === 'brush') {
+		if (this.tool === 'brush' || this.tool === 'square' || this.tool === 'circle' || this.tool === 'polygon') {
 			props.fill = true;
 			props.line = false;
 			props.fillColor = _editor.draw2d?.fillColor || '#000000ff';
@@ -191,8 +208,104 @@ export default class D2DDraw {
 			obj.graphic2d._points = this.localPoints.slice(0, 2).map(p => ({ x: p.x, y: p.y }));
 			obj.graphic2d.lineWidth = Math.max(1, Number(_editor.draw2d?.lineWidth ?? obj.graphic2d.lineWidth ?? 1));
 			obj.graphic2d.lineColor = _editor.draw2d?.lineColor || obj.graphic2d.lineColor;
+		} else if (this.tool === 'square') {
+			if (this.localPoints.length >= 2) {
+				const a = this.localPoints[0], b = this.localPoints[1];
+				obj.graphic2d._points = this._makeRectPoints(a, b);
+				obj.graphic2d.fill = true;
+				obj.graphic2d.line = false;
+				obj.graphic2d.fillColor = _editor.draw2d?.fillColor || obj.graphic2d.fillColor;
+			}
+		} else if (this.tool === 'circle') {
+			if (this.localPoints.length >= 2) {
+				const a = this.localPoints[0], b = this.localPoints[1];
+				obj.graphic2d._points = this._makeEllipsePoints(a, b, 64);
+				obj.graphic2d.fill = true;
+				obj.graphic2d.line = false;
+				obj.graphic2d.fillColor = _editor.draw2d?.fillColor || obj.graphic2d.fillColor;
+			}
+		} else if (this.tool === 'polygon') {
+			const pts = this.localPoints.slice();
+			if (this.cursorLocal) pts.push({ x: this.cursorLocal.x, y: this.cursorLocal.y });
+			obj.graphic2d._points = pts;
+			obj.graphic2d.fill = true;
+			obj.graphic2d.line = false;
+			obj.graphic2d.fillColor = _editor.draw2d?.fillColor || obj.graphic2d.fillColor;
 		}
 		obj.invalidateGraphic2D?.();
+	}
+	
+	_finalizeShape() {
+		this.drawing = false;
+		let obj = this.tempObj;
+		this.tempObj = null;
+		if (!obj) return;
+		obj.visible = true;
+		
+		if (this.tool === 'brush' && this.localPoints.length > 2) this.localPoints = this._simplify(this.localPoints);
+		if (this.tool === 'pencil' && this.localPoints.length > 2) this.localPoints = this._simplify(this.localPoints);
+		
+		if (this.tool === 'square' && this.localPoints.length >= 2) obj.graphic2d._points = this._makeRectPoints(this.localPoints[0], this.localPoints[1]);
+		if (this.tool === 'circle' && this.localPoints.length >= 2) obj.graphic2d._points = this._makeEllipsePoints(this.localPoints[0], this.localPoints[1], 64);
+		if (this.tool === 'polygon') obj.graphic2d._points = this._cleanAndClose(this.localPoints);
+		if (obj.graphic2d.fill) obj.graphic2d._points = this._cleanAndClose(obj.graphic2d._points);
+		
+		obj.invalidateGraphic2D?.();
+		const pts = obj?.graphic2d?._points || [];
+		if (pts.length === 0) { obj.delete?.(); this._request(); return; }
+		
+		this._centerObject(obj);
+		
+		if (_editor?.addStep) {
+			const host = obj.parent || this.host || _root;
+			const name = obj.name || 'Draw 2D';
+			const props = { ...(obj.graphic2d || {}) };
+			props._points = (obj.graphic2d?._points || []).map(p => ({ x: p.x, y: p.y }));
+			const components = [{ type: 'Graphic2D', properties: props }];
+			let keep = obj;
+			const undo = async () => { keep?.delete?.(); };
+			const redo = async () => {
+				if (keep && keep.parent) return;
+				keep = await host.createObject({ name, components });
+				keep.position = { x: obj.position.x, y: obj.position.y, z: obj.position.z || 0 };
+				keep.invalidateGraphic2D?.();
+				_editor?.selectObjects?.([keep]);
+			};
+			_editor.addStep({ label: 'Draw 2D', undo, redo });
+		}
+		
+		_editor?.selectObjects?.([obj]);
+		this._request();
+	}
+	
+	_makeRectPoints(a, b) {
+		const p1 = { x: a.x, y: a.y };
+		const p2 = { x: b.x, y: a.y };
+		const p3 = { x: b.x, y: b.y };
+		const p4 = { x: a.x, y: b.y };
+		return [p1, p2, p3, p4, { x: p1.x, y: p1.y }];
+	}
+	
+	_makeEllipsePoints(a, b, segs = 64) {
+		const cx = (a.x + b.x) * 0.5;
+		const cy = (a.y + b.y) * 0.5;
+		const rx = Math.max(0.1, Math.abs(b.x - a.x) * 0.5);
+		const ry = Math.max(0.1, Math.abs(b.y - a.y) * 0.5);
+		const out = [];
+		for (let i = 0; i < segs; i++) {
+			const t = (i / segs) * Math.PI * 2;
+			out.push({ x: cx + Math.cos(t) * rx, y: cy + Math.sin(t) * ry });
+		}
+		out.push({ x: out[0].x, y: out[0].y });
+		return out;
+	}
+	
+	_cleanAndClose(points) {
+		const pts = (points || []).filter(p => isFinite(p?.x) && isFinite(p?.y)).map(p => ({ x: +p.x, y: +p.y }));
+		if (pts.length === 0) return pts;
+		const a = pts[0], b = pts[pts.length - 1];
+		if (a.x !== b.x || a.y !== b.y) pts.push({ x: a.x, y: a.y });
+		return pts;
 	}
 	
 	_normals(a, b) {
@@ -261,6 +374,26 @@ export default class D2DDraw {
 		return simplified;
 	}
 	
+	_centerObject(obj) {
+		const pts = Array.isArray(obj?.graphic2d?._points) ? obj.graphic2d._points : [];
+		if (pts.length === 0) return;
+		let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
+		for (const p of pts) {
+			const x = Number(p.x) || 0;
+			const y = Number(p.y) || 0;
+			if (x < minx) minx = x;
+			if (y < miny) miny = y;
+			if (x > maxx) maxx = x;
+			if (y > maxy) maxy = y;
+		}
+		if (!isFinite(minx) || !isFinite(miny) || !isFinite(maxx) || !isFinite(maxy)) return;
+		const cx = (minx + maxx) * 0.5;
+		const cy = (miny + maxy) * 0.5;
+		for (const p of pts) { p.x -= cx; p.y -= cy; }
+		obj.position = { x: (Number(obj.position?.x) || 0) + cx, y: (Number(obj.position?.y) || 0) + cy, z: Number(obj.position?.z) || 0 };
+		obj.invalidateGraphic2D?.();
+	}
+	
 	hex8(v, fallback) {
 		if (!v || typeof v !== 'string') return fallback || 'rgba(255,255,255,1)';
 		if (v.startsWith('#') && (v.length === 9 || v.length === 7)) {
@@ -302,7 +435,7 @@ export default class D2DDraw {
 		if (this.drawing && this.localPoints.length > 0) {
 			if (tool === 'brush') {
 				const poly = this._strokeToPolygon(this.localPoints, radius, true).map(p => this._localToCanvas(p));
-				if (poly && poly.length > 1) {
+				if (poly.length > 1) {
 					ctx.beginPath();
 					ctx.moveTo(poly[0].x, poly[0].y);
 					for (let i = 1; i < poly.length; i++) ctx.lineTo(poly[i].x, poly[i].y);
@@ -335,6 +468,38 @@ export default class D2DDraw {
 					ctx.strokeStyle = lc;
 					ctx.stroke();
 				}
+			} else if (tool === 'square') {
+				if (this.localPoints.length >= 2) {
+					const rpts = this._makeRectPoints(this.localPoints[0], this.localPoints[1]).map(p => this._localToCanvas(p));
+					ctx.beginPath();
+					ctx.moveTo(rpts[0].x, rpts[0].y);
+					for (let i = 1; i < rpts.length; i++) ctx.lineTo(rpts[i].x, rpts[i].y);
+					ctx.closePath();
+					ctx.fillStyle = fc;
+					ctx.fill();
+				}
+			} else if (tool === 'circle') {
+				if (this.localPoints.length >= 2) {
+					const ep = this._makeEllipsePoints(this.localPoints[0], this.localPoints[1], 48).map(p => this._localToCanvas(p));
+					ctx.beginPath();
+					ctx.moveTo(ep[0].x, ep[0].y);
+					for (let i = 1; i < ep.length; i++) ctx.lineTo(ep[i].x, ep[i].y);
+					ctx.closePath();
+					ctx.fillStyle = fc;
+					ctx.fill();
+				}
+			} else if (tool === 'polygon') {
+				const pts = this.localPoints.slice();
+				if (this.cursorLocal) pts.push({ x: this.cursorLocal.x, y: this.cursorLocal.y });
+				if (pts.length > 1) {
+					const spts = pts.map(p => this._localToCanvas(p));
+					ctx.beginPath();
+					ctx.moveTo(spts[0].x, spts[0].y);
+					for (let i = 1; i < spts.length; i++) ctx.lineTo(spts[i].x, spts[i].y);
+					ctx.lineWidth = 1;
+					ctx.strokeStyle = fc;
+					ctx.stroke();
+				}
 			}
 		}
 		
@@ -350,4 +515,117 @@ export default class D2DDraw {
 		
 		ctx.restore();
 	}
+}
+export function mergeGraphic2Ds(graphics) {
+	if (!Array.isArray(graphics) || graphics.length === 0) return null;
+	const items = graphics.filter(g => g && Array.isArray(g._points));
+	if (items.length === 0) return null;
+
+	const clone = g => ({
+		...g,
+		_points: g._points.map(p => ({ x: p.x, y: p.y }))
+	});
+
+	const pick = (a, b, k) => (b?.[k] !== undefined ? b[k] : a?.[k]);
+
+	const mergePair = (A, B) => {
+		if (!A) return clone(B);
+		if (!B) return clone(A);
+		const a = clone(A);
+		const b = clone(B);
+		const aFill = !!a.fill;
+		const bFill = !!b.fill;
+		const aLine = !!a.line;
+		const bLine = !!b.line;
+
+		if (aFill && bFill) {
+			const pts = mergePolygons(a._points, b._points);
+			return {
+				fill: true,
+				line: a.line || b.line || false,
+				fillColor: pick(a, b, 'fillColor'),
+				lineColor: pick(a, b, 'lineColor'),
+				lineWidth: pick(a, b, 'lineWidth'),
+				lineCap: pick(a, b, 'lineCap'),
+				lineJoin: pick(a, b, 'lineJoin'),
+				_points: pts
+			};
+		}
+
+		if ((aFill && bLine) || (aLine && bFill)) {
+			return {
+				fill: true,
+				line: true,
+				fillColor: pick(a, b, 'fillColor'),
+				lineColor: pick(a, b, 'lineColor'),
+				lineWidth: pick(a, b, 'lineWidth'),
+				lineCap: pick(a, b, 'lineCap'),
+				lineJoin: pick(a, b, 'lineJoin'),
+				_points: aFill ? a._points.concat(b._points) : b._points.concat(a._points)
+			};
+		}
+
+		const pts = a._points.concat(b._points);
+		return {
+			fill: false,
+			line: true,
+			lineColor: pick(a, b, 'lineColor'),
+			lineWidth: pick(a, b, 'lineWidth'),
+			lineCap: pick(a, b, 'lineCap'),
+			lineJoin: pick(a, b, 'lineJoin'),
+			_points: pts
+		};
+	};
+
+	const result = items.reduce((acc, g) => mergePair(acc, g), null);
+	return result;
+}
+
+function mergePolygons(p1, p2) {
+	if (!p1.length) return p2.map(p => ({ x: p.x, y: p.y }));
+	if (!p2.length) return p1.map(p => ({ x: p.x, y: p.y }));
+	const a = p1[p1.length - 1];
+	const b = p2[0];
+	const dx = a.x - b.x;
+	const dy = a.y - b.y;
+	const d2 = dx*dx + dy*dy;
+	const out = p1.slice();
+	if (d2 < 1e-6) out.push(...p2.slice(1).map(p => ({ x: p.x, y: p.y })));
+	else out.push(...p2.map(p => ({ x: p.x, y: p.y })));
+	return out;
+}
+export function centerGraphic2DObject(obj) {
+	if (!obj || !obj.graphic2d) return null;
+	const pts = Array.isArray(obj.graphic2d._points) ? obj.graphic2d._points : [];
+	if (pts.length === 0) return null;
+
+	let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
+	for (const p of pts) {
+		if (!p) continue;
+		const x = Number(p.x) || 0;
+		const y = Number(p.y) || 0;
+		if (x < minx) minx = x;
+		if (y < miny) miny = y;
+		if (x > maxx) maxx = x;
+		if (y > maxy) maxy = y;
+	}
+	if (!isFinite(minx) || !isFinite(miny) || !isFinite(maxx) || !isFinite(maxy)) return null;
+
+	const cx = (minx + maxx) * 0.5;
+	const cy = (miny + maxy) * 0.5;
+
+	for (const p of pts) {
+		p.x = (Number(p.x) || 0) - cx;
+		p.y = (Number(p.y) || 0) - cy;
+	}
+
+	obj.position = {
+		x: (Number(obj.position?.x) || 0) + cx,
+		y: (Number(obj.position?.y) || 0) + cy,
+		z: Number(obj.position?.z) || 0
+	};
+
+	obj.invalidateGraphic2D?.();
+
+	return { cx, cy, bounds: { minx, miny, maxx, maxy, width: maxx - minx, height: maxy - miny } };
 }

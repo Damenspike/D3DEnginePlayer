@@ -777,7 +777,7 @@ export default class D2DGizmo {
 		const closed = this._isClosed(pts);
 		const tol = this._px(10); // ~10px buffer in screen space
 	
-		if (closed) {
+		if (closed || true) {
 			// inside fill OR within tol of the outline counts as a hit
 			if (this._pointInPolygon(lp.x, lp.y, pts)) return true;
 			if (this._pointNearPolyline(lp.x, lp.y, pts, tol)) return true;

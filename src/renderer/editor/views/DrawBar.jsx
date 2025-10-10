@@ -4,8 +4,12 @@ import {
 	MdBrush,
 	MdTransform,
 	MdOutlineDraw,
-	MdRemove
+	MdEdit,
+	MdRemove,
+	MdOutlineRectangle,
+	MdOutlineCircle
 } from 'react-icons/md';
+import { RiFlowChart } from "react-icons/ri";
 
 const DrawTools = [
 	'select',
@@ -69,7 +73,7 @@ export default function DrawBar() {
 			}
 			{
 				drawToolButton(
-					(<MdOutlineDraw />),
+					(<MdEdit />),
 					() => _tool == 'pencil',
 					() => setTool('pencil'),
 					'Pencil'
@@ -77,10 +81,34 @@ export default function DrawBar() {
 			}
 			{
 				drawToolButton(
-					(<MdRemove />),
+					(<div style={{transform: 'rotate(45deg) translateX(1px) translateY(4px)'}}><MdRemove /></div>),
 					() => _tool == 'line',
 					() => setTool('line'),
 					'Line'
+				)
+			}
+			{
+				drawToolButton(
+					(<MdOutlineRectangle />),
+					() => _tool == 'square',
+					() => setTool('square'),
+					'Square'
+				)
+			}
+			{
+				drawToolButton(
+					(<MdOutlineCircle />),
+					() => _tool == 'circle',
+					() => setTool('circle'),
+					'Circle'
+				)
+			}
+			{
+				drawToolButton(
+					(<RiFlowChart />),
+					() => _tool == 'polygon',
+					() => setTool('polygon'),
+					'Polygon'
 				)
 			}
 		</div>

@@ -168,6 +168,9 @@ export default function Inspector() {
 	}
 	const deleteSelectedObjects = () => {
 		if(_editor.selectedObjects.length > 0) {
+			if(_editor.mode == '2D' && _editor.renderer2d.edit.selectedPoints.length > 0)
+				return;
+			
 			_editor.deleteSelectedObjects();
 			setObject(null);
 		}else
