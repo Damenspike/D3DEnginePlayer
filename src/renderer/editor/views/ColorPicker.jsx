@@ -1,4 +1,7 @@
-import { useMemo, useRef, useCallback } from 'react';
+import { 
+	useMemo, useRef, useCallback, useState, useEffect, useLayoutEffect 
+} from 'react';
+import { createPortal } from 'react-dom';
 import { RgbaColorPicker } from 'react-colorful';
 
 /* --- helpers --- */
@@ -29,6 +32,27 @@ export function rgbaObjToHex({ r, g, b, a }) {
 	return '0x' + n.toString(16).toUpperCase().padStart(8, '0');
 }
 
+const rgbaToCss = ({ r, g, b, a }) => `rgba(${r|0}, ${g|0}, ${b|0}, ${Math.max(0, Math.min(1, a ?? 1))})`;
+
+function useOutsideClose(refs, onClose, enabled) {
+	useEffect(() => {
+		if (!enabled) return;
+		const onDown = (e) => {
+			const inside = refs.some(ref => ref.current && ref.current.contains(e.target));
+			if (!inside) onClose();
+		};
+		const onKey = (e) => {
+			if (e.key === 'Escape') onClose();
+		};
+		document.addEventListener('mousedown', onDown);
+		document.addEventListener('keydown', onKey);
+		return () => {
+			document.removeEventListener('mousedown', onDown);
+			document.removeEventListener('keydown', onKey);
+		};
+	}, [refs, onClose, enabled]);
+}
+
 /* --- component --- */
 export default function ColorPicker({
 	value,
@@ -36,7 +60,8 @@ export default function ColorPicker({
 	onBlur,
 	onKeyDown,
 	onClick,
-	readOnly = false
+	readOnly = false,
+	displayMode = 'full' // 'full' | 'small'
 }) {
 	const propHex = normalizeHex(String(value ?? '0xFFFFFFFF'));
 	const rgba = useMemo(() => hexToRgbaObj(propHex), [propHex]);
@@ -55,27 +80,103 @@ export default function ColorPicker({
 		onChange?.(hex);
 	}, [onChange, readOnly]);
 
-	const handlePointerUp = useCallback(() => {
+	const handleCommitBlur = useCallback(() => {
 		if (readOnly) return;
 		onBlur?.(lastEmittedRef.current);
 	}, [onBlur, readOnly]);
 
-	const handleBlur = useCallback(() => {
+	/* ---------- full mode (original) ---------- */
+	if (displayMode === 'full') {
+		return (
+			<div
+				className="color-field"
+				tabIndex={readOnly ? -1 : 0}
+				onKeyDown={readOnly ? undefined : onKeyDown}
+				onClick={() => onClick?.(propHex)}
+				onPointerUp={handleCommitBlur}
+				onBlur={handleCommitBlur}
+				style={readOnly ? { pointerEvents: 'none', opacity: 0.6 } : undefined}
+			>
+				<RgbaColorPicker color={rgba} onChange={emitChange} />
+			</div>
+		);
+	}
+
+	/* ---------- small mode (swatch + popup) ---------- */
+	const [open, setOpen] = useState(false);
+	const anchorRef = useRef(null);
+	const panelRef = useRef(null);
+	const [panelStyle, setPanelStyle] = useState({ top: 0, left: 0 });
+
+	const openPopup = useCallback(() => {
 		if (readOnly) return;
-		onBlur?.(lastEmittedRef.current);
-	}, [onBlur, readOnly]);
+		onClick?.(propHex);
+		setOpen(true);
+	}, [onClick, propHex, readOnly]);
+
+	const closePopup = useCallback(() => {
+		if (!open) return;
+		setOpen(false);
+		handleCommitBlur();
+	}, [open, handleCommitBlur]);
+
+	useOutsideClose([anchorRef, panelRef], closePopup, open);
+
+	useLayoutEffect(() => {
+		if (!open) return;
+		const a = anchorRef.current;
+		if (!a) return;
+		const rect = a.getBoundingClientRect();
+		const GAP = 8;
+		const desiredTop = rect.bottom + GAP + window.scrollY;
+		const desiredLeft = rect.left + window.scrollX;
+
+		// Basic viewport clamping
+		const maxLeft = Math.max(0, window.scrollX + document.documentElement.clientWidth - 260);
+		const left = Math.min(desiredLeft, maxLeft);
+		const maxTop = Math.max(0, window.scrollY + document.documentElement.clientHeight - 300);
+		const top = Math.min(desiredTop, maxTop);
+
+		setPanelStyle({ top, left });
+	}, [open]);
 
 	return (
-		<div
-			className="color-field"
-			tabIndex={readOnly ? -1 : 0}
-			onKeyDown={readOnly ? undefined : onKeyDown}
-			onClick={() => onClick?.(propHex)}
-			onPointerUp={handlePointerUp}
-			onBlur={handleBlur}
-			style={readOnly ? { pointerEvents: 'none', opacity: 0.6 } : undefined}
-		>
-			<RgbaColorPicker color={rgba} onChange={emitChange} />
-		</div>
+		<>
+			<button
+				ref={anchorRef}
+				type="button"
+				className="color-field-swatch"
+				aria-label="Open color picker"
+				disabled={readOnly}
+				onClick={openPopup}
+				onKeyDown={readOnly ? undefined : onKeyDown}
+				style={{
+					cursor: readOnly ? 'not-allowed' : 'pointer',
+					background:
+						// checkerboard bg + color overlay
+						`${rgbaToCss(rgba)}`
+				}}
+			/>
+
+			{open && createPortal(
+				<div
+					ref={panelRef}
+					className="color-field-popup"
+					style={{
+						position: 'absolute',
+						top: panelStyle.top,
+						left: panelStyle.left,
+						zIndex: 10000,
+						background: '#222',
+						borderRadius: 8,
+						padding: 10,
+						boxShadow: '0 10px 24px rgba(0,0,0,0.35)'
+					}}
+				>
+					<RgbaColorPicker color={rgba} onChange={emitChange} />
+				</div>,
+				document.body
+			)}
+		</>
 	);
 }

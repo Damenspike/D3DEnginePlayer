@@ -200,6 +200,9 @@ body.dark {
 .small {
 	font-size: 14px;
 }
+.smallx {
+	font-size: 10px;
+}
 .gray {
 	color: rgb(109, 109, 109);
 }

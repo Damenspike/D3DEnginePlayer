@@ -1,6 +1,3 @@
-// d2ddraw.js — full recode with robust snapping to immediate children of _editor.focus
-// Tools: brush, pencil, line, square (free rect), circle (free ellipse), polygon (dblclick to close)
-
 export default class D2DDraw {
 	constructor(d2drenderer) {
 		this.d2drenderer = d2drenderer;
@@ -13,16 +10,16 @@ export default class D2DDraw {
 		this.localPoints = [];
 		this.tempObj = null;
 
-		// pointers
+		// cursor
 		this.cursor = null;       // canvas space (device px)
-		this.cursorLocal = null;  // host local space
+		this.cursorLocal = null;  // host-local
 		this.host = null;
 
 		// snapping
-		this.snapPx = 10;         // threshold (canvas px)
+		this.snapPx = 10;
 		this._snapHit = null;     // { kind, canvas:{x,y}, hostLocal:{x,y}, child, ... }
 		this._snapCache = null;   // { entries:[{ child, toHost, vertices[], segments[] }] }
-		this._lastFocus = null;   // detect focus changes to rebuild cache
+		this._lastFocus = null;
 
 		// binds
 		this._onDown = this._onDown.bind(this);
@@ -64,7 +61,7 @@ export default class D2DDraw {
 		_editor?.requestRender?.() || this.d2drenderer?.render?.();
 	}
 
-	// ---------------- coords & matrices ----------------
+	// ---------------- matrices & coords ----------------
 	_mouseToCanvas(e) {
 		const r = this.canvas.getBoundingClientRect();
 		const x = (e.clientX - r.left) * (this.canvas.width  / r.width);
@@ -72,10 +69,10 @@ export default class D2DDraw {
 		return { x, y };
 	}
 
-	_worldDOMMatrix(d3dobject) {
+	_worldDOMMatrix(node) {
 		let m = new DOMMatrix();
 		const stack = [];
-		for (let n = d3dobject; n; n = n.parent) stack.push(n);
+		for (let n = node; n; n = n.parent) stack.push(n);
 		stack.reverse();
 		for (const o of stack) {
 			const tx = Number(o.position?.x) || 0;
@@ -105,14 +102,14 @@ export default class D2DDraw {
 
 	_canvasToLocal(pt) {
 		const inv = this._hostScreenMatrix().inverse();
-		const p = new DOMPoint(pt.x, pt.y).matrixTransform(inv);
-		return { x: p.x, y: p.y };
+		const q = new DOMPoint(pt.x, pt.y).matrixTransform(inv);
+		return { x:q.x, y:q.y };
 	}
 
 	_localToCanvas(pt) {
 		const M = this._hostScreenMatrix();
-		const p = new DOMPoint(pt.x, pt.y).matrixTransform(M);
-		return { x: p.x, y: p.y };
+		const q = new DOMPoint(pt.x, pt.y).matrixTransform(M);
+		return { x:q.x, y:q.y };
 	}
 
 	// child-local → host-local
@@ -121,14 +118,33 @@ export default class D2DDraw {
 		const W_child = this._worldDOMMatrix(child);
 		const M = W_host.inverse().multiply(W_child);
 		const r = new DOMPoint(p.x, p.y).matrixTransform(M);
-		return { x: r.x, y: r.y };
+		return { x:r.x, y:r.y };
 	}
 
 	// ---------------- snapping ----------------
 	_focusChildren2D() {
 		const f = _editor?.focus;
-		if (!f || !Array.isArray(f.children)) return [];
-		return f.children.filter(c => c?.is2D && Array.isArray(c.graphic2d?._points));
+		if (!f) return [];
+
+		const out = [];
+		const pushChild2D = (node) => {
+			if (!node || !Array.isArray(node.children)) return;
+			for (const c of node.children) {
+				if (c?.is2D && Array.isArray(c.graphic2d?._points)) out.push(c);
+			}
+		};
+
+		// focus' direct children
+		pushChild2D(f);
+
+		// parent’s direct children (siblings) + parent if 2D
+		const parent = f.parent;
+		if (parent) {
+			pushChild2D(parent);
+			if (parent.is2D && Array.isArray(parent.graphic2d?._points)) out.push(parent);
+		}
+
+		return Array.from(new Set(out)); // de-dupe
 	}
 
 	_rebuildSnapCache() {
@@ -144,8 +160,8 @@ export default class D2DDraw {
 			if (pts.length < 1) continue;
 
 			const W_child = this._worldDOMMatrix(child);
-			const toHost  = W_host_inv.multiply(W_child);        // child → host (for writing points)
-			const toCanvas = this._childScreenMatrix(child);     // child → canvas (for distance tests)
+			const toHost   = W_host_inv.multiply(W_child);   // child → host
+			const toCanvas = this._childScreenMatrix(child); // child → canvas
 
 			const toCanvasPt = (p) => {
 				const q = new DOMPoint(p.x, p.y).matrixTransform(toCanvas);
@@ -163,7 +179,6 @@ export default class D2DDraw {
 					aCanvas:toCanvasPt(a), bCanvas:toCanvasPt(b)
 				});
 			}
-			// close if poly closed
 			const closed = pts.length >= 3 && this._approxPt(pts[0], pts[pts.length-1]);
 			if (closed) {
 				const a = { x:pts[pts.length-1].x, y:pts[pts.length-1].y };
@@ -183,7 +198,6 @@ export default class D2DDraw {
 	}
 
 	_snap(mouseCanvas) {
-		// rebuild if focus changed or no cache yet
 		if (!this._snapCache || this._lastFocus !== (_editor?.focus || null)) {
 			this._rebuildSnapCache();
 		}
@@ -192,8 +206,8 @@ export default class D2DDraw {
 
 		const thresh2 = this.snapPx * this.snapPx;
 
-		// priority 1: vertices
-		let out = null; let bestD2 = Infinity;
+		// 1) vertex
+		let out = null, bestD2 = Infinity;
 		for (const E of cache.entries) {
 			for (const v of E.vertices) {
 				const dx = mouseCanvas.x - v.canvas.x;
@@ -208,7 +222,7 @@ export default class D2DDraw {
 		}
 		if (out) return out;
 
-		// priority 2: midpoints
+		// 2) midpoint
 		out = null; bestD2 = Infinity;
 		for (const E of cache.entries) {
 			for (const s of E.segments) {
@@ -226,7 +240,7 @@ export default class D2DDraw {
 		}
 		if (out) return out;
 
-		// priority 3: projection onto segment
+		// 3) projection
 		out = null; bestD2 = Infinity;
 		for (const E of cache.entries) {
 			for (const s of E.segments) {
@@ -258,7 +272,7 @@ export default class D2DDraw {
 
 		this.tool = _editor.tool;
 		this.host = _editor?.focus || _root;
-		this._snapCache = null; // rebuild with latest children
+		this._snapCache = null; // update around new host/focus
 
 		const c = this._mouseToCanvas(e);
 		this.cursor = c;
@@ -305,9 +319,12 @@ export default class D2DDraw {
 		if (['line','square','circle'].includes(this.tool)) {
 			this.localPoints[1] = { x:this.cursorLocal.x, y:this.cursorLocal.y };
 		} else {
+			// pixel-aware sampling while drawing
 			const last = this.localPoints[this.localPoints.length - 1];
-			if (!last || this._dist(last, this.cursorLocal) >= 0.75)
+			const minStepLocal = this._pxToLocalScalar(this.tool === 'brush' ? 0.75 : 1.25);
+			if (!last || this._dist(last, this.cursorLocal) >= minStepLocal) {
 				this.localPoints.push({ x:this.cursorLocal.x, y:this.cursorLocal.y });
+			}
 		}
 		this._updateTempGraphic();
 		this._request();
@@ -347,10 +364,11 @@ export default class D2DDraw {
 
 		const props = { _points: [] };
 		if (['brush','square','circle','polygon'].includes(this.tool)) {
-			props.fill = true;  props.line = false;
+			props.fill = !!_editor.draw2d?.fill;  props.line = !!_editor.draw2d?.line;
 			props.fillColor = _editor.draw2d?.fillColor || '#000000ff';
+			props.lineColor = _editor.draw2d?.lineColor || '#ffffffff';
 		} else {
-			props.fill = false; props.line = true;
+			props.fill = !!_editor.draw2d?.fill; props.line = !!_editor.draw2d?.line;
 			props.lineWidth = Math.max(1, Number(_editor.draw2d?.lineWidth ?? 1));
 			props.lineColor = _editor.draw2d?.lineColor || '#ffffffff';
 			props.lineCap = 'round'; props.lineJoin = 'round';
@@ -363,36 +381,45 @@ export default class D2DDraw {
 		const obj = this.tempObj; if (!obj) return;
 
 		if (this.tool === 'brush') {
+			// simplify centerline live a bit for smoother silhouette
+			const live = this.localPoints.length > 2
+				? this._simplifyAdaptive(this.localPoints, { tool:'brush', simplifyPx: 1.0, minStepPx: 0.75 })
+				: this.localPoints;
 			const r = Math.max(0.1, Number(_editor.draw2d?.brushRadius ?? 1));
-			obj.graphic2d._points = this._strokeToPolygon(this.localPoints, r, initial);
+			obj.graphic2d._points = this._strokeToPolygon(live, r, initial);
 			obj.graphic2d.fillColor = _editor.draw2d?.fillColor || obj.graphic2d.fillColor;
+
 		} else if (this.tool === 'pencil') {
 			obj.graphic2d._points = this.localPoints.map(p=>({x:p.x,y:p.y}));
 			obj.graphic2d.lineWidth = Math.max(1, Number(_editor.draw2d?.lineWidth ?? obj.graphic2d.lineWidth ?? 1));
 			obj.graphic2d.lineColor = _editor.draw2d?.lineColor || obj.graphic2d.lineColor;
+
 		} else if (this.tool === 'line') {
 			obj.graphic2d._points = this.localPoints.slice(0,2).map(p=>({x:p.x,y:p.y}));
 			obj.graphic2d.lineWidth = Math.max(1, Number(_editor.draw2d?.lineWidth ?? obj.graphic2d.lineWidth ?? 1));
 			obj.graphic2d.lineColor = _editor.draw2d?.lineColor || obj.graphic2d.lineColor;
+
 		} else if (this.tool === 'square') {
 			if (this.localPoints.length >= 2) {
 				const a=this.localPoints[0], b=this.localPoints[1];
 				obj.graphic2d._points = this._makeRectPoints(a,b);
-				obj.graphic2d.fill = true; obj.graphic2d.line = false;
+				obj.graphic2d.fill = !!_editor.draw2d?.fill; obj.graphic2d.line = !!_editor.draw2d?.line;
 				obj.graphic2d.fillColor = _editor.draw2d?.fillColor || obj.graphic2d.fillColor;
 			}
+
 		} else if (this.tool === 'circle') {
 			if (this.localPoints.length >= 2) {
 				const a=this.localPoints[0], b=this.localPoints[1];
 				obj.graphic2d._points = this._makeEllipsePoints(a,b,64);
-				obj.graphic2d.fill = true; obj.graphic2d.line = false;
+				obj.graphic2d.fill = !!_editor.draw2d?.fill; obj.graphic2d.line = !!_editor.draw2d?.line;
 				obj.graphic2d.fillColor = _editor.draw2d?.fillColor || obj.graphic2d.fillColor;
 			}
+
 		} else if (this.tool === 'polygon') {
 			const pts = this.localPoints.slice();
 			if (this.cursorLocal) pts.push({ x:this.cursorLocal.x, y:this.cursorLocal.y });
 			obj.graphic2d._points = pts;
-			obj.graphic2d.fill = true; obj.graphic2d.line = false;
+			obj.graphic2d.fill = !!_editor.draw2d?.fill; obj.graphic2d.line = !!_editor.draw2d?.line;
 			obj.graphic2d.fillColor = _editor.draw2d?.fillColor || obj.graphic2d.fillColor;
 		}
 		obj.invalidateGraphic2D?.();
@@ -404,22 +431,43 @@ export default class D2DDraw {
 		if (!obj) return;
 		obj.visible = true;
 
-		// simplify free tools
+		// pixel-aware simplify on finalize
 		if (['brush','pencil'].includes(this.tool) && this.localPoints.length > 2) {
-			this.localPoints = this._simplify(this.localPoints);
+			this.localPoints = this._simplifyAdaptive(this.localPoints, { tool: this.tool });
 		}
 
 		// finalize geometry
-		if (this.tool === 'square' && this.localPoints.length >= 2) obj.graphic2d._points = this._makeRectPoints(this.localPoints[0], this.localPoints[1]);
-		if (this.tool === 'circle' && this.localPoints.length >= 2) obj.graphic2d._points = this._makeEllipsePoints(this.localPoints[0], this.localPoints[1], 64);
-		if (this.tool === 'polygon') obj.graphic2d._points = this._cleanAndClose(this.localPoints);
+		if (this.tool === 'brush') {
+			const r = Math.max(0.1, Number(_editor.draw2d?.brushRadius ?? 1));
+			obj.graphic2d._points = this._strokeToPolygon(this.localPoints, r, false);
+			obj.graphic2d.fill = !!_editor.draw2d?.fill; obj.graphic2d.line = !!_editor.draw2d?.line;
+		}
+		if (this.tool === 'pencil') {
+			obj.graphic2d._points = this.localPoints.map(p=>({x:p.x,y:p.y}));
+			obj.graphic2d.fill = !!_editor.draw2d?.fill; obj.graphic2d.line = !!_editor.draw2d?.line;
+		}
+		if (this.tool === 'square' && this.localPoints.length >= 2) {
+			obj.graphic2d._points = this._makeRectPoints(this.localPoints[0], this.localPoints[1]);
+			obj.graphic2d.fill = !!_editor.draw2d?.fill; obj.graphic2d.line = !!_editor.draw2d?.line;
+		}
+		if (this.tool === 'circle' && this.localPoints.length >= 2) {
+			obj.graphic2d._points = this._makeEllipsePoints(this.localPoints[0], this.localPoints[1], 64);
+			obj.graphic2d.fill = !!_editor.draw2d?.fill; obj.graphic2d.line = !!_editor.draw2d?.line;
+		}
+		if (this.tool === 'polygon') {
+			const simp = this._simplifyAdaptive(this.localPoints, { tool:'pencil', simplifyPx: 1.75, minStepPx: 1.0 });
+			obj.graphic2d._points = this._cleanAndClose(simp);
+			obj.graphic2d.fill = !!_editor.draw2d?.fill; obj.graphic2d.line = !!_editor.draw2d?.line;
+		}
+
+		// close any filled geometry
 		if (obj.graphic2d.fill) obj.graphic2d._points = this._cleanAndClose(obj.graphic2d._points);
 
 		obj.invalidateGraphic2D?.();
 		const pts = obj?.graphic2d?._points || [];
 		if (pts.length === 0) { obj.delete?.(); this._request(); return; }
 
-		// center pivot to bounds mid (for intuitive scaling/rotation)
+		// center origin for intuitive transforms
 		this._centerObject(obj);
 
 		// history
@@ -444,6 +492,81 @@ export default class D2DDraw {
 
 		_editor?.selectObjects?.([obj]);
 		this._request();
+	}
+
+	// ---------------- simplify (pixel-aware) ----------------
+	_pxToLocalScalar(px) {
+		const pr = this.d2drenderer.pixelRatio || 1;
+		const vs = this.d2drenderer.viewScale  || 1;
+		return px / (pr * vs);
+	}
+
+	_rdpSimplify(points, epsilonLocal) {
+		if (!points || points.length < 3) return points ? points.slice() : [];
+
+		const sqEps = epsilonLocal * epsilonLocal;
+
+		const sqSegDist = (p, a, b) => {
+			let x = a.x, y = a.y;
+			let dx = b.x - x, dy = b.y - y;
+			if (dx !== 0 || dy !== 0) {
+				const t = ((p.x - x) * dx + (p.y - y) * dy) / (dx*dx + dy*dy);
+				if (t > 1) { x = b.x; y = b.y; }
+				else if (t > 0) { x += dx * t; y += dy * t; }
+			}
+			dx = p.x - x; dy = p.y - y;
+			return dx*dx + dy*dy;
+		};
+
+		const keep = new Array(points.length).fill(false);
+		keep[0] = keep[points.length - 1] = true;
+
+		const stack = [[0, points.length - 1]];
+		while (stack.length) {
+			const [first, last] = stack.pop();
+			let index = -1, maxSq = -1;
+			for (let i = first + 1; i < last; i++) {
+				const d = sqSegDist(points[i], points[first], points[last]);
+				if (d > maxSq) { index = i; maxSq = d; }
+			}
+			if (maxSq > sqEps && index !== -1) {
+				keep[index] = true;
+				stack.push([first, index], [index, last]);
+			}
+		}
+
+		const out = [];
+		for (let i = 0; i < points.length; i++) if (keep[i]) out.push(points[i]);
+		return out;
+	}
+
+	_spacingSimplify(points, minStepLocal) {
+		if (!points || points.length < 3) return points ? points.slice() : [];
+		const out = [points[0]];
+		let last = points[0];
+		const min2 = minStepLocal * minStepLocal;
+		for (let i = 1; i < points.length - 1; i++) {
+			const p = points[i];
+			const dx = p.x - last.x, dy = p.y - last.y;
+			if (dx*dx + dy*dy >= min2) { out.push(p); last = p; }
+		}
+		out.push(points[points.length - 1]);
+		return out;
+	}
+
+	_simplifyAdaptive(points, { tool = 'pencil', simplifyPx, minStepPx } = {}) {
+		const defaults = {
+			brush:  { simplifyPx: 1.25, minStepPx: 0.75 },
+			pencil: { simplifyPx: 2.25, minStepPx: 1.25 }
+		};
+		const cfg = {
+			simplifyPx: simplifyPx ?? defaults[tool]?.simplifyPx ?? 2.0,
+			minStepPx:  minStepPx  ?? defaults[tool]?.minStepPx  ?? 1.0
+		};
+		const epsLocal  = this._pxToLocalScalar(cfg.simplifyPx);
+		const stepLocal = this._pxToLocalScalar(cfg.minStepPx);
+		const rdp = this._rdpSimplify(points, epsLocal);
+		return this._spacingSimplify(rdp, stepLocal);
 	}
 
 	// ---------------- geometry helpers ----------------
@@ -493,7 +616,7 @@ export default class D2DDraw {
 			if (allowCircle && pts && pts.length===1) return this._circlePoly(pts[0], radius);
 			return pts ? pts.map(p=>({x:p.x,y:p.y})) : [];
 		}
-		const simp=this._simplify(pts);
+		const simp = pts; // already simplified before calling (for brush)
 		const left=[], right=[];
 		const n=simp.length;
 		for (let i=0;i<n;i++){
@@ -514,17 +637,6 @@ export default class D2DDraw {
 		const poly=left.concat(right);
 		if (poly.length>0) poly.push({ x:poly[0].x, y:poly[0].y });
 		return poly;
-	}
-
-	_simplify(pts, tol=0.2){
-		if (!pts || pts.length<3) return pts.slice();
-		const t2=tol*tol;
-		const out=[pts[0]]; let prev=pts[0];
-		for (let i=1;i<pts.length-1;i++){
-			const p=pts[i]; const dx=p.x-prev.x, dy=p.y-prev.y;
-			if (dx*dx+dy*dy>t2){ out.push(p); prev=p; }
-		}
-		out.push(pts[pts.length-1]); return out;
 	}
 
 	_centerObject(obj){
@@ -577,7 +689,10 @@ export default class D2DDraw {
 		// live preview
 		if (this.drawing && this.localPoints.length > 0) {
 			if (tool === 'brush') {
-				const poly = this._strokeToPolygon(this.localPoints, radius, true).map(p => this._localToCanvas(p));
+				const live = this.localPoints.length > 2
+					? this._simplifyAdaptive(this.localPoints, { tool:'brush', simplifyPx: 1.0, minStepPx: 0.75 })
+					: this.localPoints;
+				const poly = this._strokeToPolygon(live, radius, true).map(p => this._localToCanvas(p));
 				if (poly.length > 1) {
 					ctx.beginPath(); ctx.moveTo(poly[0].x, poly[0].y);
 					for (let i=1;i<poly.length;i++) ctx.lineTo(poly[i].x, poly[i].y);
@@ -647,7 +762,22 @@ export default class D2DDraw {
 		ctx.restore();
 	}
 }
+
 export function mergeGraphic2Ds(graphics) {
+	function mergePolygons(p1, p2) {
+		if (!p1.length) return p2.map(p => ({ x: p.x, y: p.y }));
+		if (!p2.length) return p1.map(p => ({ x: p.x, y: p.y }));
+		const a = p1[p1.length - 1];
+		const b = p2[0];
+		const dx = a.x - b.x;
+		const dy = a.y - b.y;
+		const d2 = dx*dx + dy*dy;
+		const out = p1.slice();
+		if (d2 < 1e-6) out.push(...p2.slice(1).map(p => ({ x: p.x, y: p.y })));
+		else out.push(...p2.map(p => ({ x: p.x, y: p.y })));
+		return out;
+	}
+	
 	if (!Array.isArray(graphics) || graphics.length === 0) return null;
 	const items = graphics.filter(g => g && Array.isArray(g._points));
 	if (items.length === 0) return null;
@@ -710,20 +840,6 @@ export function mergeGraphic2Ds(graphics) {
 
 	const result = items.reduce((acc, g) => mergePair(acc, g), null);
 	return result;
-}
-
-function mergePolygons(p1, p2) {
-	if (!p1.length) return p2.map(p => ({ x: p.x, y: p.y }));
-	if (!p2.length) return p1.map(p => ({ x: p.x, y: p.y }));
-	const a = p1[p1.length - 1];
-	const b = p2[0];
-	const dx = a.x - b.x;
-	const dy = a.y - b.y;
-	const d2 = dx*dx + dy*dy;
-	const out = p1.slice();
-	if (d2 < 1e-6) out.push(...p2.slice(1).map(p => ({ x: p.x, y: p.y })));
-	else out.push(...p2.map(p => ({ x: p.x, y: p.y })));
-	return out;
 }
 export function centerGraphic2DObject(obj) {
 	if (!obj || !obj.graphic2d) return null;

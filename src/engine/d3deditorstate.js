@@ -72,7 +72,14 @@ export default class D3DEditorState {
 		this.console = [];
 		this.lastSingleClick = 0;
 		this._mode = '3D';
-		this.draw2d = {fillColor: '#0099FFFF', lineColor: '#000000FF', brushRadius: 1, lineWidth: 1}
+		this.draw2d = {
+			fill: true,
+			line: true,
+			fillColor: '#0099FFFF',
+			lineColor: '#000000FF', 
+			brushRadius: 1, 
+			lineWidth: 1 // stroke
+		}
 	}
 
 	setMode(mode) {

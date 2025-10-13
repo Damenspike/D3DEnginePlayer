@@ -24,6 +24,7 @@ export default class D2DEdit {
 		this._onMouseUp = this._onMouseUp.bind(this);
 		this._onBlur = this._onBlur.bind(this);
 		this._onDelete = this._onDelete.bind(this);
+		this._onKeyDown = this._onKeyDown.bind(this);
 
 		this._attach();
 	}
@@ -36,6 +37,7 @@ export default class D2DEdit {
 		window.addEventListener('mousemove', this._onMouseMove, { passive: false });
 		window.addEventListener('mouseup', this._onMouseUp, { passive: false });
 		window.addEventListener('blur', this._onBlur, { passive: false });
+		window.addEventListener('keydown', this._onKeyDown, { passive: false });
 		_events.on('delete-action', this._onDelete);
 	}
 
@@ -45,10 +47,12 @@ export default class D2DEdit {
 		window.removeEventListener('mousemove', this._onMouseMove);
 		window.removeEventListener('mouseup', this._onMouseUp);
 		window.removeEventListener('blur', this._onBlur);
+		window.removeEventListener('keydown', this._onKeyDown);
 		_events.un('delete-action', this._onDelete);
 	}
 
 	render() {
+		if(_editor.mode != '2D') return;
 		if (!_editor || _editor.tool !== 'select') return;
 		const ctx = this.ctx;
 		if (!ctx) return;
@@ -92,6 +96,7 @@ export default class D2DEdit {
 	}
 
 	_onMouseDown(e) {
+		if(_editor.mode != '2D') return;
 		if (!_editor || _editor.tool !== 'select') return;
 
 		if (e.altKey) {
@@ -142,6 +147,7 @@ export default class D2DEdit {
 	}
 
 	_onMouseMove(e) {
+		if(_editor.mode != '2D') return;
 		if (!_editor || _editor.tool !== 'select') return;
 
 		if (this.dragging && this.dragObj) {
@@ -182,6 +188,63 @@ export default class D2DEdit {
 		const hit = this._pickPoint(e);
 		this.hoverPoint = hit ? { obj: hit.obj, lindex: hit.lindex } : null;
 		this.canvas.style.cursor = 'default';
+	}
+	
+	_onKeyDown(e) {
+		if (_editor.mode !== '2D') return;
+		if (!(_editor.tool === 'select' || _editor.tool === 'transform')) return;
+	
+		// Arrow to delta
+		let dx = 0, dy = 0;
+		switch (e.key) {
+			case 'ArrowLeft':  dx = -1; break;
+			case 'ArrowRight': dx =  1; break;
+			case 'ArrowUp':    dy = -1; break; // canvas Y up is negative
+			case 'ArrowDown':  dy =  1; break;
+			default: return;
+		}
+	
+		// Step size (Shift = larger nudge)
+		const step = e.shiftKey ? 25 : 1;
+		dx *= step;
+		dy *= step;
+	
+		// Prevent page scroll
+		e.preventDefault();
+	
+		// Operate on objects only (both tools)
+		const objsArr = Array.isArray(_editor.selectedObjects) ? _editor.selectedObjects : [];
+		if (objsArr.length === 0) return;
+	
+		// Dedupe in case the list contains duplicates
+		const objs = Array.from(new Set(objsArr));
+	
+		// Snapshot BEFORE
+		const before = objs.map(obj => ({
+			obj,
+			pos: { x: obj.position?.x || 0, y: obj.position?.y || 0, z: obj.position?.z || 0 }
+		}));
+	
+		// Mutate
+		for (const o of objs) {
+			if (!o.position) o.position = { x: 0, y: 0, z: 0 };
+			o.position.x = (o.position.x || 0) + dx;
+			o.position.y = (o.position.y || 0) + dy;
+			// z untouched
+		}
+	
+		// Snapshot AFTER
+		const after = objs.map(obj => ({
+			obj,
+			pos: { x: obj.position?.x || 0, y: obj.position?.y || 0, z: obj.position?.z || 0 }
+		}));
+	
+		// History step
+		_editor?.addStep?.({
+			name: 'Nudge Object(s)',
+			undo: () => { for (const s of before) { s.obj.position.x = s.pos.x; s.obj.position.y = s.pos.y; s.obj.position.z = s.pos.z; } },
+			redo: () => { for (const s of after)  { s.obj.position.x = s.pos.x; s.obj.position.y = s.pos.y; s.obj.position.z = s.pos.z; } }
+		});
 	}
 
 	_onMouseUp() { this._endDrag(true); }
