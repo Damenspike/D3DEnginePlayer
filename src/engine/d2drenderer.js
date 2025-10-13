@@ -79,12 +79,27 @@ export default class D2DRenderer {
 	}
 	render() {
 		this.clear();
-		
-		const d3dobjects = 	this.gather(this.root)
-							.sort((a, b) => a.position.z - b.position.z);
-		
-		for (const d3dobject of d3dobjects) 
-			this.draw(d3dobject);
+	
+		const ctx = this.ctx;
+	
+		// ---- Apply view (pan+zoom) once for the whole scene ----
+		const pr  = this.pixelRatio || 1;
+		const vs  = this.viewScale  || 1;                 // >= 1
+		const off = this.viewOffset || { x: 0, y: 0 };    // in device pixels
+	
+		ctx.save();
+		// pan is in device pixels; then scale in device pixels
+		ctx.translate(off.x, off.y);
+		ctx.scale(pr * vs, pr * vs);
+	
+		// Draw objects in world units; per-object world matrices compose on top
+		const d3dobjects = this
+			.gather(this.root)
+			.sort((a, b) => (a.position?.z || 0) - (b.position?.z || 0));
+	
+		for (const d3dobject of d3dobjects) this.draw(d3dobject);
+	
+		ctx.restore();
 	}
 	renderGizmos() {
 		this.gizmo?.render();

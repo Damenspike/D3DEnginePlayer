@@ -1,3 +1,5 @@
+import D2DPanZoom from './d2dpanzoom.js';
+
 export default class D2DGizmo {
 	constructor(d2drenderer) {
 		this.d2drenderer = d2drenderer;
@@ -27,6 +29,8 @@ export default class D2DGizmo {
 		this._onDown = this._onDown.bind(this);
 		this._onMove = this._onMove.bind(this);
 		this._onUp   = this._onUp.bind(this);
+		
+		this._panZoom = new D2DPanZoom(d2drenderer);
 
 		this.canvas.addEventListener('mousedown', this._onDown);
 		window.addEventListener('mousemove', this._onMove);

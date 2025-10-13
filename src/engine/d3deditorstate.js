@@ -18,7 +18,8 @@ export const Tools = Object.freeze({
 	Line: 'line',
 	Square: 'square',
 	Circle: 'circle',
-	Polygon: 'polygon'
+	Polygon: 'polygon',
+	Fill: 'fill'
 });
 export const TransformTools = Object.freeze({
 	Translate: 'translate',

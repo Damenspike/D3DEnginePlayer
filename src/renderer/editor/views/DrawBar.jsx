@@ -10,6 +10,7 @@ import {
 	MdOutlineCircle
 } from 'react-icons/md';
 import { RiFlowChart } from "react-icons/ri";
+import { CgColorBucket } from "react-icons/cg";
 
 const DrawTools = [
 	'select',
@@ -65,14 +66,6 @@ export default function DrawBar() {
 			}
 			{
 				drawToolButton(
-					(<MdBrush />),
-					() => _tool == 'brush',
-					() => setTool('brush'),
-					'Brush'
-				)
-			}
-			{
-				drawToolButton(
 					(<MdEdit />),
 					() => _tool == 'pencil',
 					() => setTool('pencil'),
@@ -109,6 +102,14 @@ export default function DrawBar() {
 					() => _tool == 'polygon',
 					() => setTool('polygon'),
 					'Polygon'
+				)
+			}
+			{
+				drawToolButton(
+					(<CgColorBucket />),
+					() => _tool == 'fill',
+					() => setTool('fill'),
+					'Fill'
 				)
 			}
 		</div>
