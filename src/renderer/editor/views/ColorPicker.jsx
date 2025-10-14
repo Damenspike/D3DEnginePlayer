@@ -145,10 +145,16 @@ export default function ColorPicker({
 			<button
 				ref={anchorRef}
 				type="button"
+				tabIndex={readOnly ? -1 : 0}
 				className="color-field-swatch"
 				aria-label="Open color picker"
 				disabled={readOnly}
-				onClick={openPopup}
+				onClick={() => {
+					onClick?.(propHex);
+					open ? closePopup() : openPopup();
+				}}
+				onPointerUp={handleCommitBlur}
+				onBlur={handleCommitBlur} 
 				onKeyDown={readOnly ? undefined : onKeyDown}
 				style={{
 					cursor: readOnly ? 'not-allowed' : 'pointer',
@@ -173,7 +179,10 @@ export default function ColorPicker({
 						boxShadow: '0 10px 24px rgba(0,0,0,0.35)'
 					}}
 				>
-					<RgbaColorPicker color={rgba} onChange={emitChange} />
+					<RgbaColorPicker 
+						color={rgba} 
+						onChange={emitChange}
+					/>
 				</div>,
 				document.body
 			)}

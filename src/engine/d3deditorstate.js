@@ -75,10 +75,12 @@ export default class D3DEditorState {
 		this.draw2d = {
 			fill: true,
 			line: true,
-			fillColor: '#0099FFFF',
+			fillColor: '#FFFFFFFF',
 			lineColor: '#000000FF', 
 			brushRadius: 1, 
-			lineWidth: 1 // stroke
+			borderRadius: 0,
+			lineWidth: 5, // stroke
+			snapEnabled: true
 		}
 	}
 

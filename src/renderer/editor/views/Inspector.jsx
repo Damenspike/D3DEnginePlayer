@@ -752,6 +752,7 @@ export default function Inspector() {
 						fieldContent = (
 							<ColorPicker
 								value={String(current).replace('0x', '#')}
+								displayMode='small'
 								onKeyDown={autoBlur}
 								readOnly={field.readOnly}
 								onClick={val => {
@@ -759,7 +760,7 @@ export default function Inspector() {
 								}}
 								onChange={val => {
 									dummyComponent.properties[fieldId] = val;
-									
+									update();
 									object.setComponentValue(
 										component.type,
 										fieldId,

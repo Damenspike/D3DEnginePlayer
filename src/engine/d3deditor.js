@@ -885,7 +885,7 @@ function moveObjectToCameraView(d3dobject, opts = {}) {
 	} = opts;
 
 	const camera = _editor.camera;
-	const scene  = _editor.scene || d3dobject.object3d?.parent || camera.parent;
+	const scene  = _editor.focus.object3d;
 	const renderer = _editor.renderer3d; // assumed three.js renderer
 	if (!camera) return;
 
@@ -960,6 +960,10 @@ function moveObjectToCameraView(d3dobject, opts = {}) {
 		const near = camera.near || 0.1;
 		const dist = Math.max(minDistance, near * 2 + radius * 1.5);
 		spawn = camPos.clone().add(forward.multiplyScalar(dist));
+	}
+	
+	if(_editor.mode == '2D') {
+		spawn.z = _editor.focus.getNextHighestDepth(); // always 0 on spawn
 	}
 
 	// --- assign world position to the D3D object ---

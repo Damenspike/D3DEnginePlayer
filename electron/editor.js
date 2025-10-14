@@ -649,9 +649,28 @@ const menuTemplate = [
 				click: () => sendSetTool('pan')
 			},
 			{ type: 'separator' },
-			{ id: 'toolTranslate', label: 'Translate', click: () => sendSetTransformTool('translate') },
-			{ id: 'toolRotate', label: 'Rotate', accelerator: 'r', click: () => sendSetTransformTool('rotate') },
-			{ id: 'toolScale', label: 'Scale', accelerator: 's', click: () => sendSetTransformTool('scale') }
+			{ 
+				id: 'toolTranslate', 
+				label: 'Translate', 
+				click: () => sendSetTransformTool('translate') 
+			},
+			{ 
+				id: 'toolRotate', 
+				label: 'Rotate', 
+				accelerator: 'r',
+				click: () => sendSetTransformTool('rotate') 
+			},
+			{ 
+				id: 'toolScale',
+				label: 'Scale', 
+				accelerator: 's', 
+				click: () => sendSetTransformTool('scale') 
+			},
+			{
+				label: 'Transform (2D)', 
+				accelerator: 'q', 
+				click: () => sendSetTool('transform') 
+			}
 		]
 	},
 	{

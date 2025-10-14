@@ -19,6 +19,9 @@ export default class D2DEdit {
 		this.undoSnapshot = null;
 		this.redoSnapshot = null;
 
+		// snapping session (borrow drawer)
+		this._snapSession = null; // { oldHost, host, using: true }
+
 		this._onMouseDown = this._onMouseDown.bind(this);
 		this._onMouseMove = this._onMouseMove.bind(this);
 		this._onMouseUp = this._onMouseUp.bind(this);
@@ -51,8 +54,9 @@ export default class D2DEdit {
 		_events.un('delete-action', this._onDelete);
 	}
 
+	// ---------------- overlay render (points) ----------------
 	render() {
-		if(_editor.mode != '2D') return;
+		if (_editor.mode != '2D') return;
 		if (!_editor || _editor.tool !== 'select') return;
 		const ctx = this.ctx;
 		if (!ctx) return;
@@ -95,10 +99,12 @@ export default class D2DEdit {
 		ctx.restore();
 	}
 
+	// ---------------- mouse ----------------
 	_onMouseDown(e) {
-		if(_editor.mode != '2D') return;
+		if (_editor.mode != '2D') return;
 		if (!_editor || _editor.tool !== 'select') return;
 
+		// Alt = insert new vertex
 		if (e.altKey) {
 			this._onAltInsert(e);
 			e.preventDefault();
@@ -124,14 +130,17 @@ export default class D2DEdit {
 			this.selectedPoints = [hit];
 		}
 
+		// prep transforms
 		const gs = (this.d2drenderer.pixelRatio || 1) * (this.d2drenderer.viewScale || 1);
 		const world = this._worldDOMMatrix(hit.obj);
 		const screen = new DOMMatrix().scale(gs, gs).multiply(world);
 		const inv = screen.inverse();
 
+		// mouse → canvas → local (initial grab position)
 		const m = this._mouseToCanvas(e);
 		const cursorLocal = this._applyDOM(inv, m.x, m.y);
 
+		// start vertex drag
 		this.dragging = true;
 		this.dragObj = hit.obj;
 		this.grabLIndex = hit.lindex;
@@ -139,6 +148,10 @@ export default class D2DEdit {
 		this.lastLocal = { x: cursorLocal.x, y: cursorLocal.y };
 		this.hasMoved = false;
 
+		// start snapping session (use obj.parent as host so snap hostLocal is parent-local)
+		this._beginSnapSession(hit.obj?.parent || null);
+
+		// history snapshot
 		this.undoSnapshot = this._snapshot(this.dragObj, this._selectedLogicalLIsFor(this.dragObj));
 		this.redoSnapshot = null;
 
@@ -147,9 +160,10 @@ export default class D2DEdit {
 	}
 
 	_onMouseMove(e) {
-		if(_editor.mode != '2D') return;
+		if (_editor.mode != '2D') return;
 		if (!_editor || _editor.tool !== 'select') return;
 
+		// vertex drag with snapping
 		if (this.dragging && this.dragObj) {
 			const obj = this.dragObj;
 			const g = obj?.graphic2d;
@@ -161,11 +175,37 @@ export default class D2DEdit {
 			const screen = new DOMMatrix().scale(gs, gs).multiply(world);
 			const inv = screen.inverse();
 
+			// raw local from inverse (fallback)
 			const m = this._mouseToCanvas(e);
-			const cursorLocal = this._applyDOM(inv, m.x, m.y);
+			let targetLocal = this._applyDOM(inv, m.x, m.y);
 
-			const dx = cursorLocal.x - this.lastLocal.x;
-			const dy = cursorLocal.y - this.lastLocal.y;
+			// try snap via drawer (returns hostLocal; convert host→obj local)
+			const drawer = this.d2drenderer?.drawer;
+			const snappingOn = !!_editor?.draw2d?.snapEnabled && !!drawer;
+			if (snappingOn) {
+				// ensure session host is correct
+				if (!this._snapSession) this._beginSnapSession(obj?.parent || null);
+				if (this._snapSession) {
+					// rebuild cache as drawer does when host/focus changes
+					if (!drawer._snapCache || drawer._lastFocus !== (_editor?.focus || null)) {
+						drawer._rebuildSnapCache?.();
+					}
+					const hit = drawer._snap?.(m);
+					// (optional) show their gizmo if their overlay is active
+					if (hit) drawer._snapHit = hit;
+
+					if (hit?.hostLocal) {
+						// convert hostLocal (host = obj.parent) → obj local
+						const hostNode = this._snapSession.hostNode;
+						const conv = this._hostToChildLocal(hostNode, obj, hit.hostLocal);
+						targetLocal = { x: conv.x, y: conv.y };
+					}
+				}
+			}
+
+			// delta since last frame — moves all selected logical points for this object
+			const dx = targetLocal.x - this.lastLocal.x;
+			const dy = targetLocal.y - this.lastLocal.y;
 
 			if (dx !== 0 || dy !== 0) {
 				this.hasMoved = true;
@@ -177,7 +217,7 @@ export default class D2DEdit {
 						pts[pi].y += dy;
 					}
 				}
-				this.lastLocal = cursorLocal;
+				this.lastLocal = targetLocal;
 			}
 
 			this.canvas.style.cursor = 'grabbing';
@@ -185,70 +225,14 @@ export default class D2DEdit {
 			return;
 		}
 
+		// hover
 		const hit = this._pickPoint(e);
 		this.hoverPoint = hit ? { obj: hit.obj, lindex: hit.lindex } : null;
 		this.canvas.style.cursor = 'default';
 	}
-	
-	_onKeyDown(e) {
-		if (_editor.mode !== '2D') return;
-		if (!(_editor.tool === 'select' || _editor.tool === 'transform')) return;
-	
-		// Arrow to delta
-		let dx = 0, dy = 0;
-		switch (e.key) {
-			case 'ArrowLeft':  dx = -1; break;
-			case 'ArrowRight': dx =  1; break;
-			case 'ArrowUp':    dy = -1; break; // canvas Y up is negative
-			case 'ArrowDown':  dy =  1; break;
-			default: return;
-		}
-	
-		// Step size (Shift = larger nudge)
-		const step = e.shiftKey ? 25 : 1;
-		dx *= step;
-		dy *= step;
-	
-		// Prevent page scroll
-		e.preventDefault();
-	
-		// Operate on objects only (both tools)
-		const objsArr = Array.isArray(_editor.selectedObjects) ? _editor.selectedObjects : [];
-		if (objsArr.length === 0) return;
-	
-		// Dedupe in case the list contains duplicates
-		const objs = Array.from(new Set(objsArr));
-	
-		// Snapshot BEFORE
-		const before = objs.map(obj => ({
-			obj,
-			pos: { x: obj.position?.x || 0, y: obj.position?.y || 0, z: obj.position?.z || 0 }
-		}));
-	
-		// Mutate
-		for (const o of objs) {
-			if (!o.position) o.position = { x: 0, y: 0, z: 0 };
-			o.position.x = (o.position.x || 0) + dx;
-			o.position.y = (o.position.y || 0) + dy;
-			// z untouched
-		}
-	
-		// Snapshot AFTER
-		const after = objs.map(obj => ({
-			obj,
-			pos: { x: obj.position?.x || 0, y: obj.position?.y || 0, z: obj.position?.z || 0 }
-		}));
-	
-		// History step
-		_editor?.addStep?.({
-			name: 'Nudge Object(s)',
-			undo: () => { for (const s of before) { s.obj.position.x = s.pos.x; s.obj.position.y = s.pos.y; s.obj.position.z = s.pos.z; } },
-			redo: () => { for (const s of after)  { s.obj.position.x = s.pos.x; s.obj.position.y = s.pos.y; s.obj.position.z = s.pos.z; } }
-		});
-	}
 
 	_onMouseUp() { this._endDrag(true); }
-	_onBlur() { this._endDrag(false); }
+	_onBlur()    { this._endDrag(false); }
 
 	_endDrag(commit) {
 		if (!this.dragging) return;
@@ -256,19 +240,21 @@ export default class D2DEdit {
 		this.dragging = false;
 		this.canvas.style.cursor = 'default';
 
+		// commit history
 		if (commit && this.hasMoved && this.dragObj && this.undoSnapshot) {
 			this.redoSnapshot = this._snapshot(this.dragObj, this._selectedLogicalLIsFor(this.dragObj));
-
 			const obj = this.dragObj;
 			const before = this.undoSnapshot;
 			const after = this.redoSnapshot;
-
 			_editor?.addStep?.({
 				name: 'Edit 2D Points',
 				undo: () => this._applySnapshot(obj, before),
 				redo: () => this._applySnapshot(obj, after)
 			});
 		}
+
+		// end snap session
+		this._endSnapSession();
 
 		this.dragObj = null;
 		this.grabLIndex = null;
@@ -279,6 +265,85 @@ export default class D2DEdit {
 		this.redoSnapshot = null;
 	}
 
+	// ---------------- snapping glue ----------------
+	_beginSnapSession(hostNode) {
+		const drawer = this.d2drenderer?.drawer;
+		if (!drawer) return;
+		this._snapSession = {
+			oldHost: drawer.host,
+			hostNode: hostNode || null,
+			using: true
+		};
+		drawer.host = hostNode || drawer.host || _editor?.focus || _root;
+		// force cache rebuild for reliable results
+		drawer._snapCache = null;
+	}
+
+	_endSnapSession() {
+		const drawer = this.d2drenderer?.drawer;
+		if (!drawer || !this._snapSession) { this._snapSession = null; return; }
+		// restore previous drawer state
+		drawer.host = this._snapSession.oldHost;
+		drawer._snapHit = null;
+		drawer._snapCache = null;
+		this._snapSession = null;
+	}
+
+	// Convert a point in host local space → child (obj) local space
+	_hostToChildLocal(hostNode, childNode, pHost) {
+		const W_host  = this._worldDOMMatrix(hostNode || _root);
+		const W_child = this._worldDOMMatrix(childNode);
+		// p_child = W_child^{-1} * W_host * p_host
+		const M = W_child.inverse().multiply(W_host);
+		const q = new DOMPoint(pHost.x, pHost.y).matrixTransform(M);
+		return { x: q.x, y: q.y };
+	}
+
+	// ---------------- keyboard (objects only; unchanged) ----------------
+	_onKeyDown(e) {
+		if (_editor.mode !== '2D') return;
+		if (!(_editor.tool === 'select' || _editor.tool === 'transform')) return;
+
+		let dx = 0, dy = 0;
+		switch (e.key) {
+			case 'ArrowLeft':  dx = -1; break;
+			case 'ArrowRight': dx =  1; break;
+			case 'ArrowUp':    dy = -1; break;
+			case 'ArrowDown':  dy =  1; break;
+			default: return;
+		}
+		const step = e.shiftKey ? 25 : 1;
+		dx *= step; dy *= step;
+		e.preventDefault();
+
+		const objsArr = Array.isArray(_editor.selectedObjects) ? _editor.selectedObjects : [];
+		if (objsArr.length === 0) return;
+		const objs = Array.from(new Set(objsArr));
+
+		const before = objs.map(obj => ({
+			obj,
+			pos: { x: obj.position?.x || 0, y: obj.position?.y || 0, z: obj.position?.z || 0 }
+		}));
+
+		for (const o of objs) {
+			if (!o.position) o.position = { x: 0, y: 0, z: 0 };
+			o.position.x = (o.position.x || 0) + dx;
+			o.position.y = (o.position.y || 0) + dy;
+		}
+
+		const after = objs.map(obj => ({
+			obj,
+			pos: { x: obj.position?.x || 0, y: obj.position?.y || 0, z: obj.position?.z || 0 }
+		}));
+
+		_editor?.addStep?.({
+			name: 'Nudge Object(s)',
+			undo: () => { for (const s of before) { s.obj.position.x = s.pos.x; s.obj.position.y = s.pos.y; s.obj.position.z = s.pos.z; } },
+			redo: () => { for (const s of after)  { s.obj.position.x = s.pos.x; s.obj.position.y = s.pos.y; s.obj.position.z = s.pos.z; } }
+		});
+	}
+
+	// ---------------- insert vertex (unchanged) ----------------
 	_onAltInsert(e) {
 		const objs = Array.isArray(_editor?.selectedObjects) ? _editor.selectedObjects : [];
 		if (objs.length === 0) return;
@@ -357,6 +422,7 @@ export default class D2DEdit {
 		this.canvas.style.cursor = 'grabbing';
 	}
 
+	// ---------------- picking & helpers ----------------
 	_pickPoint(e) {
 		const mouse = this._mouseToCanvas(e);
 		const objs = Array.isArray(_editor?.selectedObjects) ? _editor.selectedObjects : [];
@@ -497,7 +563,7 @@ export default class D2DEdit {
 	_onDelete() {
 		const doDelete = () => {
 			if (this.selectedPoints.length < 1) return;
-			
+
 			const byObj = new Map();
 			for (const sp of this.selectedPoints) {
 				if (!sp?.obj?.graphic2d?._points) continue;
@@ -505,7 +571,7 @@ export default class D2DEdit {
 				byObj.get(sp.obj).add(sp.lindex);
 			}
 			if (byObj.size === 0) return;
-			
+
 			const clonePoints = (pts) => pts.map(p => ({ x: p.x, y: p.y }));
 			const isClosed = (pts) => {
 				if (pts.length < 2) return false;
@@ -521,42 +587,42 @@ export default class D2DEdit {
 				}
 				return pts;
 			};
-			
+
 			const before = [];
 			for (const [obj] of byObj) {
 				const pts = obj.graphic2d._points || [];
 				before.push({ obj, points: clonePoints(pts) });
 			}
-			
+
 			for (const [obj, lset] of byObj) {
 				const g = obj.graphic2d;
 				const pts = g._points || [];
 				if (pts.length === 0) continue;
-			
+
 				const wasClosed = isClosed(pts);
-			
+
 				const toRemove = new Set();
 				for (const li of lset) {
 					const mapped = this._logicalMap(pts, li);
 					for (const pi of mapped) toRemove.add(pi);
 				}
-			
+
 				const sorted = Array.from(toRemove).sort((a, b) => b - a);
 				for (const idx of sorted) {
 					if (idx >= 0 && idx < pts.length) pts.splice(idx, 1);
 				}
-			
+
 				ensureClosed(pts, wasClosed);
 			}
-			
+
 			const after = [];
 			for (const [obj] of byObj) {
 				const pts = obj.graphic2d._points || [];
 				after.push({ obj, points: clonePoints(pts) });
 			}
-			
+
 			this.selectedPoints = [];
-			
+
 			_editor?.addStep?.({
 				name: 'Delete 2D Points',
 				undo: () => {
@@ -572,7 +638,7 @@ export default class D2DEdit {
 					}
 				}
 			});
-		}
+		};
 		setTimeout(doDelete, 10);
 	}
 

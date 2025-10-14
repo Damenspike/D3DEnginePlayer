@@ -315,6 +315,15 @@ export default class D3DObject {
 		if(this.hasComponent('Graphic2D'))
 			return this.components.find(c => c.type == 'Graphic2D').properties;
 	}
+	get depth() {
+		const worldPos = this.worldPosition;
+		return worldPos.z;
+	}
+	set depth(value) {
+		const worldPos = this.worldPosition;
+		worldPos.z = value;
+		this.worldPosition = worldPos;
+	}
 	
 	// Component shorthand
 	get _animation() {
@@ -690,10 +699,13 @@ export default class D3DObject {
 		this.updateComponents();
 		this.checkSymbols();
 	}
-	addComponent(type, properties = {}, doUpdateAll = true) {
+	addComponent(type, properties = {}, doUpdateAll = true, removeIfPresent = false) {
 		if(this.components.find(c => c.type == type)) {
-		//	console.error(`${this.name} already has a ${type} component`);
-			return;
+			if(removeIfPresent) {
+				this.removeComponent(type);
+			}else{
+				return;
+			}
 		}
 		if(!D3DComponents[type]) {
 			console.error(`${type} is not a component`);
@@ -781,6 +793,12 @@ export default class D3DObject {
 			
 			if(mgr)
 				await mgr.updateComponent?.();
+			else {
+				const schema = D3DComponents[component.type];
+				const inst = new schema.manager(this, component);
+				this.__componentInstances[type] = inst;
+				await inst.updateComponent?.();
+			}
 		}
 	}
 	
@@ -951,7 +969,6 @@ export default class D3DObject {
 			d3dobject.__script = objData.script;
 			d3dobject.components = structuredClone(objData.components);
 			
-			d3dobject.__componentInstances = {}; // remove all instances for rebuild
 			await d3dobject.updateComponents();
 			
 			if(updateChildren) {
@@ -1285,5 +1302,17 @@ export default class D3DObject {
 			
 			this.__preAnimationTransform = null;
 		}
+	}
+	
+	getNextHighestDepth() {
+		let depth = 0;
+		this.children.forEach(d3dobj => {
+			if(d3dobj.__temp) return;
+			
+			const d = d3dobj.depth;
+			if(d > depth)
+				depth = d;
+		});
+		return depth + 1;
 	}
 }

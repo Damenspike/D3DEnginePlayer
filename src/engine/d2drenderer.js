@@ -95,7 +95,7 @@ export default class D2DRenderer {
 		// Draw objects in world units; per-object world matrices compose on top
 		const d3dobjects = this
 			.gather(this.root)
-			.sort((a, b) => (a.position?.z || 0) - (b.position?.z || 0));
+			.sort((a, b) => (a.depth || 0) - (b.depth || 0));
 	
 		for (const d3dobject of d3dobjects) this.draw(d3dobject);
 	
@@ -165,6 +165,10 @@ export default class D2DRenderer {
 		const fillEnabled  = graphic.fill !== false;
 		const fillColor    = graphic.fillColor ?? '#ffffffff';
 		const borderRadius = Math.max(0, Number(graphic.borderRadius ?? 0));
+	
+		const outlineOn    = graphic.outline === true;
+		const outlineColor = graphic.outlineColor ?? gLineColor;
+		const outlineWidth = Number(graphic.outlineWidth ?? (gLineWidth * 2));
 	
 		const first = points[0];
 		const last  = points[points.length - 1];
@@ -241,7 +245,6 @@ export default class D2DRenderer {
 			const rz = Number(o.rotation?.z) || 0;
 			const sx = Number(o.scale?.x) || 1;
 			const sy = Number(o.scale?.y) || 1;
-			// T * R * S  (right-multiplied → points see S→R→T in local order)
 			m = m.translate(tx, ty).rotate(rz * 180 / Math.PI).scale(sx, sy);
 		}
 	
@@ -254,13 +257,22 @@ export default class D2DRenderer {
 		ctx.setTransform(gs, 0, 0, gs, 0, 0);
 		ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
 	
+		// Outline first (so fill covers the inner half → reads like an outer border)
+		if (outlineOn && pathForFill && isClosed) {
+			ctx.lineWidth   = Math.max(0.001, outlineWidth);
+			ctx.strokeStyle = hexToRgba(outlineColor);
+			ctx.lineCap     = lineCap;
+			ctx.lineJoin    = lineJoin;
+			ctx.miterLimit  = miterLimit;
+			ctx.stroke(pathForFill);
+		}
+	
 		if (fillEnabled && pathForFill) {
 			ctx.fillStyle = hexToRgba(fillColor);
 			ctx.fill(pathForFill);
 		}
 	
 		if (uniformStroke && pathForFill) {
-			// BorderRadius affects stroke too (when stroke is uniform)
 			ctx.lineWidth   = Math.max(0.001, gLineWidth);
 			ctx.strokeStyle = hexToRgba(gLineColor);
 			ctx.lineCap     = lineCap;
@@ -268,7 +280,6 @@ export default class D2DRenderer {
 			ctx.miterLimit  = miterLimit;
 			ctx.stroke(pathForFill);
 		} else {
-			// Per-segment overrides → fall back to straight segments (no rounded joins)
 			const segCount = points.length - 1;
 			for (let i = 0; i < segCount; i++) {
 				const a = points[i];

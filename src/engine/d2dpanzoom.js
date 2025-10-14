@@ -24,7 +24,7 @@ export default class D2DPanZoom {
 
 		this._attach();
 
-		this.r.viewScale  = Math.max(1, this.r.viewScale  ?? 1);
+		this.r.viewScale  = 1;
 		this.r.viewOffset = this.r.viewOffset ?? { x: 0, y: 0 };
 	}
 

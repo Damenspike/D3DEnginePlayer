@@ -453,28 +453,45 @@ export default class D2DGizmo {
 	_handleSelection(e) {
 		const p = this._toWorld(e);
 		const hit = this._pickTop(p.x, p.y);
-
+	
 		const tool  = _editor.tool;
-		const ttool = _editor.transformTool;
-
+		const canMove = tool === 'select' || tool === 'transform';
+		const sel = _editor.selectedObjects;
+	
+		// double-click to focus (unchanged)
+		if (this.lastClick) {
+			if (_time.now - this.lastClick.time < 0.4 && hit === this.lastClick.object) {
+				_editor.focus = hit;
+				_editor.setSelection([]);
+				this.lastClick = null;
+				return;
+			}
+		}
+		
+		this.lastClick = { time: _time.now, object: hit };
+	
 		if (hit) {
 			if (e.shiftKey) {
-				if (_editor.selectedObjects.includes(hit)) _editor.removeSelection([hit]);
+				// toggle hit in current selection
+				if (sel.includes(hit)) _editor.removeSelection([hit]);
 				else _editor.addSelection([hit]);
 			} else {
-				_editor.setSelection([hit]);
+				// keep current selection if the clicked object is already in it
+				if (!sel.includes(hit)) {
+					_editor.setSelection([hit]);
+				}
+				// else: keep existing multi-selection as-is
 			}
-			
-			const canMove = tool === 'select' || tool === 'transform';
-
+	
 			if (canMove) {
 				this.state.mode = 'move';
 				this.state.start = p;
 				this.state.last  = p;
-				this._captureOriginals();
+				this._captureOriginals();   // captures ALL currently selected objects
 				this._captureStepStart();
 			}
 		} else {
+			console.log('wat');
 			if (!e.shiftKey) _editor.setSelection([]);
 			this.state.mode = 'marquee';
 			this.state.start = p;
@@ -739,7 +756,7 @@ export default class D2DGizmo {
 	/* ========================= PICKING ========================= */
 
 	_pickTop(wx, wy) {
-		const list = this._all2DInDrawOrder();
+		const list = this._all2DInDrawOrder(_editor.focus);
 		let d3dobj;
 		
 		for (let i = list.length - 1; i >= 0; --i) {
@@ -750,22 +767,13 @@ export default class D2DGizmo {
 			}
 		}
 		
-		if(!d3dobj)
-			return null;
-		
-		// Get the object thats child of _editor.focus
-		while(d3dobj.parent != _editor.focus) {
-			d3dobj = d3dobj.parent;
-			if(!d3dobj)
-				break;
-		}
-		
 		return d3dobj;
 	}
 
-	_all2DInDrawOrder() {
+	_all2DInDrawOrder(host) {
+		if(!host) host = this.d2drenderer.root;
 		const out = [];
-		this.d2drenderer.root.traverse(o => { if (o?.is2D) out.push(o); });
+		host.children.forEach(o => { if (o?.is2D) out.push(o); });
 		out.sort((a, b) => (a.position?.z || 0) - (b.position?.z || 0));
 		return out;
 	}
@@ -778,35 +786,29 @@ export default class D2DGizmo {
 		const Minv = this._worldMatrixInverse(o);
 		const lp = this._applyMat(Minv, wx, wy);
 	
-		const closed = this._isClosed(pts);
-		const tol = this._px(10); // ~10px buffer in screen space
+		const g = o?.graphic2d || {};
+		const hasFill   = !!(g.fill || g.filled || g.hasFill || g.fillStyle);
+		const hasStroke = !!(g.stroke || g.stroked || g.hasStroke || g.strokeStyle || g.lineWidth);
+		const strokeW   = Number(g.lineWidth || g.strokeWidth || 0);
+		const tol       = Math.max(this._px(6), strokeW * 0.5); // screen-ish tolerance
 	
-		if (closed || true) {
-			// inside fill OR within tol of the outline counts as a hit
+		// 1) Fill hit: treat path as implicitly closed polygon (last→first)
+		if (hasFill) {
 			if (this._pointInPolygon(lp.x, lp.y, pts)) return true;
-			if (this._pointNearPolyline(lp.x, lp.y, pts, tol)) return true;
-	
-			// also accept clicks within tol of the shape's local AABB (nice for tiny shapes)
-			let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-			for (const p of pts) {
-				if (p.x < minX) minX = p.x;
-				if (p.y < minY) minY = p.y;
-				if (p.x > maxX) maxX = p.x;
-				if (p.y > maxY) maxY = p.y;
-			}
-			if (
-				lp.x >= minX - tol && lp.x <= maxX + tol &&
-				lp.y >= minY - tol && lp.y <= maxY + tol
-			) {
-				// If the point is just outside the fill but near the bbox edge, treat as hit
-				// (keeps selections sticky while editing nearby points).
-				return true;
-			}
-			return false;
 		}
 	
-		// open polylines: near-line within tol
-		return this._pointNearPolyline(lp.x, lp.y, pts, tol);
+		// 2) Stroke hit: near any segment within tolerance
+		if (hasStroke) {
+			if (this._pointNearPolyline(lp.x, lp.y, pts, tol)) return true;
+	
+			// Also test closing segment (last→first) for “filled open” paths
+			if (pts.length > 1) {
+				const a = pts[pts.length - 1], b = pts[0];
+				if (this._distSqToSeg(lp.x, lp.y, a, b) <= tol * tol) return true;
+			}
+		}
+	
+		return false;
 	}
 
 	_invert(M) {

@@ -394,6 +394,17 @@ const D3DComponents = {
 				type: 'none',
 				def: {x: 0, y: 0}
 			},
+			'fill': {
+				label: 'Fill',
+				type: 'boolean',
+				def: true
+			},
+			'fillColor': {
+				label: 'Fill color',
+				type: 'colora',
+				def: '#ffffffff',
+				condition: c => c.properties.fill == true
+			},
 			'line': {
 				label: 'Line',
 				type: 'boolean',
@@ -403,14 +414,14 @@ const D3DComponents = {
 				label: 'Line width',
 				type: 'number',
 				min: 0,
-				max: 100,
+				max: 1000,
 				def: 1,
 				condition: c => c.properties.line == true
 			},
 			'lineColor': {
 				label: 'Line color',
 				type: 'colora',
-				def: '#ffffff',
+				def: '#ffffffff',
 				condition: c => c.properties.line == true
 			},
 			'lineCap': {
@@ -446,16 +457,24 @@ const D3DComponents = {
 					c.properties.lineJoin == 'miter'
 				)
 			},
-			'fill': {
-				label: 'Fill',
+			'outline': {
+				label: 'Outline',
 				type: 'boolean',
-				def: true
+				def: false
 			},
-			'fillColor': {
-				label: 'Fill color',
+			'outlineWidth': {
+				label: 'Outline width',
+				type: 'number',
+				min: 0,
+				max: 1000,
+				def: 1,
+				condition: c => c.properties.outline == true
+			},
+			'outlineColor': {
+				label: 'Outline color',
 				type: 'colora',
 				def: '#ffffffff',
-				condition: c => c.properties.fill == true
+				condition: c => c.properties.outline == true
 			},
 			'borderRadius': {
 				label: 'Border radius',
