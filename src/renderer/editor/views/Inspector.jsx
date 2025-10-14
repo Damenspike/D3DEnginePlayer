@@ -455,6 +455,7 @@ export default function Inspector() {
 			const schema = D3DComponents[component.type];
 			const idx = object.components.indexOf(component);
 			const dummyComponent = dummyObject.components[idx];
+			const sections = {};
 			
 			if(!schema) {
 				console.warn(`Unknown component schema for '${component.type}'`);
@@ -842,7 +843,7 @@ export default function Inspector() {
 						}
 					
 						fieldContent = (
-							<div className="file-array-field">
+							<div className="file-array-field mt">
 								<div className="file-array-list">
 									{current.map((uuid, idx) => {
 										const filePath = _root.resolveAssetPath(uuid);
@@ -1011,15 +1012,24 @@ export default function Inspector() {
 				
 				if(!fieldContent)
 					continue;
+					
+				let rowContainer = fields;
+				
+				if(field.section) {
+					if(!sections[field.section])
+						sections[field.section] = [];
+					
+					rowContainer = sections[field.section];
+				}
 				
 				if(sideBySide) {
-					fields.push(
-						<div className='field' key={fields.length}>
+					rowContainer.push(
+						<div className='field' key={rowContainer.length}>
 							<div className='sidebyside'>
 								<div className='left-side'>
 									<label>{field.label}</label>
 									{desc && (
-										<div className='small gray desc'>
+										<div className='small gray desc mt'>
 											{desc}
 										</div>
 									)}
@@ -1031,8 +1041,8 @@ export default function Inspector() {
 						</div>
 					);
 				}else{
-					fields.push(
-						<div className='field' key={fields.length}>
+					rowContainer.push(
+						<div className='field' key={rowContainer.length}>
 							<label>{field.label}</label>
 							{desc && (
 								<div className='small gray mt'>
@@ -1043,6 +1053,24 @@ export default function Inspector() {
 						</div>
 					);
 				}
+			}
+			
+			const drawFields = () => {
+				const rows = [];
+				
+				for(let i in sections) {
+					const rws = sections[i];
+					
+					rows.push(
+						<div className='component-section shade'>
+							{rws}
+						</div>
+					);
+				}
+				
+				rows.push(...fields);
+				
+				return rows;
 			}
 			
 			rows.push(
@@ -1061,7 +1089,7 @@ export default function Inspector() {
 					)}
 					key={rows.length} 
 				>
-					{fields}
+					{drawFields()}
 				</ComponentCell>
 			);
 		});

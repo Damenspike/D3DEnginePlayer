@@ -138,6 +138,9 @@ body.dark {
 		border-radius: 6px;
 	}
 }
+.field:last-child {
+	margin-bottom: 0px;
+}
 .mrs {
 	margin-right: 5px;
 }
@@ -214,7 +217,7 @@ body.dark {
 }
 .sidebyside {
 	display: flex;
-	align-items: flex-start; /* vertically center */
+	align-items: center; /* vertically center */
 	justify-content: space-between; /* push left and right apart */
 	width: 100%;
 	gap: 10px;

@@ -155,6 +155,9 @@ export default class D2DRenderer {
 		const points  = graphic?._points || [];
 		if (points.length < 1) return;
 	
+		// Subtract nodes never render themselves
+		if (graphic.subtract) return;
+	
 		const gLineEnabled = graphic.line !== false;
 		const gLineWidth   = Number(graphic.lineWidth ?? 1);
 		const gLineColor   = graphic.lineColor ?? '#ffffff';
@@ -174,17 +177,23 @@ export default class D2DRenderer {
 		const last  = points[points.length - 1];
 		const isClosed = points.length >= 3 && approx(first.x, last.x) && approx(first.y, last.y);
 	
-		const buildRawPath = () => {
+		const buildRawPath = (pts) => {
+			if (!pts || pts.length < 1) return null;
 			const p = new Path2D();
-			p.moveTo(points[0].x, points[0].y);
-			for (let i = 1; i < points.length; i++) p.lineTo(points[i].x, points[i].y);
-			if (isClosed) p.closePath();
+			p.moveTo(pts[0].x, pts[0].y);
+			for (let i = 1; i < pts.length; i++) p.lineTo(pts[i].x, pts[i].y);
+			// close if authored closed
+			if (pts.length >= 3 && approx(pts[0].x, pts[pts.length - 1].x) && approx(pts[0].y, pts[pts.length - 1].y)) p.closePath();
 			return p;
 		};
 	
-		const buildRoundedPath = () => {
-			if (!isClosed || borderRadius <= 0 || points.length < 3) return null;
-			const base = points.slice(0, -1);
+		const buildRoundedPath = (pts, r) => {
+			if (!pts || pts.length < 3 || r <= 0) return null;
+			const first = pts[0], last = pts[pts.length - 1];
+			const closed = approx(first.x, last.x) && approx(first.y, last.y);
+			if (!closed) return null;
+	
+			const base = pts.slice(0, -1);
 			const count = base.length;
 			if (count < 3) return null;
 	
@@ -202,12 +211,12 @@ export default class D2DRenderer {
 				const len1 = Math.hypot(v1x, v1y) || 1;
 				const len2 = Math.hypot(v2x, v2y) || 1;
 	
-				const r = Math.min(borderRadius, len1 / 2, len2 / 2);
+				const rr = Math.min(r, len1 / 2, len2 / 2);
 	
-				const inX  = p1.x - (v1x / len1) * r;
-				const inY  = p1.y - (v1y / len1) * r;
-				const outX = p1.x + (v2x / len2) * r;
-				const outY = p1.y + (v2y / len2) * r;
+				const inX  = p1.x - (v1x / len1) * rr;
+				const inY  = p1.y - (v1y / len1) * rr;
+				const outX = p1.x + (v2x / len2) * rr;
+				const outY = p1.y + (v2y / len2) * rr;
 	
 				if (i === 0) p.moveTo(inX, inY);
 				else p.lineTo(inX, inY);
@@ -218,10 +227,86 @@ export default class D2DRenderer {
 			return p;
 		};
 	
-		const rawPath     = buildRawPath();
-		const roundedPath = buildRoundedPath();
-		const pathForFill = roundedPath || rawPath;
+		// --- world matrix (T * Rz * S) for any node ---
+		const worldMatrix = (node) => {
+			let m = new DOMMatrix();
+			const stack = [];
+			for (let n = node; n; n = n.parent) stack.push(n);
+			for (let i = stack.length - 1; i >= 0; --i) {
+				const o  = stack[i];
+				const tx = Number(o.position?.x) || 0;
+				 const ty = Number(o.position?.y) || 0;
+				const rz = Number(o.rotation?.z) || 0;
+				const sx = Number(o.scale?.x) || 1;
+				const sy = Number(o.scale?.y) || 1;
+				m = m.translate(tx, ty).rotate(rz * 180 / Math.PI).scale(sx, sy);
+			}
+			return m;
+		};
 	
+		// parent world and device transforms
+		const mParent = worldMatrix(d3dobject);
+		const gs = (this.pixelRatio || 1) * (this.viewScale || 1);
+		const isInFocus = _editor.focus == d3dobject || _editor.focus.containsChild(d3dobject);
+		const masterAlpha = isInFocus ? 1 : 0.2;
+	
+		// build parent path
+		const rawPathParent     = buildRawPath(points);
+		const roundedPathParent = buildRoundedPath(points, borderRadius);
+		const parentPathForFill = roundedPathParent || rawPathParent;
+	
+		// compound path = parent + subtract holes (children marked subtract)
+		const compound = new Path2D();
+		if (parentPathForFill) compound.addPath(parentPathForFill);
+	
+		// gather subtract children (direct children only)
+		const kids = d3dobject.children || [];
+		if (kids.length) {
+			// prepare inverse(parent) to compute child-in-parent matrix
+			const invParent = mParent.inverse();
+			for (const child of kids) {
+				const cg = child.graphic2d;
+				const cpts = cg?._points;
+				if (!cg || cg.subtract !== true) continue;
+				if (!cpts || cpts.length < 3) continue;
+	
+				// child path (rounded if requested on child)
+				const cRounded = buildRoundedPath(cpts, Math.max(0, Number(cg.borderRadius ?? 0)));
+				const cRaw     = cRounded || buildRawPath(cpts);
+				if (!cRaw) continue;
+	
+				// transform child path into parent local-space
+				const mChild = worldMatrix(child);
+				const rel = invParent.multiply(mChild); // DOMMatrix multiply → invParent * mChild
+				compound.addPath(cRaw, rel);
+			}
+		}
+	
+		ctx.save();
+		ctx.globalAlpha *= alpha * masterAlpha;
+	
+		// device transform then parent world transform
+		ctx.setTransform(gs, 0, 0, gs, 0, 0);
+		ctx.transform(mParent.a, mParent.b, mParent.c, mParent.d, mParent.e, mParent.f);
+	
+		// outline around the final geometry (strokes inner+outer edges)
+		if (outlineOn && parentPathForFill && isClosed) {
+			ctx.lineWidth   = Math.max(0.001, outlineWidth);
+			ctx.strokeStyle = hexToRgba(outlineColor);
+			ctx.lineCap     = lineCap;
+			ctx.lineJoin    = lineJoin;
+			ctx.miterLimit  = miterLimit;
+			// stroke the compound so inner hole edges get outlined too
+			ctx.stroke(compound);
+		}
+	
+		// fill with evenodd so subtract children become holes
+		if (fillEnabled && parentPathForFill) {
+			ctx.fillStyle = hexToRgba(fillColor);
+			ctx.fill(compound, 'evenodd');
+		}
+	
+		// strokes: if uniform, stroke the (outer+inner) geometry; else per-segment like before
 		const uniformStroke =
 			gLineEnabled &&
 			points.every(pt =>
@@ -233,53 +318,15 @@ export default class D2DRenderer {
 				pt.miterLimit === undefined
 			);
 	
-		let m = new DOMMatrix();
-		const chain = [];
-		let n = d3dobject;
-		while (n) { chain.push(n); n = n.parent; }
-		chain.reverse();
-		for (let i = 0; i < chain.length; i++) {
-			const o  = chain[i];
-			const tx = Number(o.position?.x) || 0;
-			const ty = Number(o.position?.y) || 0;
-			const rz = Number(o.rotation?.z) || 0;
-			const sx = Number(o.scale?.x) || 1;
-			const sy = Number(o.scale?.y) || 1;
-			m = m.translate(tx, ty).rotate(rz * 180 / Math.PI).scale(sx, sy);
-		}
-	
-		const gs = (this.pixelRatio || 1) * (this.viewScale || 1);
-		const isInFocus = _editor.focus == d3dobject || _editor.focus.containsChild(d3dobject);
-		const masterAlpha = isInFocus ? 1 : 0.2;
-	
-		ctx.save();
-		ctx.globalAlpha *= alpha * masterAlpha;
-		ctx.setTransform(gs, 0, 0, gs, 0, 0);
-		ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
-	
-		// Outline first (so fill covers the inner half → reads like an outer border)
-		if (outlineOn && pathForFill && isClosed) {
-			ctx.lineWidth   = Math.max(0.001, outlineWidth);
-			ctx.strokeStyle = hexToRgba(outlineColor);
-			ctx.lineCap     = lineCap;
-			ctx.lineJoin    = lineJoin;
-			ctx.miterLimit  = miterLimit;
-			ctx.stroke(pathForFill);
-		}
-	
-		if (fillEnabled && pathForFill) {
-			ctx.fillStyle = hexToRgba(fillColor);
-			ctx.fill(pathForFill);
-		}
-	
-		if (uniformStroke && pathForFill) {
+		if (uniformStroke && parentPathForFill) {
 			ctx.lineWidth   = Math.max(0.001, gLineWidth);
 			ctx.strokeStyle = hexToRgba(gLineColor);
 			ctx.lineCap     = lineCap;
 			ctx.lineJoin    = lineJoin;
 			ctx.miterLimit  = miterLimit;
-			ctx.stroke(pathForFill);
+			ctx.stroke(compound);
 		} else {
+			// per-segment (does not consider holes; same behavior as before)
 			const segCount = points.length - 1;
 			for (let i = 0; i < segCount; i++) {
 				const a = points[i];

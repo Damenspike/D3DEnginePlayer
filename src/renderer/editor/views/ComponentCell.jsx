@@ -9,7 +9,7 @@ export default function ComponentCell({
 	const [open, setOpen] = useState(defaultOpen);
 
 	return (
-		<div className={`inspector-cell${open ? '' : ' collapsed'} shade material-editor-cell`} tabIndex={1}>
+		<div className={`component-cell inspector-cell${open ? '' : ' collapsed'} shade material-editor-cell`} tabIndex={1}>
 			<div className="insp-title" role="button" tabIndex={0}
 				onClick={() => setOpen(!open)}
 				onKeyDown={e => { 

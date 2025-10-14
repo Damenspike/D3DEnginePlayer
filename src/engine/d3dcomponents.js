@@ -397,18 +397,21 @@ const D3DComponents = {
 			'fill': {
 				label: 'Fill',
 				type: 'boolean',
+				section: 'fill',
 				def: true
 			},
 			'fillColor': {
 				label: 'Fill color',
 				type: 'colora',
 				def: '#ffffffff',
+				section: 'fill',
 				condition: c => c.properties.fill == true
 			},
 			'line': {
 				label: 'Line',
 				type: 'boolean',
-				def: true
+				def: true,
+				section: 'line'
 			},
 			'lineWidth': {
 				label: 'Line width',
@@ -416,12 +419,14 @@ const D3DComponents = {
 				min: 0,
 				max: 1000,
 				def: 1,
+				section: 'line',
 				condition: c => c.properties.line == true
 			},
 			'lineColor': {
 				label: 'Line color',
 				type: 'colora',
 				def: '#ffffffff',
+				section: 'line',
 				condition: c => c.properties.line == true
 			},
 			'lineCap': {
@@ -433,6 +438,7 @@ const D3DComponents = {
 					{ name: 'square', label: 'Square' }
 				],
 				def: 'round',
+				section: 'line',
 				condition: c => c.properties.line == true
 			},
 			'lineJoin': {
@@ -444,6 +450,7 @@ const D3DComponents = {
 					{ name: 'bevel', label: 'Bevel (chamfer)' }
 				],
 				def: 'round',
+				section: 'line',
 				condition: c => c.properties.line == true
 			},
 			'miterLimit': {
@@ -452,6 +459,7 @@ const D3DComponents = {
 				min: 1,
 				step: 0.5,
 				def: 10,
+				section: 'line',
 				condition: c => (
 					c.properties.line == true && 
 					c.properties.lineJoin == 'miter'
@@ -460,7 +468,8 @@ const D3DComponents = {
 			'outline': {
 				label: 'Outline',
 				type: 'boolean',
-				def: false
+				def: false,
+				section: 'outline'
 			},
 			'outlineWidth': {
 				label: 'Outline width',
@@ -468,12 +477,14 @@ const D3DComponents = {
 				min: 0,
 				max: 1000,
 				def: 1,
+				section: 'outline',
 				condition: c => c.properties.outline == true
 			},
 			'outlineColor': {
 				label: 'Outline color',
 				type: 'colora',
 				def: '#ffffffff',
+				section: 'outline',
 				condition: c => c.properties.outline == true
 			},
 			'borderRadius': {
@@ -482,6 +493,12 @@ const D3DComponents = {
 				min: 0,
 				max: Infinity,
 				def: 0
+			},
+			'subtract': {
+				label: 'Subtract parent',
+				description: "Subtracts this graphic from its parent's graphic",
+				type: 'boolean',
+				def: false
 			}
 		},
 		manager: function() {}
