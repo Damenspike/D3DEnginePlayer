@@ -22,11 +22,11 @@ export default function DrawBar() {
 	const [_tool, setTool] = useState(_editor.tool);
 	const [_fill, setFill] = useState(true);
 	const [_line, setLine] = useState(true);
-	const [_subtract, setSubtract] = useState(true);
 	const [_fillColor, setFillColor] = useState(_editor.draw2d.fillColor);
 	const [_lineColor, setLineColor] = useState(_editor.draw2d.lineColor);
 	const [_stroke, setStroke] = useState(_editor.draw2d.lineWidth);
 	const [_borderRadius, setBorderRadius] = useState(_editor.draw2d.borderRadius);
+	const [_subtract, setSubtract] = useState(_editor.draw2d.subtract);
 	
 	useEffect(() => {
 		_editor.setTool(_tool);
@@ -146,14 +146,14 @@ export default function DrawBar() {
 				
 				<div className='drawbar-draw2d'>
 					<div className='mt gray smallx'>
-						MINUS
+						ERASE
 					</div>
 					<input 
 						type="checkbox" 
 						checked={_subtract} 
 						onChange={e => {
-							//setSubtract(e.target.checked);
-							//_editor.draw2d.subtract = e.target.checked;
+							setSubtract(e.target.checked);
+							_editor.draw2d.subtract = e.target.checked;
 						}}
 					/>
 				</div>

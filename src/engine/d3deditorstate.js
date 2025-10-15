@@ -80,7 +80,8 @@ export default class D3DEditorState {
 			brushRadius: 1, 
 			borderRadius: 0,
 			lineWidth: 5, // stroke
-			snapEnabled: true
+			snapEnabled: true,
+			subtract: false
 		}
 	}
 

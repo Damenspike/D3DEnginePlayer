@@ -385,7 +385,10 @@ export default class D2DDraw {
 		if (this.tool === 'square')  name = 'Rectangle';
 		if (this.tool === 'circle')  name = 'Ellipse';
 		if (this.tool === 'polygon') name = 'Polygon';
-
+		
+		if(_editor.draw2d.subtract)
+			name += ' Erase';
+		
 		const props = { _points: [] };
 		if (['brush','square','circle','polygon'].includes(this.tool)) {
 			props.fill = !!_editor.draw2d?.fill;  props.line = !!_editor.draw2d?.line;
@@ -508,6 +511,7 @@ export default class D2DDraw {
 		obj.graphic2d.miterLimit = Math.max(1, Number(s.miterLimit ?? obj.graphic2d.miterLimit ?? 10));
 		obj.graphic2d.fillColor  = s.fillColor || obj.graphic2d.fillColor || '#000000ff';
 		obj.graphic2d.borderRadius = br;
+		obj.graphic2d.subtract = s.subtract;
 	
 		// close any filled geometry
 		if (obj.graphic2d.fill) {

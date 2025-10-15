@@ -384,7 +384,12 @@ const D3DComponents = {
 	Graphic2D: {
 		name: 'Graphic 2D',
 		fields: {
-			'_points': {
+			'_paths': { // legacy
+				label: '',
+				type: 'none',
+				def: []
+			},
+			'_points': { // legacy
 				label: '',
 				type: 'none',
 				def: []
@@ -495,7 +500,7 @@ const D3DComponents = {
 				def: 0
 			},
 			'subtract': {
-				label: 'Subtract parent',
+				label: 'Erase parent',
 				description: "Subtracts this graphic from its parent's graphic",
 				type: 'boolean',
 				def: false
