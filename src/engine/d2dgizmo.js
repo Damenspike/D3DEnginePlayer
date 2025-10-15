@@ -368,20 +368,26 @@ export default class D2DGizmo {
 	_onUp() {
 		if (this.state.mode === 'marquee') {
 			const a = this.state.start, b = this.state.last;
-			const rect = this._rectFromPoints(a, b); // {x, y, w, h}
+			const rect = this._rectFromPoints(a, b); // { x, y, w, h }
 		
-			const roots = this._marqueeRootsUnderFocus();
-			const newlyHit = [];
-			for (const r of roots) {
-				const bb = this._worldAABBDeep(r);
-				if (!bb) continue;
-				if (this._rectIntersectsAABB(rect, bb)) newlyHit.push(r);
+			// --- only complete if it's a *real* marquee ---
+			// threshold in screen px → world units
+			const minPx = 6; // tweak to taste
+			const minWorld = this._px(minPx);
+			const isRealMarquee = Math.max(rect.w, rect.h) >= minWorld;
+		
+			if (isRealMarquee) {
+				const roots = this._marqueeRootsUnderFocus();
+				const newlyHit = [];
+				for (const r of roots) {
+					const bb = this._worldAABBDeep(r);
+					if (!bb) continue;
+					if (this._rectIntersectsAABB(rect, bb)) newlyHit.push(r);
+				}
+		
+				if (!event?.shiftKey) _editor.setSelection([]);
+				if (newlyHit.length) _editor.addSelection(newlyHit);
 			}
-		
-			if (!event?.shiftKey)
-				_editor.setSelection([]);
-			if (newlyHit.length)
-				_editor.addSelection(newlyHit);
 		}
 		
 		if (!this.state.mode || this.state.mode === 'marquee') {
@@ -491,7 +497,6 @@ export default class D2DGizmo {
 				this._captureStepStart();
 			}
 		} else {
-			console.log('wat');
 			if (!e.shiftKey) _editor.setSelection([]);
 			this.state.mode = 'marquee';
 			this.state.start = p;
@@ -698,8 +703,12 @@ export default class D2DGizmo {
 
 	_localPoints(o) {
 		const g = o?.graphic2d;
-		const pts = g?._points;
-		return (Array.isArray(pts) && pts.length) ? pts : null;
+		const points = [];
+		const paths = g._paths;
+		
+		paths.forEach(pts => points.push(...pts));
+		
+		return points;
 	}
 
 	_worldMatrix(o) {
@@ -755,19 +764,38 @@ export default class D2DGizmo {
 
 	/* ========================= PICKING ========================= */
 
-	_pickTop(wx, wy) {
-		const list = this._all2DInDrawOrder(_editor.focus);
-		let d3dobj;
-		
-		for (let i = list.length - 1; i >= 0; --i) {
-			const o = list[i];
-			if (this._hitObject(o, wx, wy)) {
-				d3dobj = o;
-				break;
-			}
+	_hitObjectDeep(root, wx, wy) {
+		// quick reject with deep AABB, *padded* by screen-px tolerance
+		const bb = this._worldAABBDeep(root);
+		if (!bb) return false;
+	
+		const pad = this._px(8); // 8px in screen space → world units
+		if (wx < bb.minX - pad || wx > bb.maxX + pad || wy < bb.minY - pad || wy > bb.maxY + pad) {
+			return false;
 		}
-		
-		return d3dobj;
+	
+		let hit = false;
+		this._traverse2D(root, (node) => {
+			if (hit) return; // early out
+			if (this._hitObject(node, wx, wy)) hit = true;
+		});
+		return hit;
+	}
+	
+	_pickTop(wx, wy) {
+		// same roots definition as marquee: “objects immediately inside focus”
+		const roots = this._marqueeRootsUnderFocus();
+		if (!roots.length) return null;
+	
+		// painter’s order by each root’s z (later = topmost)
+		roots.sort((a, b) => (a.position?.z || 0) - (b.position?.z || 0));
+	
+		// scan from topmost to bottom; return the root if any of its descendants was hit
+		for (let i = roots.length - 1; i >= 0; --i) {
+			const r = roots[i];
+			if (this._hitObjectDeep(r, wx, wy)) return r;
+		}
+		return null;
 	}
 
 	_all2DInDrawOrder(host) {

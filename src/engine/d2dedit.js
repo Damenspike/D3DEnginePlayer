@@ -7,20 +7,21 @@ export default class D2DEdit {
 		this.pointRadius = 5;
 		this.hitRadius = 8;
 
-		this.selectedPoints = []; // [{ obj, lindex }]
-		this.hoverPoint = null;   // { obj, lindex }
+		// [{ obj, pidx, lindex }]
+		this.selectedPoints = [];
+		this.hoverPoint = null;   // { obj, pidx, lindex }
 
 		this.dragging = false;
 		this.dragObj = null;
-		this.grabLIndex = null;
+		this.grabPath = null;     // path index
+		this.grabLIndex = null;   // logical index in that path
 		this.grabLocal = null;
 		this.lastLocal = null;
 		this.hasMoved = false;
-		this.undoSnapshot = null;
+		this.undoSnapshot = null; // { obj, items:[{pidx,i,x,y}] }
 		this.redoSnapshot = null;
 
-		// snapping session (borrow drawer)
-		this._snapSession = null; // { oldHost, host, using: true }
+		this._snapSession = null;
 
 		this._onMouseDown = this._onMouseDown.bind(this);
 		this._onMouseMove = this._onMouseMove.bind(this);
@@ -54,10 +55,11 @@ export default class D2DEdit {
 		_events.un('delete-action', this._onDelete);
 	}
 
-	// ---------------- overlay render (points) ----------------
+	/* ---------------- overlay render (points) ---------------- */
+
 	render() {
 		if (_editor.mode != '2D') return;
-		if (!_editor || _editor.tool !== 'select') return;
+		if (_editor.tool !== 'select') return;
 		const ctx = this.ctx;
 		if (!ctx) return;
 
@@ -71,40 +73,45 @@ export default class D2DEdit {
 
 		for (const obj of objs) {
 			const g = obj?.graphic2d;
-			const pts = g?._points || [];
-			if (pts.length === 0) continue;
+			const paths = Array.isArray(g?._paths) ? g._paths : [];
+			if (paths.length === 0) continue;
 
 			const world = this._worldDOMMatrix(obj);
 			const screen = new DOMMatrix().scale(gs, gs).multiply(world);
 
-			const logical = this._logicalPoints(pts);
-			for (let li = 0; li < logical.length; li++) {
-				const p = logical[li];
-				const sp = this._applyDOM(screen, p.x, p.y);
+			for (let pidx = 0; pidx < paths.length; pidx++) {
+				const path = paths[pidx] || [];
+				if (path.length === 0) continue;
 
-				const sel = this._isSelected(obj, li);
-				const hov = this._isHover(obj, li);
-				const r = sel ? this.pointRadius * 1.5 : (hov ? this.pointRadius * 1.2 : this.pointRadius);
+				const logical = this._logicalPoints(path);
+				for (let li = 0; li < logical.length; li++) {
+					const p = logical[li];
+					const sp = this._applyDOM(screen, p.x, p.y);
 
-				ctx.beginPath();
-				ctx.arc(sp.x, sp.y, r, 0, Math.PI * 2);
-				ctx.fillStyle = sel ? '#ffffff' : (hov ? '#ffffff' : '#00ff88');
-				ctx.fill();
-				ctx.lineWidth = 1;
-				ctx.strokeStyle = sel ? '#003844' : '#00442a';
-				ctx.stroke();
+					const sel = this._isSelected(obj, pidx, li);
+					const hov = this._isHover(obj, pidx, li);
+					const r = sel ? this.pointRadius * 1.5 : (hov ? this.pointRadius * 1.2 : this.pointRadius);
+
+					ctx.beginPath();
+					ctx.arc(sp.x, sp.y, r, 0, Math.PI * 2);
+					ctx.fillStyle = sel ? '#ffffff' : (hov ? '#ffffff' : '#00ff88');
+					ctx.fill();
+					ctx.lineWidth = 1;
+					ctx.strokeStyle = sel ? '#003844' : '#00442a';
+					ctx.stroke();
+				}
 			}
 		}
 
 		ctx.restore();
 	}
 
-	// ---------------- mouse ----------------
+	/* ---------------- mouse ---------------- */
+
 	_onMouseDown(e) {
 		if (_editor.mode != '2D') return;
-		if (!_editor || _editor.tool !== 'select') return;
+		if (_editor.tool !== 'select') return;
 
-		// Alt = insert new vertex
 		if (e.altKey) {
 			this._onAltInsert(e);
 			e.preventDefault();
@@ -122,37 +129,33 @@ export default class D2DEdit {
 		const add = e.shiftKey;
 
 		if (add) {
-			if (!this._isSelected(hit.obj, hit.lindex)) this.selectedPoints.push(hit);
+			if (!this._isSelected(hit.obj, hit.pidx, hit.lindex)) this.selectedPoints.push(hit);
 		} else if (mod) {
-			if (this._isSelected(hit.obj, hit.lindex)) this._removeSelected(hit.obj, hit.lindex);
+			if (this._isSelected(hit.obj, hit.pidx, hit.lindex)) this._removeSelected(hit.obj, hit.pidx, hit.lindex);
 			else this.selectedPoints.push(hit);
 		} else {
 			this.selectedPoints = [hit];
 		}
 
-		// prep transforms
 		const gs = (this.d2drenderer.pixelRatio || 1) * (this.d2drenderer.viewScale || 1);
 		const world = this._worldDOMMatrix(hit.obj);
 		const screen = new DOMMatrix().scale(gs, gs).multiply(world);
 		const inv = screen.inverse();
 
-		// mouse → canvas → local (initial grab position)
 		const m = this._mouseToCanvas(e);
 		const cursorLocal = this._applyDOM(inv, m.x, m.y);
 
-		// start vertex drag
 		this.dragging = true;
 		this.dragObj = hit.obj;
+		this.grabPath = hit.pidx;
 		this.grabLIndex = hit.lindex;
 		this.grabLocal = { x: cursorLocal.x, y: cursorLocal.y };
 		this.lastLocal = { x: cursorLocal.x, y: cursorLocal.y };
 		this.hasMoved = false;
 
-		// start snapping session (use obj.parent as host so snap hostLocal is parent-local)
 		this._beginSnapSession(hit.obj?.parent || null);
 
-		// history snapshot
-		this.undoSnapshot = this._snapshot(this.dragObj, this._selectedLogicalLIsFor(this.dragObj));
+		this.undoSnapshot = this._snapshotAllSelectedFor(this.dragObj);
 		this.redoSnapshot = null;
 
 		this.canvas.style.cursor = 'grabbing';
@@ -161,62 +164,58 @@ export default class D2DEdit {
 
 	_onMouseMove(e) {
 		if (_editor.mode != '2D') return;
-		if (!_editor || _editor.tool !== 'select') return;
+		if (_editor.tool !== 'select') return;
 
-		// vertex drag with snapping
 		if (this.dragging && this.dragObj) {
 			const obj = this.dragObj;
 			const g = obj?.graphic2d;
-			const pts = g?._points || [];
-			if (pts.length === 0) return;
+			const paths = Array.isArray(g?._paths) ? g._paths : [];
+			if (paths.length === 0) return;
 
 			const gs = (this.d2drenderer.pixelRatio || 1) * (this.d2drenderer.viewScale || 1);
 			const world = this._worldDOMMatrix(obj);
 			const screen = new DOMMatrix().scale(gs, gs).multiply(world);
 			const inv = screen.inverse();
 
-			// raw local from inverse (fallback)
 			const m = this._mouseToCanvas(e);
 			let targetLocal = this._applyDOM(inv, m.x, m.y);
 
-			// try snap via drawer (returns hostLocal; convert host→obj local)
 			const drawer = this.d2drenderer?.drawer;
 			const snappingOn = !!_editor?.draw2d?.snapEnabled && !!drawer;
 			if (snappingOn) {
-				// ensure session host is correct
 				if (!this._snapSession) this._beginSnapSession(obj?.parent || null);
-				if (this._snapSession) {
-					// rebuild cache as drawer does when host/focus changes
-					if (!drawer._snapCache || drawer._lastFocus !== (_editor?.focus || null)) {
-						drawer._rebuildSnapCache?.();
-					}
-					const hit = drawer._snap?.(m);
-					// (optional) show their gizmo if their overlay is active
-					if (hit) drawer._snapHit = hit;
+				if (!drawer._snapCache || drawer._lastFocus !== (_editor?.focus || null)) {
+					drawer._rebuildSnapCache?.();
+				}
+				const hit = drawer._snap?.(m);
+				if (hit) drawer._snapHit = hit;
 
-					if (hit?.hostLocal) {
-						// convert hostLocal (host = obj.parent) → obj local
-						const hostNode = this._snapSession.hostNode;
-						const conv = this._hostToChildLocal(hostNode, obj, hit.hostLocal);
-						targetLocal = { x: conv.x, y: conv.y };
-					}
+				if (hit?.hostLocal) {
+					const hostNode = this._snapSession?.hostNode || null;
+					const conv = this._hostToChildLocal(hostNode, obj, hit.hostLocal);
+					targetLocal = { x: conv.x, y: conv.y };
 				}
 			}
 
-			// delta since last frame — moves all selected logical points for this object
 			const dx = targetLocal.x - this.lastLocal.x;
 			const dy = targetLocal.y - this.lastLocal.y;
 
 			if (dx !== 0 || dy !== 0) {
 				this.hasMoved = true;
-				const lis = this._selectedLogicalLIsFor(obj);
-				for (const li of lis) {
-					const map = this._logicalMap(pts, li);
-					for (const pi of map) {
-						pts[pi].x += dx;
-						pts[pi].y += dy;
+
+				// move all selected logical points for this object, per-path
+				const byPath = this._selectedLogicalByPathFor(obj);
+				for (const [pidx, lis] of byPath.entries()) {
+					const path = paths[pidx] || [];
+					for (const li of lis) {
+						const map = this._logicalMap(path, li);
+						for (const pi of map) {
+							path[pi].x += dx;
+							path[pi].y += dy;
+						}
 					}
 				}
+
 				this.lastLocal = targetLocal;
 			}
 
@@ -225,9 +224,8 @@ export default class D2DEdit {
 			return;
 		}
 
-		// hover
 		const hit = this._pickPoint(e);
-		this.hoverPoint = hit ? { obj: hit.obj, lindex: hit.lindex } : null;
+		this.hoverPoint = hit ? { obj: hit.obj, pidx: hit.pidx, lindex: hit.lindex } : null;
 		this.canvas.style.cursor = 'default';
 	}
 
@@ -240,9 +238,8 @@ export default class D2DEdit {
 		this.dragging = false;
 		this.canvas.style.cursor = 'default';
 
-		// commit history
 		if (commit && this.hasMoved && this.dragObj && this.undoSnapshot) {
-			this.redoSnapshot = this._snapshot(this.dragObj, this._selectedLogicalLIsFor(this.dragObj));
+			this.redoSnapshot = this._snapshotAllSelectedFor(this.dragObj);
 			const obj = this.dragObj;
 			const before = this.undoSnapshot;
 			const after = this.redoSnapshot;
@@ -253,10 +250,10 @@ export default class D2DEdit {
 			});
 		}
 
-		// end snap session
 		this._endSnapSession();
 
 		this.dragObj = null;
+		this.grabPath = null;
 		this.grabLIndex = null;
 		this.grabLocal = null;
 		this.lastLocal = null;
@@ -265,41 +262,35 @@ export default class D2DEdit {
 		this.redoSnapshot = null;
 	}
 
-	// ---------------- snapping glue ----------------
+	/* ---------------- snapping glue ---------------- */
+
 	_beginSnapSession(hostNode) {
 		const drawer = this.d2drenderer?.drawer;
 		if (!drawer) return;
-		this._snapSession = {
-			oldHost: drawer.host,
-			hostNode: hostNode || null,
-			using: true
-		};
+		this._snapSession = { oldHost: drawer.host, hostNode: hostNode || null, using: true };
 		drawer.host = hostNode || drawer.host || _editor?.focus || _root;
-		// force cache rebuild for reliable results
 		drawer._snapCache = null;
 	}
 
 	_endSnapSession() {
 		const drawer = this.d2drenderer?.drawer;
 		if (!drawer || !this._snapSession) { this._snapSession = null; return; }
-		// restore previous drawer state
 		drawer.host = this._snapSession.oldHost;
 		drawer._snapHit = null;
 		drawer._snapCache = null;
 		this._snapSession = null;
 	}
 
-	// Convert a point in host local space → child (obj) local space
 	_hostToChildLocal(hostNode, childNode, pHost) {
 		const W_host  = this._worldDOMMatrix(hostNode || _root);
 		const W_child = this._worldDOMMatrix(childNode);
-		// p_child = W_child^{-1} * W_host * p_host
 		const M = W_child.inverse().multiply(W_host);
 		const q = new DOMPoint(pHost.x, pHost.y).matrixTransform(M);
 		return { x: q.x, y: q.y };
 	}
 
-	// ---------------- keyboard (objects only; unchanged) ----------------
+	/* ---------------- keyboard (objects only) ---------------- */
+
 	_onKeyDown(e) {
 		if (_editor.mode !== '2D') return;
 		if (!(_editor.tool === 'select' || _editor.tool === 'transform')) return;
@@ -343,7 +334,8 @@ export default class D2DEdit {
 		});
 	}
 
-	// ---------------- insert vertex (unchanged) ----------------
+	/* ---------------- insert vertex (Alt+Click) ---------------- */
+
 	_onAltInsert(e) {
 		const objs = Array.isArray(_editor?.selectedObjects) ? _editor.selectedObjects : [];
 		if (objs.length === 0) return;
@@ -355,103 +347,110 @@ export default class D2DEdit {
 
 		for (const obj of objs) {
 			const g = obj?.graphic2d;
-			const pts = g?._points || [];
-			if (pts.length < 2) continue;
+			const paths = Array.isArray(g?._paths) ? g._paths : [];
+			if (paths.length === 0) continue;
 
 			const world = this._worldDOMMatrix(obj);
 			const screen = new DOMMatrix().scale(gs, gs).multiply(world);
 			const inv = screen.inverse();
 			const local = this._applyDOM(inv, mouse.x, mouse.y);
 
-			const logical = this._logicalPoints(pts);
-			const closed = this._isClosed(pts);
+			for (let pidx = 0; pidx < paths.length; pidx++) {
+				const path = paths[pidx] || [];
+				if (path.length < 2) continue;
 
-			const segCount = closed ? logical.length : Math.max(0, logical.length - 1);
-			for (let i = 0; i < segCount; i++) {
-				const a = logical[i];
-				const b = logical[(i + 1) % logical.length];
-				const { d2, t } = this._pointSegDist2(local, a, b);
-				if (best == null || d2 < best.d2) {
-					best = { obj, pts, local, liA: i, t, d2, closed };
+				const logical = this._logicalPoints(path);
+				const closed = this._isClosed(path);
+				const segCount = closed ? logical.length : Math.max(0, logical.length - 1);
+
+				for (let i = 0; i < segCount; i++) {
+					const a = logical[i];
+					const b = logical[(i + 1) % logical.length];
+					const { d2, t } = this._pointSegDist2(local, a, b);
+					if (best == null || d2 < best.d2) {
+						best = { obj, pidx, local, liA: i, t, d2, closed, logicalLen: logical.length };
+					}
 				}
 			}
 		}
 
 		if (!best) return;
 
-		const { obj, pts, local, liA, closed } = best;
+		const { obj, pidx, local, liA, closed, logicalLen } = best;
+		const paths = obj.graphic2d._paths;
+		const path = paths[pidx];
 
-		const before = this._clonePoints(pts);
+		const before = this._clonePaths(paths);
 
-		// physical insert index
-		const logicalLen = this._logicalPoints(pts).length;
-		const insertAt = (closed && liA === logicalLen - 1) ? (pts.length - 1) : (liA + 1);
+		const insertAt = (closed && liA === logicalLen - 1) ? (path.length - 1) : (liA + 1);
+		path.splice(insertAt, 0, { x: local.x, y: local.y });
 
-		pts.splice(insertAt, 0, { x: local.x, y: local.y });
-
-		// keep closure
 		if (closed) {
-			const a = pts[0], b = pts[pts.length - 1];
+			const a = path[0], b = path[path.length - 1];
 			if (!this._approx(a.x, b.x) || !this._approx(a.y, b.y)) {
-				pts[pts.length - 1] = { x: a.x, y: a.y };
+				path[path.length - 1] = { x: a.x, y: a.y };
 			}
 		}
 
-		const after = this._clonePoints(pts);
+		const after = this._clonePaths(paths);
 
 		_editor?.addStep?.({
 			name: 'Insert 2D Point',
-			undo: () => { obj.graphic2d._points = this._clonePoints(before); },
-			redo: () => { obj.graphic2d._points = this._clonePoints(after); }
+			undo: () => { obj.graphic2d._paths = this._clonePaths(before); },
+			redo: () => { obj.graphic2d._paths = this._clonePaths(after); }
 		});
 
-		// select the new logical point and start drag immediately
 		const newLogicalIndex = (closed && liA === logicalLen - 1) ? logicalLen : (liA + 1);
-		this.selectedPoints = [{ obj, lindex: newLogicalIndex }];
+		this.selectedPoints = [{ obj, pidx, lindex: newLogicalIndex }];
 
-		// initialize drag state so the user can drag right away while holding mouse
 		this.dragging = true;
 		this.dragObj = obj;
+		this.grabPath = pidx;
 		this.grabLIndex = newLogicalIndex;
 		this.grabLocal = { x: local.x, y: local.y };
 		this.lastLocal = { x: local.x, y: local.y };
 		this.hasMoved = false;
-		this.undoSnapshot = this._snapshot(this.dragObj, this._selectedLogicalLIsFor(this.dragObj));
+		this.undoSnapshot = this._snapshotAllSelectedFor(this.dragObj);
 		this.redoSnapshot = null;
 
 		this.canvas.style.cursor = 'grabbing';
 	}
 
-	// ---------------- picking & helpers ----------------
+	/* ---------------- picking & helpers ---------------- */
+
 	_pickPoint(e) {
 		const mouse = this._mouseToCanvas(e);
 		const objs = Array.isArray(_editor?.selectedObjects) ? _editor.selectedObjects : [];
 		if (objs.length === 0) return null;
 
 		const gs = (this.d2drenderer.pixelRatio || 1) * (this.d2drenderer.viewScale || 1);
-
 		let best = null;
 		let bestD2 = Infinity;
 
 		for (const obj of objs) {
 			const g = obj?.graphic2d;
-			const pts = g?._points || [];
-			if (pts.length === 0) continue;
+			const paths = Array.isArray(g?._paths) ? g._paths : [];
+			if (paths.length === 0) continue;
 
 			const world = this._worldDOMMatrix(obj);
 			const screen = new DOMMatrix().scale(gs, gs).multiply(world);
 
-			const logical = this._logicalPoints(pts);
-			for (let li = 0; li < logical.length; li++) {
-				const p = logical[li];
-				const sp = this._applyDOM(screen, p.x, p.y);
-				const dx = sp.x - mouse.x;
-				const dy = sp.y - mouse.y;
-				const d2 = dx * dx + dy * dy;
+			for (let pidx = 0; pidx < paths.length; pidx++) {
+				const path = paths[pidx] || [];
+				if (path.length === 0) continue;
 
-				if (d2 <= this.hitRadius * this.hitRadius && d2 < bestD2) {
-					bestD2 = d2;
-					best = { obj, lindex: li };
+				const logical = this._logicalPoints(path);
+				for (let li = 0; li < logical.length; li++) {
+					const p = logical[li];
+					const sp = this._applyDOM(screen, p.x, p.y);
+					const dx = sp.x - mouse.x;
+					const dy = sp.y - mouse.y;
+					const d2 = dx * dx + dy * dy;
+
+					if (d2 <= this.hitRadius * this.hitRadius && d2 < bestD2) {
+						bestD2 = d2;
+						best = { obj, pidx, lindex: li };
+					}
 				}
 			}
 		}
@@ -465,15 +464,27 @@ export default class D2DEdit {
 		return { x, y };
 	}
 
-	_isSelected(obj, lindex) { return this.selectedPoints.some(sp => sp.obj === obj && sp.lindex === lindex); }
-	_isHover(obj, lindex) { return !!(this.hoverPoint && this.hoverPoint.obj === obj && this.hoverPoint.lindex === lindex); }
-	_removeSelected(obj, lindex) { this.selectedPoints = this.selectedPoints.filter(sp => !(sp.obj === obj && sp.lindex === lindex)); }
+	_isSelected(obj, pidx, lindex) {
+		return this.selectedPoints.some(sp => sp.obj === obj && sp.pidx === pidx && sp.lindex === lindex);
+	}
+	_isHover(obj, pidx, lindex) {
+		return !!(this.hoverPoint && this.hoverPoint.obj === obj && this.hoverPoint.pidx === pidx && this.hoverPoint.lindex === lindex);
+	}
+	_removeSelected(obj, pidx, lindex) {
+		this.selectedPoints = this.selectedPoints.filter(sp => !(sp.obj === obj && sp.pidx === pidx && sp.lindex === lindex));
+	}
 
-	_selectedLogicalLIsFor(obj) {
-		const lis = [];
-		for (const sp of this.selectedPoints) if (sp.obj === obj) lis.push(sp.lindex);
-		if (lis.length === 0 && this.grabLIndex != null) lis.push(this.grabLIndex);
-		return lis;
+	_selectedLogicalByPathFor(obj) {
+		const map = new Map(); // pidx -> [lindex...]
+		for (const sp of this.selectedPoints) {
+			if (sp.obj !== obj) continue;
+			if (!map.has(sp.pidx)) map.set(sp.pidx, []);
+			map.get(sp.pidx).push(sp.lindex);
+		}
+		if (map.size === 0 && this.grabPath != null && this.grabLIndex != null) {
+			map.set(this.grabPath, [this.grabLIndex]);
+		}
+		return map;
 	}
 
 	_worldDOMMatrix(d3dobject) {
@@ -524,17 +535,23 @@ export default class D2DEdit {
 		return this._approx(a.x, b.x) && this._approx(a.y, b.y);
 	}
 
-	_clonePoints(pts) { return pts.map(p => ({ x: p.x, y: p.y })); }
+	_clonePaths(paths) {
+		return paths.map(path => path.map(p => ({ x: p.x, y: p.y })));
+	}
 
-	_snapshot(obj, logicalIndexes) {
+	_snapshotAllSelectedFor(obj) {
 		const g = obj?.graphic2d;
-		const pts = g?._points || [];
+		const paths = Array.isArray(g?._paths) ? g._paths : [];
 		const items = [];
-		for (const li of logicalIndexes) {
-			const map = this._logicalMap(pts, li);
-			for (const pi of map) {
-				const p = pts[pi];
-				items.push({ i: pi, x: p.x, y: p.y });
+		const byPath = this._selectedLogicalByPathFor(obj);
+		for (const [pidx, lis] of byPath.entries()) {
+			const path = paths[pidx] || [];
+			for (const li of lis) {
+				const map = this._logicalMap(path, li);
+				for (const pi of map) {
+					const p = path[pi];
+					items.push({ pidx, i: pi, x: p.x, y: p.y });
+				}
 			}
 		}
 		return { obj, items };
@@ -542,9 +559,13 @@ export default class D2DEdit {
 
 	_applySnapshot(obj, snap) {
 		if (!snap || snap.obj !== obj) return;
-		const pts = obj?.graphic2d?._points || [];
+		const paths = obj?.graphic2d?._paths || [];
 		for (const it of snap.items) {
-			if (pts[it.i]) { pts[it.i].x = it.x; pts[it.i].y = it.y; }
+			const path = paths[it.pidx];
+			if (path && path[it.i]) {
+				path[it.i].x = it.x;
+				path[it.i].y = it.y;
+			}
 		}
 	}
 
@@ -560,90 +581,68 @@ export default class D2DEdit {
 		return { d2: dx * dx + dy * dy, t };
 	}
 
+	/* ---------------- delete selected vertices ---------------- */
+
 	_onDelete() {
 		const doDelete = () => {
 			if (this.selectedPoints.length < 1) return;
 
-			const byObj = new Map();
+			const byObjPath = new Map(); // obj -> Map(pidx -> Set(lindex))
 			for (const sp of this.selectedPoints) {
-				if (!sp?.obj?.graphic2d?._points) continue;
-				if (!byObj.has(sp.obj)) byObj.set(sp.obj, new Set());
-				byObj.get(sp.obj).add(sp.lindex);
+				if (!sp?.obj?.graphic2d?._paths) continue;
+				if (!byObjPath.has(sp.obj)) byObjPath.set(sp.obj, new Map());
+				const pm = byObjPath.get(sp.obj);
+				if (!pm.has(sp.pidx)) pm.set(sp.pidx, new Set());
+				pm.get(sp.pidx).add(sp.lindex);
 			}
-			if (byObj.size === 0) return;
-
-			const clonePoints = (pts) => pts.map(p => ({ x: p.x, y: p.y }));
-			const isClosed = (pts) => {
-				if (pts.length < 2) return false;
-				const a = pts[0], b = pts[pts.length - 1];
-				return this._approx(a.x, b.x) && this._approx(a.y, b.y);
-			};
-			const ensureClosed = (pts, wasClosed) => {
-				if (!wasClosed) return pts;
-				if (pts.length < 2) return pts;
-				const a = pts[0], b = pts[pts.length - 1];
-				if (!this._approx(a.x, b.x) || !this._approx(a.y, b.y)) {
-					pts.push({ x: a.x, y: a.y });
-				}
-				return pts;
-			};
+			if (byObjPath.size === 0) return;
 
 			const before = [];
-			for (const [obj] of byObj) {
-				const pts = obj.graphic2d._points || [];
-				before.push({ obj, points: clonePoints(pts) });
-			}
+			for (const [obj] of byObjPath) before.push({ obj, paths: this._clonePaths(obj.graphic2d._paths) });
 
-			for (const [obj, lset] of byObj) {
-				const g = obj.graphic2d;
-				const pts = g._points || [];
-				if (pts.length === 0) continue;
+			for (const [obj, pmap] of byObjPath) {
+				const paths = obj.graphic2d._paths;
+				for (const [pidx, lset] of pmap) {
+					const path = paths[pidx] || [];
+					if (path.length === 0) continue;
 
-				const wasClosed = isClosed(pts);
+					const wasClosed = this._isClosed(path);
 
-				const toRemove = new Set();
-				for (const li of lset) {
-					const mapped = this._logicalMap(pts, li);
-					for (const pi of mapped) toRemove.add(pi);
+					const toRemove = new Set();
+					for (const li of lset) {
+						const map = this._logicalMap(path, li);
+						for (const pi of map) toRemove.add(pi);
+					}
+
+					const sorted = Array.from(toRemove).sort((a, b) => b - a);
+					for (const idx of sorted) {
+						if (idx >= 0 && idx < path.length) path.splice(idx, 1);
+					}
+
+					if (wasClosed && path.length >= 2) {
+						const a = path[0], b = path[path.length - 1];
+						if (!this._approx(a.x, b.x) || !this._approx(a.y, b.y)) {
+							path.push({ x: a.x, y: a.y });
+						}
+					}
 				}
-
-				const sorted = Array.from(toRemove).sort((a, b) => b - a);
-				for (const idx of sorted) {
-					if (idx >= 0 && idx < pts.length) pts.splice(idx, 1);
-				}
-
-				ensureClosed(pts, wasClosed);
 			}
 
 			const after = [];
-			for (const [obj] of byObj) {
-				const pts = obj.graphic2d._points || [];
-				after.push({ obj, points: clonePoints(pts) });
-			}
+			for (const [obj] of byObjPath) after.push({ obj, paths: this._clonePaths(obj.graphic2d._paths) });
 
 			this.selectedPoints = [];
 
 			_editor?.addStep?.({
 				name: 'Delete 2D Points',
-				undo: () => {
-					for (const s of before) {
-						if (!s?.obj?.graphic2d) continue;
-						s.obj.graphic2d._points = clonePoints(s.points);
-					}
-				},
-				redo: () => {
-					for (const s of after) {
-						if (!s?.obj?.graphic2d) continue;
-						s.obj.graphic2d._points = clonePoints(s.points);
-					}
-				}
+				undo: () => { for (const s of before) s.obj.graphic2d._paths = this._clonePaths(s.paths); },
+				redo: () => { for (const s of after)  s.obj.graphic2d._paths = this._clonePaths(s.paths); }
 			});
 		};
 		setTimeout(doDelete, 10);
 	}
 
-	_approx(a, b) {
-		const e = 1e-6;
-		return Math.abs(a - b) <= e;
-	}
+	/* ---------------- utils ---------------- */
+
+	_approx(a, b) { return Math.abs(a - b) <= 1e-6; }
 }

@@ -166,16 +166,12 @@ export default class D2DRenderer {
 	
 		const outlineOn    = graphic.outline === true;
 		const outlineColor = graphic.outlineColor ?? gLineColor;
-		const outlineWidth = Number((graphic.outlineWidth * 2) ?? (gLineWidth * 2));
+		// Treat outlineWidth as the *visual* thickness outside the shape:
+		const outlineWidth = Number(graphic.outlineWidth ?? gLineWidth);
 	
 		let paths = Array.isArray(graphic._paths) ? graphic._paths.filter(p => Array.isArray(p)) : [];
-	
-		if (Array.isArray(graphic._points)) {
-			paths.push([...graphic._points]);
-			delete graphic._points;
-		}
+		if (Array.isArray(graphic._points)) { paths.push([...graphic._points]); delete graphic._points; }
 		graphic._paths = paths;
-	
 		if (paths.length === 0) return;
 	
 		const makeRawPath = (pts, closed) => {
@@ -190,31 +186,18 @@ export default class D2DRenderer {
 			const base = pts.slice(0, -1);
 			const count = base.length;
 			if (count < 3) return null;
-	
 			const get = i => base[(i + count) % count];
 			const p = new Path2D();
-	
 			for (let i = 0; i < count; i++) {
-				const p0 = get(i - 1);
-				const p1 = get(i);
-				const p2 = get(i + 1);
-	
+				const p0 = get(i - 1), p1 = get(i), p2 = get(i + 1);
 				const v1x = p1.x - p0.x, v1y = p1.y - p0.y;
 				const v2x = p2.x - p1.x, v2y = p2.y - p1.y;
-	
 				const len1 = Math.hypot(v1x, v1y) || 1;
 				const len2 = Math.hypot(v2x, v2y) || 1;
-	
 				const r = Math.min(radius, len1 / 2, len2 / 2);
-	
-				const inX  = p1.x - (v1x / len1) * r;
-				const inY  = p1.y - (v1y / len1) * r;
-				const outX = p1.x + (v2x / len2) * r;
-				const outY = p1.y + (v2y / len2) * r;
-	
-				if (i === 0) p.moveTo(inX, inY);
-				else p.lineTo(inX, inY);
-	
+				const inX  = p1.x - (v1x / len1) * r, inY  = p1.y - (v1y / len1) * r;
+				const outX = p1.x + (v2x / len2) * r, outY = p1.y + (v2y / len2) * r;
+				if (i === 0) p.moveTo(inX, inY); else p.lineTo(inX, inY);
 				p.quadraticCurveTo(p1.x, p1.y, outX, outY);
 			}
 			p.closePath();
@@ -223,11 +206,9 @@ export default class D2DRenderer {
 	
 		let m = new DOMMatrix();
 		const chain = [];
-		let n = d3dobject;
-		while (n) { chain.push(n); n = n.parent; }
+		for (let n = d3dobject; n; n = n.parent) chain.push(n);
 		chain.reverse();
-		for (let i = 0; i < chain.length; i++) {
-			const o  = chain[i];
+		for (const o of chain) {
 			const tx = Number(o.position?.x) || 0;
 			const ty = Number(o.position?.y) || 0;
 			const rz = Number(o.rotation?.z) || 0;
@@ -240,59 +221,84 @@ export default class D2DRenderer {
 		const isInFocus = (_editor?.focus === d3dobject) || (_editor?.focus?.containsChild?.(d3dobject));
 		const masterAlpha = isInFocus ? 1 : 0.2;
 	
+		// Build a combined (union-style) path for all CLOSED contours to support even-odd fill/holes.
+		const combo = new Path2D();
+		const closedPaths = [];
+		const openStrokes = [];
+	
+		for (const pts of paths) {
+			if (!Array.isArray(pts) || pts.length === 0) continue;
+			const points = pts.filter(p => p && Number.isFinite(p.x) && Number.isFinite(p.y));
+			if (points.length === 0) continue;
+	
+			const first = points[0], last = points[points.length - 1];
+			const isClosed = points.length >= 3 && approx(first.x, last.x) && approx(first.y, last.y);
+	
+			if (isClosed) {
+				const raw = makeRawPath(points, true);
+				const rounded = (borderRadius > 0 && points.length >= 3) ? makeRoundedPath(points, borderRadius) : null;
+				const path = rounded || raw;
+				combo.addPath(path);
+				closedPaths.push({ path, points });
+			} else {
+				openStrokes.push(points);
+			}
+		}
+	
+		const BIG = 1e6;
+	
 		ctx.save();
 		ctx.globalAlpha *= alpha * masterAlpha;
 		ctx.setTransform(gs, 0, 0, gs, 0, 0);
 		ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
 	
-		for (let k = 0; k < paths.length; k++) {
-			const pts = paths[k];
-			if (!Array.isArray(pts) || pts.length === 0) continue;
+		// FILL (even-odd so overlaps subtract and holes render correctly)
+		if (fillEnabled && closedPaths.length) {
+			ctx.fillStyle = hexToRgba(fillColor);
+			ctx.fill(combo, 'evenodd');
+		}
 	
-			const points = pts.filter(p => p && Number.isFinite(p.x) && Number.isFinite(p.y));
-			if (points.length === 0) continue;
+		// OUTLINE: outside-only around the combined closed shape.
+		// We clip to the "outside" region (big rect minus combo) and stroke with 2x width.
+		if (outlineOn && closedPaths.length && outlineWidth > 0) {
+			ctx.save();
+			const outside = new Path2D();
+			outside.rect(-BIG, -BIG, BIG * 2, BIG * 2); // huge rect
+			outside.addPath(combo);                      // subtract with even-odd clip
+			ctx.clip(outside, 'evenodd');
 	
-			const first = points[0];
-			const last  = points[points.length - 1];
-			const isClosed = points.length >= 3 && approx(first.x, last.x) && approx(first.y, last.y);
+			ctx.lineWidth   = Math.max(0.001, outlineWidth * 2); // draw 2×, show only the outer half
+			ctx.strokeStyle = hexToRgba(outlineColor);
+			ctx.lineCap     = lineCap;
+			ctx.lineJoin    = lineJoin;
+			ctx.miterLimit  = miterLimit;
+			ctx.stroke(combo);
+			ctx.restore();
+		}
 	
-			const pathRaw = makeRawPath(points, isClosed);
-			const pathRounded = (isClosed && borderRadius > 0 && points.length >= 3) ? makeRoundedPath(points, borderRadius) : null;
-			const path = pathRounded || pathRaw;
-	
-			if (outlineOn && isClosed) {
-				ctx.lineWidth   = Math.max(0.001, outlineWidth);
-				ctx.strokeStyle = hexToRgba(outlineColor);
+		// Regular LINE strokes (centered). Keeps previous behaviour for open/closed as “line” style.
+		if (gLineEnabled) {
+			// closed
+			for (const { path } of closedPaths) {
+				ctx.lineWidth   = Math.max(0.001, gLineWidth);
+				ctx.strokeStyle = hexToRgba(gLineColor);
 				ctx.lineCap     = lineCap;
 				ctx.lineJoin    = lineJoin;
 				ctx.miterLimit  = miterLimit;
 				ctx.stroke(path);
 			}
-	
-			if (fillEnabled && isClosed) {
-				ctx.fillStyle = hexToRgba(fillColor);
-				ctx.fill(path);
-			}
-	
-			if (gLineEnabled) {
-				if (isClosed) {
-					ctx.lineWidth   = Math.max(0.001, gLineWidth);
-					ctx.strokeStyle = hexToRgba(gLineColor);
-					ctx.lineCap     = lineCap;
-					ctx.lineJoin    = lineJoin;
-					ctx.miterLimit  = miterLimit;
-					ctx.stroke(path);
-				} else if (points.length >= 2) {
-					ctx.beginPath();
-					ctx.moveTo(points[0].x, points[0].y);
-					for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
-					ctx.lineWidth   = Math.max(0.001, gLineWidth);
-					ctx.strokeStyle = hexToRgba(gLineColor);
-					ctx.lineCap     = lineCap;
-					ctx.lineJoin    = lineJoin;
-					ctx.miterLimit  = miterLimit;
-					ctx.stroke();
-				}
+			// open
+			for (const points of openStrokes) {
+				if (points.length < 2) continue;
+				ctx.beginPath();
+				ctx.moveTo(points[0].x, points[0].y);
+				for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+				ctx.lineWidth   = Math.max(0.001, gLineWidth);
+				ctx.strokeStyle = hexToRgba(gLineColor);
+				ctx.lineCap     = lineCap;
+				ctx.lineJoin    = lineJoin;
+				ctx.miterLimit  = miterLimit;
+				ctx.stroke();
 			}
 		}
 	

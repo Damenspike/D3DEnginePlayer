@@ -30,7 +30,7 @@ export default class D2DFill {
 
 	_isActive(){ return _editor?.tool === 'fill'; }
 
-	// ---------------- coords & matrices ----------------
+	/* ---------------- coords & matrices ---------------- */
 	_mouseToCanvas(e){
 		const r = this.canvas.getBoundingClientRect();
 		const x = (e.clientX - r.left) * (this.canvas.width  / r.width);
@@ -65,19 +65,19 @@ export default class D2DFill {
 		return this._viewMatrix().multiply(this._worldDOMMatrix(obj));
 	}
 
-	// ---------------- scene gather ----------------
+	/* ---------------- scene gather ---------------- */
 	_all2D(root){
 		const out = [];
 		root.children.forEach(n => {
-			if (n.is2D && Array.isArray(n.graphic2d?._points)) out.push(n);
+			if (n.is2D && Array.isArray(n.graphic2d?._paths)) out.push(n);
 		});
 		// draw order: later = topmost
 		return out.sort((a,b)=>(a.position?.z||0)-(b.position?.z||0));
 	}
 
-	// ---------------- hit test ----------------
+	/* ---------------- hit test ---------------- */
 	_isClosed(points){
-		if (points.length < 3) return false;
+		if (!Array.isArray(points) || points.length < 3) return false;
 		const a = points[0], b = points[points.length-1];
 		return Math.abs(a.x - b.x) <= 1e-6 && Math.abs(a.y - b.y) <= 1e-6;
 	}
@@ -95,41 +95,46 @@ export default class D2DFill {
 
 	_pickFilledTarget(mouse){
 		// search topmost → bottom
-		const host = _editor.focus; // guaranteed to exist per your note
+		const host = _editor.focus;
 		const objs = this._all2D(host);
 		const px = mouse.x, py = mouse.y;
 
 		for (let i = objs.length - 1; i >= 0; i--) {
 			const obj = objs[i];
 			const g = obj.graphic2d;
-			if (!g.fill) continue; // we only change color if already filled
-			const pts = g._points;
-			if (pts.length < 3) continue;
+			if (!g.fill) continue; // only change color if already filled
 
-			const M  = this._screenMatrixFor(obj);
-			const sp = pts.map(p => {
-				const t = new DOMPoint(p.x, p.y).matrixTransform(M);
-				return { x: t.x, y: t.y };
-			});
+			const paths = Array.isArray(g._paths) ? g._paths : [];
+			if (paths.length === 0) continue;
 
-			// fast AABB reject
-			let minx=Infinity,miny=Infinity,maxx=-Infinity,maxy=-Infinity;
-			for (const p of sp){ if(p.x<minx)minx=p.x; if(p.y<miny)miny=p.y; if(p.x>maxx)maxx=p.x; if(p.y>maxy)maxy=p.y; }
-			if (px < minx || px > maxx || py < miny || py > maxy) continue;
+			const M = this._screenMatrixFor(obj);
 
-			// inside test (works for brush-polygons and other closed shapes)
-			if (this._isClosed(pts) && this._pointInPoly(px, py, sp)) {
-				return obj;
+			for (const path of paths) {
+				if (!this._isClosed(path)) continue;
+				if (path.length < 3) continue;
+
+				// transform to screen
+				const sp = path.map(p => {
+					const t = new DOMPoint(p.x, p.y).matrixTransform(M);
+					return { x: t.x, y: t.y };
+				});
+
+				// fast AABB reject
+				let minx=Infinity,miny=Infinity,maxx=-Infinity,maxy=-Infinity;
+				for (const p of sp){ if(p.x<minx)minx=p.x; if(p.y<miny)miny=p.y; if(p.x>maxx)maxx=p.x; if(p.y>maxy)maxy=p.y; }
+				if (px < minx || px > maxx || py < miny || py > maxy) continue;
+
+				// inside path?
+				if (this._pointInPoly(px, py, sp)) return obj;
 			}
 		}
 		return null;
 	}
 
-	// ---------------- action ----------------
+	/* ---------------- action ---------------- */
 	_applyFillColor(obj, color){
 		const g = obj.graphic2d;
 		const before = { fill: !!g.fill, fillColor: g.fillColor };
-		// Only update color if fill is enabled
 		if (!g.fill) return false;
 
 		g.fillColor = color || g.fillColor || '#000000ff';
@@ -147,7 +152,7 @@ export default class D2DFill {
 		return true;
 	}
 
-	// ---------------- events ----------------
+	/* ---------------- events ---------------- */
 	_onDown(e){
 		if (!this._isActive()) return;
 		e.preventDefault();
@@ -156,7 +161,7 @@ export default class D2DFill {
 		const color = _editor.draw2d?.fillColor || '#000000ff';
 
 		const obj = this._pickFilledTarget(mouse);
-		if (!obj) return; // click on empty space or on non-filled shapes does nothing
+		if (!obj) return;
 
 		this._applyFillColor(obj, color);
 		_editor?.requestRender?.();

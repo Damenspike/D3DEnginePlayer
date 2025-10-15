@@ -9,7 +9,7 @@ export default class D2DDraw {
 		// stroke state
 		this.drawing = false;
 		this.tool = null;
-		this.localPoints = [];
+		this.localPoints = [];   // live points for the *current* path
 		this.tempObj = null;
 
 		// cursor
@@ -29,27 +29,26 @@ export default class D2DDraw {
 		this._onUp   = this._onUp.bind(this);
 		this._onBlur = this._onBlur.bind(this);
 		this._onDbl  = this._onDbl.bind(this);
-		this._onKey = this._onKey.bind(this);
-		
-		// fill
+		this._onKey  = this._onKey.bind(this);
+
+		// fill tool (unchanged)
 		this._fill = new D2DFill(d2drenderer);
 
 		this._attach();
 	}
 
-	// ---------------- lifecycle ----------------
+	/* =============== lifecycle =============== */
 	destroy() { this._detach(); }
 
 	_attach() {
 		if (!this.canvas) return;
 		this.canvas.addEventListener('mousedown', this._onDown, { passive:false });
-		this.canvas.addEventListener('dblclick', this._onDbl, { passive:false });
+		this.canvas.addEventListener('dblclick',  this._onDbl,  { passive:false });
 		window.addEventListener('mousemove', this._onMove, { passive:false });
 		window.addEventListener('mouseup',   this._onUp,   { passive:false });
 		window.addEventListener('blur',      this._onBlur, { passive:false });
 		window.addEventListener('keydown',   this._onKey,  { passive:false });
 	}
-	
 	_detach() {
 		if (!this.canvas) return;
 		this.canvas.removeEventListener('mousedown', this._onDown);
@@ -64,19 +63,15 @@ export default class D2DDraw {
 		const t = _editor?.tool;
 		return new Set(['brush','pencil','line','square','circle','polygon']).has(t);
 	}
+	_request() { _editor?.requestRender?.() || this.d2drenderer?.render?.(); }
 
-	_request() {
-		_editor?.requestRender?.() || this.d2drenderer?.render?.();
-	}
-
-	// ---------------- matrices & coords ----------------
+	/* =============== matrices & coords =============== */
 	_mouseToCanvas(e) {
 		const r = this.canvas.getBoundingClientRect();
 		const x = (e.clientX - r.left) * (this.canvas.width  / r.width);
 		const y = (e.clientY - r.top)  * (this.canvas.height / r.height);
 		return { x, y };
 	}
-
 	_worldDOMMatrix(node) {
 		let m = new DOMMatrix();
 		const stack = [];
@@ -87,39 +82,34 @@ export default class D2DDraw {
 			const ty = Number(o.position?.y) || 0;
 			const rz = Number(o.rotation?.z) || 0;
 			const sx = Number(o.scale?.x) || 1;
+										// keep non-uniform scale
 			const sy = Number(o.scale?.y) || 1;
 			m = m.translate(tx, ty).rotate(rz * 180 / Math.PI).scale(sx, sy);
 		}
 		return m;
 	}
-
 	_viewMatrix() {
 		const pr  = this.d2drenderer.pixelRatio || 1;
 		const vs  = this.d2drenderer.viewScale  || 1;
 		const off = this.d2drenderer.viewOffset || { x:0, y:0 };
 		return new DOMMatrix().translate(off.x, off.y).scale(pr * vs);
 	}
-
 	_hostScreenMatrix() {
 		return this._viewMatrix().multiply(this._worldDOMMatrix(this.host || _editor?.focus || _root));
 	}
-
 	_childScreenMatrix(child) {
 		return this._viewMatrix().multiply(this._worldDOMMatrix(child));
 	}
-
 	_canvasToLocal(pt) {
 		const inv = this._hostScreenMatrix().inverse();
 		const q = new DOMPoint(pt.x, pt.y).matrixTransform(inv);
 		return { x:q.x, y:q.y };
 	}
-
 	_localToCanvas(pt) {
 		const M = this._hostScreenMatrix();
 		const q = new DOMPoint(pt.x, pt.y).matrixTransform(M);
 		return { x:q.x, y:q.y };
 	}
-
 	// child-local → host-local
 	_childLocalToHostLocal(child, p) {
 		const W_host  = this._worldDOMMatrix(this.host || _editor?.focus || _root);
@@ -129,30 +119,26 @@ export default class D2DDraw {
 		return { x:r.x, y:r.y };
 	}
 
-	// ---------------- snapping ----------------
+	/* =============== snapping =============== */
 	_focusChildren2D() {
 		const f = _editor?.focus;
 		if (!f) return [];
-
 		const out = [];
+
 		const pushChild2D = (node) => {
 			if (!node || !Array.isArray(node.children)) return;
 			for (const c of node.children) {
-				if (c?.is2D && Array.isArray(c.graphic2d?._points)) out.push(c);
+				if (c?.is2D && Array.isArray(c.graphic2d?._paths)) out.push(c);
 			}
 		};
-
-		// focus' direct children
 		pushChild2D(f);
 
-		// parent’s direct children (siblings) + parent if 2D
 		const parent = f.parent;
 		if (parent) {
 			pushChild2D(parent);
-			if (parent.is2D && Array.isArray(parent.graphic2d?._points)) out.push(parent);
+			if (parent.is2D && Array.isArray(parent.graphic2d?._paths)) out.push(parent);
 		}
-
-		return Array.from(new Set(out)); // de-dupe
+		return Array.from(new Set(out));
 	}
 
 	_rebuildSnapCache() {
@@ -164,41 +150,45 @@ export default class D2DDraw {
 
 		const entries = [];
 		for (const child of children) {
-			const pts = child.graphic2d?._points || [];
-			if (pts.length < 1) continue;
+			const paths = Array.isArray(child.graphic2d?._paths) ? child.graphic2d._paths : [];
+			if (paths.length < 1) continue;
 
-			const W_child = this._worldDOMMatrix(child);
+			const W_child  = this._worldDOMMatrix(child);
 			const toHost   = W_host_inv.multiply(W_child);   // child → host
 			const toCanvas = this._childScreenMatrix(child); // child → canvas
-
 			const toCanvasPt = (p) => {
 				const q = new DOMPoint(p.x, p.y).matrixTransform(toCanvas);
 				return { x:q.x, y:q.y };
 			};
 
-			const vertices = pts.map((p,i)=>({ i, local:{x:p.x,y:p.y}, canvas:toCanvasPt(p) }));
-			const segments = [];
-			for (let i=0;i<pts.length-1;i++) {
-				const a = { x:pts[i].x,   y:pts[i].y };
-				const b = { x:pts[i+1].x, y:pts[i+1].y };
-				segments.push({
-					i0:i, i1:i+1,
-					aLocal:a, bLocal:b,
-					aCanvas:toCanvasPt(a), bCanvas:toCanvasPt(b)
-				});
-			}
-			const closed = pts.length >= 3 && this._approxPt(pts[0], pts[pts.length-1]);
-			if (closed) {
-				const a = { x:pts[pts.length-1].x, y:pts[pts.length-1].y };
-				const b = { x:pts[0].x,            y:pts[0].y };
-				segments.push({
-					i0:pts.length-1, i1:0,
-					aLocal:a, bLocal:b,
-					aCanvas:toCanvasPt(a), bCanvas:toCanvasPt(b)
-				});
+			const vertices = []; // {pidx,i, local, canvas}
+			const segments = []; // {pidx,i0,i1, aLocal,bLocal, aCanvas,bCanvas}
+			for (let pidx = 0; pidx < paths.length; pidx++) {
+				const path = paths[pidx] || [];
+				if (path.length === 0) continue;
+
+				for (let i = 0; i < path.length; i++) {
+					const p = path[i];
+					vertices.push({ pidx, i, local:{x:p.x,y:p.y}, canvas:toCanvasPt(p) });
+				}
+
+				const closed = this._isClosed(path);
+				const count  = closed ? path.length : Math.max(0, path.length - 1);
+				for (let i = 0; i < count; i++) {
+					const i0 = i;
+					const i1 = (i + 1) % path.length;
+					const a = { x:path[i0].x, y:path[i0].y };
+					const b = { x:path[i1].x, y:path[i1].y };
+					segments.push({
+						pidx, i0, i1,
+						aLocal:a, bLocal:b,
+						aCanvas:toCanvasPt(a), bCanvas:toCanvasPt(b)
+					});
+				}
 			}
 
-			entries.push({ child, toHost, vertices, segments });
+			if (vertices.length || segments.length)
+				entries.push({ child, toHost, vertices, segments });
 		}
 
 		this._snapCache = entries.length ? { entries } : null;
@@ -206,9 +196,8 @@ export default class D2DDraw {
 	}
 
 	_snap(mouseCanvas) {
-		if(!_editor.draw2d.snapEnabled)
-			return;
-		
+		if(!_editor.draw2d.snapEnabled) return;
+
 		if (!this._snapCache || this._lastFocus !== (_editor?.focus || null)) {
 			this._rebuildSnapCache();
 		}
@@ -226,7 +215,7 @@ export default class D2DDraw {
 				const d2 = dx*dx + dy*dy;
 				if (d2 <= thresh2 && d2 < bestD2) {
 					const h = new DOMPoint(v.local.x, v.local.y).matrixTransform(E.toHost);
-					out = { kind:'vertex', child:E.child, i:v.i, canvas:{...v.canvas}, hostLocal:{ x:h.x, y:h.y } };
+					out = { kind:'vertex', child:E.child, pidx:v.pidx, i:v.i, canvas:{...v.canvas}, hostLocal:{ x:h.x, y:h.y } };
 					bestD2 = d2;
 				}
 			}
@@ -244,7 +233,7 @@ export default class D2DDraw {
 				const d2 = dx*dx + dy*dy;
 				if (d2 <= thresh2 && d2 < bestD2) {
 					const h = new DOMPoint(midL.x, midL.y).matrixTransform(E.toHost);
-					out = { kind:'mid', child:E.child, a:s.i0, b:s.i1, canvas:midC, hostLocal:{ x:h.x, y:h.y } };
+					out = { kind:'mid', child:E.child, pidx:s.pidx, a:s.i0, b:s.i1, canvas:midC, hostLocal:{ x:h.x, y:h.y } };
 					bestD2 = d2;
 				}
 			}
@@ -268,7 +257,7 @@ export default class D2DDraw {
 					const l = { x: s.aLocal.x + t*(s.bLocal.x - s.aLocal.x),
 								y: s.aLocal.y + t*(s.bLocal.y - s.aLocal.y) };
 					const h = new DOMPoint(l.x, l.y).matrixTransform(E.toHost);
-					out = { kind:'seg', child:E.child, a:s.i0, b:s.i1, t, canvas:{x:px,y:py}, hostLocal:{ x:h.x, y:h.y } };
+					out = { kind:'seg', child:E.child, pidx:s.pidx, a:s.i0, b:s.i1, t, canvas:{x:px,y:py}, hostLocal:{ x:h.x, y:h.y } };
 					bestD2 = d2;
 				}
 			}
@@ -276,14 +265,14 @@ export default class D2DDraw {
 		return out;
 	}
 
-	// ---------------- events ----------------
+	/* =============== events =============== */
 	_onDown(e) {
 		if (!this._isActive()) return;
 		e.preventDefault();
 
 		this.tool = _editor.tool;
 		this.host = _editor?.focus || _root;
-		this._snapCache = null; // update around new host/focus
+		this._snapCache = null;
 
 		const c = this._mouseToCanvas(e);
 		this.cursor = c;
@@ -293,6 +282,7 @@ export default class D2DDraw {
 		this.cursorLocal = p;
 		this._snapHit = s || null;
 
+		// polygon: click-to-add path vertices
 		if (this.tool === 'polygon') {
 			if (!this.drawing) {
 				this.drawing = true;
@@ -305,6 +295,7 @@ export default class D2DDraw {
 			return;
 		}
 
+		// all other tools
 		this.drawing = true;
 		this.localPoints = [{ x:p.x, y:p.y }];
 		if (['line','square','circle'].includes(this.tool)) {
@@ -361,21 +352,17 @@ export default class D2DDraw {
 	_onBlur() {
 		if (this.drawing && this.tool !== 'polygon') this._finalizeShape();
 	}
-	
 	_onKey(e) {
 		if (e.key === 'Escape' && this.drawing && this.tool === 'polygon') {
 			e.preventDefault();
 			this.drawing = false;
 			this.localPoints = [];
-			if (this.tempObj) {
-				this.tempObj.delete?.();
-				this.tempObj = null;
-			}
+			if (this.tempObj) { this.tempObj.delete?.(); this.tempObj = null; }
 			this._request();
 		}
 	}
 
-	// ---------------- temp & finalize ----------------
+	/* =============== temp & finalize =============== */
 	async _ensureTemp() {
 		const host = this.host;
 		let name = 'Draw 2D';
@@ -385,22 +372,22 @@ export default class D2DDraw {
 		if (this.tool === 'square')  name = 'Rectangle';
 		if (this.tool === 'circle')  name = 'Ellipse';
 		if (this.tool === 'polygon') name = 'Polygon';
-		
-		if(_editor.draw2d.subtract)
-			name += ' Erase';
-		
-		const props = { _points: [] };
-		if (['brush','square','circle','polygon'].includes(this.tool)) {
-			props.fill = !!_editor.draw2d?.fill;  props.line = !!_editor.draw2d?.line;
-			props.fillColor = _editor.draw2d?.fillColor || '#000000ff';
-			props.lineColor = _editor.draw2d?.lineColor || '#ffffffff';
-		} else {
-			props.fill = !!_editor.draw2d?.fill; props.line = !!_editor.draw2d?.line;
-			props.fillColor = _editor.draw2d?.fillColor || '#000000ff';
-			props.lineWidth = Math.max(1, Number(_editor.draw2d?.lineWidth ?? 1));
-			props.lineColor = _editor.draw2d?.lineColor || '#ffffffff';
-			props.lineCap = 'round'; props.lineJoin = 'round';
-		}
+
+		if(_editor.draw2d.subtract) name += ' Erase';
+
+		const props = { _paths: [[]] }; // single working path
+		// styles
+		props.fill = !!_editor.draw2d?.fill;
+		props.line = !!_editor.draw2d?.line;
+		props.fillColor  = _editor.draw2d?.fillColor || '#000000ff';
+		props.lineColor  = _editor.draw2d?.lineColor || '#ffffffff';
+		props.lineWidth  = Math.max(1, Number(_editor.draw2d?.lineWidth ?? 1));
+		props.lineCap    = 'round';
+		props.lineJoin   = 'round';
+		props.miterLimit = Math.max(1, Number(_editor.draw2d?.miterLimit ?? 10));
+		props.borderRadius = _editor.draw2d?.borderRadius;
+		props.subtract = _editor.draw2d?.subtract;
+
 		const components = [{ type:'Graphic2D', properties: props }];
 		this.tempObj = await host.createObject({ name, components });
 		this.tempObj.depth = host.getNextHighestDepth();
@@ -409,47 +396,42 @@ export default class D2DDraw {
 	_updateTempGraphic(initial=false) {
 		const obj = this.tempObj; if (!obj) return;
 
+		const setPath = (pts) => { obj.graphic2d._paths = [pts]; };
+
 		if (this.tool === 'brush') {
-			// simplify centerline live a bit for smoother silhouette
 			const live = this.localPoints.length > 2
 				? this._simplifyAdaptive(this.localPoints, { tool:'brush', simplifyPx: 1.0, minStepPx: 0.75 })
 				: this.localPoints;
 			const r = Math.max(0.1, Number(_editor.draw2d?.brushRadius ?? 1));
-			obj.graphic2d._points = this._strokeToPolygon(live, r, initial);
+			setPath(this._strokeToPolygon(live, r, initial));
 			obj.graphic2d.fillColor = _editor.draw2d?.fillColor || obj.graphic2d.fillColor;
 
 		} else if (this.tool === 'pencil') {
-			obj.graphic2d._points = this.localPoints.map(p=>({x:p.x,y:p.y}));
+			setPath(this.localPoints.map(p=>({x:p.x,y:p.y})));
 			obj.graphic2d.lineWidth = Math.max(1, Number(_editor.draw2d?.lineWidth ?? obj.graphic2d.lineWidth ?? 1));
 			obj.graphic2d.lineColor = _editor.draw2d?.lineColor || obj.graphic2d.lineColor;
 
 		} else if (this.tool === 'line') {
-			obj.graphic2d._points = this.localPoints.slice(0,2).map(p=>({x:p.x,y:p.y}));
+			setPath(this.localPoints.slice(0,2).map(p=>({x:p.x,y:p.y})));
 			obj.graphic2d.lineWidth = Math.max(1, Number(_editor.draw2d?.lineWidth ?? obj.graphic2d.lineWidth ?? 1));
 			obj.graphic2d.lineColor = _editor.draw2d?.lineColor || obj.graphic2d.lineColor;
 
 		} else if (this.tool === 'square') {
 			if (this.localPoints.length >= 2) {
 				const a=this.localPoints[0], b=this.localPoints[1];
-				obj.graphic2d._points = this._makeRectPoints(a,b);
-				obj.graphic2d.fill = !!_editor.draw2d?.fill; obj.graphic2d.line = !!_editor.draw2d?.line;
-				obj.graphic2d.fillColor = _editor.draw2d?.fillColor || obj.graphic2d.fillColor;
+				setPath(this._makeRectPoints(a,b));
 			}
 
 		} else if (this.tool === 'circle') {
 			if (this.localPoints.length >= 2) {
 				const a=this.localPoints[0], b=this.localPoints[1];
-				obj.graphic2d._points = this._makeEllipsePoints(a,b,64);
-				obj.graphic2d.fill = !!_editor.draw2d?.fill; obj.graphic2d.line = !!_editor.draw2d?.line;
-				obj.graphic2d.fillColor = _editor.draw2d?.fillColor || obj.graphic2d.fillColor;
+				setPath(this._makeEllipsePoints(a,b,64));
 			}
 
 		} else if (this.tool === 'polygon') {
 			const pts = this.localPoints.slice();
 			if (this.cursorLocal) pts.push({ x:this.cursorLocal.x, y:this.cursorLocal.y });
-			obj.graphic2d._points = pts;
-			obj.graphic2d.fill = !!_editor.draw2d?.fill; obj.graphic2d.line = !!_editor.draw2d?.line;
-			obj.graphic2d.fillColor = _editor.draw2d?.fillColor || obj.graphic2d.fillColor;
+			setPath(pts);
 		}
 		obj.invalidateGraphic2D?.();
 	}
@@ -460,50 +442,44 @@ export default class D2DDraw {
 		const obj = this.tempObj; this.tempObj = null;
 		if (!obj) return;
 		obj.visible = true;
-	
-		// style snapshot (apply to all tools)
+
+		// style snapshot
 		const s = _editor.draw2d || {};
 		const wantFill = s.fill !== false;
 		const wantLine = s.line !== false;
 		const lw = Math.max(1, Number(s.lineWidth ?? 1));
 		const br = s.borderRadius;
-	
-		// pixel-aware simplify for freehand tools
+
+		// freehand simplify
 		if (['brush','pencil'].includes(this.tool) && this.localPoints.length > 2) {
 			this.localPoints = this._simplifyAdaptive(this.localPoints, { tool: this.tool });
 		}
-	
-		// finalize geometry per tool
+
+		// finalize per tool → single path
+		let path = [];
 		if (this.tool === 'brush') {
 			const r = Math.max(0.1, Number(s.brushRadius ?? 1));
-			obj.graphic2d._points = this._strokeToPolygon(this.localPoints, r, false);
-			obj.graphic2d.fill = wantFill;
-			obj.graphic2d.line = wantLine;
+			path = this._strokeToPolygon(this.localPoints, r, false);
 		} else if (this.tool === 'pencil') {
-			obj.graphic2d._points = this.localPoints.map(p => ({ x:p.x, y:p.y }));
-			obj.graphic2d.fill = wantFill;
-			obj.graphic2d.line = wantLine;
+			path = this.localPoints.map(p => ({ x:p.x, y:p.y }));
 		} else if (this.tool === 'line') {
-			const pts = this.localPoints.slice(0, 2).map(p => ({ x:p.x, y:p.y }));
-			obj.graphic2d._points = pts;
-			obj.graphic2d.fill = wantFill;
-			obj.graphic2d.line = wantLine;
+			path = this.localPoints.slice(0,2).map(p => ({ x:p.x, y:p.y }));
 		} else if (this.tool === 'square' && this.localPoints.length >= 2) {
-			obj.graphic2d._points = this._makeRectPoints(this.localPoints[0], this.localPoints[1]);
-			obj.graphic2d.fill = wantFill;
-			obj.graphic2d.line = wantLine;
+			path = this._makeRectPoints(this.localPoints[0], this.localPoints[1]);
 		} else if (this.tool === 'circle' && this.localPoints.length >= 2) {
-			obj.graphic2d._points = this._makeEllipsePoints(this.localPoints[0], this.localPoints[1], 64);
-			obj.graphic2d.fill = wantFill;
-			obj.graphic2d.line = wantLine;
+			path = this._makeEllipsePoints(this.localPoints[0], this.localPoints[1], 64);
 		} else if (this.tool === 'polygon') {
 			const simp = this._simplifyAdaptive(this.localPoints, { tool:'pencil', simplifyPx: 1.75, minStepPx: 1.0 });
-			obj.graphic2d._points = this._cleanAndClose(simp);
-			obj.graphic2d.fill = wantFill;
-			obj.graphic2d.line = wantLine;
+			path = this._cleanAndClose(simp);
 		}
-	
-		// apply stroke/paint props (ensure lineWidth is set)
+
+		// if fill requested, ensure closed
+		if (wantFill) path = this._cleanAndClose(path);
+
+		// apply geometry + style
+		obj.graphic2d._paths = [path];
+		obj.graphic2d.fill = wantFill;
+		obj.graphic2d.line = wantLine;
 		obj.graphic2d.lineWidth  = lw;
 		obj.graphic2d.lineColor  = s.lineColor || obj.graphic2d.lineColor || '#ffffffff';
 		obj.graphic2d.lineCap    = s.lineCap   || obj.graphic2d.lineCap   || 'round';
@@ -512,29 +488,99 @@ export default class D2DDraw {
 		obj.graphic2d.fillColor  = s.fillColor || obj.graphic2d.fillColor || '#000000ff';
 		obj.graphic2d.borderRadius = br;
 		obj.graphic2d.subtract = s.subtract;
-	
-		// close any filled geometry
-		if (obj.graphic2d.fill) {
-			obj.graphic2d._points = this._cleanAndClose(obj.graphic2d._points);
-		}
-	
-		// validate geometry
+
 		obj.invalidateGraphic2D?.();
-		const pts = obj?.graphic2d?._points || [];
-		if (pts.length === 0) { obj.delete?.(); this._request(); return; }
-	
+		const paths = obj?.graphic2d?._paths || [];
+		if (paths.length === 0 || (paths[0]?.length || 0) === 0) { obj.delete?.(); this._request(); return; }
+
+		// -------- boolean subtract pathway --------
+		if (s.subtract) {
+		  // 1) choose target: parent graphic if present, else focus if it is a 2D graphic
+		  const focus = _editor?.focus || this.host || _root;
+		  const parentCandidate = focus?.parent;
+		  const parentIs2D = parentCandidate?.is2D && Array.isArray(parentCandidate.graphic2d?._paths);
+		  const focusIs2D  = focus?.is2D && Array.isArray(focus.graphic2d?._paths);
+		  const target = parentIs2D ? parentCandidate : (focusIs2D ? focus : null);
+		
+		  if (!target) {
+			// nothing to subtract from — drop the temp eraser and exit
+			obj.delete?.(); this.tempObj = null; this._request(); return;
+		  }
+		
+		  // 2) make a valid cutter polygon:
+		  //    - if closed: use as-is
+		  //    - if open (line/pencil): expand to stroke polygon using half lineWidth
+		  let cutter = this._cleanAndClose(path);
+		  const isClosed = this._isClosed(cutter);
+		
+		  if (!isClosed) {
+			const half = Math.max(0.1, (lw || 1) * 0.5);
+			cutter = this._strokeToPolygon(path, half, /*allowCircle*/ false);
+			cutter = this._cleanAndClose(cutter);
+		  }
+		
+		  // degenerate? bail
+		  if (cutter.length < 4 || Math.abs(this._signedArea(cutter)) < 1e-9) {
+			obj.delete?.(); this.tempObj = null; this._request(); return;
+		  }
+		
+		  // 3) snapshot "before"
+		  const before = [{
+			obj: target,
+			paths: (target.graphic2d._paths || []).map(p => p.map(q => ({ x:q.x, y:q.y })))
+		  }];
+		
+		  // 4) subtract (paths are normalized inside _diffPathsByCutter)
+		  const newPaths = this._diffPathsByCutter(target.graphic2d._paths || [], cutter);
+		  target.graphic2d._paths = newPaths;
+		  target.invalidateGraphic2D?.();
+		
+		  // 5) remove the eraser temp object
+		  obj.delete?.(); this.tempObj = null;
+		
+		  // 6) snapshot "after"
+		  const after = [{
+			obj: target,
+			paths: (target.graphic2d._paths || []).map(p => p.map(q => ({ x:q.x, y:q.y })))
+		  }];
+		
+		  // 7) history
+		  if (_editor?.addStep) {
+			_editor.addStep({
+			  label: 'Subtract 2D',
+			  undo: () => {
+				for (const s of before) {
+				  s.obj.graphic2d._paths = s.paths.map(p => p.map(q => ({ x:q.x, y:q.y })));
+				  s.obj.invalidateGraphic2D?.();
+				}
+			  },
+			  redo: () => {
+				for (const s of after) {
+				  s.obj.graphic2d._paths = s.paths.map(p => p.map(q => ({ x:q.x, y:q.y })));
+				  s.obj.invalidateGraphic2D?.();
+				}
+			  }
+			});
+		  }
+		
+		  _editor?.selectObjects?.([target]);
+		  this._request();
+		  return; // done
+		}
+		// -------- end subtract pathway --------
+
 		// center origin for intuitive transforms
 		this._centerObject(obj);
-	
-		// history
+
+		// history (normal draw)
 		if (_editor?.addStep) {
 			const host = obj.parent || this.host || _root;
 			const name = obj.name || 'Draw 2D';
 			const props = { ...(obj.graphic2d || {}) };
-			props._points = (obj.graphic2d?._points || []).map(p => ({ x:p.x, y:p.y }));
+			props._paths = (obj.graphic2d?._paths || []).map(path => path.map(p => ({ x:p.x, y:p.y })));
 			const components = [{ type:'Graphic2D', properties: props }];
 			let keep = obj;
-	
+
 			const undo = async () => { keep?.delete?.(); };
 			const redo = async () => {
 				if (keep && keep.parent) return;
@@ -545,23 +591,20 @@ export default class D2DDraw {
 			};
 			_editor.addStep({ label:'Draw 2D', undo, redo });
 		}
-	
+
 		_editor?.selectObjects?.([obj]);
 		this._request();
 	}
 
-	// ---------------- simplify (pixel-aware) ----------------
+	/* =============== simplify (pixel-aware) =============== */
 	_pxToLocalScalar(px) {
 		const pr = this.d2drenderer.pixelRatio || 1;
 		const vs = this.d2drenderer.viewScale  || 1;
 		return px / (pr * vs);
 	}
-
 	_rdpSimplify(points, epsilonLocal) {
 		if (!points || points.length < 3) return points ? points.slice() : [];
-
 		const sqEps = epsilonLocal * epsilonLocal;
-
 		const sqSegDist = (p, a, b) => {
 			let x = a.x, y = a.y;
 			let dx = b.x - x, dy = b.y - y;
@@ -573,10 +616,8 @@ export default class D2DDraw {
 			dx = p.x - x; dy = p.y - y;
 			return dx*dx + dy*dy;
 		};
-
 		const keep = new Array(points.length).fill(false);
 		keep[0] = keep[points.length - 1] = true;
-
 		const stack = [[0, points.length - 1]];
 		while (stack.length) {
 			const [first, last] = stack.pop();
@@ -590,12 +631,10 @@ export default class D2DDraw {
 				stack.push([first, index], [index, last]);
 			}
 		}
-
 		const out = [];
 		for (let i = 0; i < points.length; i++) if (keep[i]) out.push(points[i]);
 		return out;
 	}
-
 	_spacingSimplify(points, minStepLocal) {
 		if (!points || points.length < 3) return points ? points.slice() : [];
 		const out = [points[0]];
@@ -609,12 +648,8 @@ export default class D2DDraw {
 		out.push(points[points.length - 1]);
 		return out;
 	}
-
 	_simplifyAdaptive(points, { tool = 'pencil', simplifyPx, minStepPx } = {}) {
-		const defaults = {
-			brush:  { simplifyPx: 1.25, minStepPx: 0.75 },
-			pencil: { simplifyPx: 2.25, minStepPx: 1.25 }
-		};
+		const defaults = { brush:{simplifyPx:1.25,minStepPx:0.75}, pencil:{simplifyPx:2.25,minStepPx:1.25} };
 		const cfg = {
 			simplifyPx: simplifyPx ?? defaults[tool]?.simplifyPx ?? 2.0,
 			minStepPx:  minStepPx  ?? defaults[tool]?.minStepPx  ?? 1.0
@@ -625,9 +660,15 @@ export default class D2DDraw {
 		return this._spacingSimplify(rdp, stepLocal);
 	}
 
-	// ---------------- geometry helpers ----------------
+	/* =============== geometry helpers =============== */
 	_dist(a,b){ return Math.hypot(a.x-b.x, a.y-b.y); }
 	_approxPt(a,b){ return Math.abs(a.x-b.x) <= 1e-6 && Math.abs(a.y-b.y) <= 1e-6; }
+
+	_isClosed(pts) {
+		if (!pts || pts.length < 3) return false;
+		const a = pts[0], b = pts[pts.length - 1];
+		return this._approxPt(a, b);
+	}
 
 	_makeRectPoints(a,b){
 		return [
@@ -655,9 +696,13 @@ export default class D2DDraw {
 	_cleanAndClose(points){
 		const pts=(points||[]).filter(p=>isFinite(p?.x)&&isFinite(p?.y)).map(p=>({x:+p.x,y:+p.y}));
 		if (pts.length===0) return pts;
-		const a=pts[0], b=pts[pts.length-1];
-		if (a.x!==b.x || a.y!==b.y) pts.push({ x:a.x, y:a.y });
-		return pts;
+		// collapse consecutive duplicates
+		const ded=[pts[0]];
+		for (let i=1;i<pts.length;i++) if (!this._approxPt(pts[i], ded[ded.length-1])) ded.push(pts[i]);
+		if (ded.length===0) return ded;
+		const a=ded[0], b=ded[ded.length-1];
+		if (!this._approxPt(a,b)) ded.push({ x:a.x, y:a.y });
+		return ded;
 	}
 
 	_normals(a,b){ const dx=b.x-a.x, dy=b.y-a.y; const L=Math.hypot(dx,dy)||1; return { x:-dy/L, y:dx/L }; }
@@ -672,7 +717,7 @@ export default class D2DDraw {
 			if (allowCircle && pts && pts.length===1) return this._circlePoly(pts[0], radius);
 			return pts ? pts.map(p=>({x:p.x,y:p.y})) : [];
 		}
-		const simp = pts; // already simplified before calling (for brush)
+		const simp = pts;
 		const left=[], right=[];
 		const n=simp.length;
 		for (let i=0;i<n;i++){
@@ -696,13 +741,16 @@ export default class D2DDraw {
 	}
 
 	_centerObject(obj){
-		const pts = Array.isArray(obj?.graphic2d?._points) ? obj.graphic2d._points : [];
-		if (pts.length===0) return;
+		const paths = Array.isArray(obj?.graphic2d?._paths) ? obj.graphic2d._paths : [];
+		if (paths.length===0) return;
 		let minx=Infinity,miny=Infinity,maxx=-Infinity,maxy=-Infinity;
-		for (const p of pts){ const x=+p.x||0, y=+p.y||0; if (x<minx)minx=x; if (y<miny)miny=y; if (x>maxx)maxx=x; if (y>maxy)maxy=y; }
+		for (const path of paths){
+			for (const p of path){ const x=+p.x||0, y=+p.y||0;
+				if (x<minx)minx=x; if (y<miny)miny=y; if (x>maxx)maxx=x; if (y>maxy)maxy=y; }
+		}
 		if (!isFinite(minx)||!isFinite(miny)||!isFinite(maxx)||!isFinite(maxy)) return;
 		const cx=(minx+maxx)*0.5, cy=(miny+maxy)*0.5;
-		for (const p of pts){ p.x -= cx; p.y -= cy; }
+		for (const path of paths) for (const p of path){ p.x -= cx; p.y -= cy; }
 		obj.position = { x:(+obj.position?.x||0)+cx, y:(+obj.position?.y||0)+cy, z:+obj.position?.z||0 };
 		obj.invalidateGraphic2D?.();
 	}
@@ -728,31 +776,216 @@ export default class D2DDraw {
 		return v;
 	}
 
-	// ---------------- overlay render (preview + gizmos) ----------------
+	// ---------- basic boolean helpers (safe) ----------
+	_ensureCCW(poly){
+	  const p = this._cleanAndClose(poly);
+	  if (p.length >= 3 && this._signedArea(p) < 0) p.reverse();
+	  return p;
+	}
+	_signedArea(poly){
+		let a=0;
+		for (let i=0;i<poly.length-1;i++) a += poly[i].x*poly[i+1].y - poly[i+1].x*poly[i].y;
+		return a*0.5;
+	}
+	_pointInPolygon(p, poly){
+		let inside=false;
+		for (let i=0, j=poly.length-1; i<poly.length; j=i++){
+			const xi=poly[i].x, yi=poly[i].y, xj=poly[j].x, yj=poly[j].y;
+			const inter = ((yi>p.y)!==(yj>p.y)) && (p.x < (xj-xi)*(p.y-yi)/((yj-yi)||1e-12) + xi);
+			if (inter) inside = !inside;
+		}
+		return !!inside;
+	}
+	_segIntersect(a,b,c,d){
+		if (!a||!b||!c||!d) return { hit:false };
+		const bax=b.x-a.x, bay=b.y-a.y, cdx=d.x-c.x, cdy=d.y-c.y;
+		const den = bax*(-cdy) - bay*(-cdx);
+		if (Math.abs(den) < 1e-12) return {hit:false};
+		const cxax=c.x-a.x, cyay=c.y-a.y;
+		const t = (cxax*(-cdy) - cyay*(-cdx)) / den;
+		const u = (cxax*(-bay) + cyay*(bax)) / den;
+		if (t<-1e-12 || t>1+1e-12 || u<-1e-12 || u>1+1e-12) return {hit:false};
+		return {hit:true, t:Math.max(0,Math.min(1,t)), u:Math.max(0,Math.min(1,u)), x:a.x + bax*t, y:a.y + bay*t};
+	}
+
+	// ---------- Greiner–Hormann nodes ----------
+	_makeNode(p){ return { x:p.x, y:p.y, next:null, prev:null, neighbor:null, alpha:0, entry:false, visited:false, intersect:false, orig:true }; }
+	_linkRing(pts){
+		const base=(this._approxPt(pts[0], pts[pts.length-1]))? pts.slice(0,-1) : pts.slice();
+		if (base.length<3) return null;
+
+		// remove consecutive duplicate vertices
+		const clean=[base[0]];
+		for (let i=1;i<base.length;i++) if (!this._approxPt(base[i], clean[clean.length-1])) clean.push(base[i]);
+		if (clean.length<3) return null;
+
+		const nodes=clean.map(p=>this._makeNode(p));
+		const n=nodes.length;
+		for (let i=0;i<n;i++){ nodes[i].next = nodes[(i+1)%n]; nodes[i].prev = nodes[(i-1+n)%n]; }
+		return nodes[0];
+	}
+	_insertAfter(a, x){ x.prev=a; x.next=a.next; a.next.prev=x; a.next=x; }
+	_nextOriginal(n){ let k=n.next; while (k!==n && k && !k.orig) k=k.next; return k; }
+	_ringCountOriginal(head){ let cnt=0, k=head; do{ if (k.orig) cnt++; k=k.next; } while (k!==head); return cnt; }
+	_ringToArray(head){
+		const out=[]; let n=head; do{ out.push({x:n.x,y:n.y}); n=n.next; } while (n!==head);
+		if (!this._approxPt(out[0], out[out.length-1])) out.push({x:out[0].x,y:out[0].y});
+		return out;
+	}
+
+	// ---------- A - B (simple polygons, no holes) ----------
+	_booleanDiffSimple(Ain, Bin){
+		// build linked rings
+		const A = this._linkRing(Ain);
+		const B = this._linkRing(Bin);
+		if (!A || !B) return [];
+	
+		// 1) insert intersections (iterate original edges only)
+		let a = A;
+		const aEdges = this._ringCountOriginal(A);
+		for (let i=0;i<aEdges;i++){
+			const ai=a; const aj=this._nextOriginal(ai);
+	
+			let b = B;
+			const bEdges = this._ringCountOriginal(B);
+			for (let j=0;j<bEdges;j++){
+				const bi=b; const bj=this._nextOriginal(bi);
+	
+				const inter=this._segIntersect(ai,aj,bi,bj);
+				if (inter.hit){
+					const an={...this._makeNode({x:inter.x,y:inter.y}), intersect:true, orig:false, alpha:inter.t};
+					const bn={...this._makeNode({x:inter.x,y:inter.y}), intersect:true, orig:false, alpha:inter.u};
+					an.neighbor=bn; bn.neighbor=an;
+	
+					let p=ai; while (p.next!==aj && p.next.intersect && p.next.alpha < an.alpha) p=p.next;
+					this._insertAfter(p, an);
+					p=bi; while (p.next!==bj && p.next.intersect && p.next.alpha < bn.alpha) p=p.next;
+					this._insertAfter(p, bn);
+				}
+				b=this._nextOriginal(b);
+			}
+			a=this._nextOriginal(a);
+		}
+	
+		// 2) early-out: no intersections
+		let anyInter=false; { let t=A; do{ if (t.intersect){ anyInter=true; break; } t=t.next; } while (t!==A); }
+		if (!anyInter){
+			// We must return A - B even when B is fully inside A (create a hole).
+			// Use array forms for robust point tests and to manage winding.
+			const Aarr = this._ringToArray(A);	// closed
+			const Barr = this._ringToArray(B);	// closed
+			if (Aarr.length < 4) return [];
+			if (Barr.length < 4) return [Aarr];
+	
+			const aInsideB = this._pointInPolygon(Aarr[0], Barr);
+			const bInsideA = this._pointInPolygon(Barr[0], Aarr);
+	
+			if (bInsideA && !aInsideB){
+				// B fully inside A → return A with a hole B (reverse B so winding is opposite)
+				const Aout = Aarr.slice();
+				const Bout = Barr.slice();
+	
+				const areaA = this._signedArea(Aout);
+				const areaB = this._signedArea(Bout);
+				// ensure opposite sign: if same sign, reverse B
+				if ((areaA >= 0 && areaB >= 0) || (areaA <= 0 && areaB <= 0)) Bout.reverse();
+	
+				return [Aout, Bout];
+			}
+	
+			// if A completely inside B → fully removed; else disjoint → keep A
+			return (!aInsideB) ? [Aarr] : [];
+		}
+	
+		// 3) mark entry flags along A (difference toggles as we cross B)
+		let inside = this._pointInPolygon({x:A.x,y:A.y}, Bin);
+		let cur=A;
+		do{
+			if (cur.intersect){ cur.entry = !inside; inside = !inside; }
+			cur = cur.next;
+		} while (cur !== A);
+	
+		// 4) trace result contours
+		const results=[];
+		const maxSteps = 10000;
+	
+		const nextUnvisited = ()=>{
+			let k=A; do{ if (k.intersect && !k.visited) return k; k=k.next; } while (k!==A);
+			return null;
+		};
+	
+		let start;
+		while ((start=nextUnvisited())){
+			const out=[];
+			let n = start;
+			let forward = n.entry;
+			let steps=0;
+	
+			while (steps++ < maxSteps){
+				if (n.visited && n===start) break;
+				n.visited = true;
+				out.push({x:n.x,y:n.y});
+	
+				if (n.intersect){
+					n.neighbor.visited = true;
+					n = n.neighbor;          // switch rings
+					out.push({x:n.x,y:n.y});
+					forward = !forward;      // flip direction on each swap
+				}
+				n = forward ? n.next : n.prev;
+				if (n===start){ out.push({x:n.x,y:n.y}); break; }
+			}
+	
+			const clean=this._cleanAndClose(out);
+			if (clean.length>=4) results.push(clean);
+		}
+	
+		return results;
+	}
+
+	// ---------- paths − cutter ----------
+	_diffPathsByCutter(paths, cutter){
+	  if (!Array.isArray(paths) || paths.length===0) return [];
+	  const C = this._ensureCCW(cutter);
+	  if (C.length<4 || Math.abs(this._signedArea(C)) < 1e-9) return paths.map(p=>p.slice());
+	
+	  const out=[];
+	  for (const P of paths){
+		const A = this._ensureCCW(P);
+		if (A.length<4 || Math.abs(this._signedArea(A)) < 1e-9){ out.push(P.slice()); continue; }
+		const parts = this._booleanDiffSimple(A, C);
+		for (const r of parts){
+		  const rr = this._cleanAndClose(r);
+		  if (rr.length >= 3) {
+			if (this._signedArea(rr) < 0) rr.reverse();
+			out.push(rr);
+		  }
+		}
+	  }
+	  return out;
+	}
+
+	/* =============== overlay render (preview + gizmos) =============== */
 	render() {
 		if (!this._isActive()) return;
 		const ctx = this.ctx; if (!ctx) return;
-	
+
 		const tool   = _editor.tool;
 		const fc     = this.hex8(_editor.draw2d?.fillColor || '#000000ff', 'rgba(0,0,0,1)');
 		const lc     = this.hex8(_editor.draw2d?.lineColor || '#ffffffff', 'rgba(255,255,255,1)');
 		const radius = Math.max(0.1, Number(_editor.draw2d?.brushRadius ?? 1));
 		const lw     = Math.max(1, Number(_editor.draw2d?.lineWidth ?? 1));
 		const br     = Math.max(0, Number(_editor.draw2d?.borderRadius ?? 0));
-	
+
 		const pr = this.d2drenderer.pixelRatio || 1;
 		const vs = this.d2drenderer.viewScale  || 1;
 		const strokePx = lw * pr * vs;
-	
+
 		const wantFill = _editor.draw2d?.fill !== false;
 		const wantLine = _editor.draw2d?.line !== false;
-	
-		// ---- helpers (LOCAL-SPACE) ----
-		const isClosedLocal = (pts) => {
-			if (!pts || pts.length < 3) return false;
-			const a = pts[0], b = pts[pts.length - 1];
-			return Math.abs(a.x - b.x) <= 1e-6 && Math.abs(a.y - b.y) <= 1e-6;
-		};
+
+		// helpers (LOCAL-SPACE)
+		const isClosedLocal = (pts) => this._isClosed(pts);
 		const rawPathLocal = (pts) => {
 			const p = new Path2D();
 			if (!pts?.length) return p;
@@ -764,35 +997,26 @@ export default class D2DDraw {
 		const roundedPathLocal = (pts, borderRadius) => {
 			if (!pts || pts.length < 3) return null;
 			if (!isClosedLocal(pts) || borderRadius <= 0) return null;
-	
 			const base = pts.slice(0, -1);
 			const count = base.length;
 			if (count < 3) return null;
-	
 			const get = i => base[(i + count) % count];
 			const p = new Path2D();
-	
 			for (let i = 0; i < count; i++) {
 				const p0 = get(i - 1);
 				const p1 = get(i);
 				const p2 = get(i + 1);
-	
 				const v1x = p1.x - p0.x, v1y = p1.y - p0.y;
 				const v2x = p2.x - p1.x, v2y = p2.y - p1.y;
-	
 				const len1 = Math.hypot(v1x, v1y) || 1;
 				const len2 = Math.hypot(v2x, v2y) || 1;
-	
 				const r = Math.min(borderRadius, len1 / 2, len2 / 2);
-	
 				const inX  = p1.x - (v1x / len1) * r;
 				const inY  = p1.y - (v1y / len1) * r;
 				const outX = p1.x + (v2x / len2) * r;
 				const outY = p1.y + (v2y / len2) * r;
-	
 				if (i === 0) p.moveTo(inX, inY);
 				else p.lineTo(inX, inY);
-	
 				p.quadraticCurveTo(p1.x, p1.y, outX, outY);
 			}
 			p.closePath();
@@ -805,10 +1029,7 @@ export default class D2DDraw {
 			return pc;
 		};
 		const drawFillAndStroke = (canvasPath) => {
-			if (wantFill) {
-				ctx.fillStyle = fc;
-				ctx.fill(canvasPath);
-			}
+			if (wantFill) { ctx.fillStyle = fc; ctx.fill(canvasPath); }
 			if (wantLine) {
 				ctx.lineWidth = strokePx;
 				ctx.lineCap = 'round';
@@ -817,11 +1038,11 @@ export default class D2DDraw {
 				ctx.stroke(canvasPath);
 			}
 		};
-	
+
 		ctx.save();
 		ctx.setTransform(1,0,0,1,0,0);
-	
-		// ---- live preview ----
+
+		// live preview
 		if (this.drawing && this.localPoints.length > 0) {
 			if (tool === 'brush') {
 				const live = this.localPoints.length > 2
@@ -836,7 +1057,6 @@ export default class D2DDraw {
 				}
 			} else if (tool === 'pencil') {
 				if (this.localPoints.length > 1) {
-					// Pencil = open stroke, so just map points to canvas and stroke
 					const pts = this.localPoints.map(p => this._localToCanvas(p));
 					ctx.beginPath();
 					ctx.moveTo(pts[0].x, pts[0].y);
@@ -873,15 +1093,14 @@ export default class D2DDraw {
 					drawFillAndStroke(pathC);
 				}
 			} else if (tool === 'polygon') {
-				// Special invert preview (path in local, then addPath to canvas)
 				const ptsL = this.localPoints.slice();
 				if (this.cursorLocal) ptsL.push({ x:this.cursorLocal.x, y:this.cursorLocal.y });
 				if (ptsL.length > 1) {
 					const pathL = rawPathLocal(ptsL);
 					const pathC = toCanvasPath(pathL);
 					const previewPx = (_editor?.draw2d?.previewWidthPx ?? 3);
-	
-					// halo (visible on blank)
+
+					// halo
 					ctx.save();
 					ctx.globalCompositeOperation = 'source-over';
 					ctx.lineWidth = previewPx + 2;
@@ -890,8 +1109,8 @@ export default class D2DDraw {
 					ctx.strokeStyle = 'rgba(0,0,0,0.6)';
 					ctx.stroke(pathC);
 					ctx.restore();
-	
-					// invert on content
+
+					// invert
 					ctx.save();
 					ctx.globalCompositeOperation = 'difference';
 					ctx.lineWidth = previewPx;
@@ -903,14 +1122,16 @@ export default class D2DDraw {
 				}
 			}
 		}
-	
+
 		// cursor gizmo
 		if (this.cursor) {
-			const r = tool === 'brush' ? radius * (pr*vs) : Math.max(1, lw) * 0.5 * (pr*vs);
+			const pr = this.d2drenderer.pixelRatio || 1;
+			const vs = this.d2drenderer.viewScale  || 1;
+			const r = tool === 'brush' ? radius * (pr*vs) : Math.max(1, _editor.draw2d?.lineWidth ?? 1) * 0.5 * (pr*vs);
 			ctx.beginPath(); ctx.arc(this.cursor.x, this.cursor.y, r, 0, Math.PI*2);
 			ctx.lineWidth = 1; ctx.strokeStyle = tool==='brush' ? fc : lc; ctx.stroke();
 		}
-	
+
 		// snap gizmo
 		if (this._snapHit?.canvas) {
 			const s=this._snapHit.canvas;
@@ -919,113 +1140,76 @@ export default class D2DDraw {
 			ctx.beginPath(); ctx.arc(s.x, s.y, 2, 0, Math.PI*2);
 			ctx.fillStyle='#37e3ff'; ctx.fill();
 		}
-	
+
 		ctx.restore();
 	}
 }
 
+/* ==================== helpers updated for _paths ==================== */
+
 export function mergeGraphic2Ds(graphics) {
-	function mergePolygons(p1, p2) {
-		if (!p1.length) return p2.map(p => ({ x: p.x, y: p.y }));
-		if (!p2.length) return p1.map(p => ({ x: p.x, y: p.y }));
-		const a = p1[p1.length - 1];
-		const b = p2[0];
-		const dx = a.x - b.x;
-		const dy = a.y - b.y;
-		const d2 = dx*dx + dy*dy;
-		const out = p1.slice();
-		if (d2 < 1e-6) out.push(...p2.slice(1).map(p => ({ x: p.x, y: p.y })));
-		else out.push(...p2.map(p => ({ x: p.x, y: p.y })));
-		return out;
-	}
-	
 	if (!Array.isArray(graphics) || graphics.length === 0) return null;
-	const items = graphics.filter(g => g && Array.isArray(g._points));
+
+	const items = graphics.filter(g => g && Array.isArray(g._paths));
 	if (items.length === 0) return null;
 
-	const clone = g => ({
+	const cloneGraphic = g => ({
 		...g,
-		_points: g._points.map(p => ({ x: p.x, y: p.y }))
+		_paths: (g._paths || []).map(path => path.map(p => ({ x:p.x, y:p.y })))
 	});
-
 	const pick = (a, b, k) => (b?.[k] !== undefined ? b[k] : a?.[k]);
 
 	const mergePair = (A, B) => {
-		if (!A) return clone(B);
-		if (!B) return clone(A);
-		const a = clone(A);
-		const b = clone(B);
-		const aFill = !!a.fill;
-		const bFill = !!b.fill;
-		const aLine = !!a.line;
-		const bLine = !!b.line;
+		if (!A) return cloneGraphic(B);
+		if (!B) return cloneGraphic(A);
 
-		if (aFill && bFill) {
-			const pts = mergePolygons(a._points, b._points);
-			return {
-				fill: true,
-				line: a.line || b.line || false,
-				fillColor: pick(a, b, 'fillColor'),
-				lineColor: pick(a, b, 'lineColor'),
-				lineWidth: pick(a, b, 'lineWidth'),
-				lineCap: pick(a, b, 'lineCap'),
-				lineJoin: pick(a, b, 'lineJoin'),
-				_points: pts
-			};
-		}
+		const a = cloneGraphic(A);
+		const b = cloneGraphic(B);
+		const aFill = !!a.fill, bFill = !!b.fill;
+		const aLine = !!a.line, bLine = !!b.line;
 
-		if ((aFill && bLine) || (aLine && bFill)) {
-			return {
-				fill: true,
-				line: true,
-				fillColor: pick(a, b, 'fillColor'),
-				lineColor: pick(a, b, 'lineColor'),
-				lineWidth: pick(a, b, 'lineWidth'),
-				lineCap: pick(a, b, 'lineCap'),
-				lineJoin: pick(a, b, 'lineJoin'),
-				_points: aFill ? a._points.concat(b._points) : b._points.concat(a._points)
-			};
-		}
+		// for path-based graphics without boolean ops, we just concatenate path lists
+		const mergedPaths = (a._paths || []).concat(b._paths || []);
 
-		const pts = a._points.concat(b._points);
 		return {
-			fill: false,
-			line: true,
+			fill: aFill || bFill,
+			line: aLine || bLine,
+			fillColor: pick(a, b, 'fillColor'),
 			lineColor: pick(a, b, 'lineColor'),
 			lineWidth: pick(a, b, 'lineWidth'),
 			lineCap: pick(a, b, 'lineCap'),
 			lineJoin: pick(a, b, 'lineJoin'),
-			_points: pts
+			miterLimit: pick(a, b, 'miterLimit'),
+			borderRadius: pick(a, b, 'borderRadius'),
+			_paths: mergedPaths
 		};
 	};
 
-	const result = items.reduce((acc, g) => mergePair(acc, g), null);
-	return result;
+	return items.reduce((acc, g) => mergePair(acc, g), null);
 }
+
 export function centerGraphic2DObject(obj) {
 	if (!obj || !obj.graphic2d) return null;
-	const pts = Array.isArray(obj.graphic2d._points) ? obj.graphic2d._points : [];
-	if (pts.length === 0) return null;
+	const paths = Array.isArray(obj.graphic2d._paths) ? obj.graphic2d._paths : [];
+	if (paths.length === 0) return null;
 
 	let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
-	for (const p of pts) {
-		if (!p) continue;
-		const x = Number(p.x) || 0;
-		const y = Number(p.y) || 0;
-		if (x < minx) minx = x;
-		if (y < miny) miny = y;
-		if (x > maxx) maxx = x;
-		if (y > maxy) maxy = y;
+	for (const path of paths) {
+		for (const p of path) {
+			const x = Number(p.x) || 0;
+			const y = Number(p.y) || 0;
+			if (x < minx) minx = x;
+			if (y < miny) miny = y;
+			if (x > maxx) maxx = x;
+			if (y > maxy) maxy = y;
+		}
 	}
 	if (!isFinite(minx) || !isFinite(miny) || !isFinite(maxx) || !isFinite(maxy)) return null;
 
 	const cx = (minx + maxx) * 0.5;
 	const cy = (miny + maxy) * 0.5;
 
-	for (const p of pts) {
-		p.x = (Number(p.x) || 0) - cx;
-		p.y = (Number(p.y) || 0) - cy;
-	}
+	for (const path of paths) for (const p of path) { p.x -= cx; p.y -= cy; }
 
 	obj.position = {
 		x: (Number(obj.position?.x) || 0) + cx,
