@@ -9,7 +9,7 @@ export default function TextManager(d3dobject, component) {
 	}
 	
 	function setup() {
-		
+		d3dobject.__simpleHit = true;
 		component.__setup = true;
 	}
 	function update() {

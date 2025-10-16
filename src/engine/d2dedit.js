@@ -9,7 +9,7 @@ export default class D2DEdit {
 
 		// [{ obj, pidx, lindex }]
 		this.selectedPoints = [];
-		this.hoverPoint = null;   // { obj, pidx, lindex }
+		this.hoverPoint = null;
 
 		this.dragging = false;
 		this.dragObj = null;
@@ -18,9 +18,18 @@ export default class D2DEdit {
 		this.grabLocal = null;
 		this.lastLocal = null;
 		this.hasMoved = false;
-		this.undoSnapshot = null; // { obj, items:[{pidx,i,x,y}] }
+
+		this.undoSnapshot = null; // points snapshot for normal shapes
 		this.redoSnapshot = null;
 
+		// text-rect mode snapshots (entire path)
+		this._pathSnapshotBefore = null;
+		this._pathSnapshotAfter  = null;
+
+		// text-rect drag metadata
+		this._textDrag = null; // { active, pidx, moveXIdx:int[], moveYIdx:int[], wasClosed:boolean }
+
+		// snapping session (borrow drawer)
 		this._snapSession = null;
 
 		this._onMouseDown = this._onMouseDown.bind(this);
@@ -155,8 +164,21 @@ export default class D2DEdit {
 
 		this._beginSnapSession(hit.obj?.parent || null);
 
-		this.undoSnapshot = this._snapshotAllSelectedFor(this.dragObj);
-		this.redoSnapshot = null;
+		// Decide snapshot mode
+		if (this._isText2D(this.dragObj)) {
+			// Build text-rect drag metadata from the grabbed corner
+			this._textDrag = this._buildTextDragMeta(this.dragObj, this.grabPath, this.grabLIndex);
+			this._pathSnapshotBefore = this._clonePaths(this.dragObj.graphic2d._paths);
+			this._pathSnapshotAfter  = null;
+			this.undoSnapshot = null; // not used in text mode
+			this.redoSnapshot = null;
+		} else {
+			this._textDrag = null;
+			this.undoSnapshot = this._snapshotAllSelectedFor(this.dragObj);
+			this.redoSnapshot = null;
+			this._pathSnapshotBefore = null;
+			this._pathSnapshotAfter  = null;
+		}
 
 		this.canvas.style.cursor = 'grabbing';
 		e.preventDefault();
@@ -180,6 +202,7 @@ export default class D2DEdit {
 			const m = this._mouseToCanvas(e);
 			let targetLocal = this._applyDOM(inv, m.x, m.y);
 
+			// snapping
 			const drawer = this.d2drenderer?.drawer;
 			const snappingOn = !!_editor?.draw2d?.snapEnabled && !!drawer;
 			if (snappingOn) {
@@ -197,26 +220,47 @@ export default class D2DEdit {
 				}
 			}
 
-			const dx = targetLocal.x - this.lastLocal.x;
-			const dy = targetLocal.y - this.lastLocal.y;
+			if (this._textDrag?.active) {
+				// Text mode: set edges to target (no per-vertex deltas)
+				const pidx = this._textDrag.pidx;
+				const path = paths[pidx] || [];
+				if (path.length) {
+					const { moveXIdx, moveYIdx, wasClosed } = this._textDrag;
 
-			if (dx !== 0 || dy !== 0) {
-				this.hasMoved = true;
+					for (const i of moveXIdx) if (path[i]) path[i].x = targetLocal.x;
+					for (const i of moveYIdx) if (path[i]) path[i].y = targetLocal.y;
 
-				// move all selected logical points for this object, per-path
-				const byPath = this._selectedLogicalByPathFor(obj);
-				for (const [pidx, lis] of byPath.entries()) {
-					const path = paths[pidx] || [];
-					for (const li of lis) {
-						const map = this._logicalMap(path, li);
-						for (const pi of map) {
-							path[pi].x += dx;
-							path[pi].y += dy;
+					// keep closed if was closed
+					if (wasClosed && path.length >= 2) {
+						const a = path[0], b = path[path.length - 1];
+						if (!this._approx(a.x, b.x) || !this._approx(a.y, b.y)) {
+							path[path.length - 1] = { x: a.x, y: a.y };
 						}
 					}
+					this.hasMoved = true;
+					this.lastLocal = targetLocal;
 				}
+			} else {
+				// Normal mode: delta-based move of selected logicals
+				const dx = targetLocal.x - this.lastLocal.x;
+				const dy = targetLocal.y - this.lastLocal.y;
 
-				this.lastLocal = targetLocal;
+				if (dx !== 0 || dy !== 0) {
+					this.hasMoved = true;
+
+					const byPath = this._selectedLogicalByPathFor(obj);
+					for (const [pidx, lis] of byPath.entries()) {
+						const path = paths[pidx] || [];
+						for (const li of lis) {
+							const map = this._logicalMap(path, li);
+							for (const pi of map) {
+								path[pi].x += dx;
+								path[pi].y += dy;
+							}
+						}
+					}
+					this.lastLocal = targetLocal;
+				}
 			}
 
 			this.canvas.style.cursor = 'grabbing';
@@ -238,17 +282,34 @@ export default class D2DEdit {
 		this.dragging = false;
 		this.canvas.style.cursor = 'default';
 
-		if (commit && this.hasMoved && this.dragObj && this.undoSnapshot) {
-			this.redoSnapshot = this._snapshotAllSelectedFor(this.dragObj);
+		if (commit && this.hasMoved && this.dragObj) {
 			const obj = this.dragObj;
-			const before = this.undoSnapshot;
-			const after = this.redoSnapshot;
-			_editor?.addStep?.({
-				name: 'Edit 2D Points',
-				undo: () => this._applySnapshot(obj, before),
-				redo: () => this._applySnapshot(obj, after)
-			});
-			obj.checkSymbols();
+
+			if (this._textDrag?.active) {
+				// snapshot entire paths (since we mutated extra verts)
+				this._pathSnapshotAfter = this._clonePaths(obj.graphic2d._paths);
+
+				const before = this._pathSnapshotBefore;
+				const after  = this._pathSnapshotAfter;
+
+				if (before && after) {
+					_editor?.addStep?.({
+						name: 'Edit Text Rect',
+						undo: () => { obj.graphic2d._paths = this._clonePaths(before); obj.checkSymbols?.(); },
+						redo: () => { obj.graphic2d._paths = this._clonePaths(after);  obj.checkSymbols?.(); }
+					});
+				}
+			} else if (this.undoSnapshot) {
+				this.redoSnapshot = this._snapshotAllSelectedFor(obj);
+				const before = this.undoSnapshot;
+				const after  = this.redoSnapshot;
+				_editor?.addStep?.({
+					name: 'Edit 2D Points',
+					undo: () => this._applySnapshot(obj, before),
+					redo: () => this._applySnapshot(obj, after)
+				});
+				obj.checkSymbols?.();
+			}
 		}
 
 		this._endSnapSession();
@@ -261,6 +322,9 @@ export default class D2DEdit {
 		this.hasMoved = false;
 		this.undoSnapshot = null;
 		this.redoSnapshot = null;
+		this._pathSnapshotBefore = null;
+		this._pathSnapshotAfter  = null;
+		this._textDrag = null;
 	}
 
 	/* ---------------- snapping glue ---------------- */
@@ -488,6 +552,55 @@ export default class D2DEdit {
 		return map;
 	}
 
+	/* -------- text2d helpers (build edge groups based on grabbed corner) -------- */
+
+	_isText2D(obj) {
+		// Adjust this predicate to however text is tagged in your scene graph
+		return obj.hasComponent('Text2D');
+	}
+
+	_buildTextDragMeta(obj, pidx, lindex) {
+		const paths = obj?.graphic2d?._paths || [];
+		const path  = paths[pidx] || [];
+		if (path.length < 4) return { active:false };
+
+		// Work on full path; determine closure
+		const wasClosed = this._isClosed(path);
+
+		// Convert lindex (logical, ignores duplicate last) to physical indices we can compare
+		const logical = this._logicalPoints(path);
+		const grabP   = logical[lindex];
+		if (!grabP) return { active:false };
+
+		// Find all indices that share the same X (vertical edge) and same Y (horizontal edge)
+		const eps = 1e-6;
+		const sameX = [];
+		const sameY = [];
+		for (let i = 0; i < path.length; i++) {
+			const p = path[i];
+			if (Math.abs(p.x - grabP.x) <= eps) sameX.push(i);
+			if (Math.abs(p.y - grabP.y) <= eps) sameY.push(i);
+		}
+
+		// If last equals first, ensure both included
+		if (wasClosed) {
+			const a = path[0], b = path[path.length - 1];
+			if (Math.abs(a.x - b.x) <= eps && Math.abs(a.y - b.y) <= eps) {
+				// nothing special; both are already captured by comparisons above
+			}
+		}
+
+		return {
+			active: true,
+			pidx,
+			moveXIdx: Array.from(new Set(sameX)),
+			moveYIdx: Array.from(new Set(sameY)),
+			wasClosed
+		};
+	}
+
+	/* ---------------- matrix & misc helpers ---------------- */
+
 	_worldDOMMatrix(d3dobject) {
 		let m = new DOMMatrix();
 		const chain = [];
@@ -568,7 +681,7 @@ export default class D2DEdit {
 				path[it.i].y = it.y;
 			}
 		}
-		obj.checkSymbols();
+		obj.checkSymbols?.();
 	}
 
 	_pointSegDist2(p, a, b) {
@@ -587,7 +700,7 @@ export default class D2DEdit {
 
 	_onDelete() {
 		const drawer = this.d2drenderer.drawer;
-		
+
 		const doDelete = () => {
 			if (this.selectedPoints.length < 1) return;
 
@@ -641,15 +754,11 @@ export default class D2DEdit {
 			_editor?.addStep?.({
 				name: 'Delete 2D Points',
 				undo: () => { 
-					for (const s of before)
-						 s.obj.graphic2d._paths = this._clonePaths(s.paths); 
-					
+					for (const s of before) s.obj.graphic2d._paths = this._clonePaths(s.paths);
 					drawer._rebuildSnapCache();
 				},
 				redo: () => { 
-					for (const s of after)
-						s.obj.graphic2d._paths = this._clonePaths(s.paths);
-					
+					for (const s of after) s.obj.graphic2d._paths = this._clonePaths(s.paths);
 					drawer._rebuildSnapCache();
 				}
 			});

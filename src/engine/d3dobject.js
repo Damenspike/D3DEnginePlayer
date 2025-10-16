@@ -702,7 +702,7 @@ export default class D3DObject {
 		this.updateComponents();
 		this.checkSymbols();
 	}
-	addComponent(type, properties = {}, doUpdateAll = true, removeIfPresent = false) {
+	addComponent(type, properties = {}, doUpdateAll = true, removeIfPresent = false, unshift = false) {
 		if(this.components.find(c => c.type == type)) {
 			if(removeIfPresent) {
 				this.removeComponent(type);
@@ -743,7 +743,11 @@ export default class D3DObject {
 		const inst = new schema.manager(this, component);
 		this.__componentInstances[type] = inst;
 		
-		this.components.push(component);
+		if(unshift)
+			this.components.unshift(component);
+		else 
+			this.components.push(component);
+		
 		doUpdateAll && this.updateComponents();
 	}
 	async removeComponent(type) {

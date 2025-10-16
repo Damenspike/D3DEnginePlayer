@@ -1088,3 +1088,7 @@ body.dark {
 		vertical-align: bottom;
 	}
 }
+.text-style-editor {
+	display: flex;
+	flex-direction: row;
+}

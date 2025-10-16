@@ -11,6 +11,7 @@ import D3DRigidbodyManager from './d3dmgr_rigidbody.js';
 import D3DCharacterControllerManager from './d3dmgr_charactercontroller.js';
 import D3DThirdPersonCameraManager from './d3dmgr_thirdpersoncamera.js';
 import D2DTextManager from './d2dmgr_text.js';
+import { WebSafeFonts } from './d3dfonts.js';
 
 const D3DComponents = {
 	Mesh: {
@@ -516,11 +517,104 @@ const D3DComponents = {
 	},
 	Text2D: {
 		name: 'Text 2D',
+		sectionsLast: true,
 		fields: {
 			'text': {
 				label: 'Text',
 				type: 'string',
 				def: 'Insert text here'
+			},
+			'fontFamily': {
+				label: 'Font',
+				type: 'select',
+				options: WebSafeFonts.map(fontName => ({
+					name: fontName,
+					label: fontName
+				})),
+				def: 'Arial'
+			},
+			'_textStyle': { // no value, its a placeholder
+				label: 'Style',
+				type: '_textStyle',
+				def: null 
+			},
+			'fontWeight': { // handled in _textStyle inspector
+				label: '',
+				type: 'none',
+				def: 'normal' 
+			},
+			'fontStyle': { // handled in _textStyle inspector
+				label: '',
+				type: 'none',
+				def: 'normal' 
+			},
+			'align': { // handled in _textStyle inspector
+				label: '',
+				type: 'none',
+				def: 'left' 
+			},
+			'fontSize': {
+				label: 'Size',
+				type: 'number',
+				min: 1,
+				max: 200,
+				def: 14
+			},
+			'lineHeight': {
+				label: 'Line height',
+				type: 'number',
+				min: 0.1,
+				max: 100,
+				def: 1
+			},
+			'letterSpacing': {
+				label: 'Letter spacing',
+				type: 'number',
+				min: 0,
+				max: 100,
+				def: 0
+			},
+			'wrap': {
+				label: 'Word wrap',
+				type: 'boolean',
+				def: true
+			},
+			
+			
+			'fill': {
+				label: 'Fill',
+				type: 'boolean',
+				section: 'fill',
+				def: true
+			},
+			'fillStyle': {
+				label: 'Color',
+				type: 'colora',
+				def: '#000000ff',
+				section: 'fill',
+				condition: c => c.properties.fill == true
+			},
+			'stroke': {
+				label: 'Stroke',
+				type: 'boolean',
+				section: 'stroke',
+				def: false
+			},
+			'strokeStyle': {
+				label: 'Color',
+				type: 'colora',
+				def: '#000000ff',
+				section: 'stroke',
+				condition: c => c.properties.stroke == true
+			},
+			'strokeWidth': {
+				label: 'Stroke width',
+				type: 'number',
+				min: 0,
+				max: 1000,
+				def: 1,
+				section: 'stroke',
+				condition: c => c.properties.stroke == true
 			}
 		},
 		manager: D2DTextManager

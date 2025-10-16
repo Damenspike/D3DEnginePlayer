@@ -765,6 +765,7 @@ export default class D2DGizmo {
 	/* ========================= PICKING ========================= */
 
 	_hitObjectDeep(root, wx, wy) {
+		
 		// quick reject with deep AABB, *padded* by screen-px tolerance
 		const bb = this._worldAABBDeep(root);
 		if (!bb) return false;
@@ -773,6 +774,9 @@ export default class D2DGizmo {
 		if (wx < bb.minX - pad || wx > bb.maxX + pad || wy < bb.minY - pad || wy > bb.maxY + pad) {
 			return false;
 		}
+		
+		if(root.__simpleHit)
+			return true;
 	
 		let hit = false;
 		this._traverse2D(root, (node) => {

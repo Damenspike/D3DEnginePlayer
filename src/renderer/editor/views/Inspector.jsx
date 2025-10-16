@@ -20,7 +20,8 @@ import {
 	MdHtml, MdCode,
 	MdFolder, MdInsertDriveFile, MdExpandMore, MdChevronRight,
 	MdUpload, MdCreateNewFolder, MdRefresh, MdDeleteForever,
-	MdOutlineInterests, MdTexture, MdDirectionsWalk
+	MdOutlineInterests, MdTexture, MdDirectionsWalk,
+	MdFormatAlignLeft, MdFormatAlignCenter, MdFormatAlignRight
 } from 'react-icons/md';
 
 import {
@@ -955,13 +956,16 @@ export default function Inspector() {
 						);
 						break;
 					}
+					case 'fonts':
 					case 'select': {
 						const selRows = [];
 						const currentOption = field.options.find(
 							o => o.name == current
 						);
 						
-						field.options.forEach(option => {
+						const options = [...field.options];
+						
+						options.forEach(option => {
 							selRows.push(
 								<option
 									key={selRows.length}
@@ -972,7 +976,7 @@ export default function Inspector() {
 							)
 						});
 						
-						if(currentOption.description)
+						if(currentOption?.description)
 							desc = currentOption.description;
 						
 						fieldContent = (
@@ -1000,6 +1004,91 @@ export default function Inspector() {
 								</select>
 							</>	
 						)
+						break;
+					}
+					case '_textStyle': {
+						const drawButton = (content, activeCondition, onClick, title = '') => {
+							const classes = ['tool-option', 'no-select'];
+							
+							if(activeCondition() == true)
+								classes.push('tool-option--active');
+							
+							return (
+								<div 
+									className={classes.join(' ')}
+									onClick={onClick} 
+									title={title}
+									tabIndex={0}
+								>
+									{content}
+								</div>
+							)
+						}
+						fieldContent = (
+							<div className='text-style-editor'>
+								{
+									drawButton(
+										(<b>B</b>),
+										() => dummyComponent.properties.fontWeight == 'bold',
+										() => {
+											const val = dummyComponent.properties.fontWeight;
+											
+											dummyComponent.properties.fontWeight = val == 'bold' ? 'normal' : 'bold';
+											update();
+										}
+									)
+								}
+								{
+									drawButton(
+										(<i>i</i>),
+										() => dummyComponent.properties.fontStyle == 'italic',
+										() => {
+											const val = dummyComponent.properties.fontStyle;
+											
+											dummyComponent.properties.fontStyle = val == 'italic' ? 'normal' : 'italic';
+											update();
+										}
+									)
+								}
+								<div style={{width: 15}}></div>
+								{
+									drawButton(
+										(<MdFormatAlignLeft />),
+										() => dummyComponent.properties.align == 'left',
+										() => {
+											const val = dummyComponent.properties.align;
+											
+											dummyComponent.properties.align = val == 'left' ? 'normal' : 'left';
+											update();
+										}
+									)
+								}
+								{
+									drawButton(
+										(<MdFormatAlignCenter />),
+										() => dummyComponent.properties.align == 'center',
+										() => {
+											const val = dummyComponent.properties.align;
+											
+											dummyComponent.properties.align = val == 'center' ? 'normal' : 'center';
+											update();
+										}
+									)
+								}
+								{
+									drawButton(
+										(<MdFormatAlignRight />),
+										() => dummyComponent.properties.align == 'right',
+										() => {
+											const val = dummyComponent.properties.align;
+											
+											dummyComponent.properties.align = val == 'right' ? 'normal' : 'right';
+											update();
+										}
+									)
+								}
+							</div>
+						);
 						break;
 					}
 					case 'none':
@@ -1059,6 +1148,9 @@ export default function Inspector() {
 			const drawFields = () => {
 				const rows = [];
 				
+				if(schema.sectionsLast)
+					rows.push(...fields);
+				
 				for(let i in sections) {
 					const rws = sections[i];
 					
@@ -1072,7 +1164,8 @@ export default function Inspector() {
 					);
 				}
 				
-				rows.push(...fields);
+				if(!schema.sectionsLast)
+					rows.push(...fields);
 				
 				return rows;
 			}

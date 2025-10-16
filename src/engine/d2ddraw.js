@@ -388,6 +388,12 @@ export default class D2DDraw {
 		props.miterLimit = Math.max(1, Number(_editor.draw2d?.miterLimit ?? 10));
 		props.borderRadius = _editor.draw2d?.borderRadius;
 		props.subtract = _editor.draw2d?.subtract;
+		
+		if(this.tool == 'text') {
+			props.line = true;
+			props.lineWidth = 1;
+			props.fill = false;
+		}
 
 		const components = [{ type:'Graphic2D', properties: props }];
 		this.tempObj = await host.createObject({ name, components });
@@ -492,7 +498,9 @@ export default class D2DDraw {
 		
 		if(this.tool === 'text') {
 			// apply text
-			obj.addComponent('Text2D', {});
+			obj.addComponent('Text2D', {}, true, false, true);
+			obj.graphic2d.line = false;
+			obj.graphic2d.fill = false;
 		}
 
 		obj.invalidateGraphic2D?.();
@@ -1040,7 +1048,12 @@ export default class D2DDraw {
 		const drawFillAndStroke = (canvasPath) => {
 			if (wantFill) { ctx.fillStyle = fc; ctx.fill(canvasPath); }
 			if (wantLine) {
-				ctx.lineWidth = strokePx;
+				let lpx = strokePx;
+				
+				if(this.tool == 'text')
+					lpx = 1;
+				
+				ctx.lineWidth = lpx;
 				ctx.lineCap = 'round';
 				ctx.lineJoin = 'round';
 				ctx.strokeStyle = lc;
