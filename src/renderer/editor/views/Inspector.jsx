@@ -178,8 +178,9 @@ export default function Inspector() {
 			_editor.deleteSelectedAssets();
 			setObject(null);
 		}
-	
+		
 		update();
+		_editor.renderer2d.drawer._rebuildSnapCache(); // rebuild 2d snap
 	}
 	const drawMaterialEditor = (uri) => (
 		<MaterialEditor
@@ -1062,7 +1063,10 @@ export default function Inspector() {
 					const rws = sections[i];
 					
 					rows.push(
-						<div className='component-section shade'>
+						<div 
+							key={rows.length+1000} 
+							className='component-section shade'
+						>
 							{rws}
 						</div>
 					);
@@ -1075,6 +1079,7 @@ export default function Inspector() {
 			
 			rows.push(
 				<ComponentCell 
+					key={rows.length}
 					title={schema.name || component.type}
 					bar={!schema.persistent && (
 						<div 
@@ -1087,7 +1092,6 @@ export default function Inspector() {
 							<MdDelete />
 						</div>
 					)}
-					key={rows.length} 
 				>
 					{drawFields()}
 				</ComponentCell>

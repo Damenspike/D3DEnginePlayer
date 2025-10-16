@@ -696,6 +696,9 @@ export default class D3DObject {
 		
 		component.properties[field] = value;
 		
+		if(this.is2D)
+			this.invalidateGraphic2D();
+		
 		this.updateComponents();
 		this.checkSymbols();
 	}
@@ -1314,5 +1317,11 @@ export default class D3DObject {
 				depth = d;
 		});
 		return depth + 1;
+	}
+	invalidateGraphic2D() {
+		if(!this.is2D)
+			return;
+		
+		_host.renderer2d._dirty = true;
 	}
 }

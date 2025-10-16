@@ -10,6 +10,7 @@ import D3DSpotLightManager from './d3dmgr_spotlight.js';
 import D3DRigidbodyManager from './d3dmgr_rigidbody.js';
 import D3DCharacterControllerManager from './d3dmgr_charactercontroller.js';
 import D3DThirdPersonCameraManager from './d3dmgr_thirdpersoncamera.js';
+import D2DTextManager from './d2dmgr_text.js';
 
 const D3DComponents = {
 	Mesh: {
@@ -501,8 +502,7 @@ const D3DComponents = {
 			},
 			'subtract': {
 				label: 'Erase parent',
-				description: "Subtracts this graphic from its parent's graphic",
-				type: 'boolean',
+				type: 'none',
 				def: false
 			}
 		},
@@ -511,8 +511,19 @@ const D3DComponents = {
 	Container2D: {
 		name: 'Container 2D',
 		hidden: true,
-		properties: {},
+		fields: {},
 		manager: function() {}
+	},
+	Text2D: {
+		name: 'Text 2D',
+		fields: {
+			'text': {
+				label: 'Text',
+				type: 'string',
+				def: 'Insert text here'
+			}
+		},
+		manager: D2DTextManager
 	}
 }
 

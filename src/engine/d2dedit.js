@@ -185,7 +185,7 @@ export default class D2DEdit {
 			if (snappingOn) {
 				if (!this._snapSession) this._beginSnapSession(obj?.parent || null);
 				if (!drawer._snapCache || drawer._lastFocus !== (_editor?.focus || null)) {
-					drawer._rebuildSnapCache?.();
+					drawer._rebuildSnapCache();
 				}
 				const hit = drawer._snap?.(m);
 				if (hit) drawer._snapHit = hit;
@@ -248,6 +248,7 @@ export default class D2DEdit {
 				undo: () => this._applySnapshot(obj, before),
 				redo: () => this._applySnapshot(obj, after)
 			});
+			obj.checkSymbols();
 		}
 
 		this._endSnapSession();
@@ -567,6 +568,7 @@ export default class D2DEdit {
 				path[it.i].y = it.y;
 			}
 		}
+		obj.checkSymbols();
 	}
 
 	_pointSegDist2(p, a, b) {
@@ -584,6 +586,8 @@ export default class D2DEdit {
 	/* ---------------- delete selected vertices ---------------- */
 
 	_onDelete() {
+		const drawer = this.d2drenderer.drawer;
+		
 		const doDelete = () => {
 			if (this.selectedPoints.length < 1) return;
 
@@ -632,11 +636,22 @@ export default class D2DEdit {
 			for (const [obj] of byObjPath) after.push({ obj, paths: this._clonePaths(obj.graphic2d._paths) });
 
 			this.selectedPoints = [];
+			drawer._rebuildSnapCache();
 
 			_editor?.addStep?.({
 				name: 'Delete 2D Points',
-				undo: () => { for (const s of before) s.obj.graphic2d._paths = this._clonePaths(s.paths); },
-				redo: () => { for (const s of after)  s.obj.graphic2d._paths = this._clonePaths(s.paths); }
+				undo: () => { 
+					for (const s of before)
+						 s.obj.graphic2d._paths = this._clonePaths(s.paths); 
+					
+					drawer._rebuildSnapCache();
+				},
+				redo: () => { 
+					for (const s of after)
+						s.obj.graphic2d._paths = this._clonePaths(s.paths);
+					
+					drawer._rebuildSnapCache();
+				}
 			});
 		};
 		setTimeout(doDelete, 10);

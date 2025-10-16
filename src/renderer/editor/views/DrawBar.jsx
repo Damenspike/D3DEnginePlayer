@@ -1,4 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
+import ColorPicker from './ColorPicker.jsx';
+
+// Icons
 import { 
 	MdNavigation,
 	MdBrush,
@@ -11,7 +14,7 @@ import {
 } from 'react-icons/md';
 import { RiFlowChart } from "react-icons/ri";
 import { CgColorBucket } from "react-icons/cg";
-import ColorPicker from './ColorPicker.jsx';
+import { BsFonts } from "react-icons/bs";
 
 const DrawTools = [
 	'select',
@@ -54,7 +57,7 @@ export default function DrawBar() {
 		)
 	}
 	const drawDrawingOptions = () => {
-		if(_tool == 'select' || _tool == 'transform') return;
+		if(_tool == 'select' || _tool == 'transform' || _tool == 'text') return;
 		
 		return (
 			<>
@@ -225,6 +228,14 @@ export default function DrawBar() {
 					() => _tool == 'fill',
 					() => setTool('fill'),
 					'Fill'
+				)
+			}
+			{
+				drawToolButton(
+					(<BsFonts />),
+					() => _tool == 'text',
+					() => setTool('text'),
+					'Text'
 				)
 			}
 			

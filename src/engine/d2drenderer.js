@@ -13,6 +13,7 @@ export default class D2DRenderer {
 		this.width = width ?? 760;
 		this.height = height ?? 480;
 		this.root = root;
+		this._dirty = true;
 		
 		this.domElement = document.createElement('canvas');
 		this.domElement.style.display = 'block';
@@ -78,6 +79,9 @@ export default class D2DRenderer {
 		);
 	}
 	render() {
+		if(!this._dirty)
+			return;
+		
 		this.clear();
 	
 		const ctx = this.ctx;
@@ -100,6 +104,8 @@ export default class D2DRenderer {
 		for (const d3dobject of d3dobjects) this.draw(d3dobject);
 	
 		ctx.restore();
+		
+		//this._dirty = false;
 	}
 	renderGizmos() {
 		this.gizmo?.render();
@@ -121,33 +127,240 @@ export default class D2DRenderer {
 		
 		if(!graphic) 
 			return;
-			
-		/*if(!graphic._test) {
-			graphic._points = [
-				{x: 0, y: -40},
-				{x: 25, y: -65},
-				{x: 50, y: -65},
-				{x: 75, y: -40},
-				{x: 75, y: 0},
-				{x: 37, y: 40},
-				{x: 0, y: 75},
-				{x: -37, y: 40},
-				{x: -75, y: 0},
-				{x: -75, y: -40},
-				{x: -50, y: -65},
-				{x: -25, y: -65},
-				{x: 0, y: -40}
-			]
-			graphic._test = true;
-		}*/
-			
-		if(graphic._bitmap)
-			return; // TODO: drawBitmap
-		else
-			this.drawVector(d3dobject);
+		
+		this.drawVector(d3dobject);
+		
+		if(d3dobject.hasComponent('Text2D'))
+			this.drawText(d3dobject);
+	}
+	drawText(d3dobject) {
+		const ctx = this.ctx;
+		if (!d3dobject?.visible) return;
+	
+		const text2d = d3dobject.getComponent('Text2D');
+		if (!text2d) return;
+		
+		const t2d = text2d.textProperties || {};
+		const text = String(t2d.text ?? '');
+		
+		if (!text) return;
+	
+		const alpha = Number.isFinite(d3dobject.opacity) ? Math.max(0, Math.min(1, d3dobject.opacity)) : 1;
+		if (alpha <= 0) return;
+		
+		// ---- font / paint ----
+		const fontSize = Number(t2d.fontSize ?? 16);
+		const fontFamily = t2d.fontFamily ?? 'sans-serif';
+		const fontStyle = t2d.fontStyle ?? 'normal';
+		const fontVariant = t2d.fontVariant ?? 'normal';
+		const fontWeight = t2d.fontWeight ?? 'normal';
+		const fill = t2d.fill !== false;
+		const fillStyle = t2d.fillStyle ?? '#000';
+		const stroke = (t2d.stroke === true) || Number(t2d.strokeWidth) > 0;
+		const strokeStyle = t2d.strokeStyle ?? '#000';
+		const strokeWidth = Number(t2d.strokeWidth ?? 0);
+	
+		// ---- layout ----
+		const align = t2d.align ?? 'left';
+		const lineHeight = Number(t2d.lineHeight ?? Math.round(fontSize * 1.25));
+		const wrap = (t2d.wrap ?? true);
+		const breakWords = (t2d.breakWords ?? false);
+		const letterSpacing = Number(t2d.letterSpacing ?? 0);
+	
+		const padL = Number(t2d.paddingLeft ?? 0);
+		const padR = Number(t2d.paddingRight ?? 0);
+		const padT = Number(t2d.paddingTop ?? 0);
+		const padB = Number(t2d.paddingBottom ?? 0);
+	
+		// ---- scrolling (stored on text2d directly) ----
+		const scrollX = Number.isFinite(text2d.scrollX) ? text2d.scrollX : 0;
+		const scrollY = Number.isFinite(text2d.scrollY) ? text2d.scrollY : 0;
+	
+		// ---- derive textbox from graphic2d rect path ----
+		const g2d = d3dobject.graphic2d;
+		const firstPath = (g2d && Array.isArray(g2d._paths) && g2d._paths[0] && g2d._paths[0].length) ? g2d._paths[0] : null;
+	
+		const pathBounds = (pts) => {
+			if (!pts || !pts.length) return { x:0, y:0, w:NaN, h:NaN };
+			let minX = pts[0].x, maxX = pts[0].x, minY = pts[0].y, maxY = pts[0].y;
+			for (let i=1;i<pts.length;i++) {
+				const p = pts[i];
+				if (p.x < minX) minX = p.x;
+				if (p.x > maxX) maxX = p.x;
+				if (p.y < minY) minY = p.y;
+				if (p.y > maxY) maxY = p.y;
+			}
+			return { x:minX, y:minY, w:Math.max(0, maxX-minX), h:Math.max(0, maxY-minY) };
+		};
+	
+		const bounds = pathBounds(firstPath);
+		const originX = Number.isFinite(bounds.x) ? bounds.x : 0;
+		const originY = Number.isFinite(bounds.y) ? bounds.y : 0;
+	
+		// If geometry present, use its size; otherwise fall back to properties
+		const geomW = Number.isFinite(bounds.w) ? bounds.w : NaN;
+		const geomH = Number.isFinite(bounds.h) ? bounds.h : NaN;
+	
+		const propW = Number.isFinite(t2d.maxWidth) ? Math.max(0, t2d.maxWidth) : null;
+		const propH = Number.isFinite(t2d.maxHeight) ? Math.max(0, t2d.maxHeight) : null;
+	
+		const maxWidth = Number.isFinite(geomW) && geomW > 0 ? geomW : propW;
+		const maxHeight = Number.isFinite(geomH) && geomH > 0 ? geomH : propH;
+	
+		// ---- helpers ----
+		const buildFont = () => `${fontStyle} ${fontVariant} ${fontWeight} ${fontSize}px ${fontFamily}`;
+		const measure = s => ctx.measureText(s);
+	
+		const lineWidthAdv = (s) => {
+			if (!letterSpacing) return measure(s).width;
+			let w = 0;
+			for (let i = 0; i < s.length; i++) w += measure(s[i]).width;
+			if (s.length > 1) w += letterSpacing * (s.length - 1);
+			return w;
+		};
+	
+		const wrapLine = (raw, contentW) => {
+			if (!contentW || !wrap) return [raw];
+			const words = raw.split(/(\s+)/);
+			const out = [];
+			let cur = '';
+			const pushCur = () => { if (cur) { out.push(cur); cur = ''; } };
+	
+			for (let i = 0; i < words.length; i++) {
+				const w = words[i];
+				if (!w) continue;
+				const fitsToken = lineWidthAdv(w) <= contentW;
+				if (!breakWords && !fitsToken) {
+					pushCur();
+					let part = '';
+					for (let j = 0; j < w.length; j++) {
+						const next = part + w[j];
+						if (lineWidthAdv(next) > contentW) {
+							if (part) out.push(part);
+							part = w[j];
+						} else {
+							part = next;
+						}
+					}
+					if (part) out.push(part);
+					continue;
+				}
+	
+				if (!cur) {
+					cur = w.trimStart();
+					if (!cur && w.trim() === '') cur = w;
+					if (lineWidthAdv(cur) > contentW) {
+						let part = '';
+						for (let j = 0; j < cur.length; j++) {
+							const next = part + cur[j];
+							if (lineWidthAdv(next) > contentW) {
+								if (part) out.push(part);
+								part = cur[j];
+							} else {
+								part = next;
+							}
+						}
+						cur = part;
+					}
+					continue;
+				}
+	
+				const test = cur + w;
+				if (lineWidthAdv(test) <= contentW) {
+					cur = test;
+				} else {
+					out.push(cur);
+					cur = w.trimStart();
+				}
+			}
+			pushCur();
+			return out;
+		};
+	
+		const buildLines = (contentW) => {
+			const rawLines = text.split('\n');
+			const lines = [];
+			for (let i = 0; i < rawLines.length; i++) {
+				const segs = wrapLine(rawLines[i], contentW);
+				for (let k = 0; k < segs.length; k++) lines.push(segs[k]);
+			}
+			return lines;
+		};
+	
+		const drawSpaced = (method, s, x, y) => {
+			if (!letterSpacing) {
+				ctx[method](s, x, y);
+				return;
+			}
+			let acc = 0;
+			for (let i = 0; i < s.length; i++) {
+				const ch = s[i];
+				ctx[method](ch, x + acc, y);
+				acc += measure(ch).width + letterSpacing;
+			}
+		};
+	
+		// ---- paint setup ----
+		ctx.save();
+		ctx.globalAlpha *= alpha;
+		ctx.font = buildFont();
+		ctx.textBaseline = 'top';
+		ctx.shadowBlur = Number(t2d.shadowBlur ?? 0);
+		ctx.shadowColor = t2d.shadowColor ?? 'rgba(0,0,0,0)';
+		ctx.shadowOffsetX = Number(t2d.shadowOffsetX ?? 0);
+		ctx.shadowOffsetY = Number(t2d.shadowOffsetY ?? 0);
+	
+		// Move into the rect's local top-left so (0,0) is the box origin
+		if (originX || originY) ctx.translate(originX, originY);
+	
+		// textbox + content area
+		const boxW = maxWidth ?? Infinity;
+		const boxH = maxHeight ?? Infinity;
+		const contentW = Number.isFinite(boxW) ? Math.max(0, boxW - padL - padR) : null;
+	
+		const lines = buildLines(contentW);
+		const totalHeight = padT + (lines.length * lineHeight) + padB;
+	
+		// clip region
+		if (Number.isFinite(boxW) || Number.isFinite(boxH)) {
+			const clipW = Number.isFinite(boxW) ? boxW : Math.ceil(Math.max(padL + Math.max(...lines.map(lineWidthAdv)), 1));
+			const clipH = Number.isFinite(boxH) ? boxH : Math.ceil(totalHeight);
+			ctx.beginPath();
+			ctx.rect(0, 0, clipW, clipH);
+			ctx.clip();
+		}
+	
+		// scroll + align
+		const baseX = padL - (wrap ? 0 : scrollX);
+		let y = padT - scrollY;
+	
+		for (let i = 0; i < lines.length; i++) {
+			const s = lines[i];
+			let x = baseX;
+	
+			if (contentW !== null) {
+				const w = lineWidthAdv(s);
+				if (align === 'center') x += Math.max(0, (contentW - w) * 0.5);
+				else if (align === 'right') x += Math.max(0, (contentW - w));
+			}
+	
+			if (stroke && strokeWidth > 0) {
+				ctx.lineWidth = strokeWidth;
+				ctx.strokeStyle = strokeStyle;
+				drawSpaced('strokeText', s, x, y);
+			}
+			if (fill) {
+				ctx.fillStyle = fillStyle;
+				drawSpaced('fillText', s, x, y);
+			}
+			y += lineHeight;
+		}
+	
+		ctx.restore();
 	}
 	drawVector(d3dobject) {
 		const ctx = this.ctx;
+		
 		if (!d3dobject?.visible) return;
 	
 		const alpha   = Number.isFinite(d3dobject.opacity) ? Math.max(0, Math.min(1, d3dobject.opacity)) : 1;

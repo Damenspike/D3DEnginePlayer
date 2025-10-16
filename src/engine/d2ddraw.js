@@ -61,7 +61,7 @@ export default class D2DDraw {
 
 	_isActive() {
 		const t = _editor?.tool;
-		return new Set(['brush','pencil','line','square','circle','polygon']).has(t);
+		return new Set(['brush','pencil','line','square','text','circle','polygon']).has(t);
 	}
 	_request() { _editor?.requestRender?.() || this.d2drenderer?.render?.(); }
 
@@ -298,7 +298,7 @@ export default class D2DDraw {
 		// all other tools
 		this.drawing = true;
 		this.localPoints = [{ x:p.x, y:p.y }];
-		if (['line','square','circle'].includes(this.tool)) {
+		if (['line','square','circle','text'].includes(this.tool)) {
 			this.localPoints.push({ x:p.x, y:p.y });
 		}
 		this._ensureTemp().then(()=>{ if (this.tempObj) this.tempObj.visible=false; this._updateTempGraphic(true); this._request(); });
@@ -318,7 +318,7 @@ export default class D2DDraw {
 			this._updateTempGraphic(); this._request(); return;
 		}
 
-		if (['line','square','circle'].includes(this.tool)) {
+		if (['line','square','text','circle'].includes(this.tool)) {
 			this.localPoints[1] = { x:this.cursorLocal.x, y:this.cursorLocal.y };
 		} else {
 			// pixel-aware sampling while drawing
@@ -372,6 +372,7 @@ export default class D2DDraw {
 		if (this.tool === 'square')  name = 'Rectangle';
 		if (this.tool === 'circle')  name = 'Ellipse';
 		if (this.tool === 'polygon') name = 'Polygon';
+		if (this.tool === 'text')  	 name = 'Text';
 
 		if(_editor.draw2d.subtract) name += ' Erase';
 
@@ -416,7 +417,7 @@ export default class D2DDraw {
 			obj.graphic2d.lineWidth = Math.max(1, Number(_editor.draw2d?.lineWidth ?? obj.graphic2d.lineWidth ?? 1));
 			obj.graphic2d.lineColor = _editor.draw2d?.lineColor || obj.graphic2d.lineColor;
 
-		} else if (this.tool === 'square') {
+		} else if (this.tool === 'square' || this.tool === 'text') {
 			if (this.localPoints.length >= 2) {
 				const a=this.localPoints[0], b=this.localPoints[1];
 				setPath(this._makeRectPoints(a,b));
@@ -464,7 +465,7 @@ export default class D2DDraw {
 			path = this.localPoints.map(p => ({ x:p.x, y:p.y }));
 		} else if (this.tool === 'line') {
 			path = this.localPoints.slice(0,2).map(p => ({ x:p.x, y:p.y }));
-		} else if (this.tool === 'square' && this.localPoints.length >= 2) {
+		} else if ((this.tool === 'square' || this.tool === 'text') && this.localPoints.length >= 2) {
 			path = this._makeRectPoints(this.localPoints[0], this.localPoints[1]);
 		} else if (this.tool === 'circle' && this.localPoints.length >= 2) {
 			path = this._makeEllipsePoints(this.localPoints[0], this.localPoints[1], 64);
@@ -488,6 +489,11 @@ export default class D2DDraw {
 		obj.graphic2d.fillColor  = s.fillColor || obj.graphic2d.fillColor || '#000000ff';
 		obj.graphic2d.borderRadius = br;
 		obj.graphic2d.subtract = s.subtract;
+		
+		if(this.tool === 'text') {
+			// apply text
+			obj.addComponent('Text2D', {});
+		}
 
 		obj.invalidateGraphic2D?.();
 		const paths = obj?.graphic2d?._paths || [];
@@ -534,6 +540,7 @@ export default class D2DDraw {
 		  const newPaths = this._diffPathsByCutter(target.graphic2d._paths || [], cutter);
 		  target.graphic2d._paths = newPaths;
 		  target.invalidateGraphic2D?.();
+		  target.checkSymbols();
 		
 		  // 5) remove the eraser temp object
 		  obj.delete?.(); this.tempObj = null;
@@ -552,12 +559,14 @@ export default class D2DDraw {
 				for (const s of before) {
 				  s.obj.graphic2d._paths = s.paths.map(p => p.map(q => ({ x:q.x, y:q.y })));
 				  s.obj.invalidateGraphic2D?.();
+				  s.obj.checkSymbols();
 				}
 			  },
 			  redo: () => {
 				for (const s of after) {
 				  s.obj.graphic2d._paths = s.paths.map(p => p.map(q => ({ x:q.x, y:q.y })));
 				  s.obj.invalidateGraphic2D?.();
+				  s.obj.checkSymbols();
 				}
 			  }
 			});
@@ -1076,7 +1085,7 @@ export default class D2DDraw {
 					ctx.strokeStyle = lc;
 					ctx.stroke();
 				}
-			} else if (tool === 'square') {
+			} else if (tool === 'square' || tool === 'text') {
 				if (this.localPoints.length >= 2) {
 					const polyLocal = this._makeRectPoints(this.localPoints[0], this.localPoints[1]);
 					const rawL = rawPathLocal(polyLocal);
