@@ -134,7 +134,7 @@ export default function MaterialEditor({ uri, date, onSave, openAsset }) {
 
 	const fileRow = (label, field, acceptFormat = 'img') => {
 		const uuid = mat[field] || '';
-		const filePath = uuid ? _root.resolveAssetPath(uuid) : '';
+		const filePath = uuid ? _root.resolvePathNoAssets(uuid) : '';
 		const fname = fileName(filePath);
 
 		const browse = () => openAsset?.({

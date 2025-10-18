@@ -11,6 +11,8 @@ import D3DRigidbodyManager from './d3dmgr_rigidbody.js';
 import D3DCharacterControllerManager from './d3dmgr_charactercontroller.js';
 import D3DThirdPersonCameraManager from './d3dmgr_thirdpersoncamera.js';
 import D2DTextManager from './d2dmgr_text.js';
+import D2DBitmapManager from './d2dmgr_bitmap.js';
+
 import { WebSafeFonts } from './d3dfonts.js';
 
 const D3DComponents = {
@@ -385,6 +387,7 @@ const D3DComponents = {
 	},
 	Graphic2D: {
 		name: 'Graphic 2D',
+		persistent: true,
 		fields: {
 			'_paths': { // legacy
 				label: '',
@@ -511,6 +514,7 @@ const D3DComponents = {
 	},
 	Container2D: {
 		name: 'Container 2D',
+		persistent: true,
 		hidden: true,
 		fields: {},
 		manager: function() {}
@@ -618,6 +622,54 @@ const D3DComponents = {
 			}
 		},
 		manager: D2DTextManager
+	},
+	Bitmap2D: {
+		name: 'Bitmap 2D',
+		sectionsLast: true,
+		fields: {
+			'source': {
+				label: 'Bitmap',
+				type: 'file',
+				format: 'img',
+				def: ''
+			},
+			'fit': {
+				label: 'Fit',
+				type: 'select',
+				options: [
+					{ name: 'contain', label: 'Contain' },
+					{ name: 'cover', label: 'Cover' },
+					{ name: 'stretch', label: 'Stretch' }
+				],
+				def: 'contain'
+			},
+			'alignX': {
+				label: 'Align X',
+				type: 'select',
+				options: [
+					{ name: 'left', label: 'Left' },
+					{ name: 'center', label: 'Center' },
+					{ name: 'right', label: 'Right' }
+				],
+				def: 'center'
+			},
+			'alignY': {
+				label: 'Align Y',
+				type: 'select',
+				options: [
+					{ name: 'left', label: 'Left' },
+					{ name: 'center', label: 'Center' },
+					{ name: 'right', label: 'Right' }
+				],
+				def: 'center'
+			},
+			'imageSmoothing': {
+				label: 'Smoothing',
+				type: 'boolean',
+				def: true
+			}
+		},
+		manager: D2DBitmapManager
 	}
 }
 

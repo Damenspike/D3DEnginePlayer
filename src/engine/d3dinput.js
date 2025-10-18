@@ -40,22 +40,24 @@ export default class D3DInput {
 		window.addEventListener('blur', this._onBlur);
 		document.addEventListener('visibilitychange', this._onVisibility);
 		
-		window.addEventListener('focusin', () => {
-			D3D.updateEditorStatus({
-				inputFocussed: this.getInputFieldInFocus(),
-				activeElement: {
-					tag: document.activeElement.tagName, 
-					type: document.activeElement.type
-				}
+		if(window._editor) {
+			window.addEventListener('focusin', () => {
+				D3D.updateEditorStatus({
+					inputFocussed: this.getInputFieldInFocus(),
+					activeElement: {
+						tag: document.activeElement.tagName, 
+						type: document.activeElement.type
+					}
+				});
 			});
-		});
-		
-		window.addEventListener('focusout', () => {
-			D3D.updateEditorStatus({
-				inputFocussed: this.getInputFieldInFocus(),
-				activeElement: null
+			
+			window.addEventListener('focusout', () => {
+				D3D.updateEditorStatus({
+					inputFocussed: this.getInputFieldInFocus(),
+					activeElement: null
+				});
 			});
-		});
+		}
 	}
 
 	/* --- helpers --- */

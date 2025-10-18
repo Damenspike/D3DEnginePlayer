@@ -200,6 +200,22 @@ export default function DrawBar() {
 			}
 			{
 				drawToolButton(
+					(<BsFonts />),
+					() => _tool == 'text',
+					() => setTool('text'),
+					'Text'
+				)
+			}
+			{
+				drawToolButton(
+					(<RiFlowChart />),
+					() => _tool == 'polygon',
+					() => setTool('polygon'),
+					'Polygon'
+				)
+			}
+			{
+				drawToolButton(
 					(<MdOutlineRectangle />),
 					() => _tool == 'square',
 					() => setTool('square'),
@@ -216,26 +232,10 @@ export default function DrawBar() {
 			}
 			{
 				drawToolButton(
-					(<RiFlowChart />),
-					() => _tool == 'polygon',
-					() => setTool('polygon'),
-					'Polygon'
-				)
-			}
-			{
-				drawToolButton(
 					(<CgColorBucket />),
 					() => _tool == 'fill',
 					() => setTool('fill'),
 					'Fill'
-				)
-			}
-			{
-				drawToolButton(
-					(<BsFonts />),
-					() => _tool == 'text',
-					() => setTool('text'),
-					'Text'
 				)
 			}
 			

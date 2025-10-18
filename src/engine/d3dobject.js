@@ -925,7 +925,7 @@ export default class D3DObject {
 		
 		return a?.rel || '';
 	}
-	resolveAssetPath(uuid) {
+	resolvePathNoAssets(uuid) {
 		const path = this.resolvePath(uuid);
 		
 		if(!path.startsWith('assets/'))

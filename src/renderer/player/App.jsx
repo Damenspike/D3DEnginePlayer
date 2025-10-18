@@ -6,30 +6,19 @@ import '../../assets/style/main.css';
 import '../../assets/style/player.css';
 
 export default function App() {
-	const gameRef = useRef(null);
+	const game3dRef = useRef(null);
+	const game2dRef = useRef(null);
 	const theme = useSystemTheme();
 	
 	useEffect(() => {
-		const element = gameRef.current;
-		if (!element)
+		const element3d = game3dRef.current;
+		const element2d = game2dRef.current;
+		
+		if (!element3d || !element2d)
 			return;
 		
-		window._container3d = element;
-		
-		const observer = new ResizeObserver(() => {
-			const w = element.clientWidth;
-			const h = element.clientHeight;
-			
-			if (w <= 0 || h <= 0 || !window._editor)
-				return;
-			
-			const r = window._player.renderer;
-			const comp = window._player.composer;
-			
-			r && r.setSize(w, h, false);
-			comp && comp.setSize(w, h);
-		});
-		observer.observe(element);
+		window._container3d = element3d;
+		window._container2d = element2d;
 		
 		D3D.getCurrentGameURI().then(uri => {
 			loadD3D(uri);
@@ -42,10 +31,26 @@ export default function App() {
 	
 	return (
 		<div
-			id="game3d-container"
-			className="game"
-			ref={gameRef}
-			style={{ position: 'relative', width: '100%', height: '100%' }}
-		/>
+			className='game-master-container'
+		>
+			<div
+				id='game3d-container'
+				className='game'
+				ref={game3dRef}
+				tabIndex={0}
+				style={{ 
+					display: 'block'
+				}}
+			/>
+			<div
+				id='game2d-container'
+				className='game'
+				ref={game2dRef}
+				tabIndex={0}
+				style={{ 
+					display: 'block'
+				}}
+			/>
+		</div>
 	);
 }

@@ -810,7 +810,7 @@ export default function Inspector() {
 							if(field.label == 'Materials') {
 								const ids = component.properties['materials'];
 								return drawMaterials(
-									ids.map(id => _root.resolveAssetPath(id))
+									ids.map(id => _root.resolvePathNoAssets(id))
 								);
 							}
 						}
@@ -848,7 +848,7 @@ export default function Inspector() {
 							<div className="file-array-field mt">
 								<div className="file-array-list">
 									{current.map((uuid, idx) => {
-										const filePath = _root.resolveAssetPath(uuid);
+										const filePath = _root.resolvePathNoAssets(uuid);
 										const fname = fileNameNoExt(filePath);
 										const ext = getExtension(filePath);
 										

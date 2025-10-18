@@ -88,8 +88,87 @@ export async function onAssetDroppedIntoGameView(path, screenPos) {
 			_editor.setSelection([d3d]);
 			break;
 		}
+		
+		case 'png':
+		case 'jpg':
+		case 'jpeg':
+		case 'webp':
+		case 'gif':
+		case 'bmp':
+		case 'svg': {
+			const d3d = await spawnBitmapFromZip(path, zip, screenPos);
+			_editor.setSelection([d3d]);
+			break;
+		}
 	}
 }
+
+
+/* -----------------------------
+   Spawn a 2D Bitmap from ZIP
+------------------------------ */
+async function spawnBitmapFromZip(assetPath, zip, screenPos) {
+	const file = zip.file(assetPath);
+	const blob = await file.async('blob');
+	const url = URL.createObjectURL(blob);
+	
+	const img = await loadImage(url);
+	const w = img.naturalWidth || img.width;
+	const h = img.naturalHeight || img.height;
+
+	const name = fileNameNoExt(assetPath);
+	const source = _root.resolveAssetId(assetPath);
+	const depth = _editor.focus.getNextHighestDepth();
+
+	const d3dobject = await _editor.focus.createObject({
+		name: 'Bitmap',
+		position: { x: screenPos.x, y: screenPos.y, z: depth },
+		rotation: { x: 0, y: 0, z: 0 },
+		scale: { x: 1, y: 1, z: 1 },
+		components: [
+			{ type: 'Bitmap2D', properties: {
+				source,
+				fit: 'contain',     // 'contain' | 'cover' | 'stretch' | 'none'
+				alignX: 'center',   // 'left' | 'center' | 'right'
+				alignY: 'center',   // 'top' | 'center' | 'bottom'
+				imageSmoothing: true
+			}},
+			{ type: 'Graphic2D', properties: { 
+				line: true,
+				lineWidth: 1,
+				lineColor: '#000000',
+				fill: false,
+				fillColor: '#00000000',
+				_paths: [
+					[
+						{ x: 0, y: 0 },
+						{ x: w, y: 0 },
+						{ x: w, y: h },
+						{ x: 0, y: h },
+						{ x: 0, y: 0 } // closed
+					]
+				]
+			}}
+		]
+	});
+
+	// Optional: nudge so drop point hits the center of the image
+	d3dobject.position.x -= w * 0.5;
+	d3dobject.position.y -= h * 0.5;
+
+	URL.revokeObjectURL(url);
+	return d3dobject;
+}
+
+function loadImage(url) {
+	return new Promise((resolve, reject) => {
+		const img = new Image();
+		img.onload = () => resolve(img);
+		img.onerror = reject;
+		img.src = url;
+	});
+}
+
 
 /* -----------------------------
    Shared model drop logic

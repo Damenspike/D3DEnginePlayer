@@ -34,8 +34,8 @@ export default class D2DRenderer {
 		this.setSize(this.width, this.height);
 	}
 	setSize(width, height) {
-		const projectWidth = _editor.project?.width || 760;
-		const projectHeight = _editor.project?.height || 480;
+		const projectWidth = this.root.manifest.width || 760;
+		const projectHeight = this.root.manifest.height || 480;
 		
 		// Calculate scale to fit canvas within parent while preserving aspect ratio
 		const scale = Math.min(width / Math.max(projectWidth, 1), height / Math.max(projectHeight, 1)) || 1;
@@ -83,44 +83,37 @@ export default class D2DRenderer {
 			return;
 		
 		this.clear();
-	
+		
 		const ctx = this.ctx;
-	
+		
 		// ---- Apply view (pan+zoom) once for the whole scene ----
 		const pr  = this.pixelRatio || 1;
 		const vs  = this.viewScale  || 1;                 // >= 1
 		const off = this.viewOffset || { x: 0, y: 0 };    // in device pixels
-	
+		
 		ctx.save();
 		// pan is in device pixels; then scale in device pixels
 		ctx.translate(off.x, off.y);
 		ctx.scale(pr * vs, pr * vs);
-	
-		// Draw objects in world units; per-object world matrices compose on top
-		const d3dobjects = this
-			.gather(this.root)
-			.sort((a, b) => (a.depth || 0) - (b.depth || 0));
-	
-		for (const d3dobject of d3dobjects) this.draw(d3dobject);
-	
+		
+		// Do the draw
+		this.renderParent(this.root);
+		
 		ctx.restore();
 		
 		//this._dirty = false;
+	}
+	renderParent(d3dobject) {
+		this.draw(d3dobject);
+		
+		[...d3dobject.children]
+		.sort((a, b) => (a.depth || 0) - (b.depth || 0))
+		.forEach(d3dchild => this.renderParent(d3dchild));
 	}
 	renderGizmos() {
 		this.gizmo?.render();
 		this.edit?.render();
 		this.drawer?.render();
-	}
-	gather(root) {
-		const objects = [];
-		root.traverse(d3dobject => {
-			if(!d3dobject.is2D)
-				return;
-			
-			objects.push(d3dobject);
-		});
-		return objects;
 	}
 	draw(d3dobject) {
 		const graphic = d3dobject.graphic2d;
@@ -132,6 +125,151 @@ export default class D2DRenderer {
 		
 		if(d3dobject.hasComponent('Text2D'))
 			this.drawText(d3dobject);
+			
+		if(d3dobject.hasComponent('Bitmap2D'))
+			this.drawBitmap(d3dobject);
+	}
+	drawBitmap(d3dobject) {
+		const ctx = this.ctx;
+		if (!d3dobject.visible) return;
+	
+		const bitmap2d = d3dobject.getComponent('Bitmap2D');
+		if (!bitmap2d) return;
+	
+		const props = bitmap2d.bitmapProperties;
+		const zip = d3dobject.root.zip;
+		const uri = d3dobject.root.resolvePath(props.source);
+		if (!uri) return;
+	
+		// ---- rect from graphic2d ----
+		const pts = d3dobject.graphic2d._paths[0];
+		let minX = pts[0].x, maxX = pts[0].x, minY = pts[0].y, maxY = pts[0].y;
+		for (let i = 1; i < pts.length; i++) {
+			const p = pts[i];
+			if (p.x < minX) minX = p.x;
+			if (p.x > maxX) maxX = p.x;
+			if (p.y < minY) minY = p.y;
+			if (p.y > maxY) maxY = p.y;
+		}
+		const boxX = minX, boxY = minY, boxW = maxX - minX, boxH = maxY - minY;
+		if (boxW <= 0 || boxH <= 0) return;
+	
+		// ---- transform chain (match drawVector) ----
+		let m = new DOMMatrix();
+		const chain = [];
+		for (let n = d3dobject; n; n = n.parent) chain.push(n);
+		chain.reverse();
+		for (const o of chain) {
+			m = m
+				.translate(Number(o.position.x) || 0, Number(o.position.y) || 0)
+				.rotate((Number(o.rotation.z) || 0) * 180 / Math.PI)
+				.scale(Number(o.scale.x) || 1, Number(o.scale.y) || 1);
+		}
+	
+		const gs = (this.pixelRatio || 1) * (this.viewScale || 1);
+		const isInFocus = window._player || (_editor.focus === d3dobject) || (_editor.focus.containsChild(d3dobject));
+		const masterAlpha = isInFocus ? 1 : 0.2;
+		const alpha = Math.max(0, Math.min(1, d3dobject.opacity ?? 1));
+		if (alpha <= 0) return;
+	
+		// ---- image cache ----
+		this._imageCache = this._imageCache || new Map();
+		let entry = this._imageCache.get(uri);
+		if (!entry) {
+			entry = { status: 'loading', img: null, w: 0, h: 0, objectURL: null };
+			this._imageCache.set(uri, entry);
+	
+			const file = zip.file(uri);
+			if (file) {
+				file.async('blob').then(blob => {
+					const url = URL.createObjectURL(blob);
+					const img = new Image();
+					img.onload = () => {
+						entry.status = 'ready';
+						entry.img = img;
+						entry.w = img.naturalWidth || img.width;
+						entry.h = img.naturalHeight || img.height;
+						entry.objectURL = url;
+					};
+					img.onerror = () => { entry.status = 'error'; URL.revokeObjectURL(url); };
+					img.src = url;
+				});
+			} else {
+				const img = new Image();
+				img.crossOrigin = 'anonymous';
+				img.onload = () => {
+					entry.status = 'ready';
+					entry.img = img;
+					entry.w = img.naturalWidth || img.width;
+					entry.h = img.naturalHeight || img.height;
+				};
+				img.onerror = () => { entry.status = 'error'; };
+				img.src = uri;
+			}
+			return;
+		}
+		if (entry.status !== 'ready') return;
+	
+		// ---- render params ----
+		const fit = props.fit || 'contain';
+		const alignX = props.alignX || 'center';
+		const alignY = props.alignY || 'center';
+		const smoothing = props.imageSmoothing !== false;
+		const flipX = !!props.flipX, flipY = !!props.flipY;
+	
+		let sx = 0, sy = 0, sw = entry.w, sh = entry.h;
+		if (props.sourceRect) {
+			sx = props.sourceRect.x | 0;
+			sy = props.sourceRect.y | 0;
+			sw = props.sourceRect.w | 0;
+			sh = props.sourceRect.h | 0;
+		}
+	
+		const srcAspect = sw / sh;
+		const boxAspect = boxW / boxH;
+		let dw = boxW, dh = boxH;
+	
+		if (fit === 'contain') {
+			if (srcAspect > boxAspect) { dw = boxW; dh = dw / srcAspect; }
+			else { dh = boxH; dw = dh * srcAspect; }
+		} else if (fit === 'cover') {
+			if (srcAspect > boxAspect) { dh = boxH; dw = dh * srcAspect; }
+			else { dw = boxW; dh = dw / srcAspect; }
+		} else if (fit === 'none') {
+			dw = Math.min(sw, boxW); dh = Math.min(sh, boxH);
+		}
+	
+		let dx = boxX, dy = boxY;
+		if (alignX === 'left') dx = boxX;
+		else if (alignX === 'right') dx = boxX + (boxW - dw);
+		else dx = boxX + (boxW - dw) * 0.5;
+	
+		if (alignY === 'top') dy = boxY;
+		else if (alignY === 'bottom') dy = boxY + (boxH - dh);
+		else dy = boxY + (boxH - dh) * 0.5;
+	
+		// ---- draw ----
+		ctx.save();
+		ctx.globalAlpha *= alpha * masterAlpha;
+	
+		ctx.setTransform(gs, 0, 0, gs, 0, 0);
+		ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
+	
+		ctx.beginPath();
+		ctx.rect(boxX, boxY, boxW, boxH);
+		ctx.clip();
+	
+		ctx.imageSmoothingEnabled = smoothing;
+	
+		if (flipX || flipY) {
+			const cx = dx + dw * 0.5, cy = dy + dh * 0.5;
+			ctx.translate(cx, cy);
+			ctx.scale(flipX ? -1 : 1, flipY ? -1 : 1);
+			ctx.translate(-cx, -cy);
+		}
+	
+		ctx.drawImage(entry.img, sx, sy, sw, sh, dx, dy, dw, dh);
+		ctx.restore();
 	}
 	drawText(d3dobject) {
 		const ctx = this.ctx;
@@ -212,7 +350,7 @@ export default class D2DRenderer {
 		}
 	
 		const gs = (this.pixelRatio || 1) * (this.viewScale || 1);
-		const isInFocus = (_editor?.focus === d3dobject) || (_editor?.focus?.containsChild?.(d3dobject));
+		const isInFocus = window._player || (_editor?.focus === d3dobject) || (_editor?.focus?.containsChild?.(d3dobject));
 		const masterAlpha = isInFocus ? 1 : 0.2;
 	
 		// ---------- helpers ----------
@@ -433,7 +571,7 @@ export default class D2DRenderer {
 		}
 	
 		const gs = (this.pixelRatio || 1) * (this.viewScale || 1);
-		const isInFocus = (_editor?.focus === d3dobject) || (_editor?.focus?.containsChild?.(d3dobject));
+		const isInFocus = window._player || (_editor?.focus === d3dobject) || (_editor?.focus?.containsChild?.(d3dobject));
 		const masterAlpha = isInFocus ? 1 : 0.2;
 	
 		// Build a combined (union-style) path for all CLOSED contours to support even-odd fill/holes.

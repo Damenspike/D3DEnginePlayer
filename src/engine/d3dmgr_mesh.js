@@ -35,7 +35,7 @@ export default function MeshManager(d3dobject, component) {
 	};
 	const readTextByUUID = async (uuid) => {
 		if (!uuid) return null;
-		const rel = d3dobject.resolveAssetPath(uuid);
+		const rel = d3dobject.resolvePathNoAssets(uuid);
 		if (!rel) return null;
 		const zf = zip.file(norm('assets/' + rel));
 		return zf ? await zf.async('string') : null;
@@ -44,7 +44,7 @@ export default function MeshManager(d3dobject, component) {
 		if (!relPath) return null;
 		const uuid = _root.resolveAssetId(norm(relPath));
 		if (!uuid) return null;
-		const rel = d3dobject.resolveAssetPath(uuid);
+		const rel = d3dobject.resolvePathNoAssets(uuid);
 		if (!rel) return null;
 		const zf = zip.file(norm('assets/' + rel));
 		if (!zf) return null;
@@ -233,7 +233,7 @@ export default function MeshManager(d3dobject, component) {
 		// MESH (load & bind, NO root wrapper; reuse-by-name)
 		// =========================
 		const meshUUID  = component.properties.mesh || null;
-		const modelPath = meshUUID ? d3dobject.resolveAssetPath(meshUUID) : null;
+		const modelPath = meshUUID ? d3dobject.resolvePathNoAssets(meshUUID) : null;
 		const modelBase = safeModelBase(modelPath);
 		
 		const needLoad =

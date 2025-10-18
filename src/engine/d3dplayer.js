@@ -7,6 +7,7 @@ import D3DTime from './d3dtime.js';
 import D3DEventSystem from './d3devents.js';
 import D3DConsole from './d3dconsole.js';
 import D3DPhysics from './d3dphysics.js';
+import D2DRenderer from './d2drenderer.js';
 
 window.THREE = THREE;
 window._events = new D3DEventSystem();
@@ -73,15 +74,22 @@ export async function loadD3D(uri) {
 	// Listen to window size changes
 	window.addEventListener('resize', () => {
 		const camera = _player.camera?.object3d;
-		const renderer = _player.renderer;
+		const renderer3d = _player.renderer3d;
+		const renderer2d = _player.renderer2d;
 		
-		const width = _container3d.clientWidth;
-		const height = _container3d.clientHeight;
+		const width3d = _container3d.clientWidth;
+		const height3d = _container3d.clientHeight;
+		const width2d = _container2d.clientWidth;
+		const height2d = _container2d.clientHeight;
 		
-		renderer.setSize(width, height);
+		if (renderer3d)
+			renderer3d.setSize(width3d, height3d);
+		
+		if (renderer2d)
+			renderer2d.setSize(width2d, height2d);
 		
 		if (camera) {
-			camera.aspect = width / height;
+			camera.aspect = width3d / height3d;
 			camera.updateProjectionMatrix();
 		}
 	});
@@ -97,15 +105,23 @@ async function initRoot(uri) {
 
 function initRenderer() {
 	const scene = _root.object3d;
-	const renderer = new THREE.WebGLRenderer({ antialias: true });
-	renderer.setPixelRatio(window.devicePixelRatio);
-	renderer.setSize(_container3d.clientWidth, _container3d.clientHeight);
-	renderer.outputEncoding = THREE.sRGBEncoding;
-	renderer.toneMapping = THREE.ACESFilmicToneMapping;
-	renderer.toneMappingExposure = 1.0;
-	_container3d.appendChild(renderer.domElement);
+	const renderer3d = new THREE.WebGLRenderer({ antialias: true });
+	const renderer2d = new D2DRenderer({root: _root});
 	
-	_player.renderer = renderer;
+	renderer3d.setPixelRatio(window.devicePixelRatio);
+	renderer3d.setSize(_container3d.clientWidth, _container3d.clientHeight);
+	renderer3d.outputEncoding = THREE.sRGBEncoding;
+	renderer3d.toneMapping = THREE.ACESFilmicToneMapping;
+	renderer3d.toneMappingExposure = 1.0;
+	
+	renderer2d.setPixelRatio(window.devicePixelRatio);
+	renderer2d.setSize(_container2d.clientWidth, _container2d.clientHeight);
+	
+	_container3d.appendChild(renderer3d.domElement);
+	_container2d.appendChild(renderer2d.domElement);
+	
+	_player.renderer3d = renderer3d;
+	_player.renderer2d = renderer2d;
 }
 
 function updateObject(methods, d3dobj) {
@@ -149,12 +165,15 @@ function startAnimationLoop() {
 		], _root);
 		
 		const camera3d = _player.camera?.object3d;
-		const renderer = _player.renderer;
+		const renderer3d = _player.renderer3d;
+		const renderer2d = _player.renderer2d;
 		
 		if(camera3d)
-			renderer.render(_root.object3d, camera3d);
+			renderer3d.render(_root.object3d, camera3d);
 		else
 			console.warn('No camera found for rendering');
+			
+		renderer2d.render(); // render 2d
 		
 		updateObject([
 			'__onInternalExitFrame',

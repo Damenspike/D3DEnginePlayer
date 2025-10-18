@@ -165,7 +165,7 @@ export default class D2DEdit {
 		this._beginSnapSession(hit.obj?.parent || null);
 
 		// Decide snapshot mode
-		if (this._isText2D(this.dragObj)) {
+		if (this._toBeUniform(this.dragObj)) {
 			// Build text-rect drag metadata from the grabbed corner
 			this._textDrag = this._buildTextDragMeta(this.dragObj, this.grabPath, this.grabLIndex);
 			this._pathSnapshotBefore = this._clonePaths(this.dragObj.graphic2d._paths);
@@ -554,9 +554,8 @@ export default class D2DEdit {
 
 	/* -------- text2d helpers (build edge groups based on grabbed corner) -------- */
 
-	_isText2D(obj) {
-		// Adjust this predicate to however text is tagged in your scene graph
-		return obj.hasComponent('Text2D');
+	_toBeUniform(obj) {
+		return obj.hasComponent('Text2D') || obj.hasComponent('Bitmap2D');
 	}
 
 	_buildTextDragMeta(obj, pidx, lindex) {

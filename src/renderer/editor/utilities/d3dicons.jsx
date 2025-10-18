@@ -10,23 +10,31 @@ import {
 	MdHtml,
 	MdFolder, MdInsertDriveFile, MdExpandMore, MdChevronRight,
 	MdUpload, MdCreateNewFolder, MdRefresh, MdDeleteForever,
-	MdOutlineInterests, MdTexture, MdDirectionsWalk
+	MdOutlineInterests, MdTexture, MdDirectionsWalk,
+	MdImage, MdFilterBAndW, MdTextFields
 } from 'react-icons/md';
+import { BsFonts } from "react-icons/bs";
 
 export function drawIconForObject(object) {
 	if(object.symbol)
 		return <MdOutlineInterests />;
-	if(object.components.find(c => c.type == 'Mesh' || c.type == 'SubMesh'))
+	if(object.hasComponent('Mesh') || object.hasComponent('SubMesh'))
 		return <MdViewInAr />;
 	else
-	if(object.components.find(c => c.type.includes('Light')))
+	if(object.hasComponent('Light'))
 		return <MdLightbulbOutline />;
 	else
-	if(object.components.find(c => c.type == 'Camera'))
+	if(object.hasComponent('Camera'))
 		return <MdPhotoCamera />;
 	else
-	if(object.components.find(c => c.type == 'HTML'))
-		return <MdHtml />;
+	if(object.hasComponent('Bitmap2D'))
+		return <MdImage />;
+	else
+	if(object.hasComponent('Text2D'))
+		return <BsFonts />;
+	else
+	if(object.hasComponent('Graphic2D'))
+		return <MdFilterBAndW />;
 	else
 		return <MdGames />;
 }
@@ -42,6 +50,16 @@ export function drawIconForExt(ext, isDir = false) {
 		case 'mat': return <MdTexture />;
 		case 'html': return <MdHtml />;
 		case 'anim': return <MdDirectionsWalk />;
+		
+		case 'png':
+		case 'jpg':
+		case 'jpeg':
+		case 'gif':
+		case 'webp':
+		case 'bmp':
+		case 'svg':
+			return <MdImage />;
+		
 		default: return isDir ? <MdFolder /> : <MdInsertDriveFile />;
 	}
 }
