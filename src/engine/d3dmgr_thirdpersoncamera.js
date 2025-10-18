@@ -14,8 +14,8 @@ export default function D3DThirdPersonCameraManager(d3dobject, component) {
 	};
 
 	this.dispose = () => {
-		if (d3dobject.__onBeforeRender === drive) 
-			d3dobject.__onBeforeRender = null;
+		if (this.__onInternalBeforeRender === drive) 
+			this.__onInternalBeforeRender = null;
 		
 		this.setupCamera = false;
 	};
@@ -23,11 +23,14 @@ export default function D3DThirdPersonCameraManager(d3dobject, component) {
 	this.setup = () => {
 		if(!window._player) return; // player only
 		_input.mouseLock = true;
-		d3dobject.__onBeforeRender = drive;
+		this.__onInternalBeforeRender = drive;
 		this.setupCamera = true;
 	}
 
 	const drive = () => {
+		if(!component.enabled) 
+			return;
+		
 		const p = component.properties || {};
 		const target = d3dobject.target ?? d3dobject.root.find(p.targetName);
 		if (!target) return;

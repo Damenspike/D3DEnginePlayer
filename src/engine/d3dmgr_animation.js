@@ -18,7 +18,7 @@ export default function AnimationManager(d3dobject, component) {
 	this.clipStates = {};
 	this.clips = {};
 	
-	this.__advanceFrame = () => {
+	this.__onInternalEnterFrame = () => {
 		/////////////////////////////////////////////////
 		// ACTUAL NEXT FRAME UDPATER
 		// CALLED BY ON INTERNAL ENTER FRAME PER OBJECT

@@ -10,6 +10,8 @@ export default function RigidbodyManager(d3dobject, component) {
 
 	this.updateComponent = () => {
 		if (!window._player) return;
+		if(!component.enabled) return;
+		
 		if (!_physics || !_physics.ready) {
 			requestAnimationFrame(this.updateComponent);
 			return;
@@ -23,7 +25,7 @@ export default function RigidbodyManager(d3dobject, component) {
 			component.bodySetup = true;
 			component._cache = next;
 			
-			d3dobject.__onBeforeRender = () => {
+			this.__onInternalBeforeRender = () => {
 				this.speed = getSpeed();
 			}
 			return;

@@ -457,6 +457,7 @@ export default function Inspector() {
 			const schema = D3DComponents[component.type];
 			const idx = object.components.indexOf(component);
 			const dummyComponent = dummyObject.components[idx];
+			const manager = object.getComponent(component.type);
 			const sections = {};
 			
 			if(!schema) {
@@ -1174,6 +1175,11 @@ export default function Inspector() {
 				<ComponentCell 
 					key={rows.length}
 					title={schema.name || component.type}
+					enabled={component.enabled}
+					onToggleEnable={(enabled) => {
+						component.enabled = enabled;
+						update();
+					}}
 					bar={!schema.persistent && (
 						<div 
 							className='component-delete'

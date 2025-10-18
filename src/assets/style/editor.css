@@ -366,6 +366,12 @@ body.dark {
 	.field label {
 		margin-bottom: 0px;
 	}
+	
+	.component-toggle {
+		display: inline-block;
+		vertical-align: middle;
+		margin-right: 10px;
+	}
 }
 .component-section {
 	padding: 10px;

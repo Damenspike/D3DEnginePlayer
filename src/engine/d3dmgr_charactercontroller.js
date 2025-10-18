@@ -18,8 +18,8 @@ export default function CharacterControllerManager(d3dobject, component) {
 
 	this.dispose = () => {
 		// stop driving each frame
-		if (d3dobject.__onEnterFrame === drive) {
-			d3dobject.__onEnterFrame = null;
+		if (this.__onInternalEnterFrame === drive) {
+			this.__onInternalEnterFrame = null;
 		}
 		// keep kcc instance; Rapier owns it, no explicit dispose
 		// clear local references
@@ -30,14 +30,14 @@ export default function CharacterControllerManager(d3dobject, component) {
 
 	/* -------------------- setup -------------------- */
 
-	function setup() {
-		d3dobject.__onEnterFrame = drive; // Use single underscore
+	const setup = () => {
+		this.__onInternalEnterFrame = drive; // Use single underscore
 		inited = true;
 	}
 
 	/* -------------------- frame logic -------------------- */
 
-	function drive() {
+	const drive = () => {
 		if (!_physics?.ready) return;
 
 		// --- read schema properties with sensible defaults ---
@@ -135,7 +135,7 @@ export default function CharacterControllerManager(d3dobject, component) {
 
 	/* -------------------- utils -------------------- */
 
-	function ensureController(state) {
+	const ensureController = (state) => {
 		// cache our first collider from physics pack
 		if (!state.collider) {
 			const pack = _physics._bodies?.get?.(d3dobject.uuid);

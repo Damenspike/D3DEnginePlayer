@@ -2,6 +2,7 @@
 import D2DGizmo from './d2dgizmo.js';
 import D2DEdit from './d2dedit.js';
 import D2DDraw from './d2ddraw.js';
+import D2DTextInput from './d2dtextinput.js';
 import {
 	approx,
 	hexToRgba
@@ -22,6 +23,9 @@ export default class D2DRenderer {
 		this.ctx = this.domElement.getContext('2d');
 		
 		this.setSize(this.width, this.height);
+		
+		if(!window._editor)
+			this.textInput = new D2DTextInput(this);
 		
 		if(addGizmo) {
 			this.gizmo = new D2DGizmo(this);
@@ -91,6 +95,8 @@ export default class D2DRenderer {
 		const vs  = this.viewScale  || 1;                 // >= 1
 		const off = this.viewOffset || { x: 0, y: 0 };    // in device pixels
 		
+		this.textInput?.beginFrame();
+		
 		ctx.save();
 		// pan is in device pixels; then scale in device pixels
 		ctx.translate(off.x, off.y);
@@ -101,6 +107,7 @@ export default class D2DRenderer {
 		
 		ctx.restore();
 		
+		this.textInput?.endFrame();
 		//this._dirty = false;
 	}
 	renderParent(d3dobject) {
@@ -286,16 +293,16 @@ export default class D2DRenderer {
 		if (alpha <= 0) return;
 	
 		// ---------- font / paint ----------
-		const fontSize = Number(t2d.fontSize ?? 16);
+		const fontSize   = Number(t2d.fontSize ?? 16);
 		const fontFamily = t2d.fontFamily ?? 'sans-serif';
-		const fontStyle = t2d.fontStyle ?? 'normal';
-		const fontVariant = t2d.fontVariant ?? 'normal';
+		const fontStyle  = t2d.fontStyle ?? 'normal';
+		const fontVariant= t2d.fontVariant ?? 'normal';
 		const fontWeight = t2d.fontWeight ?? 'normal';
-		const fill = t2d.fill !== false;
-		const fillStyle = t2d.fillStyle ?? '#000';
-		const stroke = t2d.stroke === true;
-		const strokeStyle = t2d.strokeStyle ?? '#000';
-		const strokeWidth = Number(t2d.strokeWidth ?? 0);
+		const fill       = t2d.fill !== false;
+		const fillStyle  = t2d.fillStyle ?? '#000';
+		const strokeOn   = (t2d.stroke === true);
+		const strokeStyle= t2d.strokeStyle ?? '#000';
+		const strokeWidth= Math.max(0, Number(t2d.strokeWidth ?? 0));
 	
 		// ---------- layout ----------
 		const align = t2d.align ?? 'left'; // left|center|right
@@ -332,7 +339,6 @@ export default class D2DRenderer {
 		};
 	
 		const box = pathBounds(path0);
-		// If there is no rect geometry, we can't sensibly place text; bail early
 		if (!box.ok || box.w <= 0 || box.h <= 0) return;
 	
 		// ---------- transform chain (match drawVector) ----------
@@ -430,6 +436,75 @@ export default class D2DRenderer {
 			return lines;
 		};
 	
+		// For selection/caret we need indices. Build only when needed (editable).
+		const buildLinesIndexed = (contentW) => {
+			const out = [];
+			const paras = text.split('\n');
+			let base = 0;
+			if (!wrap || !contentW) {
+				for (let p=0;p<paras.length;p++) {
+					const s = paras[p];
+					out.push({ text: s, start: base, end: base + s.length, w: lineWidthAdv(s) });
+					base += s.length + 1; // account newline
+				}
+				if (out.length) {
+					// remove phantom newline on last line
+					const last = out[out.length - 1];
+					if (text[last.end] !== '\n') { /* okay */ } else { last.end--; }
+				}
+				return out;
+			}
+			for (let pi=0; pi<paras.length; pi++) {
+				const para = paras[pi];
+				let cur = ''; let curStart = base;
+				const toks = para.split(/(\s+)/);
+				for (const tok of toks) {
+					if (!tok) continue;
+					const next = cur ? cur + tok : tok.replace(/^\s+/, tok);
+					if (lineWidthAdv(next) <= contentW) {
+						cur = next;
+					} else {
+						if (!cur) {
+							let part = '';
+							for (let j=0;j<tok.length;j++) {
+								const n2 = part + tok[j];
+								if (lineWidthAdv(n2) <= contentW) part = n2;
+								else {
+									if (part) out.push({ text:part, start:curStart, end:curStart+part.length, w:lineWidthAdv(part) });
+									curStart += part.length;
+									part = tok[j];
+								}
+							}
+							if (part) {
+								out.push({ text:part, start:curStart, end:curStart+part.length, w:lineWidthAdv(part) });
+								curStart += part.length;
+							}
+						} else {
+							out.push({ text:cur, start:curStart, end:curStart+cur.length, w:lineWidthAdv(cur) });
+							curStart += cur.length;
+							cur = tok.trimStart();
+							if (cur && lineWidthAdv(cur) > contentW) {
+								let part = '';
+								for (let j=0;j<cur.length;j++) {
+									const n2 = part + cur[j];
+									if (lineWidthAdv(n2) <= contentW) part = n2;
+									else {
+										out.push({ text:part, start:curStart, end:curStart+part.length, w:lineWidthAdv(part) });
+										curStart += part.length;
+										part = cur[j];
+									}
+								}
+								cur = part;
+							}
+						}
+					}
+				}
+				if (cur) out.push({ text:cur, start:curStart, end:curStart+cur.length, w:lineWidthAdv(cur) });
+				base += para.length + 1; // newline
+			}
+			return out;
+		};
+	
 		const drawSpaced = (method, s, x, y) => {
 			if (!letterSpacing) { ctx[method](s, x, y); return; }
 			let acc = 0;
@@ -444,7 +519,7 @@ export default class D2DRenderer {
 		ctx.save();
 		ctx.globalAlpha *= alpha * masterAlpha;
 	
-		// Match the transform pipeline used by vectors
+		// Match transform pipeline
 		ctx.setTransform(gs, 0, 0, gs, 0, 0);
 		ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
 	
@@ -456,24 +531,77 @@ export default class D2DRenderer {
 		ctx.shadowOffsetX = Number(t2d.shadowOffsetX ?? 0);
 		ctx.shadowOffsetY = Number(t2d.shadowOffsetY ?? 0);
 	
-		// Textbox & content area (all in local space after transform)
+		// Textbox & content area
 		const boxX = box.x, boxY = box.y, boxW = box.w, boxH = box.h;
 		const contentW = Math.max(0, boxW - padL - padR);
 	
 		const lines = buildLines(contentW || null);
-		const totalHeight = padT + (lines.length * lineHeight) + padB;
 	
-		// Clip to the rect (like vectors do with their paths)
+		// Clip to rect
 		if (boxW > 0 && boxH > 0) {
 			ctx.beginPath();
 			ctx.rect(boxX, boxY, boxW, boxH);
 			ctx.clip();
 		}
 	
-		// Scroll + alignment (local coords)
+		// Scroll + baseline
 		const baseX = boxX + padL - (wrap ? 0 : scrollX);
 		let y = boxY + padT - scrollY;
 	
+		// ---------- INPUT FIELD (gated) ----------
+		const inputEnabled = (t2d.isInput === true) && !window._editor && !!this.textInput;
+		let linesIdx = null, inputState = null;
+		
+		if (inputEnabled) {
+			linesIdx = buildLinesIndexed(contentW || null);
+	
+			// Register with input manager (for picking & IME)
+			this.textInput.registerField(d3dobject, {
+				m,
+				box: { x: boxX, y: boxY, w: boxW, h: boxH },
+				padL, padT,
+				contentW, align, wrap, scrollX, scrollY,
+				lineGap: lineHeight,
+				letterSpacing,
+				font: ctx.font,
+				lines: linesIdx
+			});
+	
+			inputState = this.textInput.getStateFor(d3dobject);
+	
+			// Selection background before drawing text
+			if (inputState.active && inputState.selA !== inputState.selB) {
+				const selA = inputState.selA, selB = inputState.selB;
+				ctx.save();
+				ctx.fillStyle = 'rgba(64,128,255,0.35)';
+				for (let i=0;i<linesIdx.length;i++) {
+					const ln = linesIdx[i];
+					const a = Math.max(selA, ln.start);
+					const b = Math.min(selB, ln.end);
+					if (a >= b) continue;
+	
+					let ax = 0;
+					if (contentW) {
+						const d = Math.max(0, contentW - ln.w);
+						ax = (align === 'center') ? d * 0.5 : (align === 'right' ? d : 0);
+					}
+	
+					let xa = baseX + ax, xb = baseX + ax;
+					if (!letterSpacing) {
+						xa += ctx.measureText(ln.text.slice(0, a - ln.start)).width;
+						xb += ctx.measureText(ln.text.slice(0, b - ln.start)).width;
+					} else {
+						for (let k=ln.start;k<a;k++) xa += ctx.measureText(text[k]).width + letterSpacing;
+						for (let k=ln.start;k<b;k++) xb += ctx.measureText(text[k]).width + letterSpacing;
+					}
+					const yy = y + i * lineHeight;
+					ctx.fillRect(xa, yy, Math.max(1, xb - xa), lineHeight);
+				}
+				ctx.restore();
+			}
+		}
+	
+		// ---------- DRAW TEXT (unchanged behaviour) ----------
 		for (let i=0;i<lines.length;i++) {
 			const s = lines[i];
 			let x = baseX;
@@ -484,7 +612,7 @@ export default class D2DRenderer {
 				else if (align === 'right') x += Math.max(0, (contentW - w));
 			}
 	
-			if (stroke && strokeWidth > 0) {
+			if (strokeOn && strokeWidth > 0) {
 				ctx.lineWidth = Math.max(0.001, strokeWidth);
 				ctx.strokeStyle = (typeof hexToRgba === 'function') ? hexToRgba(strokeStyle) : strokeStyle;
 				drawSpaced('strokeText', s, x, y);
@@ -494,6 +622,40 @@ export default class D2DRenderer {
 				drawSpaced('fillText', s, x, y);
 			}
 			y += lineHeight;
+		}
+	
+		// ---------- CARET (after text, so it draws on top) ----------
+		if (inputEnabled && inputState && inputState.active && inputState.blinkOn) {
+			// Find line that contains caret
+			const caret = inputState.caret;
+			let li = 0;
+			for (let i=0;i<linesIdx.length;i++) {
+				if (caret >= linesIdx[i].start && caret <= linesIdx[i].end) { li = i; break; }
+			}
+			const ln = linesIdx[li] || { text:'', start:0, end:0, w:0 };
+	
+			let ax = 0;
+			if (contentW) {
+				const d = Math.max(0, contentW - ln.w);
+				ax = (align === 'center') ? d * 0.5 : (align === 'right' ? d : 0);
+			}
+	
+			let cx = baseX + ax;
+			if (!letterSpacing) {
+				cx += ctx.measureText(ln.text.slice(0, Math.max(0, caret - ln.start))).width;
+			} else {
+				for (let k=ln.start;k<caret;k++) cx += ctx.measureText(text[k]).width + letterSpacing;
+			}
+			const cy = (boxY + padT - scrollY) + li * lineHeight;
+	
+			ctx.save();
+			ctx.strokeStyle = t2d.caretColor || '#0080ff';
+			ctx.lineWidth = Math.max(1, Number(t2d.caretWidth ?? 1));
+			ctx.beginPath();
+			ctx.moveTo(cx, cy);
+			ctx.lineTo(cx, cy + lineHeight);
+			ctx.stroke();
+			ctx.restore();
 		}
 	
 		ctx.restore();

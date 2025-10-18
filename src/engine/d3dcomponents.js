@@ -583,6 +583,11 @@ const D3DComponents = {
 				type: 'boolean',
 				def: true
 			},
+			'isInput': {
+				label: 'Input field',
+				type: 'boolean',
+				def: false
+			},
 			
 			
 			'fill': {

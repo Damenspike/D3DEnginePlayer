@@ -386,14 +386,22 @@ export default class D3DObject {
 			}
 		}
 		
+		this.__onInternalBeforeRender = () => {
+			//////////////////////////////////////////////
+			//// ENGINE LOOP USED FOR INTERNALS
+			//////////////////////////////////////////////
+			for(let i in this.__componentInstances) {
+				const mgr = this.__componentInstances[i];
+				mgr?.__onInternalBeforeRender?.();
+			}
+		}
 		this.__onInternalEnterFrame = () => {
 			//////////////////////////////////////////////
 			//// ENGINE LOOP USED FOR INTERNALS
-			//// FOR EXAMPLE ANIMATION
 			//////////////////////////////////////////////
-			if(this.hasComponent('Animation')) {
-				const animation = this._animation;
-				animation.__advanceFrame();
+			for(let i in this.__componentInstances) {
+				const mgr = this.__componentInstances[i];
+				mgr?.__onInternalEnterFrame?.();
 			}
 		}
 	}
@@ -481,7 +489,10 @@ export default class D3DObject {
 		////////////////////////
 		
 		// COMPONENT SETUP
-		objData.components.forEach(c => child.addComponent(c.type, c.properties, false));
+		objData.components.forEach(c => {
+			(c.properties || {}).__componentEnabled = c.enabled;
+			child.addComponent(c.type, c.properties, false);
+		});
 		
 		if(objData.engineScript)
 			child.engineScript = objData.engineScript;
@@ -740,7 +751,13 @@ export default class D3DObject {
 			delete component.properties[field];
 		});
 		
+		component.enabled = component.properties.__componentEnabled ?? true;
+		
+		if(component.properties.__componentEnabled !== undefined)
+			delete component.properties.__componentEnabled;
+		
 		const inst = new schema.manager(this, component);
+		
 		this.__componentInstances[type] = inst;
 		
 		if(unshift)
@@ -775,6 +792,30 @@ export default class D3DObject {
 		
 		return !!component;
 	}
+	enableComponent(type) {
+		const component = this.components.find(c => c.type == type);
+		
+		if(!component)
+			return;
+		
+		component.enabled = true;
+		this.updateComponents();
+	}
+	toggleComponent(type, enabled = true) {
+		const component = this.components.find(c => c.type == type);
+		
+		if(!component)
+			return;
+		
+		component.enabled = enabled;
+		this.updateComponents();
+	}
+	enableComponent(type) {
+		this.toggleComponent(type, true);
+	}
+	disableComponent(type) {
+		this.toggleComponent(type, false);
+	}
 	async updateComponents() {
 		const zip = this.root.zip;
 		const components = this.components;
@@ -798,13 +839,16 @@ export default class D3DObject {
 		for (const component of components) {
 			const mgr = this.getComponent(component.type);
 			
-			if(mgr)
-				await mgr.updateComponent?.();
-			else {
+			if(mgr) {
+				if(component.enabled)
+					await mgr.updateComponent?.();
+			} else {
 				const schema = D3DComponents[component.type];
 				const inst = new schema.manager(this, component);
 				this.__componentInstances[type] = inst;
-				await inst.updateComponent?.();
+				
+				if(component.enabled)
+					await inst.updateComponent?.();
 			}
 		}
 	}
@@ -1186,7 +1230,8 @@ export default class D3DObject {
 	getSerializedComponent(component) {
 		return {
 			type: component.type,
-			properties: structuredClone(component.properties)
+			properties: structuredClone(component.properties),
+			enabled: !!(component.enabled ?? true)
 		};
 	}
 	

@@ -6,7 +6,7 @@ export default function AmbientLightManager(d3dobject, component) {
 			updateLight();
 	}
 	
-	function setupLight() {
+	const setupLight = () => {
 		const color = new THREE.Color(Number(component.properties.color));
 		const light = new THREE.DirectionalLight(color, component.properties.intensity);
 		
@@ -25,6 +25,9 @@ export default function AmbientLightManager(d3dobject, component) {
 		const DIST = 100;
 		
 		const updateTarget = () => {
+			if(!component.enabled) 
+				return;
+			
 			light.updateMatrixWorld(true);
 			light.getWorldPosition(_pos);
 			light.getWorldDirection(_dir);
@@ -35,12 +38,11 @@ export default function AmbientLightManager(d3dobject, component) {
 			target.updateMatrixWorld(true);
 		};
 		
-		d3dobject.__onEditorEnterFrame = updateTarget;
-		d3dobject.__onEnterFrame = updateTarget;
+		this.__onInternalEnterFrame = updateTarget;
 		
 		component.lightSetup = true;
 	}
-	function updateLight() {
+	const updateLight = () => {
 		const light = d3dobject.object3d;
 		light.color.set(Number(component.properties.color));
 		light.intensity = component.properties.intensity;

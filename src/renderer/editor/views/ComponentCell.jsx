@@ -4,9 +4,23 @@ export default function ComponentCell({
 	title, 
 	children,
 	bar,
+	enabled,
+	onToggleEnable,
 	defaultOpen = true 
 }) {
 	const [open, setOpen] = useState(defaultOpen);
+	
+	const drawCheckbox = () => (
+		<input 
+			type="checkbox" 
+			className='component-toggle'
+			checked={!!enabled} 
+			onClick={e => {
+				e.stopPropagation();
+			}}
+			onChange={e => onToggleEnable(!!e.target.checked)}
+		/>
+	)
 
 	return (
 		<div className={`component-cell inspector-cell${open ? '' : ' collapsed'} shade material-editor-cell`} tabIndex={1}>
@@ -19,6 +33,7 @@ export default function ComponentCell({
 					}
 				}}
 			>
+				{drawCheckbox()}
 				{title}
 				{bar}
 			</div>
