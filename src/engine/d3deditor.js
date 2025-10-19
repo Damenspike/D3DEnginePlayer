@@ -39,10 +39,10 @@ import D3DPhysics from './d3dphysics.js';
 import D2DRenderer from './d2drenderer.js';
 
 window.THREE = THREE;
+window._editor = new D3DEditorState();
 window._events = new D3DEventSystem();
 window._input = new D3DInput();
 window._time = new D3DTime();
-window._editor = new D3DEditorState();
 window._physics = new D3DPhysics();
 
 // Host

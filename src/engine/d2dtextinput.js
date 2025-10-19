@@ -253,7 +253,6 @@ export default class D2DTextInput {
 			let li = Math.floor(relY / f.lineGap);
 			li = Math.max(0, Math.min(f.lines.length - 1, li));
 			let ln = f.lines[li] || { text:'', start:0, end:0, w:0 };
-			console.log(ln, li, relY);
 
 			// ensure width (should already be there)
 			if (!Number.isFinite(ln.w)) {
@@ -322,7 +321,6 @@ export default class D2DTextInput {
 			this.caret  = idx;
 			this.selA   = idx;
 			this.selB   = idx;
-			console.log(idx);
 
 			this._focusIME(String(t2d.text ?? ''), this.selA, this.selB);
 

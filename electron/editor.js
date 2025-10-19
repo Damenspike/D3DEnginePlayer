@@ -798,7 +798,9 @@ ipcMain.on('editor-status', (_, { inputFocussed, codeEditorOpen, activeElement }
 			activeElement?.tag == 'TEXTAREA' || 
 			(activeElement?.tag == 'INPUT' && activeElement?.type == 'text')
 		);
-	}catch(e) {};
+	}catch(e) {
+		console.error(e);
+	};
 		
 	updateEditorMenusEnabled();
 });

@@ -285,30 +285,39 @@ export default class D2DRenderer {
 		const text2d = d3dobject.getComponent('Text2D');
 		if (!text2d) return;
 	
-		const t2d = text2d.textProperties || {};
+		const t2d  = text2d.textProperties || {};
 		const text = String(t2d.text ?? '');
-		if (!text) return;
+	
+		// Gate input logic (do nothing if editor is open)
+		const inputEnabled = (t2d.isInput === true) && !window._editor && !!this.textInput;
+	
+		// Only bail on empty text if NOT an input (inputs still need caret/selection)
+		if (!text && !inputEnabled) return;
 	
 		const alpha = Number.isFinite(d3dobject.opacity) ? Math.max(0, Math.min(1, d3dobject.opacity)) : 1;
 		if (alpha <= 0) return;
 	
 		// ---------- font / paint ----------
-		const fontSize   = Number(t2d.fontSize ?? 16);
-		const fontFamily = t2d.fontFamily ?? 'sans-serif';
-		const fontStyle  = t2d.fontStyle ?? 'normal';
-		const fontVariant= t2d.fontVariant ?? 'normal';
-		const fontWeight = t2d.fontWeight ?? 'normal';
-		const fill       = t2d.fill !== false;
-		const fillStyle  = t2d.fillStyle ?? '#000';
-		const strokeOn   = (t2d.stroke === true);
-		const strokeStyle= t2d.strokeStyle ?? '#000';
-		const strokeWidth= Math.max(0, Number(t2d.strokeWidth ?? 0));
+		const fontSize    = Number(t2d.fontSize ?? 16);
+		const fontFamily  = t2d.fontFamily ?? 'sans-serif';
+		const fontStyle   = t2d.fontStyle ?? 'normal';
+		const fontVariant = t2d.fontVariant ?? 'normal';
+		const fontWeight  = t2d.fontWeight ?? 'normal';
+	
+		const fill        = t2d.fill !== false;
+		const fillStyle   = t2d.fillStyle ?? '#000';
+	
+		// Keep original stroke/outline semantics (DON'T change this logic)
+		const strokeOn    = (t2d.stroke === true);
+		const strokeStyle = t2d.strokeStyle ?? '#000';
+		const strokeWidth = Math.max(0, Number(t2d.strokeWidth ?? 0));
 	
 		// ---------- layout ----------
-		const align = t2d.align ?? 'left'; // left|center|right
-		const lineHeight = (fontSize * 1.25) * Number(t2d.lineHeight ?? 1);
-		const wrap = (t2d.wrap ?? true);
-		const breakWords = (t2d.breakWords ?? false);
+		const align         = t2d.align ?? 'left'; // left|center|right
+		const lineHeightMul = Number(t2d.lineHeight ?? 1) || 1;
+		const lineHeight    = (fontSize * 1.25) * lineHeightMul;
+		const wrap          = (t2d.wrap ?? true);
+		const breakWords    = (t2d.breakWords ?? false);
 		const letterSpacing = Number(t2d.letterSpacing ?? 0);
 	
 		const padL = Number(t2d.paddingLeft ?? 0);
@@ -328,8 +337,7 @@ export default class D2DRenderer {
 			if (!pts || !pts.length) return { x:0, y:0, w:0, h:0, ok:false };
 			let minX = pts[0].x, maxX = pts[0].x, minY = pts[0].y, maxY = pts[0].y;
 			for (let i=1;i<pts.length;i++) {
-				const p = pts[i];
-				if (!p) continue;
+				const p = pts[i]; if (!p) continue;
 				if (p.x < minX) minX = p.x;
 				if (p.x > maxX) maxX = p.x;
 				if (p.y < minY) minY = p.y;
@@ -343,16 +351,18 @@ export default class D2DRenderer {
 	
 		// ---------- transform chain (match drawVector) ----------
 		let m = new DOMMatrix();
-		const chain = [];
-		for (let n = d3dobject; n; n = n.parent) chain.push(n);
-		chain.reverse();
-		for (const o of chain) {
-			const tx = Number(o.position?.x) || 0;
-			const ty = Number(o.position?.y) || 0;
-			const rz = Number(o.rotation?.z) || 0;
-			const sx = Number(o.scale?.x) || 1;
-			const sy = Number(o.scale?.y) || 1;
-			m = m.translate(tx, ty).rotate(rz * 180 / Math.PI).scale(sx, sy);
+		{
+			const chain = [];
+			for (let n = d3dobject; n; n = n.parent) chain.push(n);
+			chain.reverse();
+			for (const o of chain) {
+				const tx = Number(o.position?.x) || 0;
+				const ty = Number(o.position?.y) || 0;
+				const rz = Number(o.rotation?.z) || 0;
+				const sx = Number(o.scale?.x) || 1;
+				const sy = Number(o.scale?.y) || 1;
+				m = m.translate(tx, ty).rotate(rz * 180 / Math.PI).scale(sx, sy);
+			}
 		}
 	
 		const gs = (this.pixelRatio || 1) * (this.viewScale || 1);
@@ -364,6 +374,7 @@ export default class D2DRenderer {
 		const measure = (s) => ctx.measureText(s);
 	
 		const lineWidthAdv = (s) => {
+			if (!s) return 0;
 			if (!letterSpacing) return measure(s).width;
 			let w = 0;
 			for (let i=0;i<s.length;i++) w += measure(s[i]).width;
@@ -376,35 +387,38 @@ export default class D2DRenderer {
 			const words = raw.split(/(\s+)/); // keep spaces
 			const out = [];
 			let cur = '';
-			const pushCur = () => { if (cur) { out.push(cur); cur = ''; } };
+			const pushCur = () => { out.push(cur); cur = ''; };
+	
 			for (let i=0;i<words.length;i++) {
 				const w = words[i];
 				if (!w) continue;
 				const fitsToken = lineWidthAdv(w) <= contentW;
+	
 				if (!breakWords && !fitsToken) {
-					pushCur();
+					if (cur) { out.push(cur); cur = ''; }
 					let part = '';
 					for (let j=0;j<w.length;j++) {
 						const next = part + w[j];
 						if (lineWidthAdv(next) > contentW) {
-							if (part) out.push(part);
+							out.push(part);
 							part = w[j];
 						} else {
 							part = next;
 						}
 					}
-					if (part) out.push(part);
+					out.push(part);
 					continue;
 				}
+	
 				if (!cur) {
 					cur = w.trimStart();
-					if (!cur && w.trim() === '') cur = w; // preserve leading space token if any
+					if (!cur && w.trim() === '') cur = w; // preserve space-only token
 					if (lineWidthAdv(cur) > contentW) {
 						let part = '';
 						for (let j=0;j<cur.length;j++) {
 							const next = part + cur[j];
 							if (lineWidthAdv(next) > contentW) {
-								if (part) out.push(part);
+								out.push(part);
 								part = cur[j];
 							} else {
 								part = next;
@@ -414,94 +428,12 @@ export default class D2DRenderer {
 					}
 					continue;
 				}
+	
 				const test = cur + w;
-				if (lineWidthAdv(test) <= contentW) {
-					cur = test;
-				} else {
-					out.push(cur);
-					cur = w.trimStart();
-				}
+				if (lineWidthAdv(test) <= contentW) cur = test;
+				else { out.push(cur); cur = w.trimStart(); }
 			}
-			pushCur();
-			return out;
-		};
-	
-		const buildLines = (contentW) => {
-			const rawLines = text.split('\n');
-			const lines = [];
-			for (let i=0;i<rawLines.length;i++) {
-				const segs = wrapLine(rawLines[i], contentW);
-				for (let k=0;k<segs.length;k++) lines.push(segs[k]);
-			}
-			return lines;
-		};
-	
-		// For selection/caret we need indices. Build only when needed (editable).
-		const buildLinesIndexed = (contentW) => {
-			const out = [];
-			const paras = text.split('\n');
-			let base = 0;
-			if (!wrap || !contentW) {
-				for (let p=0;p<paras.length;p++) {
-					const s = paras[p];
-					out.push({ text: s, start: base, end: base + s.length, w: lineWidthAdv(s) });
-					base += s.length + 1; // account newline
-				}
-				if (out.length) {
-					// remove phantom newline on last line
-					const last = out[out.length - 1];
-					if (text[last.end] !== '\n') { /* okay */ } else { last.end--; }
-				}
-				return out;
-			}
-			for (let pi=0; pi<paras.length; pi++) {
-				const para = paras[pi];
-				let cur = ''; let curStart = base;
-				const toks = para.split(/(\s+)/);
-				for (const tok of toks) {
-					if (!tok) continue;
-					const next = cur ? cur + tok : tok.replace(/^\s+/, tok);
-					if (lineWidthAdv(next) <= contentW) {
-						cur = next;
-					} else {
-						if (!cur) {
-							let part = '';
-							for (let j=0;j<tok.length;j++) {
-								const n2 = part + tok[j];
-								if (lineWidthAdv(n2) <= contentW) part = n2;
-								else {
-									if (part) out.push({ text:part, start:curStart, end:curStart+part.length, w:lineWidthAdv(part) });
-									curStart += part.length;
-									part = tok[j];
-								}
-							}
-							if (part) {
-								out.push({ text:part, start:curStart, end:curStart+part.length, w:lineWidthAdv(part) });
-								curStart += part.length;
-							}
-						} else {
-							out.push({ text:cur, start:curStart, end:curStart+cur.length, w:lineWidthAdv(cur) });
-							curStart += cur.length;
-							cur = tok.trimStart();
-							if (cur && lineWidthAdv(cur) > contentW) {
-								let part = '';
-								for (let j=0;j<cur.length;j++) {
-									const n2 = part + cur[j];
-									if (lineWidthAdv(n2) <= contentW) part = n2;
-									else {
-										out.push({ text:part, start:curStart, end:curStart+part.length, w:lineWidthAdv(part) });
-										curStart += part.length;
-										part = cur[j];
-									}
-								}
-								cur = part;
-							}
-						}
-					}
-				}
-				if (cur) out.push({ text:cur, start:curStart, end:curStart+cur.length, w:lineWidthAdv(cur) });
-				base += para.length + 1; // newline
-			}
+			pushCur(); // push even empty line segments
 			return out;
 		};
 	
@@ -535,27 +467,53 @@ export default class D2DRenderer {
 		const boxX = box.x, boxY = box.y, boxW = box.w, boxH = box.h;
 		const contentW = Math.max(0, boxW - padL - padR);
 	
-		const lines = buildLines(contentW || null);
+		// ---- build visual lines + indexed ranges (absolute indices into `text`) ----
+		const rawLines = [];
+		{
+			let i = 0, start = 0;
+			while (i <= text.length) {
+				if (i === text.length || text[i] === '\n') {
+					rawLines.push({ start, end: i, str: text.slice(start, i) });
+					start = i + 1; // skip the newline; next raw line has a unique index
+				}
+				i++;
+			}
+			if (rawLines.length === 0) rawLines.push({ start: 0, end: 0, str: '' }); // empty input
+		}
+	
+		const linesIdx = [];
+		const lines = []; // used by draw loop
+	
+		for (const rl of rawLines) {
+			const segs = wrapLine(rl.str, contentW || null);
+			if (segs.length === 0) {
+				linesIdx.push({ text: '', start: rl.start, end: rl.start, w: 0 });
+				lines.push('');
+				continue;
+			}
+			let cursor = rl.start; // absolute index in `text` for this raw line
+			for (const seg of segs) {
+				const s = String(seg ?? '');
+				const start = cursor;
+				const end   = start + s.length;
+				linesIdx.push({ text: s, start, end, w: lineWidthAdv(s) });
+				lines.push(s);
+				cursor = end;
+			}
+		}
 	
 		// Clip to rect
-		if (boxW > 0 && boxH > 0) {
-			ctx.beginPath();
-			ctx.rect(boxX, boxY, boxW, boxH);
-			ctx.clip();
-		}
+		ctx.beginPath();
+		ctx.rect(boxX, boxY, boxW, boxH);
+		ctx.clip();
 	
 		// Scroll + baseline
 		const baseX = boxX + padL - (wrap ? 0 : scrollX);
 		let y = boxY + padT - scrollY;
 	
-		// ---------- INPUT FIELD (gated) ----------
-		const inputEnabled = (t2d.isInput === true) && !window._editor && !!this.textInput;
-		let linesIdx = null, inputState = null;
-		
+		// ---------- INPUT FIELD (register + selection) ----------
+		let inputState = null;
 		if (inputEnabled) {
-			linesIdx = buildLinesIndexed(contentW || null);
-	
-			// Register with input manager (for picking & IME)
 			this.textInput.registerField(d3dobject, {
 				m,
 				box: { x: boxX, y: boxY, w: boxW, h: boxH },
@@ -564,9 +522,9 @@ export default class D2DRenderer {
 				lineGap: lineHeight,
 				letterSpacing,
 				font: ctx.font,
-				lines: linesIdx
+				lines: linesIdx,
+				text
 			});
-	
 			inputState = this.textInput.getStateFor(d3dobject);
 	
 			// Selection background before drawing text
@@ -594,14 +552,14 @@ export default class D2DRenderer {
 						for (let k=ln.start;k<a;k++) xa += ctx.measureText(text[k]).width + letterSpacing;
 						for (let k=ln.start;k<b;k++) xb += ctx.measureText(text[k]).width + letterSpacing;
 					}
-					const yy = y + i * lineHeight;
+					const yy = (boxY + padT - scrollY) + i * lineHeight;
 					ctx.fillRect(xa, yy, Math.max(1, xb - xa), lineHeight);
 				}
 				ctx.restore();
 			}
 		}
 	
-		// ---------- DRAW TEXT (unchanged behaviour) ----------
+		// ---------- DRAW TEXT (preserve original stroke/outline behavior) ----------
 		for (let i=0;i<lines.length;i++) {
 			const s = lines[i];
 			let x = baseX;
@@ -613,7 +571,7 @@ export default class D2DRenderer {
 			}
 	
 			if (strokeOn && strokeWidth > 0) {
-				ctx.lineWidth = Math.max(0.001, strokeWidth);
+				ctx.lineWidth   = Math.max(0.001, strokeWidth);
 				ctx.strokeStyle = (typeof hexToRgba === 'function') ? hexToRgba(strokeStyle) : strokeStyle;
 				drawSpaced('strokeText', s, x, y);
 			}
@@ -626,31 +584,52 @@ export default class D2DRenderer {
 	
 		// ---------- CARET (after text, so it draws on top) ----------
 		if (inputEnabled && inputState && inputState.active && inputState.blinkOn) {
-			// Find line that contains caret
-			const caret = inputState.caret;
+			const caret = Math.max(0, inputState.caret | 0);
+	
+			// Find or clamp to the best visual line
 			let li = 0;
-			for (let i=0;i<linesIdx.length;i++) {
-				if (caret >= linesIdx[i].start && caret <= linesIdx[i].end) { li = i; break; }
+			if (linesIdx.length) {
+				for (let i=0;i<linesIdx.length;i++) {
+					const L = linesIdx[i];
+					if (caret >= L.start && caret <= L.end) { li = i; break; }
+					if (caret > L.end) li = i; // clamp forward
+				}
 			}
+	
 			const ln = linesIdx[li] || { text:'', start:0, end:0, w:0 };
 	
+			// Align offset (mirror draw)
 			let ax = 0;
+			const lnW = Number.isFinite(ln.w) ? ln.w : 0;
 			if (contentW) {
-				const d = Math.max(0, contentW - ln.w);
-				ax = (align === 'center') ? d * 0.5 : (align === 'right' ? d : 0);
+				const d = Math.max(0, contentW - lnW);
+				ax = (align === 'center') ? (d * 0.5) : (align === 'right' ? d : 0);
 			}
 	
+			// Local index within this visual line
+			const localIdx = Math.max(0, Math.min(ln.text.length, caret - ln.start));
+	
+			// Base X for this line
 			let cx = baseX + ax;
-			if (!letterSpacing) {
-				cx += ctx.measureText(ln.text.slice(0, Math.max(0, caret - ln.start))).width;
-			} else {
-				for (let k=ln.start;k<caret;k++) cx += ctx.measureText(text[k]).width + letterSpacing;
-			}
-			const cy = (boxY + padT - scrollY) + li * lineHeight;
 	
+			// Advance by width of characters up to localIdx (letterSpacing-aware)
+			if (!letterSpacing) {
+				cx += ctx.measureText(ln.text.slice(0, localIdx)).width;
+			} else {
+				for (let j = 0; j < localIdx; j++) {
+					const ch = ln.text[j];
+					cx += ctx.measureText(ch).width;
+					if (j < ln.text.length - 1) cx += letterSpacing; // no trailing spacing
+				}
+			}
+	
+			// Y for this line
+			const cy = (boxY + padT - scrollY) + (li * lineHeight);
+	
+			// Draw caret (thin line; keep on top)
 			ctx.save();
 			ctx.strokeStyle = t2d.caretColor || '#0080ff';
-			ctx.lineWidth = Math.max(1, Number(t2d.caretWidth ?? 1));
+			ctx.lineWidth   = Math.max(1, Number(t2d.caretWidth ?? 1));
 			ctx.beginPath();
 			ctx.moveTo(cx, cy);
 			ctx.lineTo(cx, cy + lineHeight);

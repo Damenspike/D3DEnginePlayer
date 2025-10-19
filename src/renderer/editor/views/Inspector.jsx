@@ -624,6 +624,12 @@ export default function Inspector() {
 								onChange={e => {
 									let val = Number(e.target.value) || 0;
 									
+									dummyComponent.properties[fieldId] = val;
+									update();
+								}}
+								onBlur={e => {
+									let val = Number(e.target.value) || 0;
+									
 									if(field.min !== undefined && val < field.min)
 										val = field.min;
 									
@@ -1385,16 +1391,20 @@ export default function Inspector() {
 		}
 		const drawObjects = () => {
 			const rows = [];
-			const objects = _editor.focus.children.filter(c => !c.editorOnly);
+			const objects = _editor.focus.children
+			.filter(
+				c => !c.editorOnly &&
+				(
+					(_editor.mode == '3D' && c.is3D) || 
+					(_editor.mode == '2D' && c.is2D)
+				)
+			);
 			
 			if(objects.length < 1)
-				return <div className='no-label'>No objects in scene</div>
+				return <div className='no-label'>No {_editor.mode} objects in scene</div>
 			
 			objects.forEach(object => {
 				const selected = _editor.selectedObjects.includes(object);
-				
-				if((_editor.mode == '3D' && !object.is3D) || (_editor.mode == '2D' && !object.is2D))
-					return;
 				
 				rows.push(
 					<ObjectRow

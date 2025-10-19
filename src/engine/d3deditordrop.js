@@ -96,6 +96,9 @@ export async function onAssetDroppedIntoGameView(path, screenPos) {
 		case 'gif':
 		case 'bmp':
 		case 'svg': {
+			if(_editor.mode != '2D')
+				_editor.mode = '2D';
+			
 			const d3d = await spawnBitmapFromZip(path, zip, screenPos);
 			_editor.setSelection([d3d]);
 			break;

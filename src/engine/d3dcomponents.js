@@ -583,21 +583,16 @@ const D3DComponents = {
 				type: 'boolean',
 				def: true
 			},
-			'isInput': {
-				label: 'Input field',
-				type: 'boolean',
-				def: false
-			},
 			
 			
 			'fill': {
-				label: 'Fill',
+				label: 'Color',
 				type: 'boolean',
 				section: 'fill',
 				def: true
 			},
 			'fillStyle': {
-				label: 'Color',
+				label: 'Text color',
 				type: 'colora',
 				def: '#000000ff',
 				section: 'fill',
@@ -624,7 +619,20 @@ const D3DComponents = {
 				def: 1,
 				section: 'stroke',
 				condition: c => c.properties.stroke == true
-			}
+			},
+			'isInput': {
+				label: 'Input field',
+				type: 'boolean',
+				def: false,
+				section: 'input'
+			},
+			'caretColor': {
+				label: 'Caret color',
+				type: 'color',
+				def: '#0080ff',
+				section: 'input',
+				condition: c => c.properties.isInput == true
+			},
 		},
 		manager: D2DTextManager
 	},
