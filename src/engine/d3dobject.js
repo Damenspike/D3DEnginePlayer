@@ -12,7 +12,7 @@ import {
 const { path } = D3D;
 
 const protectedNames = [
-	'_root', 'Input', 'position', 'rotation', 'scale', 'name', 'parent', 'children', 'threeObj', 'scenes', 'zip', 'forward', 'right', 'up', 'quaternion', 'onEnterFrame', 'onAddedToScene', 'manifest', 'scenes', '__origin', '__componentInstances', '__onInternalEnterFrame', '__onEditorEnterFrame', '__deleted', '__animatedTransformChange', '_mesh', '_animation', '__self__'
+	'_root', 'Input', 'position', 'rotation', 'scale', 'name', 'parent', 'children', 'threeObj', 'scenes', 'zip', 'forward', 'right', 'up', 'quaternion', 'onEnterFrame', 'onAddedToScene', 'manifest', 'scenes', '__origin', '__componentInstances', '__onInternalEnterFrame', '__onEditorEnterFrame', '__deleted', '__animatedTransformChange', '_mesh', '_animation', '__self__', '_camera', '_directionallight', '_ambientlight', '_pointlight'
 ]
 
 export default class D3DObject {
@@ -59,7 +59,7 @@ export default class D3DObject {
 		if(!this.isValidName(value))
 			value = `object${(parent?.children?.length ?? Math.floor(Math.random() * 10000000000))}`;
 		
-		if(protectedNames.includes(value) && _root != this)
+		if(!this.isNameAllowed(value) && _root != this)
 			value += '_unsafe';
 		
 		const baseName = value.replace(/_\d+$/, '');
@@ -1330,6 +1330,9 @@ export default class D3DObject {
 		return /^[A-Za-z0-9 _-]+$/.test(str);
 	}
 	isNameAllowed(str) {
+		if(this[str] !== undefined && !(this[str] instanceof D3DObject))
+			return false;
+		
 		return !protectedNames.includes(str) && this.isValidName(str);
 	}
 	

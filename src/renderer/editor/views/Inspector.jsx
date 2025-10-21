@@ -246,7 +246,7 @@ export default function Inspector() {
 								dummyObject.name = object.name; // revert
 								update();
 								
-								return _editor.showError(`Invalid object name. ${val != '' ? 'Object names can only contain alphanumeric characters.' : ''}`);
+								return _editor.showError(`Object name not allowed. ${val != '' && !object.isValidName(val) ? 'Object names can only contain alphanumeric characters.' : ''}`);
 							}
 							
 							const oldName = object.name;
