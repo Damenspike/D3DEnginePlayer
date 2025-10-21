@@ -1,3 +1,6 @@
+// d2dfill.js
+import * as U from './d2dutility.js';
+
 export default class D2DFill {
 	constructor(d2drenderer) {
 		this.d2drenderer = d2drenderer;
@@ -30,87 +33,31 @@ export default class D2DFill {
 
 	_isActive(){ return _editor?.tool === 'fill'; }
 
-	/* ---------------- coords & matrices ---------------- */
-	_mouseToCanvas(e){
-		const r = this.canvas.getBoundingClientRect();
-		const x = (e.clientX - r.left) * (this.canvas.width  / r.width);
-		const y = (e.clientY - r.top)  * (this.canvas.height / r.height);
-		return { x, y };
-	}
-
-	_worldDOMMatrix(node){
-		let m = new DOMMatrix();
-		const stack = [];
-		for (let n = node; n; n = n.parent) stack.push(n);
-		stack.reverse();
-		for (const o of stack){
-			const tx = +o.position?.x || 0;
-			const ty = +o.position?.y || 0;
-			const rz = +o.rotation?.z || 0;
-			const sx = +o.scale?.x || 1;
-			const sy = +o.scale?.y || 1;
-			m = m.translate(tx,ty).rotate(rz*180/Math.PI).scale(sx,sy);
-		}
-		return m;
-	}
-
-	_viewMatrix(){
-		const pr  = this.d2drenderer.pixelRatio || 1;
-		const vs  = this.d2drenderer.viewScale  || 1;
-		const off = this.d2drenderer.viewOffset || { x:0, y:0 };
-		return new DOMMatrix().translate(off.x, off.y).scale(pr * vs);
-	}
-
-	_screenMatrixFor(obj){
-		return this._viewMatrix().multiply(this._worldDOMMatrix(obj));
-	}
-
 	/* ---------------- scene gather ---------------- */
-	_all2D(root){
-		const out = [];
-		root.children.forEach(n => {
-			if (n.is2D && Array.isArray(n.graphic2d?._paths)) out.push(n);
-		});
-		// draw order: later = topmost
-		return out.sort((a,b)=>(a.position?.z||0)-(b.position?.z||0));
+	_all2DInDrawOrder(root){
+		// use utility
+		return U.all2DInDrawOrder(root);
 	}
 
 	/* ---------------- hit test ---------------- */
-	_isClosed(points){
-		if (!Array.isArray(points) || points.length < 3) return false;
-		const a = points[0], b = points[points.length-1];
-		return Math.abs(a.x - b.x) <= 1e-6 && Math.abs(a.y - b.y) <= 1e-6;
-	}
-
-	_pointInPoly(px,py,poly){
-		let inside=false;
-		for (let i=0,j=poly.length-1;i<poly.length;j=i++){
-			const xi=poly[i].x, yi=poly[i].y;
-			const xj=poly[j].x, yj=poly[j].y;
-			const inter=((yi>py)!==(yj>py)) && (px < (xj-xi)*(py-yi)/((yj-yi)||1e-12)+xi);
-			if (inter) inside=!inside;
-		}
-		return inside;
-	}
-
 	_pickFilledTarget(mouse){
 		// search topmost → bottom
 		const host = _editor.focus;
-		const objs = this._all2D(host);
+		const objs = this._all2DInDrawOrder(host);
 		const px = mouse.x, py = mouse.y;
 
 		for (let i = objs.length - 1; i >= 0; i--) {
 			const obj = objs[i];
 			const g = obj.graphic2d;
-			if (!g.fill) continue; // only change color if already filled
+			if (!g?.fill) continue; // only change color if already filled
 
 			const paths = Array.isArray(g._paths) ? g._paths : [];
 			if (paths.length === 0) continue;
 
-			const M = this._screenMatrixFor(obj);
+			const M = U.childScreenMatrix(this.d2drenderer, obj);
 
 			for (const path of paths) {
-				if (!this._isClosed(path)) continue;
+				if (!U.isClosedPoints(path)) continue;
 				if (path.length < 3) continue;
 
 				// transform to screen
@@ -125,7 +72,7 @@ export default class D2DFill {
 				if (px < minx || px > maxx || py < miny || py > maxy) continue;
 
 				// inside path?
-				if (this._pointInPoly(px, py, sp)) return obj;
+				if (U.pointInPolygon(px, py, sp)) return obj;
 			}
 		}
 		return null;
@@ -157,7 +104,7 @@ export default class D2DFill {
 		if (!this._isActive()) return;
 		e.preventDefault();
 
-		const mouse = this._mouseToCanvas(e);
+		const mouse = U.mouseToCanvas(this.canvas, e);
 		const color = _editor.draw2d?.fillColor || '#000000ff';
 
 		const obj = this._pickFilledTarget(mouse);
@@ -169,7 +116,7 @@ export default class D2DFill {
 
 	_onMove(e){
 		if (!this._isActive()) return;
-		this.cursor = this._mouseToCanvas(e);
+		this.cursor = U.mouseToCanvas(this.canvas, e);
 	}
 	_onBlur(){ this.cursor = null; }
 

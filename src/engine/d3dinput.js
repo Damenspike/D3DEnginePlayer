@@ -5,7 +5,9 @@ export default class D3DInput {
 		this._keys = {};
 
 		this.mouseLock = false;
-		this.mouse = { x: 0, y: 0, buttons: {} };
+		this.mouse = { x: 0, y: 0 };
+		this.mouseClient = { x: 0, y: 0 };
+		this.mouseButtons = {};
 		this._mouseDelta = { x: 0, y: 0 };
 		this._mouseFrozen = false;
 
@@ -79,7 +81,7 @@ export default class D3DInput {
 	/* --- Freeze/unfreeze mouse --- */
 	freezeMouse() {
 		this._mouseFrozen = true;
-		this.mouse.buttons = {};
+		this.mouseButtons = {};
 		this._mouseDelta = { x: 0, y: 0 };
 	}
 	unfreezeMouse() { this._mouseFrozen = false; }
@@ -140,7 +142,7 @@ export default class D3DInput {
 
 	_clearKeyState() {
 		this._keys = {};
-		this.mouse.buttons = {};
+		this.mouseButtons = {};
 	}
 
 	_keyNamesToCodes(key) {
@@ -271,7 +273,7 @@ export default class D3DInput {
 
 	_onMouseDown(e) {
 		if (this._mouseFrozen) return;
-		this.mouse.buttons[e.button] = true;
+		this.mouseButtons[e.button] = true;
 
 		// Attempt to enter lock on user gesture if enabled
 		if (this.mouseLock) {
@@ -287,15 +289,29 @@ export default class D3DInput {
 
 	_onMouseUp(e) {
 		if (this._mouseFrozen) return;
-		this.mouse.buttons[e.button] = false;
+		this.mouseButtons[e.button] = false;
 		this._mouseUpListeners.forEach(listener => listener(e));
 	}
 
 	_onMouseMove(e) {
 		if (this._mouseFrozen) return;
-		this.mouse.x = e.clientX;
-		this.mouse.y = e.clientY;
-
+		
+		const clientX = e.clientX;
+		const clientY = e.clientY;
+		
+		this.mouseClient.x = clientX;
+		this.mouseClient.y = clientY;
+		
+		const canvas = _host.renderer2d.domElement;
+		const rect   = canvas.getBoundingClientRect();
+		const px     = (clientX - rect.left) * (canvas.width  / rect.width);
+		const py     = (clientY - rect.top)  * (canvas.height / rect.height);
+		// undo the renderer's scale (pixelRatio * viewScale) → "unscaled canvas/world" coords
+		const k = _host.renderer2d.pixelRatio * _host.renderer2d.viewScale;
+		
+		this.mouse.x = px / k;
+		this.mouse.y = py / k;
+		
 		// In pointer lock, movementX/Y are relative deltas; outside, they still work but may be smoothed by OS
 		this._mouseDelta.x = e.movementX;
 		this._mouseDelta.y = e.movementY;
@@ -303,7 +319,7 @@ export default class D3DInput {
 		this._mouseMoveListeners.forEach(listener => listener(e));
 	}
 
-	getMouseButtonDown(button) { return !!this.mouse.buttons[button]; }
+	getMouseButtonDown(button) { return !!this.mouseButtons[button]; }
 	getLeftMouseButtonDown() { return this.getMouseButtonDown(0); }
 	getMiddleMouseButtonDown() { return this.getMouseButtonDown(1); }
 	getRightMouseButtonDown() { return this.getMouseButtonDown(2); }

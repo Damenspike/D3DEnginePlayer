@@ -12,6 +12,7 @@ import D3DCharacterControllerManager from './d3dmgr_charactercontroller.js';
 import D3DThirdPersonCameraManager from './d3dmgr_thirdpersoncamera.js';
 import D2DTextManager from './d2dmgr_text.js';
 import D2DBitmapManager from './d2dmgr_bitmap.js';
+import D2DGraphic2DManager from './d2dmgr_graphic2d.js';
 
 import { WebSafeFonts } from './d3dfonts.js';
 
@@ -508,9 +509,14 @@ const D3DComponents = {
 				label: 'Erase parent',
 				type: 'none',
 				def: false
+			},
+			'mask': {
+				label: 'Mask',
+				type: 'boolean',
+				def: false
 			}
 		},
-		manager: function() {}
+		manager: D2DGraphic2DManager
 	},
 	Container2D: {
 		name: 'Container 2D',

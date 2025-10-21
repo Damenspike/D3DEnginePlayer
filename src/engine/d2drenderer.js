@@ -7,6 +7,16 @@ import {
 	approx,
 	hexToRgba
 } from './d3dutility.js';
+import {
+	buildCompoundPathForGraphic,
+	worldMatrix
+} from './d2dutility.js';
+import {
+	onMouseUp,
+	onMouseDown,
+	onMouseMove,
+	onMouseWheel
+} from './d2dingame.js';
 
 export default class D2DRenderer {
 	constructor({width, height, pixelRatio, root, addGizmo = false} = {}) {
@@ -15,6 +25,7 @@ export default class D2DRenderer {
 		this.height = height ?? 480;
 		this.root = root;
 		this._dirty = true;
+		this._renderObjects = [];
 		
 		this.domElement = document.createElement('canvas');
 		this.domElement.style.display = 'block';
@@ -31,6 +42,13 @@ export default class D2DRenderer {
 			this.gizmo = new D2DGizmo(this);
 			this.edit = new D2DEdit(this);
 			this.drawer = new D2DDraw(this);
+		}
+		
+		if(window._player) {
+			_input.addEventListener('mouseup', onMouseUp);
+			_input.addEventListener('mousedown', onMouseDown);
+			_input.addEventListener('mousemove', onMouseMove);
+			_input.addEventListener('wheel', onMouseWheel);
 		}
 	}
 	
@@ -102,6 +120,8 @@ export default class D2DRenderer {
 		ctx.translate(off.x, off.y);
 		ctx.scale(pr * vs, pr * vs);
 		
+		this._renderObjects = [];
+		
 		// Do the draw
 		this.renderParent(this.root);
 		
@@ -111,7 +131,11 @@ export default class D2DRenderer {
 		//this._dirty = false;
 	}
 	renderParent(d3dobject) {
+		if(!d3dobject.visible)
+			return;
+		
 		this.draw(d3dobject);
+		this._renderObjects.push(d3dobject);
 		
 		[...d3dobject.children]
 		.sort((a, b) => (a.depth || 0) - (b.depth || 0))
@@ -127,18 +151,56 @@ export default class D2DRenderer {
 		
 		if(!graphic) 
 			return;
+			
+		const ctx = this.ctx;
+		
+		// Collect all ancestor nodes that have graphic2d.mask === true
+		const maskAncestors = [];
+		for (let n = d3dobject.parent; n; n = n.parent) {
+			const g2d = n.graphic2d;
+			if (g2d?.mask === true) 
+				maskAncestors.push(n);
+		}
+		
+		let clipped = false;
+		if (maskAncestors.length > 0) {
+			const gs = this.pixelRatio * this.viewScale;
+			const dev = new DOMMatrix().scaleSelf(gs, gs);
+			
+			ctx.save();
+			// start from identity; we’ll clip with pre-transformed Path2Ds
+			ctx.setTransform(1, 0, 0, 1, 0, 0);
+			
+			for (const anc of maskAncestors) {
+				const maskPathLocal = buildCompoundPathForGraphic(anc.graphic2d);
+				if (!maskPathLocal) continue;
+				
+				// transform mask into device coords: device * world(ancestor)
+				const mWorld = worldMatrix(anc);
+				const mDev = dev.multiply(mWorld);
+				
+				const maskDevice = new Path2D();
+				maskDevice.addPath(maskPathLocal, mDev);
+				
+				// intersect clips by calling clip multiple times
+				ctx.clip(maskDevice, 'evenodd');
+				clipped = true;
+			}
+		}
 		
 		this.drawVector(d3dobject);
 		
-		if(d3dobject.hasComponent('Text2D'))
+		if (d3dobject.hasComponent('Text2D'))
 			this.drawText(d3dobject);
-			
-		if(d3dobject.hasComponent('Bitmap2D'))
+		
+		if (d3dobject.hasComponent('Bitmap2D'))
 			this.drawBitmap(d3dobject);
+		
+		if (clipped) 
+			ctx.restore(); // pop mask stack
 	}
 	drawBitmap(d3dobject) {
 		const ctx = this.ctx;
-		if (!d3dobject.visible) return;
 	
 		const bitmap2d = d3dobject.getComponent('Bitmap2D');
 		if (!bitmap2d) return;
@@ -280,7 +342,6 @@ export default class D2DRenderer {
 	}
 	drawText(d3dobject) {
 		const ctx = this.ctx;
-		if (!d3dobject?.visible) return;
 	
 		const text2d = d3dobject.getComponent('Text2D');
 		if (!text2d) return;
@@ -641,8 +702,6 @@ export default class D2DRenderer {
 	}
 	drawVector(d3dobject) {
 		const ctx = this.ctx;
-		
-		if (!d3dobject?.visible) return;
 	
 		const alpha   = Number.isFinite(d3dobject.opacity) ? Math.max(0, Math.min(1, d3dobject.opacity)) : 1;
 		const graphic = d3dobject.graphic2d || {};
