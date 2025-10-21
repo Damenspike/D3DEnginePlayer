@@ -520,11 +520,21 @@ export default class D2DGizmo {
 			const parentM   = this._worldMatrix(o.parent || null);
 			const parentInv = this._invert(parentM);
 	
+			// capture “begin*” snapshot for event payload
+			const beginPos  = { x: pos.x, y: pos.y, z: pos.z ?? 0 };
+			const beginRot3 = { x: rot.x ?? 0, y: rot.y ?? 0, z: rot.z ?? 0 };
+			const beginRot  = this._quatFromZ(beginRot3.z); // Z-only quaternion
+			const beginScl  = { x: scl.x ?? 1, y: scl.y ?? 1, z: scl.z ?? 1 };
+	
 			map.set(o, {
 				pos0: { x: pos.x, y: pos.y },
 				rot0: rot.z || 0,
 				scl0: { x: scl.x, y: scl.y },
-				parentInv
+				parentInv,
+				beginPos,
+				beginRot3,
+				beginRot,
+				beginScl
 			});
 	
 			snap.push({

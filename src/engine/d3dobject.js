@@ -12,7 +12,7 @@ import {
 const { path } = D3D;
 
 const protectedNames = [
-	'_root', 'Input', 'position', 'rotation', 'scale', 'name', 'parent', 'children', 'threeObj', 'scenes', 'zip', 'forward', 'right', 'up', 'quaternion', 'onEnterFrame', 'onAddedToScene', 'manifest', 'scenes', '__origin', '__componentInstances', '__onInternalEnterFrame', '__onEditorEnterFrame', '__deleted', '__animatedTransformChange', 'mesh', 'animation'
+	'_root', 'Input', 'position', 'rotation', 'scale', 'name', 'parent', 'children', 'threeObj', 'scenes', 'zip', 'forward', 'right', 'up', 'quaternion', 'onEnterFrame', 'onAddedToScene', 'manifest', 'scenes', '__origin', '__componentInstances', '__onInternalEnterFrame', '__onEditorEnterFrame', '__deleted', '__animatedTransformChange', '_mesh', '_animation', '__self__'
 ]
 
 export default class D3DObject {
@@ -489,10 +489,12 @@ export default class D3DObject {
 		////////////////////////
 		
 		// COMPONENT SETUP
-		objData.components.forEach(c => {
-			(c.properties || {}).__componentEnabled = c.enabled;
-			child.addComponent(c.type, c.properties, false);
-		});
+		for(let c of objData.components) {
+			if(c.properties)
+				c.properties.__componentEnabled = c.enabled;
+			
+			await child.addComponent(c.type, c.properties, false);
+		}
 		
 		if(objData.engineScript)
 			child.engineScript = objData.engineScript;
@@ -713,7 +715,7 @@ export default class D3DObject {
 		this.updateComponents();
 		this.checkSymbols();
 	}
-	addComponent(type, properties = {}, doUpdateAll = true, removeIfPresent = false, unshift = false) {
+	async addComponent(type, properties = {}, doUpdateAll = true, removeIfPresent = false, unshift = false) {
 		if(this.components.find(c => c.type == type)) {
 			if(removeIfPresent) {
 				this.removeComponent(type);
@@ -764,6 +766,10 @@ export default class D3DObject {
 			this.components.unshift(component);
 		else 
 			this.components.push(component);
+			
+		if(typeof inst.setupComponent == 'function') {
+			await inst.setupComponent();
+		}
 		
 		doUpdateAll && this.updateComponents();
 	}

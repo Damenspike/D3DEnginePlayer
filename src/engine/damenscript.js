@@ -50,8 +50,8 @@ const DamenScript = (() => {
 
   // ===== Lexer =====
   const KEYWORDS = new Set([
-	'let','const','var','if','else','while','for','true','false','null',
-	'function','return','undefined','NaN','Infinity'
+	  'let','const','var','if','else','while','for','true','false','null',
+	  'function','return','undefined','NaN','Infinity','in','of'
   ]);
   const PUNCT = new Set(['(',')','{','}','[',']',';',',','.',':','?']);
   const TWO_CHAR_OPS = new Set([
@@ -201,16 +201,90 @@ const DamenScript = (() => {
 	}
 
 	function ForStmt(){
-	  expect('kw','for'); expect('punc','(');
-	  let init=null, test=null, update=null;
-	  if (!match('punc',';')){
-		if (peek().type==='kw' && (peek().value==='let'||peek().value==='const'||peek().value==='var')) init=VarDecl();
-		else { init=Expression(); match('punc',';'); }
-	  }
-	  if (!match('punc',';')) { test=Expression(); expect('punc',';'); }
-	  if (!match('punc',')')) { update=Expression(); expect('punc',')'); }
-	  const body=Statement();
-	  return { type:'ForStatement', init, test, update, body };
+		expect('kw','for');
+		expect('punc','(');
+	
+		let init = null;
+		let test = null;
+		let update = null;
+		let body = null;
+	
+		const savePos = pos;
+	
+		// ---- Try for-in / for-of with declaration ----
+		if (peek().type === 'kw' && (peek().value === 'let' || peek().value === 'const' || peek().value === 'var')) {
+			const kind = next().value;
+	
+			if (peek().type === 'ident') {
+				const idTok = next();
+				const id = { type:'Identifier', name:idTok.value };
+	
+				// for (let i in obj)
+				if (peek().type === 'kw' && peek().value === 'in') {
+					next();
+					const right = Expression();
+					expect('punc',')');
+					body = Statement();
+					return { type:'ForInStatement', left:{ kind, id }, right, body };
+				}
+	
+				// for (let x of iterable)
+				if (peek().type === 'kw' && peek().value === 'of') {
+					next();
+					const right = Expression();
+					expect('punc',')');
+					body = Statement();
+					return { type:'ForOfStatement', left:{ kind, id }, right, body };
+				}
+			}
+	
+			// Not a for-in/of → reset and parse a full variable declaration as init (with possible initializer)
+			pos = savePos;
+			init = VarDecl();  // VarDecl() already consumes the trailing ';'
+		} else {
+			// ---- Try for-in / for-of without declaration: for (i in obj) / for (x of it) ----
+			if (peek().type === 'ident') {
+				const idTok = next();
+				const id = { type:'Identifier', name:idTok.value };
+	
+				if (peek().type === 'kw' && (peek().value === 'in' || peek().value === 'of')) {
+					const mode = next().value; // 'in' | 'of'
+					const right = Expression();
+					expect('punc',')');
+					body = Statement();
+					return {
+						type: mode === 'in' ? 'ForInStatement' : 'ForOfStatement',
+						left: id, // bare identifier (no kind)
+						right,
+						body
+					};
+				}
+	
+				// Not in/of — this was the start of an expression init. Put the ident back by rewinding one token.
+				pos--;
+			}
+	
+			// Standard for( init ; test ; update )
+			if (!match('punc',';')) {
+				init = Expression();
+				expect('punc',';');
+			}
+		}
+	
+		// Parse `test ;`
+		if (!match('punc',';')) {
+			test = Expression();
+			expect('punc',';');
+		}
+	
+		// Parse `update )`
+		if (!match('punc',')')) {
+			update = Expression();
+			expect('punc',')');
+		}
+	
+		body = Statement();
+		return { type:'ForStatement', init, test, update, body };
 	}
 
 	// ---- Param list with defaults: returns [{name, default:null|expr}, ...]
@@ -878,6 +952,61 @@ const DamenScript = (() => {
 			else { const key=node.left.property.name; const cur=(op==='=')?undefined:getProp(obj,key,false); const val=apply(op,cur,rhs); return setProp(obj,key,val,false); }
 		  }
 		  throw DRuntime('Invalid assignment target');
+		}
+		
+		case 'ForInStatement': {
+			const obj = evalNode(node.right, scope);
+			if (obj == null || typeof obj !== 'object') return undefined;
+		
+			// New loop scope (like JS)
+			const loopScope = new Scope(scope);
+		
+			const setLoopVar = (val) => {
+				if (node.left && node.left.kind) {
+					// declaration form: let/const/var
+					loopScope.declare(node.left.kind, node.left.id.name, val);
+				} else {
+					// bare identifier form: assign
+					const name = node.left.name;
+					try { loopScope.set(name, val); }
+					catch { loopScope.declare('let', name, val); }
+				}
+			};
+		
+			for (const k in obj) {
+				if (!Object.prototype.hasOwnProperty.call(obj, k)) continue;
+				// fresh per-iteration scope for block scoping
+				const iterScope = new Scope(loopScope);
+				setLoopVar(k);
+				evalNode(node.body, iterScope);
+			}
+			return undefined;
+		}
+		
+		case 'ForOfStatement': {
+			const iterable = evalNode(node.right, scope);
+			if (iterable == null) return undefined;
+			if (typeof iterable[Symbol.iterator] !== 'function')
+				throw DRuntime('Right-hand side of for-of is not iterable');
+		
+			const loopScope = new Scope(scope);
+		
+			const setLoopVar = (val) => {
+				if (node.left && node.left.kind) {
+					loopScope.declare(node.left.kind, node.left.id.name, val);
+				} else {
+					const name = node.left.name;
+					try { loopScope.set(name, val); }
+					catch { loopScope.declare('let', name, val); }
+				}
+			};
+		
+			for (const v of iterable) {
+				const iterScope = new Scope(loopScope);
+				setLoopVar(v);
+				evalNode(node.body, iterScope);
+			}
+			return undefined;
 		}
 
 		default: throw DRuntime(`Unsupported node type ${node.type}`);

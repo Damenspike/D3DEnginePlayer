@@ -89,9 +89,12 @@ export default function AnimationInspector() {
 			if(!recording || (!selectedObject.containsChild(d3dobject) && d3dobject != selectedObject))
 				return;
 			
-			const objectName = d3dobject.name;
+			let objectName = d3dobject.name;
 			const frameNumber = Math.floor((currentTime * duration) * fps);
 			const t = currentTime * activeClip.duration;
+			
+			if(d3dobject == selectedObject)
+				objectName = '__self__';
 			
 			// Store origin transform
 			if(!originTransforms[objectName]) {
@@ -111,6 +114,8 @@ export default function AnimationInspector() {
 				
 				activeClip.objectTracks[objectName] = objectTrack;
 			}
+			
+			console.log(originTransform);
 			
 			const key_Pos = objectTrack.position.smartTrack.find(
 				k => Math.floor(k.time * fps) == frameNumber
@@ -932,6 +937,15 @@ export default function AnimationInspector() {
 				<p>No object selected</p>
 			)
 		}
+		if(selectedObject == _root) {
+			return (
+				<div className='noanim-placeholder'>
+					<p>
+						Select an object to animate
+					</p>
+				</div>
+			)
+		}
 		if(!animManager) {
 			return (
 				<div className='noanim-placeholder'>
@@ -1256,11 +1270,16 @@ export default function AnimationInspector() {
 					const objectTrack = objectTracks[objectName];
 					const classes = ['track'];
 					
+					let objectLabel = objectName;
+					
 					if(recording)
 						classes.push('track--recording')
 					
 					if(selectedTracks.includes(objectName))
 						classes.push('track--selected')
+						
+					if(objectLabel == '__self__')
+						objectLabel = `(${selectedObject.name})`;
 					
 					rows.push(
 						<div 
@@ -1272,7 +1291,7 @@ export default function AnimationInspector() {
 							}}
 							onDoubleClick={() => openTrack(objectName)}
 						>
-							{objectName}
+							{objectLabel}
 						</div>
 					)
 				};

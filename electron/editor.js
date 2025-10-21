@@ -533,7 +533,6 @@ const menuTemplate = [
 					{ id: 'newObjectPointLight', label: 'Point Light', click: () => sendAddObject('pntlight') }
 				]
 			},
-			{ type: 'separator' },
 			{
 				id: 'addcomponent',
 				label: 'Add Component',
@@ -560,12 +559,14 @@ const menuTemplate = [
 					}
 				]
 			},
+			{ type: 'separator' },
 			{
 				id: 'focusObject',
 				label: 'Focus',
 				accelerator: 'F',
 				click: () => sendFocusObject()
 			},
+			{ type: 'separator' },
 			{
 				id: 'symbolise',
 				label: 'Symbolise',
@@ -578,6 +579,7 @@ const menuTemplate = [
 				accelerator: 'CmdOrCtrl+Shift+D',
 				click: () => sendDesymboliseObject()
 			},
+			{ type: 'separator' },
 			{
 				label: 'Group',
 				accelerator: 'CmdOrCtrl+G',
@@ -587,11 +589,6 @@ const menuTemplate = [
 				label: 'Ungroup',
 				accelerator: 'CmdOrCtrl+Shift+G',
 				click: () => sendUngroupObjects()
-			},
-			{
-				label: 'Merge',
-				accelerator: 'CmdOrCtrl+M',
-				click: () => sendMergeObjects()
 			},
 			{ type: 'separator' },
 			{

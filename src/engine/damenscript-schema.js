@@ -79,15 +79,15 @@ export const D3D_OBJECT_SCHEMA = {
 		doc: 'Immediate children.'
 	},
 	
-	animation: {
+	_animation: {
 		type: 'Manager',
 		doc: 'Animation manager (if exists)'
 	},
-	camera: {
+	_camera: {
 		type: 'Manager',
 		doc: 'Camera manager (if exists)'
 	},
-	mesh: {
+	_mesh: {
 		type: 'Manager',
 		doc: 'Mesh manager (if exists)'
 	},

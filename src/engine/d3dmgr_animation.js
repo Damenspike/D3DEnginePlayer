@@ -18,6 +18,9 @@ export default function AnimationManager(d3dobject, component) {
 	this.clipStates = {};
 	this.clips = {};
 	
+	this.setupComponent = async () => {
+		await this.__loadClips();
+	}
 	this.__onInternalEnterFrame = () => {
 		/////////////////////////////////////////////////
 		// ACTUAL NEXT FRAME UDPATER
@@ -66,8 +69,10 @@ export default function AnimationManager(d3dobject, component) {
 			clipState.updateTransforms();
 		}
 	}
-	this.__loadClips = () => {
-		component.properties.clips.forEach(uuid => this.__loadClip(uuid));
+	this.__loadClips = async () => {
+		for(let uuid of component.properties.clips) {
+			await this.__loadClip(uuid);
+		}
 	}
 	this.__loadClip = async (uuid) => {
 		const path = d3dobject.root.resolvePath(uuid);
@@ -285,8 +290,6 @@ export default function AnimationManager(d3dobject, component) {
 		clip.time = 0;
 		clip.normalizedTime = 0;
 	}
-	
-	this.__loadClips();
 }
 function AnimationState({d3dobject, clip}) {
 	this.playing = false;
@@ -354,7 +357,7 @@ function AnimationState({d3dobject, clip}) {
 		this.time = t * this.clip.duration;
 	}
 	this.findAnimationTarget = (name) => {
-		return (name == this.d3dobject.name) ? 
+		return (name == this.d3dobject.name || name == '__self__') ? 
 			this.d3dobject : 
 			this.d3dobject.findDeep(name)[0]; // TODO: Support . path finding
 	}
