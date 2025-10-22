@@ -125,6 +125,12 @@ export default class D2DRenderer {
 		// Do the draw
 		this.renderParent(this.root);
 		
+		// Draw focus
+		if(window._editor) {
+			if(_editor.focus && _editor.focus != this.root)
+				this.renderParent(_editor.focus);
+		}
+		
 		ctx.restore();
 		
 		this.textInput?.endFrame();

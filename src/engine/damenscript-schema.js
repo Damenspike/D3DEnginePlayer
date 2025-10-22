@@ -1,5 +1,5 @@
 export const KEYWORDS = [
-	'let','const','function','return','if','else','for','while','break','continue',
+	'var', 'let','const','function','return','if','else','for','while','break','continue',
 	'true','false','null','undefined','import','from','export','struct','enum','match',
 	'case','default','try','catch','finally','throw', 'this', 'root', '_root', 'parent'
 ]
@@ -17,7 +17,7 @@ export const FORBIDDEN_PROPS = [
 	   'caller','callee','arguments',
 	   'call','apply','bind', '__script',
 	   '__onInternalEnterFrame', '__onEditorEnterFrame',
-	   '__componentInstances', '__deleted', '__animatedTransformChange', '_animation', '_mesh', '_camera', '_directionallight', '_ambientlight', '_pointlight'
+	   '__componentInstances', '__deleted', '__animatedTransformChange', '_animation', '_mesh', '_camera', '_directionallight', '_ambientlight', '_pointlight', '__runInSandbox'
 ]
 export const D3D_OBJECT_SCHEMA = {
 	name: {

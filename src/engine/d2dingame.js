@@ -32,13 +32,25 @@ export function onMouseMove() {
 	const r = _host.renderer2d;
 	
 	r._renderObjects.forEach(d3dobject => {
-		if(typeof d3dobject?.onMouseMove !== 'function')
+		if(
+			typeof d3dobject?.onMouseMove !== 'function' &&
+			typeof d3dobject?.onMouseOver !== 'function' && 
+			typeof d3dobject?.onMouseOut !== 'function'
+		)
 			return;
 			
-		if(!d3dobject.hitTestPoint(_input.mouse))
+		if(!d3dobject.hitTestPoint(_input.mouse)) {
+			d3dobject.isMouseOver = false;
+			d3dobject.onMouseOut?.();
 			return;
+		}
 		
-		d3dobject.onMouseMove();
+		d3dobject.onMouseMove?.();
+		
+		if(!d3dobject.isMouseOver) {
+			d3dobject.isMouseOver = true;
+			d3dobject.onMouseOver?.();
+		}
 	});
 }
 export function onMouseWheel() {

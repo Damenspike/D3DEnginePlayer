@@ -459,7 +459,7 @@ export default class D2DGizmo {
 		// double-click to focus
 		if (this.lastClick) {
 			if (_time.now - this.lastClick.time < 0.4 && hit === this.lastClick.object) {
-				_editor.focus = hit;
+				_editor.focus = hit ?? _editor.focus.parent;
 				_editor.setSelection([]);
 				this.lastClick = null;
 				return;

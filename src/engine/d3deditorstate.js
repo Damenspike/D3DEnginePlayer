@@ -622,10 +622,10 @@ export default class D3DEditorState {
 	}
 	
 	async groupObjects(d3dobjects, containingParent, addStep = true) {
-		if(d3dobjects.length <= 1) {
+		if(d3dobjects.length < 1) {
 			this.showError({
 				title: 'Group',
-				message: 'Multiple objects required'
+				message: 'Select object(s) to group'
 			})
 			return;
 		}

@@ -12,16 +12,13 @@ import {
 const { path } = D3D;
 
 const protectedNames = [
-	'_root', 'Input', 'position', 'rotation', 'scale', 'name', 'parent', 'children', 'threeObj', 'scenes', 'zip', 'forward', 'right', 'up', 'quaternion', 'onEnterFrame', 'onAddedToScene', 'manifest', 'scenes', '__origin', '__componentInstances', '__onInternalEnterFrame', '__onEditorEnterFrame', '__deleted', '__animatedTransformChange', '_mesh', '_animation', '__self__', '_camera', '_directionallight', '_ambientlight', '_pointlight', 'isClicked'
+	'_root', 'Input', 'position', 'rotation', 'scale', 'name', 'parent', 'children', 'threeObj', 'scenes', 'zip', 'forward', 'right', 'up', 'quaternion', 'onEnterFrame', 'onAddedToScene', 'manifest', 'scenes', '__origin', '__componentInstances', '__onInternalEnterFrame', '__onEditorEnterFrame', '__deleted', '__animatedTransformChange', '_mesh', '_animation', '__self__', '_camera', '_directionallight', '_ambientlight', '_pointlight', 'isClicked', 'isMouseOver', '__runInSandbox'
 ]
 
 export default class D3DObject {
 	constructor(name = 'object', parent = null) {
 		if (!window._root) 
 			window._root = this;
-		
-		if(!_root.__symbols)
-			_root.__symbols = {}; // initialise symbol store on _root
 		
 		// Must come first
 		this.scenes = [];
@@ -541,6 +538,7 @@ export default class D3DObject {
 		let buffer;
 		
 		this.__origin = uri;
+		this.__symbols = {};
 		
 		if (uri.startsWith('http://') || uri.startsWith('https://')) {
 			// Remote URL
@@ -613,6 +611,7 @@ export default class D3DObject {
 	async loadScene(scene) {
 		this.root.scene = scene;
 		await this.buildScene(scene);
+		await this.executeScripts();
 	}
 	
 	async buildScene(scene) {
@@ -630,9 +629,6 @@ export default class D3DObject {
 		for (const objData of objects) {
 			await this.createObject(objData, false);
 		}
-		
-		// When building scene, wait for all objects to be made first, then execute scripts
-		await this.executeScripts();
 	}
 	
 	async executeScripts() {
@@ -649,7 +645,7 @@ export default class D3DObject {
 			script = await res.text();
 			scriptName = this.engineScript;
 		}else
-		if(_root == this) {
+		if(this.root == this) {
 			script = await zip.file('scripts/_root.js')?.async('string');
 		}else{
 			script = this.__script;
@@ -658,7 +654,7 @@ export default class D3DObject {
 		this.__script = script;
 		
 		if (script && (!window._editor || this.editorOnly)) {
-			this.runInSandbox(script);
+			this.__runInSandbox(script);
 			console.log(`${scriptName} executed in DamenScript sandbox`);
 		}
 		
@@ -668,7 +664,7 @@ export default class D3DObject {
 			}
 		}
 	}
-	runInSandbox(script) {
+	__runInSandbox(script) {
 		const sandbox = {
 			_root,
 			_input,
@@ -1074,7 +1070,7 @@ export default class D3DObject {
 		await syncWithObjData(this, symbol.objData);
 	}
 	
-	setParent(d3dobject) {
+	setParent(d3dobject, opts = {}) {
 		if(d3dobject == this.parent) {
 			console.warn('Cant set parent already is parent', this.name, this.parent?.name);
 			return;
@@ -1085,6 +1081,11 @@ export default class D3DObject {
 			this.parent.children.splice(this.parent.children.indexOf(this), 1);
 		}
 		
+		let currentWorldMatrix = null;
+		if(opts.keepWorldTranform ?? true) {
+			currentWorldMatrix = this.object3d.matrixWorld.clone();
+		}
+		
 		this.parent = d3dobject;
 		
 		if(!d3dobject.children.includes(this))
@@ -1092,6 +1093,34 @@ export default class D3DObject {
 		
 		if(d3dobject.object3d && this.object3d)
 			d3dobject.object3d.add(this.object3d);
+		
+		if(opts.keepWorldTranform ?? true) {
+			if(d3dobject) {
+				d3dobject.object3d.updateMatrixWorld(true);
+				
+				const invParent = new THREE.Matrix4()
+				.copy(d3dobject.object3d.matrixWorld).invert();
+				
+				const local = new THREE.Matrix4()
+				.multiplyMatrices(invParent, currentWorldMatrix);
+				
+				local.decompose(
+					this.object3d.position, 
+					this.object3d.quaternion, 
+					this.object3d.scale
+				);
+				
+				this.object3d.updateMatrixWorld(true);
+			}else{
+				this.object3d.matrix.copy(currentWorldMatrix);
+				this.object3d.matrix.decompose(
+					this.object3d.position, 
+					this.object3d.quaternion, 
+					this.object3d.scale
+				);
+				this.object3d.updateMatrixWorld(true);
+			}
+		}
 	}
 	
 	replaceObject3D(newObject3D, { keepChildren = true } = {}) {
@@ -1381,5 +1410,43 @@ export default class D3DObject {
 			return;
 		
 		_host.renderer2d._dirty = true;
+	}
+	hitTest({x, y}) {
+		if(this.hasComponent('Container2D')) {
+			let hit = false;
+			
+			for(let d3dchild of this.children) {
+				if(d3dchild.hitTest({x, y})) {
+					hit = true;
+					break;
+				}
+			}
+			
+			return hit;
+		}else
+		if(this.hasComponent('Graphic2D')) {
+			return this.getComponent('Graphic2D').hitTest({x, y});
+		}
+		
+		throw new Error(`${this.name} can not be used for 2D hit testing`);
+	}
+	hitTestPoint({x, y}) {
+		if(this.hasComponent('Container2D')) {
+			let hit = false;
+			
+			for(let d3dchild of this.children) {
+				if(d3dchild.hitTestPoint({x, y})) {
+					hit = true;
+					break;
+				}
+			}
+			
+			return hit;
+		}else
+		if(this.hasComponent('Graphic2D')) {
+			return this.getComponent('Graphic2D').hitTestPoint({x, y});
+		}
+		
+		throw new Error(`${this.name} can not be used for 2D hit testing`);
 	}
 }

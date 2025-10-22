@@ -302,7 +302,8 @@ export default class D3DInput {
 		this.mouseClient.x = clientX;
 		this.mouseClient.y = clientY;
 		
-		const canvas = _host.renderer2d.domElement;
+		const canvas = _host.renderer2d?.domElement;
+		if(!canvas) return;
 		const rect   = canvas.getBoundingClientRect();
 		const px     = (clientX - rect.left) * (canvas.width  / rect.width);
 		const py     = (clientY - rect.top)  * (canvas.height / rect.height);
