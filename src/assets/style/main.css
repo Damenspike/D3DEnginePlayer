@@ -27,7 +27,6 @@ body {
 	padding: 20px; 
 	margin: 0;
 	overflow: hidden;
-	font-family: "Proxima Nova", sans-serif;
 	background: #ececec;
 }
 p, label {
@@ -61,7 +60,7 @@ body.dark {
 	}
 }
 
-* {
+body, button, input, select {
 	font-family: "Proxima Nova", sans-serif;
 }
 

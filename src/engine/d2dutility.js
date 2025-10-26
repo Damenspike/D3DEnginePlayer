@@ -66,14 +66,22 @@ export function pxToWorld(renderer, px = 10) {
  * Assumes renderer2D canvas scaling is pixelRatio*viewScale.
  */
 export function eventToWorld(e, canvas, renderer) {
-	const rect = canvas.getBoundingClientRect();
-	const sx = canvas.width / rect.width;
-	const sy = canvas.height / rect.height;
-	const cx = (e.clientX - rect.left) * sx;
-	const cy = (e.clientY - rect.top) * sy;
-	const k = (renderer?.pixelRatio || 1) * (renderer?.viewScale || 1);
-	return { x: cx / k, y: cy / k };
-}
+	 const rect = canvas.getBoundingClientRect();
+	 const sx = canvas.width  / rect.width;
+	 const sy = canvas.height / rect.height;
+ 
+	 // canvas-space (device pixels)
+	 const cx = (e.clientX - rect.left) * sx;
+	 const cy = (e.clientY - rect.top)  * sy;
+ 
+	 const pr  = renderer?.pixelRatio || 1;
+	 const vs  = renderer?.viewScale  || 1;
+	 const k   = pr * vs;
+	 const off = renderer?.viewOffset || { x: 0, y: 0 }; // device-pixel pan (if used)
+ 
+	 // invert: world = (canvas - off) / (pr*vs)
+	 return { x: (cx - off.x) / k, y: (cy - off.y) / k };
+ }
 
 /* ========================= GEOMETRY & PATHS ========================= */
 
@@ -1039,7 +1047,7 @@ const D2DUtil = {
 	// px/world
 	pxToWorld, eventToWorld,
 	// geometry / paths
-	isClosed, pointInPolygon, distSqToSeg, pointNearPolyline, localPoints,
+	isClosed, pointInPolygon, distSqToSeg, pointNearPolyline, localPoints, logicalPoints, logicalIndexMap,
 	// traversal / bounds
 	traverse2D, worldAABB, worldAABBDeep,
 	// selection frames

@@ -227,8 +227,9 @@ export default class D3DInput {
 		return this.getCursorOverGameBound();
 	}
 	getCursorOverGameBound() {
-		const pos = this.getMousePosition();
+		const pos = this.getMouseClientPosition();
 		const rect = _container3d.getBoundingClientRect();
+		
 		return pos.x >= rect.left && pos.x <= rect.right && pos.y >= rect.top && pos.y <= rect.bottom;
 	}
 
@@ -295,29 +296,43 @@ export default class D3DInput {
 
 	_onMouseMove(e) {
 		if (this._mouseFrozen) return;
-		
+	
+		const use3D = !!(window._editor && _editor.mode === '3D');
 		const clientX = e.clientX;
 		const clientY = e.clientY;
-		
+	
 		this.mouseClient.x = clientX;
 		this.mouseClient.y = clientY;
-		
-		const canvas = _host.renderer2d?.domElement;
-		if(!canvas) return;
-		const rect   = canvas.getBoundingClientRect();
-		const px     = (clientX - rect.left) * (canvas.width  / rect.width);
-		const py     = (clientY - rect.top)  * (canvas.height / rect.height);
-		// undo the renderer's scale (pixelRatio * viewScale) → "unscaled canvas/world" coords
-		const k = _host.renderer2d.pixelRatio * _host.renderer2d.viewScale;
-		
-		this.mouse.x = px / k;
-		this.mouse.y = py / k;
-		
-		// In pointer lock, movementX/Y are relative deltas; outside, they still work but may be smoothed by OS
+	
+		const canvas = use3D ? _host.renderer3d?.domElement : _host.renderer2d?.domElement;
+		if (!canvas) return;
+	
+		// canvas coords in *device pixels*
+		const rect = canvas.getBoundingClientRect();
+		const cx = (clientX - rect.left) * (canvas.width  / rect.width);
+		const cy = (clientY - rect.top)  * (canvas.height / rect.height);
+	
+		if (use3D) {
+			// 3D: usually only pixelRatio scaling (no letterbox)
+			const pr = _host.renderer3d?.getPixelRatio?.() || 1;
+			this.mouse.x = cx / pr;
+			this.mouse.y = cy / pr;
+		} else {
+			// 2D: undo device transform = translate(viewOffset) + scale(pixelRatio*viewScale)
+			const r2d = _host.renderer2d;
+			const pr  = r2d?.pixelRatio || 1;
+			const vs  = r2d?.viewScale  || 1;
+			const off = r2d?.viewOffset || { x:0, y:0 }; // in device px
+	
+			this.mouse.x = (cx - off.x) / (pr * vs);
+			this.mouse.y = (cy - off.y) / (pr * vs);
+		}
+	
+		// Raw OS deltas (CSS px). Keep if that’s what callers expect.
 		this._mouseDelta.x = e.movementX;
 		this._mouseDelta.y = e.movementY;
-
-		this._mouseMoveListeners.forEach(listener => listener(e));
+	
+		this._mouseMoveListeners.forEach(fn => fn(e));
 	}
 
 	getMouseButtonDown(button) { return !!this.mouseButtons[button]; }
@@ -326,6 +341,7 @@ export default class D3DInput {
 	getRightMouseButtonDown() { return this.getMouseButtonDown(2); }
 
 	getMousePosition() { return { x: this.mouse.x, y: this.mouse.y }; }
+	getMouseClientPosition() { return { x: this.mouseClient.x, y: this.mouseClient.y }; }
 	getMouseDelta() { return { ...this._mouseDelta }; }
 
 	/* --- Wheel --- */

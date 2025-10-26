@@ -676,9 +676,9 @@ const D3DComponents = {
 				label: 'Align Y',
 				type: 'select',
 				options: [
-					{ name: 'left', label: 'Left' },
+					{ name: 'top', label: 'Top' },
 					{ name: 'center', label: 'Center' },
-					{ name: 'right', label: 'Right' }
+					{ name: 'bottom', label: 'Bottom' }
 				],
 				def: 'center'
 			},

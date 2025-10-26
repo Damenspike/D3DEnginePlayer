@@ -164,13 +164,25 @@ export default class D3DObject {
 	}
 	
 	get visible() {
-		return this.object3d.visible;
+		return this._visible ?? true;
 	}
 	set visible(value) {
-		this.object3d.visible = !!value;
+		this._visible = !!value;
 		this.onVisibilityChanged?.();
 		this._onVisibilityChanged?.();
 		this.checkSymbols();
+	}
+	
+	get __editorState() {
+		if(!window._editor)
+			return {};
+		
+		const states = _root.manifest.editorConfig.objectStates;
+		
+		if(!states[this.uuid])
+			states[this.uuid] = {};
+		
+		return states[this.uuid];
 	}
 	
 	get rootParent() {
@@ -336,6 +348,14 @@ export default class D3DObject {
 	setupDefaultMethods() {
 		if(window._editor) {
 			this.__onEditorEnterFrame = () => {
+				if(!this.object3d)
+					return;
+				
+				if(this.__editorState.hidden !== undefined) {
+					const v = this.visible && !this.__editorState.hidden;
+					this.object3d.visible = v;
+				}
+				
 				if(!this.lastMatrixLocal) {
 					this.lastMatrixLocal = new THREE.Matrix4().copy(this.object3d.matrix);
 					return;
@@ -582,15 +602,6 @@ export default class D3DObject {
 		this.assetIndex = JSON.parse(assetIndexStr);
 		console.log('Asset index loaded:', this.assetIndex);
 		this.updateAssetIndex();
-	
-		// Configure Electron window based on manifest only for root
-		if (this === _root) {
-			D3D.updateWindow({
-				width: this.manifest.width,
-				height: this.manifest.height,
-				title: this.manifest.name
-			});
-		}
 		
 		// Find all the symbols and store them
 		await this.updateSymbolStore();

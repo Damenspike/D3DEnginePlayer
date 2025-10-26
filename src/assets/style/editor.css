@@ -1,3 +1,9 @@
+@font-face {
+	font-family: "codicon";
+	font-display: block;
+	src: url("/fonts/codicon.ttf") format("truetype");
+}
+
 /* Make the editor fill the screen */
 html, body {
 	margin: 0;
@@ -118,7 +124,7 @@ body.dark {
 	.object-row:hover {
 		background: rgba(0, 0, 0, 0.3);
 	}
-	.code-present:hover {
+	.option-button:hover {
 		background: rgb(255, 255, 255) !important;
 		svg {
 			color: black !important;
@@ -599,22 +605,34 @@ body.dark {
 		font-size: 14px;
 		border: 2px solid rgba(0, 0, 0, 0);
 		
-		.code-present {
+		.option-buttons {
 			position: absolute;
 			right: 5px;
 			top: 50%;
 			transform: translateY(-50%);
+		}
+		.option-button {
+			display: inline-block;
+			vertical-align: middle;
 			
 			opacity: 0.5;
 			width: 20px;
 			height: 20px;
 			align-content: center;
+			text-align: center;
+			margin-left: 5px;
+			
 			svg {
 				margin: 0px;
-				padding-left: 2px;
+			}
+			
+			&--lock {
+				svg {
+					font-size: 10px;
+				}
 			}
 		}
-		.code-present:hover {
+		.option-button:hover {
 			background: black;
 			border-radius: 50px;
 			svg {
@@ -796,9 +814,24 @@ body.dark {
 		margin-top: 5px;
 		flex-grow: 1;
 	}
-	.monaco-editor, .monaco-editor * {
-	  font-family: monospace !important;
+	.codicon[class*='codicon-'] {
+		font: normal normal normal 16px/1 codicon;
+		display: inline-block;
+		text-decoration: none;
+		text-rendering: auto;
+		text-align: center;
+		text-transform: none;
+		-webkit-font-smoothing: antialiased;
+		-moz-osx-font-smoothing: grayscale;
+		user-select: none;
+		-webkit-user-select: none;
 	}
+	.monaco-editor .codicon {
+		font-family: codicon !important;
+		font-style: normal;
+		font-weight: normal;
+	}
+
 	.code-editor__close {
 		background: transparent; 
 		border: 0; 

@@ -202,7 +202,8 @@ export default function CodeEditor({isOpen, theme}) {
 								wordWrap: 'on',
 								renderWhitespace: 'selection',
 								fontLigatures: false,
-								fontSize: 13
+								fontSize: 13,
+								fontFamily: "monospace"
 							}}
 						/>
 					</div>

@@ -21,8 +21,11 @@ import {
 	MdFolder, MdInsertDriveFile, MdExpandMore, MdChevronRight,
 	MdUpload, MdCreateNewFolder, MdRefresh, MdDeleteForever,
 	MdOutlineInterests, MdTexture, MdDirectionsWalk,
-	MdFormatAlignLeft, MdFormatAlignCenter, MdFormatAlignRight
+	MdFormatAlignLeft, MdFormatAlignCenter, MdFormatAlignRight,
+	MdLock, MdLockOpen
 } from 'react-icons/md';
+
+import { IoMdEye, IoMdEyeOff } from 'react-icons/io';
 
 import {
 	MIME_D3D_ROW,
@@ -156,6 +159,7 @@ export default function Inspector() {
 	const update = () => {
 		setDummyObject({...dummyObject});
 		setDummyProject({...dummyProject});
+		_editor.setDirty(true);
 	}
 	const writeAndRefresh = (uri, data) => {
 		_editor.writeFile({ path: uri, data });
@@ -1455,19 +1459,55 @@ export default function Inspector() {
 							_editor.setSelection([]);
 						}}
 					>
-						{
-							!!object.__script && (
-								<div 
-									className='code-present'
-									onClick={(e) => {
-										_editor.openCode(object);
-										e.stopPropagation();
-									}}
-								>
-									<MdCode />
-								</div>
-							)
-						}
+						<div className='option-buttons'>
+							{
+								!!object.__script && (
+									<div 
+										className='option-button'
+										title='Code'
+										onClick={(e) => {
+											e.stopPropagation();
+											_editor.openCode(object);
+										}}
+									>
+										<MdCode />
+									</div>
+								)
+							}
+							
+							<div 
+								className='option-button option-button--lock'
+								title='Selection lock'
+								onClick={(e) => {
+									e.stopPropagation();
+									object.__editorState.locked = !object.__editorState.locked;
+									
+									if(_editor.selectedObjects.includes(object))
+										_editor.removeSelection([object]);
+									
+									update();
+								}}
+							>
+								{
+									!!object.__editorState.locked ? 
+										<MdLock /> : <MdLockOpen style={{opacity: 0.5}} />
+								}
+							</div>
+							<div 
+								className='option-button option-button--hidden'
+								title='Editor visible'
+								onClick={(e) => {
+									e.stopPropagation();
+									object.__editorState.hidden = !object.__editorState.hidden;
+									update();
+								}}
+							>
+								{
+									!!object.__editorState.hidden ? 
+										<IoMdEyeOff /> : <IoMdEye style={{opacity: 0.5}} />
+								}
+							</div>
+						</div>
 					</ObjectRow>
 				)
 			})

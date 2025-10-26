@@ -382,6 +382,7 @@ export default class D2DDraw {
 		const wantLine = s.line !== false;
 		const lw = Math.max(1, Number(s.lineWidth ?? 1));
 		const br = s.borderRadius;
+		const closePolygon = s.closePolygon;
 
 		// freehand simplify
 		if (['brush','pencil'].includes(this.tool) && this.localPoints.length > 2) {
@@ -402,12 +403,25 @@ export default class D2DDraw {
 		} else if (this.tool === 'circle' && this.localPoints.length >= 2) {
 			path = U.makeEllipsePoints(this.localPoints[0], this.localPoints[1], 64);
 		} else if (this.tool === 'polygon') {
-			const simp = U.simplifyAdaptive(this.d2drenderer, this.localPoints, { tool:'pencil', simplifyPx: 1.75, minStepPx: 1.0 });
-			path = U.cleanAndClose(simp);
+			const simp = U.simplifyAdaptive(
+				this.d2drenderer,
+				this.localPoints,
+				{ tool: 'pencil', simplifyPx: 1.75, minStepPx: 1.0 }
+			);
+			
+			// Ensure the working array is OPEN (no trailing duplicate)
+			const baseOpen = U.logicalPoints(simp); // strips last==first if present
+			
+			if (closePolygon) {
+				path = U.cleanAndClose(baseOpen);
+			} else {
+				// keep it open
+				path = baseOpen.map(p => ({ x: p.x, y: p.y }));
+			}
 		}
-
+		
 		// if fill requested, ensure closed
-		if (wantFill) path = U.cleanAndClose(path);
+		if (wantFill && closePolygon) path = U.cleanAndClose(path);
 
 		// apply geometry + style
 		obj.graphic2d._paths = [path];

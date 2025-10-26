@@ -8,6 +8,7 @@ export default defineConfig({
 	publicDir: path.resolve(__dirname, 'public'),
 	plugins: [react()],
 	server: { port: 5173 },
+	assetsInclude: ['**/*.woff2', '**/*.ttf'],
 	optimizeDeps: {
 		exclude: ['electron', 'fs', 'path', 'vm']
 	},

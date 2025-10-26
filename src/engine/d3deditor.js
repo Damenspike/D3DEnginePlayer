@@ -95,6 +95,8 @@ export async function loadD3DProj(uri) {
 		});
 		return;
 	}
+	if(!_root.manifest.editorConfig.objectStates)
+		_root.manifest.editorConfig.objectStates = {}; // guarantee objectStates in ec
 
 	// Setup renderers
 	initRenderers();
@@ -530,6 +532,9 @@ function setupSelection() {
 			
 			if(!d3dobj)
 				return;
+			
+			if(d3dobj.__editorState.locked || d3dobj.noSelect)
+				return;
 		
 			const key = d3dobj.uuid || d3dobj;
 			if (!seen.has(key)) {
@@ -620,6 +625,9 @@ function setupSelection() {
 				
 				if(!d3dobj)
 					return;
+					
+				if(d3dobj.__editorState.locked || d3dobj.noSelect)
+					return;
 				
 				if(!d3dobjects.includes(d3dobj))
 					d3dobjects.push(d3dobj);
@@ -641,7 +649,7 @@ function setupSelection() {
 					const oldFocus = _editor.focus;
 					_editor.focus = _editor.focus.parent;
 					
-					if(oldFocus != _root)
+					if(oldFocus != _root && !oldFocus.__editorState.locked)
 						_editor.setSelection([oldFocus]);
 				}else{
 					_editor.setSelection([]);

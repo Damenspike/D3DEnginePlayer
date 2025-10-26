@@ -30,6 +30,7 @@ export default function DrawBar() {
 	const [_stroke, setStroke] = useState(_editor.draw2d.lineWidth);
 	const [_borderRadius, setBorderRadius] = useState(_editor.draw2d.borderRadius);
 	const [_subtract, setSubtract] = useState(_editor.draw2d.subtract);
+	const [_closePolygon, setClosePolygon] = useState(_editor.draw2d.closePolygon);
 	
 	useEffect(() => {
 		_editor.setTool(_tool);
@@ -129,23 +130,41 @@ export default function DrawBar() {
 					/>
 				</div>
 				
-				<div className='drawbar-draw2d'>
-					<div className='mt smallx gray'>
-						CURVE
+				{_tool == 'square' && (
+					<div className='drawbar-draw2d'>
+						<div className='mt smallx gray'>
+							CURVE
+						</div>
+						<input 
+							type="range" 
+							orient="vertical"
+							value={_borderRadius}
+							min={0}
+							max={100}
+							onChange={e => {
+								const val = Number(e.target.value) || 0;
+								setBorderRadius(val);
+								_editor.draw2d.borderRadius = val;
+							}}
+						/>
 					</div>
-					<input 
-						type="range" 
-						orient="vertical"
-						value={_borderRadius}
-						min={0}
-						max={100}
-						onChange={e => {
-							const val = Number(e.target.value) || 0;
-							setBorderRadius(val);
-							_editor.draw2d.borderRadius = val;
-						}}
-					/>
-				</div>
+				)}
+				
+				{(_tool == 'pencil' || _tool == 'polygon') && (
+					<div className='drawbar-draw2d'>
+						<div className='mt gray smallx'>
+							CLOSE
+						</div>
+						<input 
+							type="checkbox" 
+							checked={_closePolygon} 
+							onChange={e => {
+								setClosePolygon(e.target.checked);
+								_editor.draw2d.closePolygon = e.target.checked;
+							}}
+						/>
+					</div>
+				)}
 				
 				<div className='drawbar-draw2d'>
 					<div className='mt gray smallx'>

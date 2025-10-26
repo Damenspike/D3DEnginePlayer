@@ -42,6 +42,7 @@ function createStartWindow() {
 
 async function createGameWindow() {
 	gameWindow = new BrowserWindow({
+		useContentSize: true,
 		width: 800,
 		height: 600,
 		webPreferences: {
@@ -176,7 +177,7 @@ ipcMain.on('load-d3d', (_, uri) => loadGameURI(uri));
 // Update window size/title
 ipcMain.on('update-window', (_, { width, height, title }) => {
 	if (gameWindow && !gameWindow.isDestroyed()) {
-		gameWindow.setSize(width, height);
+		gameWindow.setContentSize(width, height);
 		gameWindow.setTitle(title);
 	}
 });

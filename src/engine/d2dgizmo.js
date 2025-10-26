@@ -56,6 +56,8 @@ export default class D2DGizmo {
 
 		const ctx = this.ctx;
 		ctx.save();
+		
+		this.d2drenderer.applyDeviceTransform(ctx);
 
 		// origin crosses
 		for (const o of sel) this._drawOriginCross(o);
@@ -95,7 +97,7 @@ export default class D2DGizmo {
 			const h = Math.abs(b.y - a.y);
 
 			ctx.save();
-			ctx.lineWidth = Math.max(px, 1 * px) * 2;
+			ctx.lineWidth = Math.max(px, 1 * px) * 1;
 			ctx.setLineDash([4 * px, 4 * px]);
 			ctx.strokeStyle = '#0099ff';
 			ctx.fillStyle = 'rgba(0, 150, 255, 0.1)';
@@ -373,6 +375,7 @@ export default class D2DGizmo {
 				const roots = this._marqueeRootsUnderFocus();
 				const newlyHit = [];
 				for (const r of roots) {
+					if(r.__editorState.locked || r.noSelect) continue;
 					const bb = U.worldAABBDeep(r);
 					if (!bb) continue;
 					if (U.rectIntersectsAABB(rect, bb)) newlyHit.push(r);
@@ -634,6 +637,7 @@ export default class D2DGizmo {
 
 		for (let i = roots.length - 1; i >= 0; --i) {
 			const r = roots[i];
+			if(r.__editorState.locked || r.noSelect) continue;
 			if (this._hitObjectDeep(r, wx, wy)) return r;
 		}
 		return null;

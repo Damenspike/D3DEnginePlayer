@@ -55,50 +55,56 @@ export default class D2DRenderer {
 	refreshSize() {
 		this.setSize(this.width, this.height);
 	}
+	applyDeviceTransform() {
+		const pr  = this.pixelRatio || 1;
+		const s   = this.viewScale  || 1;
+		const off = this.viewOffset || { x: 0, y: 0 };
+		this.ctx.setTransform(pr * s, 0, 0, pr * s, off.x, off.y);
+	}
 	setSize(width, height) {
-		const projectWidth = this.root.manifest.width || 760;
-		const projectHeight = this.root.manifest.height || 480;
-		
-		// Calculate scale to fit canvas within parent while preserving aspect ratio
-		const scale = Math.min(width / Math.max(projectWidth, 1), height / Math.max(projectHeight, 1)) || 1;
-		const displayWidth = Math.round(projectWidth * scale);
-		const displayHeight = Math.round(projectHeight * scale);
+		const pr = this.pixelRatio || 1;
+		const projW = Math.max(this.root.manifest.width  | 0, 1);
+		const projH = Math.max(this.root.manifest.height | 0, 1);
 	
-		// Ensure canvas is positioned absolutely relative to the absolute parent
+		// CSS size = window size
 		this.domElement.style.position = 'absolute';
-		this.domElement.style.width = `${displayWidth}px`;
-		this.domElement.style.height = `${displayHeight}px`;
-		this.domElement.style.left = `${(width - displayWidth) / 2}px`;
-		this.domElement.style.top = `${(height - displayHeight) / 2}px`;
+		this.domElement.style.left = '0';
+		this.domElement.style.top  = '0';
+		this.domElement.style.width  = `${width}px`;
+		this.domElement.style.height = `${height}px`;
 	
-		// Set canvas backing store size (accounting for device pixel ratio)
-		this.domElement.width = displayWidth * this.pixelRatio;
-		this.domElement.height = displayHeight * this.pixelRatio;
-		
+		// backing store size (device pixels)
+		this.domElement.width  = Math.max(1, Math.round(width  * pr));
+		this.domElement.height = Math.max(1, Math.round(height * pr));
+	
+		// letterbox scale in *CSS* pixels
+		const scale = Math.min(width / projW, height / projH);
 		this.viewScale = scale;
+	
+		// content size in *device* pixels
+		const contentW = projW * pr * scale;
+		const contentH = projH * pr * scale;
+	
+		// letterbox offset in *device* pixels
+		this.viewOffset = {
+			x: (this.domElement.width  - contentW) * 0.5,
+			y: (this.domElement.height - contentH) * 0.5
+		};
+	
 		this.width = width;
 		this.height = height;
 	
-		// Apply transform to context for proper scaling
-		this.ctx.setTransform(
-			this.pixelRatio * scale, 0,
-			0, this.pixelRatio * scale,
-			0, 0
-		);
+		// don't bake view here—call it at draw time
+		this.ctx.setTransform(1,0,0,1,0,0);
 	}
 	setPixelRatio(pixelRatio) {
 		this.pixelRatio = Number(pixelRatio) || 1;
 		this.setSize(this.width, this.height);
 	}
 	clear() {
-		this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-		this.ctx.clearRect(0, 0, this.domElement.width, this.domElement.height);
-		
-		this.ctx.setTransform(
-			this.pixelRatio * this.viewScale, 0,
-			0, this.pixelRatio * this.viewScale,
-			0, 0
-		);
+		const ctx = this.ctx;
+		ctx.setTransform(1, 0, 0, 1, 0, 0);
+		ctx.clearRect(0, 0, this.domElement.width, this.domElement.height);
 	}
 	render() {
 		if(!this._dirty)
@@ -115,11 +121,6 @@ export default class D2DRenderer {
 		
 		this.textInput?.beginFrame();
 		
-		ctx.save();
-		// pan is in device pixels; then scale in device pixels
-		ctx.translate(off.x, off.y);
-		ctx.scale(pr * vs, pr * vs);
-		
 		this._renderObjects = [];
 		
 		// Do the draw
@@ -131,13 +132,11 @@ export default class D2DRenderer {
 				this.renderParent(_editor.focus);
 		}
 		
-		ctx.restore();
-		
 		this.textInput?.endFrame();
 		//this._dirty = false;
 	}
 	renderParent(d3dobject) {
-		if(!d3dobject.visible)
+		if(!d3dobject.visible || d3dobject.__editorState.hidden)
 			return;
 		
 		this.draw(d3dobject);
@@ -170,8 +169,13 @@ export default class D2DRenderer {
 		
 		let clipped = false;
 		if (maskAncestors.length > 0) {
-			const gs = this.pixelRatio * this.viewScale;
-			const dev = new DOMMatrix().scaleSelf(gs, gs);
+			const pr  = this.pixelRatio || 1;
+			const vs  = this.viewScale  || 1;
+			const gs  = pr * vs;
+			const off = this.viewOffset || { x: 0, y: 0 };
+			
+			// match the draw pipeline: Translate(off) * Scale(gs)
+			const dev = new DOMMatrix().translateSelf(off.x, off.y).scaleSelf(gs, gs);
 			
 			ctx.save();
 			// start from identity; we’ll clip with pre-transformed Path2Ds
@@ -327,7 +331,7 @@ export default class D2DRenderer {
 		ctx.save();
 		ctx.globalAlpha *= alpha * masterAlpha;
 	
-		ctx.setTransform(gs, 0, 0, gs, 0, 0);
+		this.applyDeviceTransform();
 		ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
 	
 		ctx.beginPath();
@@ -519,7 +523,7 @@ export default class D2DRenderer {
 		ctx.globalAlpha *= alpha * masterAlpha;
 	
 		// Match transform pipeline
-		ctx.setTransform(gs, 0, 0, gs, 0, 0);
+		this.applyDeviceTransform();
 		ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
 	
 		ctx.font = buildFont();
@@ -808,7 +812,7 @@ export default class D2DRenderer {
 	
 		ctx.save();
 		ctx.globalAlpha *= alpha * masterAlpha;
-		ctx.setTransform(gs, 0, 0, gs, 0, 0);
+		this.applyDeviceTransform();
 		ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
 	
 		// FILL (even-odd so overlaps subtract and holes render correctly)

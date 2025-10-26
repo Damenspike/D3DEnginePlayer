@@ -275,13 +275,13 @@ export default class D2DEdit {
 					this.lastLocal = targetLocal;
 				}
 			} else {
-				// Standard mode: delta
+				// Normal mode: delta-based move of selected logicals
 				const dx = targetLocal.x - this.lastLocal.x;
 				const dy = targetLocal.y - this.lastLocal.y;
-
+				
 				if (dx !== 0 || dy !== 0) {
 					this.hasMoved = true;
-
+				
 					const byPath = this._selectedLogicalByPathFor(obj);
 					for (const [pidx, lis] of byPath.entries()) {
 						const path = paths[pidx] || [];
@@ -293,6 +293,7 @@ export default class D2DEdit {
 							}
 						}
 					}
+				
 					this.lastLocal = targetLocal;
 				}
 			}
@@ -332,6 +333,8 @@ export default class D2DEdit {
 					});
 				}
 			} else if (this.undoSnapshot) {
+				this._maybeAutoCloseOnEnd(obj);
+				
 				this.redoSnapshot = U.snapshotPointsFor(obj, this._selectedLogicalByPathFor(obj));
 				const before = this.undoSnapshot;
 				const after  = this.redoSnapshot;
@@ -655,6 +658,43 @@ export default class D2DEdit {
 			map.set(this.grabPath, [this.grabLIndex]);
 		}
 		return map;
+	}
+	
+	_maybeAutoCloseOnEnd(obj) {
+		if (!obj || this.grabPath == null || this.grabLIndex == null) return false;
+	
+		const paths = obj?.graphic2d?._paths || [];
+		const path  = paths[this.grabPath] || [];
+		if (path.length < 2) return false;
+	
+		// already closed?
+		const a = path[0], b = path[path.length - 1];
+		if (U.approx(a.x, b.x) && U.approx(a.y, b.y)) return false;
+	
+		// only when grabbed logical is first or last
+		const logical = U.logicalPoints(path);
+		const li = this.grabLIndex;
+		if (li < 0 || li >= logical.length) return false;
+		const isFirst = (li === 0);
+		const isLast  = (li === logical.length - 1);
+		if (!isFirst && !isLast) return false;
+	
+		// distance in canvas space
+		const world  = U.worldDOMMatrix(obj);
+		const screen = U.viewMatrix(this.d2drenderer).multiply(world);
+		const A = U.applyDOM(screen, a.x, a.y);
+		const B = U.applyDOM(screen, b.x, b.y);
+		const dx = A.x - B.x, dy = A.y - B.y;
+		const d2 = dx*dx + dy*dy;
+	
+		const px = Math.max(4, Number(_editor?.draw2d?.snapPx || 10));
+		if (d2 > px*px) return false;
+	
+		// snap closed: copy coords rather than replacing objects (keeps refs stable)
+		if (isFirst) { path[0].x = b.x; path[0].y = b.y; }
+		else         { path[path.length - 1].x = a.x; path[path.length - 1].y = a.y; }
+	
+		return true;
 	}
 
 	/* ============================== snapping session (local to this class) ============================== */

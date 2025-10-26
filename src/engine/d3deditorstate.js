@@ -82,7 +82,8 @@ export default class D3DEditorState {
 			borderRadius: 0,
 			lineWidth: 5, // stroke
 			snapEnabled: true,
-			subtract: false
+			subtract: false,
+			closePolygon: false
 		}
 	}
 
@@ -302,7 +303,7 @@ export default class D3DEditorState {
 	async __save(projectURI) {
 		const zip = _root?.zip;
 		
-		this.__doBuild();
+		this.__doBuild(true);
 		
 		///////////////////////////////////
 		// -- Save zip itself --
@@ -325,30 +326,36 @@ export default class D3DEditorState {
 		
 		console.log('Project built!');
 	}
-	__doBuild() {
+	__doBuild(isEditorBuild = false) {
 		const zip = _root?.zip;
 		
 		if(!zip)
 			throw new Error('No project to build');
 		
-		_root.manifest.editorConfig = {
-			lastCameraPosition: {
+		const manifest = { ...(_root.manifest || {}) };
+		if(isEditorBuild) {
+			manifest.editorConfig.lastCameraPosition = {
 				x: _editor.camera.position.x,
 				y: _editor.camera.position.y,
 				z: _editor.camera.position.z
-			},
-			lastCameraRotation: {
+			};
+			manifest.editorConfig.lastCameraRotation = {
 				x: _editor.camera.rotation.x,
 				y: _editor.camera.rotation.y,
 				z: _editor.camera.rotation.z
-			},
-			lastScene: _root.scenes.indexOf(_root.scene)
+			};
+			manifest.editorConfig.lastScene = _root.scenes.indexOf(_root.scene);
+			manifest.editorConfig.objectStates = this.getCleanObjectStates(
+				manifest.editorConfig.objectStates
+			);
+		}else{
+			delete manifest.editorConfig;
 		}
 		
 		// Save manifest
 		this.writeFile({
 			path: 'manifest.json',
-			data: JSON.stringify(_root.manifest)
+			data: JSON.stringify(manifest)
 		});
 		
 		// Save scene graph
@@ -750,5 +757,19 @@ export default class D3DEditorState {
 	
 	async importFile(file, destDir) {
 		return await handleImportFile(file, destDir);
+	}
+	
+	getCleanObjectStates(states) {
+		const newStates = {};
+		
+		for(let uuid in states) {
+			const s = states[uuid];
+			if(!s || !Object.keys(s).length || !_root.superIndex[uuid])
+				continue;
+			
+			newStates[uuid] = s;
+		}
+		
+		return newStates;
 	}
 }

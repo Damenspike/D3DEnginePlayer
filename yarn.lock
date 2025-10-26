@@ -733,6 +733,11 @@
     "@types/babel__core" "^7.20.5"
     react-refresh "^0.17.0"
 
+"@vscode/codicons@^0.0.41":
+  version "0.0.41"
+  resolved "https://registry.yarnpkg.com/@vscode/codicons/-/codicons-0.0.41.tgz#9c04b00e1135e8b9936b4ba8c30a5bbe0bc54502"
+  integrity sha512-v6/8nx76zau3Joxjzi3eN/FVw+7jKBq4j7LTZY5FhFhq2g0OoFebZ3vRZbv/pUopGpbCnJJ4FOz+NzbjVsmoiw==
+
 asynckit@^0.4.0:
   version "0.4.0"
   resolved "https://registry.yarnpkg.com/asynckit/-/asynckit-0.4.0.tgz#c79ed97f7f34cb8f2ba1bc9790bcc366474b4b79"
