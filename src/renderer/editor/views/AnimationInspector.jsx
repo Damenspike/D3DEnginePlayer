@@ -32,7 +32,6 @@ export default function AnimationInspector() {
 	const tracksRef = useRef();
 	
 	const [selectedObject, setSelectedObject] = useState(defObject);
-	const [animManager, setAnimManager] = useState(defObject?.getComponent('Animation'));
 	const [activeClip, setActiveClip] = useState();
 	const [scale, setScale] = useState(1);
 	const [fps, setFps] = useState(_editor.animationDefaultFps);
@@ -60,6 +59,7 @@ export default function AnimationInspector() {
 	const totalFrames = Math.round(duration * fps);
 	const timingBarWidth = totalFrames * frameWidth;
 	const trackWidth = (totalFrames+1) * frameWidth;
+	const animManager = selectedObject?._animation;
 	
 	useEffect(() => {
 		
@@ -78,7 +78,12 @@ export default function AnimationInspector() {
 				obj = _editor.focus.rootParent;
 			
 			setSelectedObject(obj);
-			setAnimManager(obj?.getComponent('Animation'));
+		});
+		_events.on('refresh-component', (type) => {
+			if(type != 'Animation')
+				return;
+			
+			setActiveClip(null);
 		});
 		
 	}, []);
@@ -114,8 +119,6 @@ export default function AnimationInspector() {
 				
 				activeClip.objectTracks[objectName] = objectTrack;
 			}
-			
-			console.log(originTransform);
 			
 			const key_Pos = objectTrack.position.smartTrack.find(
 				k => Math.floor(k.time * fps) == frameNumber
@@ -262,7 +265,7 @@ export default function AnimationInspector() {
 			}
 			
 			// Rebuild the actual native three animation clip tracks based on our own spec
-			selectedObject._animation.rebuildClipTracks(activeClip.uuid);
+			animManager.rebuildClipTracks(activeClip.uuid);
 			
 			setStartKeyframePos_({...startKeyframePos_}); // hack
 		}
@@ -342,7 +345,7 @@ export default function AnimationInspector() {
 				}
 				
 				// Rebuild the actual native three animation clip tracks based on our own spec
-				selectedObject._animation.rebuildClipTracks(activeClip.uuid);
+				animManager.rebuildClipTracks(activeClip.uuid);
 				setStartKeyframePos_({...startKeyframePos_}); // hack
 			});
 			
@@ -353,7 +356,7 @@ export default function AnimationInspector() {
 						k => deleteKey(k)
 					);
 					
-					selectedObject._animation.rebuildClipTracks(activeClip.uuid);
+					animManager.rebuildClipTracks(activeClip.uuid);
 					setStartKeyframePos_({...startKeyframePos_}); // hack
 				},
 				redo: () => {
@@ -361,7 +364,7 @@ export default function AnimationInspector() {
 						k.smartTrack.push(k);
 					});
 					
-					selectedObject._animation.rebuildClipTracks(activeClip.uuid);
+					animManager.rebuildClipTracks(activeClip.uuid);
 					setStartKeyframePos_({...startKeyframePos_}); // hack
 				}
 			})
@@ -402,8 +405,8 @@ export default function AnimationInspector() {
 			setActiveClip(null);
 			return;
 		}
-		
-		setActiveClip(Object.values(animManager.clips)[0]);
+		const clipAuuid = animManager.getClipUUIDs()[0];
+		setActiveClip(animManager.clips[clipAuuid]);
 	}, [animManager]);
 	
 	useEffect(() => {
@@ -415,7 +418,7 @@ export default function AnimationInspector() {
 		if(!selectedObject || !activeClip)
 			return;
 		
-		const clipState = selectedObject._animation.getClipState(activeClip.uuid);
+		const clipState = animManager.getClipState(activeClip.uuid);
 		
 		if(!clipState)
 			return;
@@ -437,16 +440,15 @@ export default function AnimationInspector() {
 				!animationEditorRef.current.contains(e.target) && 
 				!recording
 			) {
-				console.log('Clicked outside of animation editor, resetting transforms...');
-				
-				if(!selectedObject || !activeClip)
+				if(!selectedObject || !activeClip || !animManager)
 					return;
 				
-				const clipState = selectedObject._animation.getClipState(activeClip.uuid);
+				const clipState = animManager.getClipState(activeClip.uuid);
 				
 				if(!clipState)
 					return;
 				
+				console.log('Clicked outside of animation editor, resetting transforms...');
 				clipState.resetAnimationTransforms();
 			}
 		}
@@ -479,7 +481,7 @@ export default function AnimationInspector() {
 							keyE_Scl && objectTrack.scale.smartTrack.push(keyE_Scl);
 						});
 						// Rebuild the actual native three animation clip tracks based on our own spec
-						selectedObject._animation.rebuildClipTracks(activeClip.uuid);
+						animManager.rebuildClipTracks(activeClip.uuid);
 						setSelectedKeys([...selectedKeys]);
 					},
 					redo: () => {
@@ -501,7 +503,7 @@ export default function AnimationInspector() {
 							activeClip.objectTracks[track] = deletedTrack;
 						});
 						// Rebuild the actual native three animation clip tracks based on our own spec
-						selectedObject._animation.rebuildClipTracks(activeClip.uuid);
+						animManager.rebuildClipTracks(activeClip.uuid);
 						setSelectedTracks([...selectedTracks]);
 					},
 					redo: () => {
@@ -642,10 +644,10 @@ export default function AnimationInspector() {
 	}
 	const togglePlaying = () => {
 		if(playing) {
-			selectedObject._animation.pause(activeClip.uuid);
+			animManager.pause(activeClip.uuid);
 			setPlaying(false);
 		}else{
-			selectedObject._animation.play(activeClip.uuid, {
+			animManager.play(activeClip.uuid, {
 				listener: (state) => {
 					setPlaying(state.playing);
 					setCurrentTime(state.normalizedTime);
@@ -655,9 +657,9 @@ export default function AnimationInspector() {
 		}
 	}
 	const updateKeyDown = (e) => {
-		if(e.key === 'Delete' || e.key === 'Backspace') {
+		/*if(e.key === 'Delete' || e.key === 'Backspace') {
 			console.log('Delete action');
-		}
+		}*/
 	}
 	const updateMouseMove = (e) => {
 		updateKeyframeMove(e);
@@ -739,13 +741,13 @@ export default function AnimationInspector() {
 				undo: () => {
 					moveActions.forEach(a => a.undo())
 					
-					selectedObject._animation.rebuildClipTracks(activeClip.uuid);
+					animManager.rebuildClipTracks(activeClip.uuid);
 					setStartKeyframePos_({x: e.pageX, y: e.pageY}); // hack
 				},
 				redo: () => {
 					moveActions.forEach(a => a.redo())
 					
-					selectedObject._animation.rebuildClipTracks(activeClip.uuid);
+					animManager.rebuildClipTracks(activeClip.uuid);
 					setStartKeyframePos_({x: e.pageX, y: e.pageY}); // hack
 				}
 			})
@@ -753,7 +755,7 @@ export default function AnimationInspector() {
 		}
 		
 		// Rebuild the actual native three animation clip tracks based on our own spec
-		selectedObject._animation.rebuildClipTracks(activeClip.uuid);
+		animManager.rebuildClipTracks(activeClip.uuid);
 		
 		setStartKeyframePos_({x: e.pageX, y: e.pageY}); // hack
 	}
@@ -824,7 +826,7 @@ export default function AnimationInspector() {
 				);
 			}
 			// Rebuild the actual native three animation clip tracks based on our own spec
-			selectedObject._animation.rebuildClipTracks(activeClip.uuid);
+			animManager.rebuildClipTracks(activeClip.uuid);
 		}
 		
 		doDelete();
@@ -850,7 +852,7 @@ export default function AnimationInspector() {
 	}
 	const deleteTrack = (track) => {
 		const objectTrack = activeClip.objectTracks[track];
-		const clipState = selectedObject._animation.getClipState(activeClip.uuid);
+		const clipState = animManager.getClipState(activeClip.uuid);
 		
 		if(clipState) {
 			const d3dtarget = clipState.findAnimationTarget(track);
@@ -861,7 +863,7 @@ export default function AnimationInspector() {
 			delete activeClip.objectTracks[track];
 			
 			// Rebuild the actual native three animation clip tracks based on our own spec
-			selectedObject._animation.rebuildClipTracks(activeClip.uuid);
+			animManager.rebuildClipTracks(activeClip.uuid);
 		}
 		
 		doDelete();
@@ -1123,7 +1125,7 @@ export default function AnimationInspector() {
 								
 								let clip = animManager.getClip(uuid);
 								
-								if(!clip) {
+								if(!clip && animManager.hasClip(uuid)) {
 									animManager.__loadClip(uuid)
 									.then(() => {
 										clip = animManager.getClip(uuid);
@@ -1148,7 +1150,7 @@ export default function AnimationInspector() {
 			)
 		}
 		const drawTimeline = () => {
-			if(!activeClip)
+			if(!activeClip || !animManager.hasClip(activeClip.uuid))
 				return;
 				
 			if(duration <= 0 || isNaN(duration)) {
@@ -1279,7 +1281,7 @@ export default function AnimationInspector() {
 						classes.push('track--selected')
 						
 					if(objectLabel == '__self__')
-						objectLabel = `(${selectedObject.name})`;
+						objectLabel = `Self (${selectedObject.name})`;
 					
 					rows.push(
 						<div 

@@ -196,38 +196,70 @@ export default class D2DDraw {
 	_onDown(e) {
 		if (!this._isActive()) return;
 		e.preventDefault();
-
+	
 		this.tool = _editor.tool;
 		this._snapCache = null;
-
+	
 		const c = U.mouseToCanvas(this.canvas, e);
 		this.cursor = c;
-
+	
 		const s = this._snap(c);
 		const p = s ? { x:s.hostLocal.x, y:s.hostLocal.y } : U.canvasToLocal(this.d2drenderer, _editor.focus, c);
 		this.cursorLocal = p;
 		this._snapHit = s || null;
-
-		// polygon: click-to-add path vertices
+	
+		// polygon: click-to-add path vertices + near-start auto-close
 		if (this.tool === 'polygon') {
+			const closeEnabled = !!_editor?.draw2d?.closePolygon;
+			const tolPx = Math.max(6, Number(_editor?.draw2d?.closePx || 10));
+			const pr = this.d2drenderer?.pixelRatio || 1;
+			const vs = this.d2drenderer?.viewScale || 1;
+			const tolLocal = tolPx / (pr * vs);
+	
 			if (!this.drawing) {
 				this.drawing = true;
 				this.localPoints = [{ x:p.x, y:p.y }];
-				this._ensureTemp().then(()=>{ if (this.tempObj) this.tempObj.visible=false; this._updateTempGraphic(true); this._request(); });
-			} else {
-				this.localPoints.push({ x:p.x, y:p.y });
-				this._updateTempGraphic(); this._request();
+				this._ensureTemp().then(()=>{
+					if (this.tempObj) this.tempObj.visible = false;
+					this._updateTempGraphic(true);
+					this._request();
+				});
+				return;
 			}
+	
+			// already drawing
+			const baseOpen = U.logicalPoints ? U.logicalPoints(this.localPoints) : this.localPoints.slice();
+			if (closeEnabled && baseOpen.length >= 2) {
+				const start = baseOpen[0];
+				const dx = p.x - start.x;
+				const dy = p.y - start.y;
+				if ((dx * dx + dy * dy) <= tolLocal * tolLocal) {
+					// auto-complete
+					const pathCand = baseOpen.length >= 3 ? baseOpen : baseOpen.concat([{ x:p.x, y:p.y }]);
+					this.localPoints = U.cleanAndClose(pathCand);
+					this._finalizeShape();
+					return;
+				}
+			}
+	
+			// otherwise just add vertex
+			this.localPoints.push({ x:p.x, y:p.y });
+			this._updateTempGraphic();
+			this._request();
 			return;
 		}
-
+	
 		// all other tools
 		this.drawing = true;
 		this.localPoints = [{ x:p.x, y:p.y }];
 		if (['line','square','text','circle'].includes(this.tool)) {
 			this.localPoints.push({ x:p.x, y:p.y });
 		}
-		this._ensureTemp().then(()=>{ if (this.tempObj) this.tempObj.visible=false; this._updateTempGraphic(true); this._request(); });
+		this._ensureTemp().then(()=>{
+			if (this.tempObj) this.tempObj.visible = false;
+			this._updateTempGraphic(true);
+			this._request();
+		});
 	}
 
 	_onMove(e) {

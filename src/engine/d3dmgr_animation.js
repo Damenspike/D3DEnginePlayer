@@ -208,6 +208,9 @@ export default function AnimationManager(d3dobject, component) {
 		
 		this.__saveClip(uuid);
 	}
+	this.hasClip = (uuid) => {
+		return !!component.properties.clips.find(c => c == uuid);
+	}
 	this.getClip = (uuid) => {
 		return this.clips[uuid];
 	}
@@ -345,7 +348,7 @@ function AnimationState({d3dobject, clip}) {
 	}
 	this.resetAnimationTransforms = () => {
 		for(let name in this.clip.objectTracks) {
-			const d3dtarget = this.d3dobject.findDeep(name)[0];
+			const d3dtarget = this.findAnimationTarget(name);
 			
 			if(!d3dtarget)
 				return;

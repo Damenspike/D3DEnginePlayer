@@ -497,7 +497,12 @@ export default function Inspector() {
 							update();
 						}
 					});
+					
+					// Remove from dummy first
+					dummyObject.components.splice(dummyObject.components.findIndex(c => c.type == component.type), 1);
 					object.removeComponent(component.type);
+					
+					_events.invoke('refresh-component', component.type);
 					
 					update();
 				}
@@ -889,6 +894,8 @@ export default function Inspector() {
 														val
 													);
 													
+													_events.invoke('refresh-component', component.type);
+													
 													update();
 												}
 											})
@@ -936,6 +943,8 @@ export default function Inspector() {
 																fieldId,
 																val
 															);
+															
+															_events.invoke('refresh-component', component.type);
 															
 															update();
 														}}
