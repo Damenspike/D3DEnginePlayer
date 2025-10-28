@@ -773,7 +773,7 @@ function newAsset(extension, data) {
 			name = 'HTML';
 		break;
 		case 'anim':
-			name = 'Animation';
+			name = 'New Clip';
 		break;
 	}
 	

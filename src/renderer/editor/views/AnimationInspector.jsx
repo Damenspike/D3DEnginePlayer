@@ -84,6 +84,7 @@ export default function AnimationInspector() {
 				return;
 			
 			setActiveClip(null);
+			setStartKeyframePos_({...startKeyframePos_}); // hack
 		});
 		
 	}, []);
@@ -932,6 +933,22 @@ export default function AnimationInspector() {
 			setSelectedKeys(newlySelected);
 		}
 	}
+	const createNewAnimationClip = async () => {
+		const clip = {
+			blendMode: 2500,
+			duration: 1,
+			name: 'New Clip',
+			tracks: [],
+			uuid: uuidv4()
+		};
+		const path = _editor.addNewFile({
+			name: `${clip.name}.anim`,
+			data: JSON.stringify(clip)
+		});
+		const uuid = _root.resolveAssetId(path);
+		await animManager.addClipFromUUID(uuid);
+		setActiveClip(animManager.clips[uuid]);
+	}
 	
 	const drawAnimationEditor = () => {
 		if(!selectedObject) {
@@ -959,6 +976,18 @@ export default function AnimationInspector() {
 						_editor.probeSelection();
 					}}>
 						Animate
+					</button>
+				</div>
+			)
+		}
+		if(animManager.getClipUUIDs().length < 1) {
+			return (
+				<div className='noanim-placeholder'>
+					<p>
+						{selectedObject.name} has no animation clips
+					</p>
+					<button onClick={() => createNewAnimationClip()}>
+						New Clip
 					</button>
 				</div>
 			)
@@ -999,10 +1028,11 @@ export default function AnimationInspector() {
 							Choose a clip
 						</option>
 						{rows}
+						{/*
 						<option disabled>––––––––</option>
 						<option key="new" value="__new__">
 							Add new...
-						</option>
+						</option>*/}
 					</>
 				);
 			}
@@ -1107,7 +1137,7 @@ export default function AnimationInspector() {
 							onChange={async (e) => {
 								let uuid = e.target.value;
 								
-								if(e.target.value == '__new__') {
+								/*if(e.target.value == '__new__') {
 									const clip = {
 										blendMode: 2500,
 										duration: 1,
@@ -1121,7 +1151,7 @@ export default function AnimationInspector() {
 									});
 									uuid = _root.resolveAssetId(path);
 									await animManager.addClipFromUUID(uuid);
-								}
+								}*/
 								
 								let clip = animManager.getClip(uuid);
 								

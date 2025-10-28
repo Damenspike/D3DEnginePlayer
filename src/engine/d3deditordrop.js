@@ -24,6 +24,9 @@ export async function onAssetDroppedIntoGameView(path, screenPos) {
 
 		case 'glbcontainer':
 		case 'gltfcontainer': {
+			if(_editor.mode != '3D')
+				_editor.mode = '3D';
+			
 			/*
 				Extract animations
 			*/
@@ -83,6 +86,9 @@ export async function onAssetDroppedIntoGameView(path, screenPos) {
 
 		case 'glb':
 		case 'gltf': {
+			if(_editor.mode != '3D')
+				_editor.mode = '3D';
+			
 			const d3d = await spawnModelFromZip(path, zip, null);
 			_editor.moveObjectToCameraView(d3d);
 			_editor.setSelection([d3d]);

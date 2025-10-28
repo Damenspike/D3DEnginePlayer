@@ -81,7 +81,9 @@ export default function AnimationManager(d3dobject, component) {
 		try {
 			const json = await d3dobject.root.readFile(path);
 			const clipObj = JSON.parse(json);
-			this.__addLoadedClip(uuid, baseName, clipObj);
+			
+			if(clipObj)
+				this.__addLoadedClip(uuid, baseName, clipObj);
 		}catch(e) {
 			console.error(path, 'is a corrupt animation clip');
 			console.error(e);
