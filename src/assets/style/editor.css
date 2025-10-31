@@ -677,7 +677,7 @@ body.dark {
 }
 .object-path-item:hover {
 	text-decoration: underline;
-	filter: brightness(50%);
+	color: #56a1ff;
 }
 .path-container {
 	margin-bottom: 5px;
@@ -1079,7 +1079,7 @@ body.dark {
 	position: absolute;
 	top: 5px;
 	left: 5px;
-	background: rgba(0, 0, 0, 0.672);
+	background: rgba(0, 0, 0, 0.8);
 	color: white;
 	padding: 5px;
 	border-radius: 10px;

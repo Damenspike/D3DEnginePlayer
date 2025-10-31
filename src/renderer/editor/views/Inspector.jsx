@@ -7,6 +7,7 @@ import AssetExplorerDialog from './AssetExplorerDialog.jsx';
 import ObjectRow from './ObjectRow.jsx';
 import MaterialEditor from './MaterialEditor.jsx';
 import ColorPicker from './ColorPicker.jsx';
+import ColorPickerBest from './ColorPickerBest.jsx'
 
 import { 
 	MdDelete, 
@@ -74,7 +75,7 @@ export default function Inspector() {
 	const THREE = window.THREE;
 	
 	const [tab, setTab] = useState(Tabs.All);
-	const [object, setObject] = useState();
+	const [objects, setObjects] = useState([]);
 	const [dummyObject, setDummyObject] = useState();
 	const [dummyProject, setDummyProject] = useState();
 	const [assetExplorerOpen, setAssetExplorerOpen] = useState(false);
@@ -107,7 +108,7 @@ export default function Inspector() {
 		});
 		_events.on('selected-objects', (selectedObjects) => {
 			const selectedObject = selectedObjects[0];
-			setObject(selectedObject);
+			setObjects([...selectedObjects]);
 		
 			if(!selectedObject) {
 				setDummyObject({});
@@ -177,11 +178,11 @@ export default function Inspector() {
 				return;
 			
 			_editor.deleteSelectedObjects();
-			setObject(null);
+			setObjects([]);
 		}else
 		if(selectedAssetPaths.size > 0) {
 			_editor.deleteSelectedAssets();
-			setObject(null);
+			setObjects([]);
 		}
 		
 		update();
@@ -216,6 +217,10 @@ export default function Inspector() {
 		/>
 	)
 	const drawObjectInspector = () => {
+		if(objects?.length < 1) {
+			// Should never happen. dummyObject == defined = objects.length > 0;
+			return;
+		}
 		if(dummyObject.part) {
 			// Is a vector part
 			return;
@@ -232,226 +237,249 @@ export default function Inspector() {
 				onExpand={() => setObjectInspectorExpanded(!objectInspectorExpanded)}
 				alwaysOpen={tab != Tabs.All}
 			>
-				<div className="field">
-					<label>Name</label>
-					<input 
-						className="tf" 
-						type="text" 
-						value={dummyObject.name} 
-						onKeyDown={autoBlur}
-						onChange={e => {
-							dummyObject.name = e.target.value;
-							update();
-						}}
-						onBlur={e => {
-							const val = String(e.target.value).trim() || '';
-							
-							if(!val || !object.isNameAllowed(val)) {
-								dummyObject.name = object.name; // revert
-								update();
+				{
+					objects.length === 1 && (
+						<div className="field">
+							<label>Name</label>
+							<input 
+								className="tf" 
+								type="text" 
+								value={dummyObject.name} 
+								onKeyDown={autoBlur}
+								onChange={e => {
+									dummyObject.name = e.target.value;
+									update();
+								}}
+								onBlur={e => {
+									const val = String(e.target.value).trim() || '';
+									
+									if(!val || !objects[0].isNameAllowed(val)) {
+										dummyObject.name = objects[0].name; // revert
+										update();
+										
+										return _editor.showError(`Object name not allowed. ${val != '' && !objects[0].isValidName(val) ? 'Object names can only contain alphanumeric characters.' : ''}`);
+									}
+									
+									const oldName = object.name;
+									const newName = val;
+									_editor.addStep({
+										name: 'Edit object name',
+										undo: () => {
+											object.name = oldName;
+											dummyObject.name = oldName;
+											update();
+										},
+										redo: () => {
+											object.name = newName;
+											dummyObject.name = newName;
+											update();
+										}
+									});
+									
+									object.name = val;
+									dummyObject.name = val;
+									update();
+								}}
+							/>
+						</div>
+					)
+				}
+				{
+					objects.length > 1 && (
+						<div className='small gray mb'>
+							<i>Multiple objects selected</i>
+						</div>
+					)
+				}
+				
+				<div className="field mt2">
+					<div className="field vector-field">
+						<VectorInput 
+							label="Position"
+							values={objects.map(o => o.position)} 
+							onSave={vector => {
+								objects.forEach(object => {
+									object.__inspApplyPos = () => object.setPosition(
+										new THREE.Vector3(
+											vector.x == '-' ? object.position.x : vector.x, 
+											vector.y == '-' ? object.position.y : vector.y, 
+											vector.z == '-' ? object.position.z : vector.z
+										)
+									);
+									object.__inspApplyPos();
+								});
 								
-								return _editor.showError(`Object name not allowed. ${val != '' && !object.isValidName(val) ? 'Object names can only contain alphanumeric characters.' : ''}`);
-							}
-							
-							const oldName = object.name;
-							const newName = val;
-							_editor.addStep({
-								name: 'Edit object name',
-								undo: () => {
-									object.name = oldName;
-									dummyObject.name = oldName;
-									update();
-								},
-								redo: () => {
-									object.name = newName;
-									dummyObject.name = newName;
-									update();
-								}
-							});
-							
-							object.name = val;
-							dummyObject.name = val;
-							update();
-						}}
-					/>
-				</div>
-				
-				{objectInspectorExpanded && (
-					<div className="field mt2">
-						<div className="field vector-field">
-							<VectorInput 
-								label="Position"
-								value={object.position} 
-								onSave={vector => {
-									const oldPosition = object.position.clone();
-									const newPosition = new THREE.Vector3(vector.x, vector.y, vector.z);
-									_editor.addStep({
-										name: 'Update position',
-										undo: () => {
-											object.position.copy(oldPosition);
-										},
-										redo: () => {
-											object.position.copy(newPosition);
-										}
-									});
-									object.position.copy(newPosition);
-									
-									_events.invoke(
-										'transform-changed', 
-										object, 
-										['pos'], 
-										{
-											position: oldPosition,
-											rotation: object.rotation,
-											quaternion: object.quaternion,
-											scale: object.scale
-										}
-									);
-								}} 
-							/>
-						</div>
-						<div className="field vector-field">
-							<VectorInput 
-								label="Rotation"
-								value={{
-									x: THREE.MathUtils.radToDeg(object.rotation.x),
-									y: THREE.MathUtils.radToDeg(object.rotation.y),
-									z: THREE.MathUtils.radToDeg(object.rotation.z)
-								}} 
-								onSave={vector => {
-									const oldRotation = object.quaternion.clone();
-									const oldRotation3 = object.rotation.clone();
-									const newRotation = new THREE.Euler(
-										THREE.MathUtils.degToRad(vector.x), 
-										THREE.MathUtils.degToRad(vector.y), 
-										THREE.MathUtils.degToRad(vector.z)
-									);
-									_editor.addStep({
-										name: 'Update rotation',
-										undo: () => {
-											object.rotation.copy(oldRotation);
-										},
-										redo: () => {
-											object.rotation.copy(newRotation);
-										}
-									});
-									object.rotation.copy(newRotation);
-									
-									_events.invoke(
-										'transform-changed', 
-										object, 
-										['rot'], 
-										{
-											position: object.position,
-											rotation: oldRotation3,
-											quaternion: oldRotation,
-											scale: object.scale
-										}
-									);
-								}} 
-							/>
-						</div>
-						<div className="field vector-field">
-							<VectorInput 
-								label="Scale"
-								value={object.scale} 
-								onSave={vector => {
-									const oldScale = object.scale.clone();
-									const newScale = new THREE.Vector3(vector.x, vector.y, vector.z);
-									_editor.addStep({
-										name: 'Update scale',
-										undo: () => {
-											object.position.copy(oldScale);
-										},
-										redo: () => {
-											object.position.copy(newScale);
-										}
-									});
-									object.scale.copy(newScale);
-									
-									_events.invoke(
-										'transform-changed', 
-										object, 
-										['scl'], 
-										{
-											position: object.position,
-											rotation: object.rotation,
-											quaternion: object.quaternion,
-											scale: oldScale
-										}
-									);
-								}} 
-							/>
-						</div>
-						<div style={{height: 20}}></div>
-						<div className="vector-input vector-input--top">
-							<div>
-								<label>Visible</label>
-								<input 
-									type="checkbox" 
-									checked={object.visible} 
-									onChange={e => {
-										const oldVisible = object.visible;
-										const newVisible = e.target.checked;
-										_editor.addStep({
-											name: 'Update scale',
-											undo: () => {
-												object.visible = oldVisible;
-												update();
-											},
-											redo: () => {
-												object.visible = newVisible;
-												update();
-											}
-										});
-										
-										object.visible = e.target.checked;
-										update();
-									}} 
-								/>
-							</div>
-							<div>
-								<label>Opacity</label>
-								<input 
-									type="range" 
-									min={0} 
-									max={1}
-									step={0.01}
-									value={object.opacity} 
-									onChange={e => {
-										const val = Number(e.target.value);
-										
-										const oldOpacity = object.opacity;
-										const newOpacity = val;
-										_editor.addStep({
-											name: 'Update scale',
-											undo: () => {
-												object.opacity = oldOpacity;
-												update();
-											},
-											redo: () => {
-												object.opacity = newOpacity;
-												update();
-											}
-										});
-										
-										object.opacity = val;
-										update();
-									}}
-								/>
-							</div>
-						</div>
+								_editor.addStep({
+									name: 'Update position',
+									undo: () => {
+										objects.forEach(object => 
+											object.setPosition(object.__spOldPosition)
+										);
+									},
+									redo: () => {
+										objects.forEach(object => object.__inspApplyPos());
+									}
+								});
+							}}
+						/>
 					</div>
-				)}
-				
-				<div className="components-editor">
-					{drawComponentsEditor()}
+					<div className="field vector-field">
+						<VectorInput 
+							label="Rotation"
+							values={objects.map(o => (
+								{
+									x: THREE.MathUtils.radToDeg(o.rotation.x),
+									y: THREE.MathUtils.radToDeg(o.rotation.y),
+									z: THREE.MathUtils.radToDeg(o.rotation.z)
+								}
+							))}
+							onSave={vector => {
+								objects.forEach(object => {
+									object.__inspApplyRot = () => object.setRotation(
+										new THREE.Euler(
+											vector.x == '-' ? object.rotation.x : THREE.MathUtils.degToRad(vector.x), 
+											vector.y == '-' ? object.rotation.y : THREE.MathUtils.degToRad(vector.y), 
+											vector.z == '-' ? object.rotation.z : THREE.MathUtils.degToRad(vector.z)
+										)
+									);
+									object.__inspApplyRot();
+								});
+								
+								_editor.addStep({
+									name: 'Update rotation',
+									undo: () => {
+										objects.forEach(object => 
+											object.setRotation(object.__spOldRotation)
+										);
+									},
+									redo: () => {
+										objects.forEach(object => object.__inspApplyRot());
+									}
+								});
+							}}  
+						/>
+					</div>
+					<div className="field vector-field">
+						<VectorInput 
+							label="Scale"
+							values={objects.map(o => o.scale)} 
+							onSave={vector => {
+								objects.forEach(object => {
+									object.__inspApplyScl = () => object.setScale(
+										new THREE.Vector3(
+											vector.x == '-' ? object.scale.x : vector.x, 
+											vector.y == '-' ? object.scale.y : vector.y, 
+											vector.z == '-' ? object.scale.z : vector.z
+										)
+									);
+									object.__inspApplyScl();
+								});
+								
+								_editor.addStep({
+									name: 'Update scale',
+									undo: () => {
+										objects.forEach(object => 
+											object.setScale(object.__spOldScale)
+										);
+									},
+									redo: () => {
+										objects.forEach(object => object.__inspApplyScl());
+									}
+								});
+							}}
+						/>
+					</div>
+					{
+						objectInspectorExpanded && (
+							<>
+								<div style={{height: 20}}></div>
+								<div className="vector-input vector-input--top">
+									<div>
+										<label>Visible</label>
+										<input 
+											type="checkbox" 
+											checked={objects[0].visible} 
+											onChange={e => {
+												const newVisible = e.target.checked;
+												
+												objects.forEach(object => {
+													object.__inspWasVisible = object.visible;
+													object.visible = newVisible;
+												});
+												update();
+												
+												_editor.addStep({
+													name: 'Update visibility',
+													undo: () => {
+														objects.forEach(object => {
+															object.visible = object.__inspWasVisible;
+														});
+														update();
+													},
+													redo: () => {
+														objects.forEach(object => {
+															object.visible = newVisible;
+														});
+														update();
+													}
+												});
+											}} 
+										/>
+									</div>
+									<div>
+										<label>Opacity</label>
+										<input 
+											type="range" 
+											min={0} 
+											max={1}
+											step={0.01}
+											value={objects[0].opacity} 
+											onChange={e => {
+												const newOpacity = Number(e.target.value);
+												
+												objects.forEach(object => {
+													object.__inspOldOpacity = object.opacity;
+													object.opacity = newOpacity;
+												});
+												update();
+												
+												_editor.addStep({
+													name: 'Update opacity',
+													undo: () => {
+														objects.forEach(object => {
+															object.opacity = object.__inspOldOpacity;
+														});
+														update();
+													},
+													redo: () => {
+														objects.forEach(object => {
+															object.opacity = newOpacity;
+														});
+														update();
+													}
+												});
+											}} 
+										/>
+									</div>
+								</div>
+							</>
+						)
+					}
 				</div>
+				
+				{
+					objects.length === 1 && (
+						<div className="components-editor">
+							{drawComponentsEditor()}
+						</div>
+					)
+				}
 			</InspectorCell>
 		)
 	}
 	const drawComponentsEditor = () => {
 		const rows = [];
+		const object = objects[0];
 		
 		object.components.forEach(component => {
 			if(!dummyObject.components)
@@ -774,6 +802,30 @@ export default function Inspector() {
 								displayMode='small'
 								onKeyDown={autoBlur}
 								readOnly={field.readOnly}
+								onClick={val => {
+									dummyComponent.__oldValue = val;
+								}}
+								onChange={val => {
+									dummyComponent.properties[fieldId] = val;
+									update();
+									object.setComponentValue(
+										component.type,
+										fieldId,
+										val
+									);
+								}}
+								onBlur={val => {
+									addStepManual(dummyComponent.__oldValue, val);
+									dummyComponent.__oldValue = val;
+								}}
+							/>
+						);
+						break;
+					}
+					case 'colorbest': {
+						fieldContent = (
+							<ColorPickerBest
+								value={String(current)}
 								onClick={val => {
 									dummyComponent.__oldValue = val;
 								}}
@@ -2386,7 +2438,7 @@ export default function Inspector() {
 			<div className={`insp-itself insp-view-${tab}`}>
 				{(tab == 'assets' || tab == 'all') && _root && drawAssetInspector()}
 				{(tab == 'scene' || tab == 'all') && _root && drawSceneInspector()}
-				{(tab == 'object' || tab == 'all') && object && drawObjectInspector()}
+				{(tab == 'object' || tab == 'all') && objects.length > 0 && drawObjectInspector()}
 				{selectedAssetPaths.size == 1 && drawMediaInspector()}
 				{(tab == 'project' || tab == 'all') && _editor.project && _editor.focus == _root && drawProjectInspector()}
 				

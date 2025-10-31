@@ -1039,6 +1039,241 @@ export function passesAncestorMasks(node, wx, wy) {
 	return true;
 }
 
+/* ==================== color helpers ==================== */
+
+function clamp01(x){ return Math.max(0, Math.min(1, x)); }
+
+// split by top-level commas (ignores commas inside parentheses)
+function splitTopLevel(listStr){
+	const out = [];
+	let depth = 0, start = 0;
+	for (let i=0; i<listStr.length; i++){
+		const ch = listStr[i];
+		if (ch === '(') depth++;
+		else if (ch === ')') depth = Math.max(0, depth-1);
+		else if (ch === ',' && depth === 0){
+			out.push(listStr.slice(start, i).trim());
+			start = i+1;
+		}
+	}
+	out.push(listStr.slice(start).trim());
+	return out.filter(Boolean);
+}
+
+// Normalize color tokens: supports #rgb/#rrggbb/#rrggbbaa, 0xRRGGBBAA, rgb(...), rgba(...), case-insensitive.
+export function hex8ToRgba(input, fallback='#000'){
+	if (!input) return fallback;
+	let s = String(input).trim();
+
+	// Treat uppercase functions
+	s = s.replace(/^RGB(A?)\s*\(/, (_m,a)=> a ? 'rgba(' : 'rgb(');
+
+	// #rrggbbaa → rgba
+	const m8 = s.match(/^#([0-9a-f]{8})$/i);
+	if (m8){
+		const h = m8[1];
+		const r = parseInt(h.slice(0,2),16);
+		const g = parseInt(h.slice(2,4),16);
+		const b = parseInt(h.slice(4,6),16);
+		const a = parseInt(h.slice(6,8),16) / 255;
+		return `rgba(${r},${g},${b},${clamp01(a)})`;
+	}
+
+	// 0xRRGGBBAA → rgba
+	const m0x = s.match(/^0x([0-9a-f]{8})$/i);
+	if (m0x){
+		const n = parseInt(m0x[1], 16) >>> 0;
+		const r = (n >>> 24) & 0xff;
+		const g = (n >>> 16) & 0xff;
+		const b = (n >>> 8)  & 0xff;
+		const a = (n & 0xff) / 255;
+		return `rgba(${r},${g},${b},${clamp01(a)})`;
+	}
+
+	// #rrggbb / #rgb → let canvas handle
+	if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(s)) return s;
+
+	// rgb(r,g,b) → rgba(r,g,b,1)
+	const mRgb = s.match(/^rgb\(\s*([^)]*)\)$/i);
+	if (mRgb){
+		const parts = mRgb[1].split(',').map(t=>t.trim());
+		if (parts.length >= 3) return `rgba(${parts[0]},${parts[1]},${parts[2]},1)`;
+	}
+
+	// rgba(...) or named color: pass through as-is
+	return s || fallback;
+}
+
+// Parse "color [offset]" where offset is "##%" or 0..1
+function parseColorStop(stopStr){
+	// split off the final numeric token if present
+	const m = stopStr.match(/^(.*?)(?:\s+([0-9.]+%|[0-9.]+))?$/);
+	if (!m) return null;
+	const colorRaw = m[1].trim();
+	let off = m[2];
+
+	const color = hex8ToRgba(colorRaw, null);
+	if (!color) return null;
+
+	let offset = null;
+	if (off != null){
+		offset = /%$/.test(off) ? clamp01(parseFloat(off)/100) : clamp01(parseFloat(off));
+		if (!Number.isFinite(offset)) offset = null;
+	}
+	return { color, offset };
+}
+
+// Fill in missing offsets evenly, clamp & sort
+function normalizeStops(stops){
+	const parsed = stops.map(parseColorStop).filter(Boolean);
+	if (parsed.length === 0) return parsed;
+	const missing = parsed.some(s=> s.offset == null);
+	if (missing){
+		const n = parsed.length;
+		for (let i=0;i<n;i++) parsed[i].offset = (n===1) ? 0 : i/(n-1);
+	} else {
+		for (const s of parsed) s.offset = clamp01(s.offset);
+		parsed.sort((a,b)=> a.offset - b.offset);
+	}
+	return parsed;
+}
+
+/* ===================== gradient parsers ===================== */
+
+export function parseLinearGradient(s){
+	// linear-gradient( [angle]?, stop, stop, ... )
+	const inner = s.slice(s.indexOf('(')+1, s.lastIndexOf(')'));
+	const parts = splitTopLevel(inner);
+	if (parts.length === 0) return null;
+
+	let angleRad = 0;
+	let startIdx = 0;
+
+	// angle first?
+	const m = parts[0].match(/(-?\d+(\.\d+)?)\s*deg/i);
+	if (m){
+		angleRad = (parseFloat(m[1]) * Math.PI) / 180;
+		startIdx = 1;
+	}
+
+	const stops = normalizeStops(parts.slice(startIdx));
+	if (stops.length === 0) return null;
+
+	return { angleRad, stops };
+}
+
+export function parseRadialGradient(s){
+	// radial-gradient( [<shape>? <size>? [at <pos>]?]?, stop, stop, ... )
+	const inner = s.slice(s.indexOf('(')+1, s.lastIndexOf(')'));
+	const parts = splitTopLevel(inner);
+	if (parts.length === 0) return null;
+
+	let cx = 0.5, cy = 0.5;
+	let startIdx = 0;
+
+	// Known tokens we should consume if they appear in the leading segment
+	const SHAPES = /(?:^|\s)(circle|ellipse)(?:\s|$)/i;
+	const SIZES  = /(?:^|\s)(closest-side|farthest-side|closest-corner|farthest-corner)(?:\s|$)/i;
+
+	const lead = parts[0].trim();
+
+	// Helper: extract "at X% Y%" from a string if present
+	const extractAt = (str) => {
+		// allow "at 30% 60%" or "at 30 60" (we'll treat bare numbers as percents 0..100)
+		const m = str.match(/\bat\s+([0-9.]+)(%?)\s+([0-9.]+)(%?)/i);
+		if (!m) return false;
+		const nx = parseFloat(m[1]); const ny = parseFloat(m[3]);
+		if (!Number.isFinite(nx) || !Number.isFinite(ny)) return false;
+		const x = m[2] === '%' ? nx/100 : nx/100;
+		const y = m[4] === '%' ? ny/100 : ny/100;
+		cx = Math.max(0, Math.min(1, x));
+		cy = Math.max(0, Math.min(1, y));
+		return true;
+	};
+
+	// Cases we should treat as a “leading descriptor” that must be consumed:
+	//  - "circle"
+	//  - "ellipse"
+	//  - any size keyword
+	//  - "at X Y" by itself
+	//  - any combination of the above (order-insensitive, typical CSS is shape size at pos)
+	let consumedLead = false;
+	if (SHAPES.test(lead) || SIZES.test(lead) || /\bat\s+/i.test(lead)) {
+		// If there’s an "at ..." clause in the lead, extract center
+		extractAt(lead);
+		consumedLead = true;
+	} else if (/^\s*at\s+/i.test(lead)) {
+		// If the entire first part is just "at X Y"
+		if (extractAt(lead)) consumedLead = true;
+	}
+
+	if (consumedLead) startIdx = 1;
+
+	const stops = normalizeStops(parts.slice(startIdx));
+	if (stops.length === 0) return null;
+
+	return { cx, cy, stops };
+}
+
+/* ===================== main: toCanvasPaint ===================== */
+
+export function toCanvasPaint(ctx, paint, bounds) {
+	if (!paint) return '#000';
+	if (typeof paint !== 'string') {
+		// later: normalize objects -> css string here
+		return '#000';
+	}
+	const s = paint.trim();
+
+	// ----- linear-gradient -----
+	if (/^linear-gradient/i.test(s)) {
+		const g = parseLinearGradient(s);
+		if (!g) return s;
+
+		// Center of bounds
+		const cx = bounds.x + bounds.w * 0.5;
+		const cy = bounds.y + bounds.h * 0.5;
+
+		// Canvas vs CSS angle: canvas 0rad = +X, CSS 0deg = "to top"
+		// We keep your original correction:
+		const angleRad = g.angleRad - Math.PI / 2;
+
+		const ux = Math.cos(angleRad), uy = Math.sin(angleRad);
+		const rx = bounds.w * 0.5,     ry = bounds.h * 0.5;
+		const L  = Math.hypot(ux * rx, uy * ry) || 1;
+
+		const x0 = cx - ux * L, y0 = cy - uy * L;
+		const x1 = cx + ux * L, y1 = cy + uy * L;
+
+		const grad = ctx.createLinearGradient(x0, y0, x1, y1);
+		for (const stop of g.stops) {
+			grad.addColorStop(stop.offset, hex8ToRgba(stop.color, stop.color));
+		}
+		return grad;
+	}
+
+	// ----- radial-gradient -----
+	if (/^radial-gradient/i.test(s)) {
+		const g = parseRadialGradient(s);
+		if (!g) return s;
+
+		const cx = bounds.x + bounds.w * g.cx;
+		const cy = bounds.y + bounds.h * g.cy;
+		const r  = Math.hypot(bounds.w, bounds.h) * 0.5; // simple fit
+
+		const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+		for (const stop of g.stops) {
+			grad.addColorStop(stop.offset, hex8ToRgba(stop.color, stop.color));
+		}
+		return grad;
+	}
+
+	// ----- solid -----
+	if (s.startsWith('#') || s.startsWith('0x')) return hex8ToRgba(s, s);
+	// rgb(...) / rgba(...) / named → pass through (but normalize RGB→rgba)
+	return hex8ToRgba(s, s);
+}
+
 /* ========================= DEFAULT BUNDLE ========================= */
 
 const D2DUtil = {

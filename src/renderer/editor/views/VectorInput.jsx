@@ -1,54 +1,88 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 
-export default function VectorInput({ label, value, onSave }) {
-	const safe = (v) => ({
-		x: typeof v?.x === 'number' ? String(v.x) : (v?.x ?? '0'),
-		y: typeof v?.y === 'number' ? String(v.y) : (v?.y ?? '0'),
-		z: typeof v?.z === 'number' ? String(v.z) : (v?.z ?? '0'),
-	});
+function mixedAxis(values, axis) {
+	if (!values?.length) return '-';
+	const a = values[0]?.[axis];
+	for (let i = 1; i < values.length; i++) {
+		if (values[i]?.[axis] !== a) return '-';
+	}
+	return a ?? '-';
+}
 
-	const [v, setV] = useState(safe(value));
+function deriveDisplay(values) {
+	return {
+		x: mixedAxis(values, 'x') === '-' ? '-' : String(mixedAxis(values, 'x')),
+		y: mixedAxis(values, 'y') === '-' ? '-' : String(mixedAxis(values, 'y')),
+		z: mixedAxis(values, 'z') === '-' ? '-' : String(mixedAxis(values, 'z')),
+	};
+}
 
-	// 🔑 re-sync when any scalar changes (not just the object reference)
-	useEffect(() => {
-		setV(safe(value));
-	}, [value?.x, value?.y, value?.z]);
+function toScalar(str) {
+	if (str === '-' || str === '' || str === '+' ) return '-';
+	const n = Number.parseFloat(str);
+	return Number.isFinite(n) ? n : '-';
+}
 
-	function handleChange(axis, str) {
-		// allow empty / partial numeric input while typing
-		setV(prev => ({ ...prev, [axis]: str }));
+export default function VectorInput({
+	label,
+	values = [],
+	onChange, // (vectorLikeWithDash)
+	onSave,   // (vectorLikeWithDash)
+}) {
+	const sig = useMemo(() => Array.isArray(values) ? values.map(v => `${v?.x},${v?.y},${v?.z}`).join('|') : '', [values]);
+	const initial = useMemo(() => deriveDisplay(values), [sig]);
+
+	const [str, setStr] = useState(initial);
+	useEffect(() => { setStr(initial); }, [initial.x, initial.y, initial.z]);
+
+	function emit(cb) {
+		const v = { x: toScalar(str.x), y: toScalar(str.y), z: toScalar(str.z) };
+		cb?.(v);
 	}
 
-	function handleBlur(axis, str) {
-		// parse number (fall back to 0 on NaN)
-		const num = Number.parseFloat(str);
-		const next = {
-			x: axis === 'x' ? (Number.isFinite(num) ? num : 0) : Number.parseFloat(v.x) || 0,
-			y: axis === 'y' ? (Number.isFinite(num) ? num : 0) : Number.parseFloat(v.y) || 0,
-			z: axis === 'z' ? (Number.isFinite(num) ? num : 0) : Number.parseFloat(v.z) || 0,
+	function handleChange(axis, next) {
+		setStr(prev => ({ ...prev, [axis]: next }));
+		emit(onChange);
+	}
+
+	function handleBlur(axis, raw) {
+		const v = { ...str, [axis]: raw };
+		const fixed = {
+			x: toScalar(v.x),
+			y: toScalar(v.y),
+			z: toScalar(v.z),
 		};
-		setV({ x: String(next.x), y: String(next.y), z: String(next.z) });
-		onSave?.(next);
+		setStr({
+			x: fixed.x === '-' ? '-' : String(fixed.x),
+			y: fixed.y === '-' ? '-' : String(fixed.y),
+			z: fixed.z === '-' ? '-' : String(fixed.z),
+		});
+		onSave?.(fixed);
 	}
 
-	// Optional: blur on Enter/Escape
 	function onKeyDown(e) {
 		if (e.key === 'Enter' || e.key === 'Escape') e.currentTarget.blur();
 	}
 
+	function onFocus(axis) {
+		setStr(prev => (prev[axis] === '-' ? { ...prev, [axis]: '' } : prev));
+	}
+
 	return (
 		<div className="vector-input">
-			<label>{label}</label>
+			{label ? <label>{label}</label> : null}
 			{(['x','y','z']).map(axis => (
 				<input
 					key={axis}
 					className="tf"
-					type="number"
+					type="text"
 					inputMode="decimal"
-					value={v[axis] ?? ''}          // keep as string while editing
+					value={str[axis] ?? ''}
+					onFocus={() => onFocus(axis)}
 					onChange={e => handleChange(axis, e.target.value)}
 					onBlur={e => handleBlur(axis, e.target.value)}
 					onKeyDown={onKeyDown}
+					aria-label={axis.toUpperCase()}
 				/>
 			))}
 		</div>

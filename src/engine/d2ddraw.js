@@ -123,7 +123,7 @@ export default class D2DDraw {
 	}
 
 	_snap(mouseCanvas) {
-		if(!_editor.draw2d.snapEnabled) return;
+		if(!_editor.draw2d.snapToPoints) return;
 
 		if (!this._snapCache || this._lastFocus !== (_editor?.focus || null)) {
 			this._rebuildSnapCache();

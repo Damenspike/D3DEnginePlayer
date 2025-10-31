@@ -413,8 +413,8 @@ const D3DComponents = {
 			},
 			'fillColor': {
 				label: 'Fill color',
-				type: 'colora',
-				def: '#ffffffff',
+				type: 'colorbest',
+				def: 'rgba(255,255,255,1)',
 				section: 'fill',
 				condition: c => c.properties.fill == true
 			},

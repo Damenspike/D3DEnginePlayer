@@ -438,31 +438,33 @@ export default class D3DObject {
 				throw new Error(`Symbol data is missing ${objData.symbolId}`)
 			}
 			
-			objData.children = symbol.objData.children;
-			objData.components = symbol.objData.components;
-			objData.suuid = symbol.objData.suuid;
-			objData.script = symbol.objData.script;
+			const symbolCopy = structuredClone(symbol.objData);
+			
+			objData.children = symbolCopy.children;
+			objData.components = symbolCopy.components;
+			objData.suuid = symbolCopy.suuid;
+			objData.script = symbolCopy.script;
 			
 			/*
 				Override-able properties
 			*/
 			if(!objData.name)
-				objData.name = symbol.objData.name;
+				objData.name = symbolCopy.name;
 			
 			if(!objData.position)
-				objData.position = symbol.objData.position;
+				objData.position = symbolCopy.position;
 				
 			if(!objData.rotation)
-				objData.rotation = symbol.objData.rotation;
+				objData.rotation = symbolCopy.rotation;
 				
 			if(!objData.scale)
-				objData.scale = symbol.objData.scale;
+				objData.scale = symbolCopy.scale;
 				
 			if(!objData.visible)
-				objData.visible = symbol.objData.visible;
+				objData.visible = symbolCopy.visible;
 			
 			if(!objData.opacity)
-				objData.opacity = symbol.objData.opacity;
+				objData.opacity = symbolCopy.opacity;
 		}
 		
 		if(!objData.components)
@@ -490,16 +492,21 @@ export default class D3DObject {
 		
 		// Nominal uuid
 		let uuid = objData.uuid;
+		let suuid = objData.suuid;
 		
 		// Ensure uuid is unique
 		if(_root.superIndex?.[uuid])
 			uuid = null;
+			
+		// Ensure suuid is unique
+		if(this.children.find(c => c.suuid == suuid))
+			suuid = null;
 		
 		// Assign truly unique uuid
 		child.uuid = uuid ?? child.uuid;
 		
 		// Assign SUUID
-		child.suuid = objData.suuid ?? child.suuid;
+		child.suuid = suuid ?? child.suuid;
 		
 		////////////////////////
 		// ----- UUID ----- //
@@ -1071,6 +1078,7 @@ export default class D3DObject {
 				childrenToCheck.forEach(child => {
 					if(!childrenSynced.includes(child)) {
 						// Must no longer be needed
+						console.log(child.name + ' is no longer needed');
 						child.delete();
 					}
 				})
@@ -1459,5 +1467,60 @@ export default class D3DObject {
 		}
 		
 		throw new Error(`${this.name} can not be used for 2D hit testing`);
+	}
+	setPosition(newPosition) {
+		const oldPosition = this.position.clone();
+		
+		this.__spOldPosition = oldPosition;
+		this.position.copy(newPosition);
+		
+		_events.invoke(
+			'transform-changed', 
+			this, 
+			['pos'], 
+			{
+				position: oldPosition,
+				rotation: this.rotation.clone(),
+				quaternion: this.quaternion.clone(),
+				scale: this.scale.clone()
+			}
+		);
+	}
+	setRotation(newRotation) {
+		const oldRotation = this.rotation.clone();
+		const oldRotationQ = this.quaternion.clone();
+		
+		this.__spOldRotation = oldRotation;
+		this.rotation.copy(newRotation);
+		
+		_events.invoke(
+			'transform-changed', 
+			this, 
+			['rot'], 
+			{
+				position: this.position.clone(),
+				rotation: oldRotation,
+				quaternion: oldRotationQ,
+				scale: this.scale.clone()
+			}
+		);
+	}
+	setScale(newScale) {
+		const oldScale = this.scale.clone();
+		
+		this.__spOldScale = oldScale;
+		this.scale.copy(newScale);
+		
+		_events.invoke(
+			'transform-changed', 
+			this, 
+			['scl'], 
+			{
+				position: this.position.clone(),
+				rotation: this.rotation.clone(),
+				quaternion: this.quaternion.clone(),
+				scale: oldScale
+			}
+		);
 	}
 }

@@ -239,7 +239,7 @@ export default class D2DEdit {
 
 			// snapping to other geometry via drawer (host-local snapping)
 			const drawer = this.d2drenderer?.drawer;
-			const snappingOn = !!_editor?.draw2d?.snapEnabled && !!drawer;
+			const snappingOn = !!_editor?.draw2d?.snapToPoints && !!drawer;
 			if (snappingOn) {
 				if (!this._snapSession) this._beginSnapSession();
 				if (!drawer._snapCache || drawer._lastFocus !== _editor?.focus) {

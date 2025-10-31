@@ -9,7 +9,11 @@ import {
 } from './d3dutility.js';
 import {
 	buildCompoundPathForGraphic,
-	worldMatrix
+	worldMatrix,
+	toCanvasPaint,
+	parseRadialGradient,
+	parseLinearGradient,
+	hex8ToRgba
 } from './d2dutility.js';
 import {
 	onMouseUp,
@@ -724,12 +728,11 @@ export default class D2DRenderer {
 		const miterLimit   = Number(graphic.miterLimit ?? 10);
 	
 		const fillEnabled  = graphic.fill !== false;
-		const fillColor    = graphic.fillColor ?? '#ffffffff';
+		const fillPaintVal = graphic.fillColor ?? '#ffffffff';
 		const borderRadius = Math.max(0, Number(graphic.borderRadius ?? 0));
 	
 		const outlineOn    = graphic.outline === true;
-		const outlineColor = graphic.outlineColor ?? gLineColor;
-		// Treat outlineWidth as the *visual* thickness outside the shape:
+		const outlinePaintVal = graphic.outlineColor ?? gLineColor;
 		const outlineWidth = Number(graphic.outlineWidth ?? gLineWidth);
 	
 		let paths = Array.isArray(graphic._paths) ? graphic._paths.filter(p => Array.isArray(p)) : [];
@@ -768,26 +771,28 @@ export default class D2DRenderer {
 		};
 	
 		let m = new DOMMatrix();
-		const chain = [];
-		for (let n = d3dobject; n; n = n.parent) chain.push(n);
-		chain.reverse();
-		for (const o of chain) {
-			const tx = Number(o.position?.x) || 0;
-			const ty = Number(o.position?.y) || 0;
-			const rz = Number(o.rotation?.z) || 0;
-			const sx = Number(o.scale?.x) || 1;
-			const sy = Number(o.scale?.y) || 1;
-			m = m.translate(tx, ty).rotate(rz * 180 / Math.PI).scale(sx, sy);
+		{
+			const chain = [];
+			for (let n = d3dobject; n; n = n.parent) chain.push(n);
+			chain.reverse();
+			for (const o of chain) {
+				const tx = Number(o.position?.x) || 0;
+				const ty = Number(o.position?.y) || 0;
+				const rz = Number(o.rotation?.z) || 0;
+				const sx = Number(o.scale?.x) || 1;
+				const sy = Number(o.scale?.y) || 1;
+				m = m.translate(tx, ty).rotate(rz * 180 / Math.PI).scale(sx, sy);
+			}
 		}
 	
-		const gs = (this.pixelRatio || 1) * (this.viewScale || 1);
 		const isInFocus = window._player || (_editor?.focus === d3dobject) || (_editor?.focus?.containsChild?.(d3dobject));
 		const masterAlpha = isInFocus ? 1 : 0.2;
 	
-		// Build a combined (union-style) path for all CLOSED contours to support even-odd fill/holes.
+		// Build combined closed path + collect bounds for gradient paints
 		const combo = new Path2D();
 		const closedPaths = [];
 		const openStrokes = [];
+		let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 	
 		for (const pts of paths) {
 			if (!Array.isArray(pts) || pts.length === 0) continue;
@@ -803,10 +808,20 @@ export default class D2DRenderer {
 				const path = rounded || raw;
 				combo.addPath(path);
 				closedPaths.push({ path, points });
+	
+				// local bounds for gradient mapping
+				for (const p of points) {
+					if (p.x < minX) minX = p.x;
+					if (p.y < minY) minY = p.y;
+					if (p.x > maxX) maxX = p.x;
+					if (p.y > maxY) maxY = p.y;
+				}
 			} else {
 				openStrokes.push(points);
 			}
 		}
+		const haveBounds = isFinite(minX) && isFinite(minY) && isFinite(maxX) && isFinite(maxY);
+		const bounds = haveBounds ? { x:minX, y:minY, w:Math.max(0, maxX-minX), h:Math.max(0, maxY-minY) } : { x:0,y:0,w:1,h:1 };
 	
 		const BIG = 1e6;
 	
@@ -815,23 +830,22 @@ export default class D2DRenderer {
 		this.applyDeviceTransform();
 		ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
 	
-		// FILL (even-odd so overlaps subtract and holes render correctly)
+		// FILL
 		if (fillEnabled && closedPaths.length) {
-			ctx.fillStyle = hexToRgba(fillColor);
+			ctx.fillStyle = toCanvasPaint(ctx, fillPaintVal, bounds);
 			ctx.fill(combo, 'evenodd');
 		}
 	
-		// OUTLINE: outside-only around the combined closed shape.
-		// We clip to the "outside" region (big rect minus combo) and stroke with 2x width.
+		// OUTLINE (outside-only)
 		if (outlineOn && closedPaths.length && outlineWidth > 0) {
 			ctx.save();
 			const outside = new Path2D();
-			outside.rect(-BIG, -BIG, BIG * 2, BIG * 2); // huge rect
-			outside.addPath(combo);                      // subtract with even-odd clip
+			outside.rect(-BIG, -BIG, BIG * 2, BIG * 2);
+			outside.addPath(combo);
 			ctx.clip(outside, 'evenodd');
 	
-			ctx.lineWidth   = Math.max(0.001, outlineWidth * 2); // draw 2×, show only the outer half
-			ctx.strokeStyle = hexToRgba(outlineColor);
+			ctx.lineWidth   = Math.max(0.001, outlineWidth * 2);
+			ctx.strokeStyle = toCanvasPaint(ctx, outlinePaintVal, bounds);
 			ctx.lineCap     = lineCap;
 			ctx.lineJoin    = lineJoin;
 			ctx.miterLimit  = miterLimit;
@@ -839,12 +853,12 @@ export default class D2DRenderer {
 			ctx.restore();
 		}
 	
-		// Regular LINE strokes (centered). Keeps previous behaviour for open/closed as “line” style.
+		// LINE strokes (centered)
 		if (gLineEnabled) {
 			// closed
 			for (const { path } of closedPaths) {
 				ctx.lineWidth   = Math.max(0.001, gLineWidth);
-				ctx.strokeStyle = hexToRgba(gLineColor);
+				ctx.strokeStyle = toCanvasPaint(ctx, gLineColor, bounds);
 				ctx.lineCap     = lineCap;
 				ctx.lineJoin    = lineJoin;
 				ctx.miterLimit  = miterLimit;
@@ -857,7 +871,7 @@ export default class D2DRenderer {
 				ctx.moveTo(points[0].x, points[0].y);
 				for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
 				ctx.lineWidth   = Math.max(0.001, gLineWidth);
-				ctx.strokeStyle = hexToRgba(gLineColor);
+				ctx.strokeStyle = toCanvasPaint(ctx, gLineColor, bounds);
 				ctx.lineCap     = lineCap;
 				ctx.lineJoin    = lineJoin;
 				ctx.miterLimit  = miterLimit;

@@ -679,11 +679,11 @@ function setupTransformGizmo() {
 		scene,
 		camera,
 		dom: renderer.domElement,
-		getSelected: () => _editor.selectedObjects[0]
+		getSelected: () => _editor.selectedObjects
 	});
 	
 	// attach/detach on selection changes
-	gizmo.attach(_editor.selectedObjects[0]);
+	gizmo.attach(_editor.selectedObjects);
 	
 	_editor.gizmo = gizmo;
 }
