@@ -219,7 +219,7 @@ export default class D2DRenderer {
 		const bitmap2d = d3dobject.getComponent('Bitmap2D');
 		if (!bitmap2d) return;
 	
-		const props = bitmap2d.bitmapProperties;
+		const props = bitmap2d.component.properties;
 		const zip = d3dobject.root.zip;
 		const uri = d3dobject.root.resolvePath(props.source);
 		if (!uri) return;

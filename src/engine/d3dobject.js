@@ -33,6 +33,7 @@ export default class D3DObject {
 		// INTERNAL SENSITIVE VARS
 		this.__ready = false;
 		this.__componentInstances = {};
+		this.__events = {};
 		
 		this.object3d = this.parent ? new THREE.Object3D() : new THREE.Scene();
 		this.object3d.userData.d3dobject = this;
@@ -411,6 +412,7 @@ export default class D3DObject {
 				const mgr = this.__componentInstances[i];
 				mgr?.__onInternalBeforeRender?.();
 			}
+			this.invokeEvent('beforeRender');
 		}
 		this.__onInternalEnterFrame = () => {
 			//////////////////////////////////////////////
@@ -420,6 +422,17 @@ export default class D3DObject {
 				const mgr = this.__componentInstances[i];
 				mgr?.__onInternalEnterFrame?.();
 			}
+			this.invokeEvent('enterFrame');
+		}
+		this.__onInternalExitFrame = () => {
+			//////////////////////////////////////////////
+			//// ENGINE LOOP USED FOR INTERNALS
+			//////////////////////////////////////////////
+			for(let i in this.__componentInstances) {
+				const mgr = this.__componentInstances[i];
+				mgr?.__onInternalExitFrame?.();
+			}
+			this.invokeEvent('exitFrame');
 		}
 	}
 	
@@ -1533,5 +1546,44 @@ export default class D3DObject {
 				scale: oldScale
 			}
 		);
+	}
+	addEventListener(name, listener) {
+		const events = this.__events;
+		
+		if(!events[name])
+			events[name] = [];
+		
+		const listeners = events[name];
+		
+		if(listeners.includes(listener))
+			return;
+		
+		listeners.push(listener);
+	}
+	removeEventListener(name, listener) {
+		const events = this.__events;
+		
+		if(!events[name])
+			return;
+		
+		const listeners = events[name];
+		
+		if(!listeners.includes(listener))
+			return;
+		
+		listeners.splice(listeners.indexOf(listener), 1);
+	}
+	invokeEvent(name) {
+		const events = this.__events;
+		
+		if(!events[name])
+			return;
+			
+		const listeners = events[name];
+		
+		listeners.forEach(l => {
+			if(l && typeof l === 'function')
+				l();
+		});
 	}
 }

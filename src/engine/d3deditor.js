@@ -760,7 +760,12 @@ async function addD3DObjectEditor(type) {
 		break;
 	}
 	
-	_editor.setSelection([newd3dobj]);
+	if(_editor.mode != '3D')
+		_editor.mode = '3D';
+	
+	setTimeout(() => {
+		_editor.setSelection([newd3dobj]);
+	}, 100);
 }
 function newAsset(extension, data) {
 	const ext = !!extension ? `.${extension}` : '';

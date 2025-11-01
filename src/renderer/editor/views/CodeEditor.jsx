@@ -10,9 +10,11 @@ import {
 } from '../../../engine/d3dutility.js';
 
 import { MdClose } from 'react-icons/md';
+import { RxDrawingPin, RxDrawingPinFilled } from 'react-icons/rx';
 
 export default function CodeEditor({isOpen, theme}) {
 	const [objectsOpen, setObjectsOpen] = useState([]);
+	const [pinnedObjects, setPinnedObjects] = useState([]);
 	const [objectOpen, setObjectOpen] = useState();
 	
 	const editorRef = useRef(null);
@@ -31,7 +33,7 @@ export default function CodeEditor({isOpen, theme}) {
 	useEffect(() => {
 		
 		const onSelectedObjects = objects => {
-			if(!isOpen || objects.length < 1 || !isOpen)
+			if(!isOpen || objects.length < 1 || !isOpen || pinnedObjects.includes(objectOpen))
 				return;
 			
 			const defObject = objects[0];
@@ -55,7 +57,7 @@ export default function CodeEditor({isOpen, theme}) {
 		return () => {
 			_events.un('selected-objects', onSelectedObjects);
 		}
-	}, [objectsOpen, isOpen]);
+	}, [objectsOpen, isOpen, objectOpen, pinnedObjects]);
 	
 	useEffect(() => {
 		if(editorRef.current)
@@ -75,11 +77,24 @@ export default function CodeEditor({isOpen, theme}) {
 		if(window._root && !objectsOpenList.includes(window._root))
 			objectsOpenList.unshift(window._root);
 		
+		objectsOpenList.sort((a, b) => {
+			const pA = pinnedObjects.includes(a) || a == window._root;
+			const pB = pinnedObjects.includes(b) || b == window._root;
+			if(pA && !pB)
+				return -1;
+			else
+			if(!pA && pB)
+				return 1;
+			else
+				return 0;
+		});
+		
 		objectsOpenList.forEach(d3dobject => {
 			if(!d3dobject || d3dobject.__deleted)
 				return;
 				
 			const classNames = ['tab', 'no-select'];
+			const isPinned = pinnedObjects.includes(d3dobject);
 			
 			if(d3dobject == objectOpen)
 				classNames.push('tab--selected');
@@ -95,16 +110,32 @@ export default function CodeEditor({isOpen, theme}) {
 				e.preventDefault();
 				e.stopPropagation();
 			}
-			const selectMe = (e) => {
+			const selectMe = () => {
 				setObjectOpen(d3dobject);
+			}
+			const pinMe = () => {
+				if(pinnedObjects.includes(d3dobject))
+					pinnedObjects.splice(pinnedObjects.indexOf(d3dobject), 1);
+				else
+					pinnedObjects.push(d3dobject);
+				
+				setPinnedObjects([...pinnedObjects]);
 			}
 			
 			const drawClose = () => (
 				<div 
-					className='code-editor__file__close'
+					className='code-editor__file__btn vm'
 					onClick={closeMe}
 				>
 					x
+				</div>
+			)
+			const drawPin = () => (
+				<div 
+					className={`code-editor__file__btn code-editor__file__pin vm ${isPinned ? 'code-editor__file__pin--pinned' : ''}`}
+					onClick={pinMe}
+				>
+					{isPinned ? <RxDrawingPinFilled /> : <RxDrawingPin />}
 				</div>
 			)
 			
@@ -115,6 +146,7 @@ export default function CodeEditor({isOpen, theme}) {
 					onClick={selectMe}
 				>
 					{d3dobject != _root && drawClose()}
+					{d3dobject != _root && drawPin()}
 					{d3dobject.name}
 				</div>
 			)

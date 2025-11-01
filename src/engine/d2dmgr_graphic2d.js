@@ -3,15 +3,20 @@ import {
 	hitObjectDeep
 } from './d2dutility.js';
 
-export default function Graphic2DManager(d3dobject, component) {
+export default class Graphic2DManager {
 	
-	this.updateComponent = () => {
-		
-	};
-	this.hitTest = ({x, y}) => {
-		return hitObject(d3dobject, x, y);
+	constructor(d3dobject, component) {
+		this.d3dobject = d3dobject;
+		this.component = component;
 	}
-	this.hitTestPoint = ({x, y}) => {
-		return hitObjectDeep(d3dobject, x, y);
+	
+	updateComponent() {
+		
+	}
+	hitTest({x, y}) {
+		return hitObject(this.d3dobject, x, y);
+	}
+	hitTestPoint({x, y}) {
+		return hitObjectDeep(this.d3dobject, x, y);
 	}
 }

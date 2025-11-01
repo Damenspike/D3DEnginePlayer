@@ -1,18 +1,56 @@
-export default function BitmapManager(d3dobject, component) {
-	this.bitmapProperties = component.properties;
+export default class BitmapManager {
 	
-	this.updateComponent = () => {
-		if(!component.__setup)
-			setup();
+	constructor(d3dobject, component) {
+		this.d3dobject = d3dobject;
+		this.component = component;
+	}
+	
+	get source() {
+		return this.component.properties.source;
+	}
+	set source(v) {
+		this.component.properties.source = v;
+	}
+	
+	get fit() {
+		return this.component.properties.fit;
+	}
+	set fit(v) {
+		this.component.properties.fit = v;
+	}
+	
+	get alignX() {
+		return this.component.properties.alignX;
+	}
+	set alignX(v) {
+		this.component.properties.alignX = v;
+	}
+	
+	get alignY() {
+		return this.component.properties.alignY;
+	}
+	set alignY(v) {
+		this.component.properties.alignY = v;
+	}
+	
+	get smoothing() {
+		return !!this.component.properties.imageSmoothing;
+	}
+	set smoothing(v) {
+		this.component.properties.imageSmoothing = !!v;
+	}
+	
+	updateComponent() {
+		if(!this.component.__setup)
+			this.setup();
 		else
-			update();
+			this.update();
 	}
-	
-	function setup() {
-		d3dobject.__simpleHit = true;
-		component.__setup = true;
+	setup() {
+		this.d3dobject.__simpleHit = true;
+		this.component.__setup = true;
 	}
-	function update() {
+	update() {
 		
 	}
 }

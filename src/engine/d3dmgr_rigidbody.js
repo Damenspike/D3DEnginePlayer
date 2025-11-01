@@ -1,77 +1,128 @@
-// The rigidbody manager, responsible for setting up the body (with fixes applied)
 import * as THREE from 'three';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 
-export default function RigidbodyManager(d3dobject, component) {
-	component._cache = null;
-	component._rb = null;
-	
-	this.speed = 0;
+export default class RigidbodyManager {
+	constructor(d3dobject, component) {
+		this.d3dobject = d3dobject;
+		this.component = component;
 
-	this.updateComponent = () => {
-		if (!window._player) return;
-		if(!component.enabled) return;
-		
-		if (!_physics || !_physics.ready) {
-			requestAnimationFrame(this.updateComponent);
-			return;
-		}
+		this.component._cache = null;
+		this.component._rb = null;
 
-		const next = readComponent();
+		this.speed = 0;
 
-		// first-time setup
-		if (!component.bodySetup) {
-			setupBody(next);
-			component.bodySetup = true;
-			component._cache = next;
+		this.updateComponent = () => {
+			if (!window._player) 
+				return;
+			if (!this.component.enabled) 
+				return;
 			
-			this.__onInternalBeforeRender = () => {
-				this.speed = getSpeed();
+			if (!_physics || !_physics.ready) {
+				requestAnimationFrame(this.updateComponent);
+				return;
 			}
-			return;
-		}
 
-		// rebuild if changed
-		if (changed(component._cache, next)) {
-			teardownBody();
-			setupBody(next);
-			component._cache = next;
-		}
-	};
+			const next = this._readComponent();
 
-	this.dispose = () => {
-		teardownBody();
-		component.bodySetup = false;
-		component._cache = null;
-	};
+			if (!this.component.bodySetup) {
+				this._setupBody(next);
+				this.component.bodySetup = true;
+				this.component._cache = next;
+				
+				this.__onInternalBeforeRender = () => {
+					this.speed = this.getSpeed();
+				};
+				return;
+			}
+
+			if (this._changed(this.component._cache, next)) {
+				this._teardownBody();
+				this._setupBody(next);
+				this.component._cache = next;
+			}
+		};
+	}
+
+	get kind() {
+		return this.component.properties?.kind;
+	}
+	set kind(v) {
+		if (!this.component.properties) this.component.properties = {};
+		this.component.properties.kind = v;
+	}
+
+	get shape() {
+		return this.component.properties?.shape;
+	}
+	set shape(v) {
+		if (!this.component.properties) this.component.properties = {};
+		this.component.properties.shape = v;
+	}
+
+	get friction() {
+		return this.component.properties?.friction;
+	}
+	set friction(v) {
+		if (!this.component.properties) this.component.properties = {};
+		this.component.properties.friction = v;
+	}
+
+	get bounciness() {
+		return this.component.properties?.bounciness;
+	}
+	set bounciness(v) {
+		if (!this.component.properties) this.component.properties = {};
+		this.component.properties.bounciness = v;
+	}
+
+	get density() {
+		return this.component.properties?.density;
+	}
+	set density(v) {
+		if (!this.component.properties) this.component.properties = {};
+		this.component.properties.density = v;
+	}
+
+	get shapeBias() {
+		return this.component.properties?.shapeBias;
+	}
+	set shapeBias(v) {
+		if (!this.component.properties) this.component.properties = {};
+		this.component.properties.shapeBias = v;
+	}
+
+	dispose() {
+		this._teardownBody();
+		this.component.bodySetup = false;
+		this.component._cache = null;
+	}
 	
-	this.setPosition = ({ x, y, z }) => {
-		const q = d3dobject.object3d.quaternion; // keep current rotation
+	setPosition({ x, y, z }) {
+		const q = this.d3dobject.object3d.quaternion;
 		_physics.setNextKinematicTransform(
-			d3dobject,
+			this.d3dobject,
 			{ x, y, z },
 			{ x: q.x, y: q.y, z: q.z, w: q.w }
 		);
-	};
+	}
 	
-	this.setRotation = ({ x, y, z, w }) => {
-		const p = d3dobject.object3d.position; // keep current position
+	setRotation({ x, y, z, w }) {
+		const p = this.d3dobject.object3d.position;
 		_physics.setNextKinematicTransform(
-			d3dobject,
+			this.d3dobject,
 			{ x: p.x, y: p.y, z: p.z },
 			{ x, y, z, w }
 		);
-	};
+	}
 	
-	this.setTransform = (pos, rot) => {
-		// both position + quaternion provided
-		_physics.setNextKinematicTransform(d3dobject, pos, rot);
-	};
+	setTransform(pos, rot) {
+		_physics.setNextKinematicTransform(this.d3dobject, pos, rot);
+	}
 
 	/* ------------------- helpers ------------------- */
 
-	function readComponent() {
-		const props = component.properties || {};
+	_readComponent() {
+		const props = this.component.properties || {};
 
 		const kind        = props.kind        ?? 'dynamic';
 		let   shapeType   = props.shape       ?? 'trimesh';
@@ -80,49 +131,51 @@ export default function RigidbodyManager(d3dobject, component) {
 		const density     = Number(props.density     ?? 1.0);
 		const shapeBias   = Number(props.shapeBias   ?? 1.0);
 
-		// Disallow trimesh on dynamic bodies
 		if (kind !== 'fixed' && shapeType === 'trimesh') {
 			console.warn(`[RigidbodyManager] Dynamic body cannot use trimesh. Using convex instead.`);
 			shapeType = 'convex';
 		}
 
-		const shape = buildScaledShape(d3dobject, shapeType, shapeBias);
+		const shape = this._buildScaledShape(this.d3dobject, shapeType, shapeBias);
 		return { kind, shapeType, shape, friction, restitution, density };
 	}
 
-	function setupBody(opts) {
-		const rb = _physics.addRigidBody(d3dobject, {
+	_setupBody(opts) {
+		const rb = _physics.addRigidBody(this.d3dobject, {
 			kind: opts.kind,
 			shape: opts.shape,
-			friction: clamp01(opts.friction),
-			restitution: clamp01(opts.restitution),
+			friction: this._clamp01(opts.friction),
+			restitution: this._clamp01(opts.restitution),
 			density: Math.max(1e-6, opts.density)
 		});
-		component._rb = rb;
+		this.component._rb = rb;
 	}
 
-	function teardownBody() {
-		if (component._rb) {
-			_physics.remove(d3dobject);
-			component._rb = null;
+	_teardownBody() {
+		if (this.component._rb) {
+			_physics.remove(this.d3dobject);
+			this.component._rb = null;
 		}
 	}
 
-	function changed(a, b) {
-		if (!a) return true;
+	_changed(a, b) {
+		if (!a) 
+			return true;
 		return (
 			a.kind !== b.kind ||
 			a.shapeType !== b.shapeType ||
 			a.friction !== b.friction ||
 			a.restitution !== b.restitution ||
 			a.density !== b.density ||
-			shapeChanged(a.shape, b.shape)
+			this._shapeChanged(a.shape, b.shape)
 		);
 	}
 
-	function shapeChanged(a, b) {
-		if (!a || !b) return true;
-		if (a.type !== b.type) return true;
+	_shapeChanged(a, b) {
+		if (!a || !b) 
+			return true;
+		if (a.type !== b.type) 
+			return true;
 		switch (a.type) {
 			case 'box':     return a.hx !== b.hx || a.hy !== b.hy || a.hz !== b.hz;
 			case 'sphere':  return a.r !== b.r;
@@ -133,11 +186,13 @@ export default function RigidbodyManager(d3dobject, component) {
 		}
 	}
 
-	const clamp01 = v => v < 0 ? 0 : (v > 1 ? 1 : v);
+	_clamp01(v) {
+		return v < 0 ? 0 : (v > 1 ? 1 : v);
+	}
 
 	/* ------------------- shape builder ------------------- */
 
-	function buildScaledShape(obj, shapeType, bias) {
+	_buildScaledShape(obj, shapeType, bias) {
 		const o = obj.object3d;
 		const s = new THREE.Vector3(1, 1, 1);
 		o.updateWorldMatrix(true, true);
@@ -146,33 +201,30 @@ export default function RigidbodyManager(d3dobject, component) {
 
 		switch (shapeType) {
 			case 'box': {
-				const bb = resolveGeometry(o, { merge: true, type: 'box' });
-				// half-extents
+				const bb = this._resolveGeometry(o, { merge: true, type: 'box' });
 				let hx = (bb.max.x - bb.min.x) * 0.5 * sx * bias;
 				let hy = (bb.max.y - bb.min.y) * 0.5 * sy * bias;
 				let hz = (bb.max.z - bb.min.z) * 0.5 * sz * bias;
 
-				// safety: give “plane” some thickness
 				const minThickness = 0.25;
 				if (hy < minThickness * 0.5) hy = minThickness * 0.5;
 
-				// pivot offset
 				const cx = (bb.min.x + bb.max.x) * 0.5 * sx;
-				const cy = (bb.min.y + bb.max.y) * 0.5 * sy + 0.002; // small lift (2mm)
+				const cy = (bb.min.y + bb.max.y) * 0.5 * sy + 0.002;
 				const cz = (bb.min.z + bb.max.z) * 0.5 * sz;
 
 				return { type: 'box', hx, hy, hz, offset: { x: cx, y: cy, z: cz } };
 			}
 
 			case 'sphere': {
-				const sphere = resolveGeometry(o, { merge: true, type: 'sphere' });
+				const sphere = this._resolveGeometry(o, { merge: true, type: 'sphere' });
 				const r = sphere.radius * Math.max(sx, sy, sz) * bias;
 				const offset = { x: sphere.center.x * sx, y: sphere.center.y * sy, z: sphere.center.z * sz };
 				return { type: 'sphere', r, offset };
 			}
 
 			case 'capsule': {
-				const bb = resolveGeometry(o, { merge: true, type: 'box' });
+				const bb = this._resolveGeometry(o, { merge: true, type: 'box' });
 				const hxL = (bb.max.x - bb.min.x) * 0.5;
 				const hyL = (bb.max.y - bb.min.y) * 0.5;
 				const hzL = (bb.max.z - bb.min.z) * 0.5;
@@ -188,19 +240,19 @@ export default function RigidbodyManager(d3dobject, component) {
 			}
 
 			case 'convex': {
-				let geom = resolveGeometry(o, { merge: true, type: 'convex' });
+				let geom = this._resolveGeometry(o, { merge: true, type: 'convex' });
 				const scaleMatrix = new THREE.Matrix4().makeScale(sx * bias, sy * bias, sz * bias);
 				geom.applyMatrix4(scaleMatrix);
-				const verts = getPositionFloat32(geom);
+				const verts = this._getPositionFloat32(geom);
 				return { type: 'convex', vertices: verts, space: 'local' };
 			}
 
 			case 'trimesh':
 			default: {
-				let src = resolveGeometry(o, { merge: true, type: 'trimesh' });
+				let src = this._resolveGeometry(o, { merge: true, type: 'trimesh' });
 				const scaleMatrix = new THREE.Matrix4().makeScale(sx * bias, sy * bias, sz * bias);
 				src.applyMatrix4(scaleMatrix);
-				const { vertices, indices } = getTriMeshBuffers(src);
+				const { vertices, indices } = this._getTriMeshBuffers(src);
 				return { type: 'trimesh', vertices, indices, space: 'local' };
 			}
 		}
@@ -208,11 +260,10 @@ export default function RigidbodyManager(d3dobject, component) {
 
 	/* ------------------- geometry helpers ------------------- */
 
-	function resolveGeometry(obj3d, options = {}) {
+	_resolveGeometry(obj3d, options = {}) {
 		const { merge = false, type } = options;
 
 		if (!merge) {
-			// Original behavior: pick first geometry (self or child)
 			if (obj3d.geometry && obj3d.isMesh !== false) return obj3d.geometry;
 			let geom = null;
 			obj3d.traverse(n => { if (!geom && n.isMesh && n.geometry) geom = n.geometry; });
@@ -220,7 +271,6 @@ export default function RigidbodyManager(d3dobject, component) {
 			return geom;
 		}
 
-		// Merge mode: collect all meshes (including self if applicable)
 		const meshes = [];
 		obj3d.traverse((node) => {
 			if (node.isMesh && node.geometry) {
@@ -237,7 +287,6 @@ export default function RigidbodyManager(d3dobject, component) {
 		parentInvMatrix.copy(obj3d.matrixWorld).invert();
 
 		if (type === 'box') {
-			// For box (and capsule fallback): compute a combined bounding box in parent local space
 			const combinedBox = new THREE.Box3();
 			let first = true;
 
@@ -260,7 +309,6 @@ export default function RigidbodyManager(d3dobject, component) {
 		}
 
 		if (type === 'sphere') {
-			// For sphere: merge geometries, then compute bounding sphere
 			const geometries = [];
 			for (let mesh of meshes) {
 				mesh.updateMatrixWorld(true);
@@ -274,7 +322,6 @@ export default function RigidbodyManager(d3dobject, component) {
 			return mergedGeom.boundingSphere;
 		}
 
-		// For convex and trimesh: merge geometries
 		const geometries = [];
 		for (let mesh of meshes) {
 			mesh.updateMatrixWorld(true);
@@ -286,17 +333,15 @@ export default function RigidbodyManager(d3dobject, component) {
 
 		let mergedGeom;
 		if (type === 'convex') {
-			// For convex: merge vertices only, no indices needed
 			mergedGeom = BufferGeometryUtils.mergeGeometries(geometries, false);
 		} else {
-			// For trimesh: merge geometries with indices
 			mergedGeom = BufferGeometryUtils.mergeGeometries(geometries, true);
 		}
 
 		return mergedGeom;
 	}
 
-	function getPositionFloat32(geom) {
+	_getPositionFloat32(geom) {
 		const attr = geom.attributes.position;
 		if (attr.isInterleavedBufferAttribute) {
 			const src    = attr.data.array;
@@ -316,8 +361,8 @@ export default function RigidbodyManager(d3dobject, component) {
 		return (arr instanceof Float32Array) ? arr : new Float32Array(arr);
 	}
 
-	function getTriMeshBuffers(geom) {
-		const vertices = getPositionFloat32(geom);
+	_getTriMeshBuffers(geom) {
+		const vertices = this._getPositionFloat32(geom);
 		let indices;
 
 		if (geom.index && geom.index.array) {
@@ -342,11 +387,12 @@ export default function RigidbodyManager(d3dobject, component) {
 		return { vertices, indices };
 	}
 	
-	function getSpeed() {
-		const rb = component._rb;
-		if(!rb) return 0;
-		const vel = rb.linvel(); // Rapier linear velocity {x, y, z}
-		const speed = Math.hypot(vel.x, vel.y, vel.z); // Magnitude in m/s
+	getSpeed() {
+		const rb = this.component._rb;
+		if (!rb) 
+			return 0;
+		const vel = rb.linvel();
+		const speed = Math.hypot(vel.x, vel.y, vel.z);
 		return speed;
 	}
 }
