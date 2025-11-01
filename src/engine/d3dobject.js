@@ -1424,6 +1424,17 @@ export default class D3DObject {
 		});
 		return depth + 1;
 	}
+	getNextLowestDepth() {
+		let depth = 0;
+		this.children.forEach(d3dobj => {
+			if(d3dobj.__temp) return;
+			
+			const d = d3dobj.depth;
+			if(d < depth)
+				depth = d;
+		});
+		return depth - 1;
+	}
 	invalidateGraphic2D() {
 		if(!this.is2D)
 			return;

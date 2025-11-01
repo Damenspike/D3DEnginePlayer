@@ -9,6 +9,7 @@ const {
 	shell
 } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const pkg = require('../package.json');
 const isDev = !app.isPackaged;
 
@@ -64,14 +65,15 @@ function createNewProjectWindow() {
 	newProjectWindow = new BrowserWindow({
 		title: 'New Project',
 		width: 380,
-		height: 400,
+		height: 350,
 		resizable: false,
 		webPreferences: {
 			preload: path.join(__dirname, 'preload-editor.cjs'),
 			contextIsolation: true,
 			nodeIntegration: false,
 			enableRemoteModule: false,
-			sandbox: false
+			sandbox: false,
+			spellcheck: false
 		}
 	});
 
@@ -82,6 +84,7 @@ function createNewProjectWindow() {
 	});
 	
 	setupTheme(newProjectWindow);
+	Menu.setApplicationMenu(appMenuBase);
 
 	// Send initial theme
 	newProjectWindow.webContents.on('did-finish-load', () => {
@@ -101,7 +104,8 @@ async function createGameWindow() {
 			contextIsolation: true,
 			nodeIntegration: false,
 			enableRemoteModule: false,
-			sandbox: false
+			sandbox: false,
+			spellcheck: false
 		}
 	});
 	
@@ -128,7 +132,8 @@ async function createEditorWindow() {
 			contextIsolation: true,
 			nodeIntegration: false,
 			enableRemoteModule: false,
-			sandbox: false
+			sandbox: false,
+			spellcheck: false
 		}
 	});
 	
@@ -153,6 +158,10 @@ async function createEditorWindow() {
 			editorDirty = false;
 			editorWindow.destroy();
 		}
+	});
+	
+	editorWindow.on('closed', () => {
+		Menu.setApplicationMenu(appMenuBase);
 	});
 	
 	editorWindow.webContents.on('before-input-event', (event, input) => {
@@ -183,6 +192,9 @@ async function createEditorWindow() {
 		await editorWindow.loadFile('../dist/editor/index.html');
 
 	setupTheme(editorWindow);
+	
+	Menu.setApplicationMenu(appMenu);
+	
 	return new Promise(resolve => {
 		editorWindow.webContents.once('did-finish-load', resolve);
 	});
@@ -199,6 +211,8 @@ function setupTheme(browserWindow) {
 	});
 }
 function closeEditorWindow() {
+	Menu.setApplicationMenu(appMenuBase);
+	
 	return new Promise(resolve => {
 		if (!editorWindow) return resolve();
 		
@@ -232,6 +246,23 @@ function closeGameWindow() {
 		gameWindow.close();
 	});
 }
+function closeNewProjectWindow() {
+	return new Promise(resolve => {
+		if (!newProjectWindow) return resolve();
+		
+		// If already destroyed, just cleanup and resolve
+		if (newProjectWindow.isDestroyed()) {
+			newProjectWindow = null;
+			return resolve();
+		}
+		
+		newProjectWindow.once('closed', () => {
+			newProjectWindow = null;
+			resolve();
+		});
+		newProjectWindow.close();
+	});
+}
 async function openBrowse() {
 	const { canceled, filePaths } = await dialog.showOpenDialog({
 		title: 'Select a D3D project file',
@@ -251,51 +282,53 @@ async function openProject(uri) {
 	updateEditorMenusEnabled();
 }
 function startNewProject() {
+	Menu.setApplicationMenu(appMenuBase);
+	
 	if(!newProjectWindow) createNewProjectWindow()
 	else newProjectWindow.show()
 }
 function sendSelectAll() {
-	if (!editorWindow.isFocused()) return;
+	if (!editorWindow?.isFocused()) return;
 	editorWindow.webContents.send('select-all');
 }
 function sendDelete() {
-	if (!editorWindow.isFocused()) return;
+	if (!editorWindow?.isFocused()) return;
 	editorWindow.webContents.send('delete');
 }
 function sendUndo() {
-	if (!editorWindow.isFocused()) return;
+	if (!editorWindow?.isFocused()) return;
 	editorWindow.webContents.send('undo');
 }
 function sendRedo() {
-	if (!editorWindow.isFocused()) return;
+	if (!editorWindow?.isFocused()) return;
 	editorWindow.webContents.send('redo');
 }
 function sendDupe() {
-	if (!editorWindow.isFocused()) return;
+	if (!editorWindow?.isFocused()) return;
 	editorWindow.webContents.send('dupe');
 }
 function sendAddObject(type) {
-	if (!editorWindow.isFocused()) return;
+	if (!editorWindow?.isFocused()) return;
 	editorWindow.webContents.send('add-object', type);
 }
 function sendSymboliseObject() {
-	if (!editorWindow.isFocused()) return;
+	if (!editorWindow?.isFocused()) return;
 	editorWindow.webContents.send('symbolise-object');
 }
 function sendDesymboliseObject() {
-	if (!editorWindow.isFocused()) return;
+	if (!editorWindow?.isFocused()) return;
 	editorWindow.webContents.send('desymbolise-object');
 }
 function sendFocusObject() {
-	if (!editorWindow.isFocused()) return;
+	if (!editorWindow?.isFocused()) return;
 	editorWindow.webContents.send('focus-object');
 }
 function sendSaveProject() {
-	if (!editorWindow.isFocused()) return;
+	if (!editorWindow?.isFocused()) return;
 	editorWindow.webContents.send('save-project', lastOpenedProjectUri);
 }
 function sendSaveProjectAs() {
-	if (!editorWindow.isFocused()) return;
+	if (!editorWindow?.isFocused()) return;
 	dialog.showSaveDialog(editorWindow, {
 		title: 'Save Project As',
 		defaultPath: lastOpenedProjectUri,
@@ -313,52 +346,52 @@ function sendSaveProjectAs() {
 	});
 }
 function sendSetTool(type) {
-	if (!editorWindow.isFocused()) return;
+	if (!editorWindow?.isFocused()) return;
 	editorWindow.webContents.send('set-tool', type);
 }
 function sendSetTransformTool(type) {
-	if (!editorWindow.isFocused()) return;
+	if (!editorWindow?.isFocused()) return;
 	editorWindow.webContents.send('set-transform-tool', type);
 }
 function sendNewFile(extension) {
-	if (!editorWindow.isFocused()) return;
+	if (!editorWindow?.isFocused()) return;
 	editorWindow.webContents.send('new-asset', extension);
 }
 function sendEditCode() {
-	if (!editorWindow.isFocused()) return;
+	if (!editorWindow?.isFocused()) return;
 	editorWindow.webContents.send('edit-code');
 }
 function sendImportAssets(paths) {
-	if (!editorWindow.isFocused()) return;
+	if (!editorWindow?.isFocused()) return;
 	editorWindow.webContents.send('menu-import-assets', paths);
 }
 function sendAddComponent(type) {
-	if (!editorWindow.isFocused()) return;
+	if (!editorWindow?.isFocused()) return;
 	editorWindow.webContents.send('add-component', type);
 }
 function sendCopySpecial(type) {
-	if (!editorWindow.isFocused()) return;
+	if (!editorWindow?.isFocused()) return;
 	editorWindow.webContents.send('copy-special', type);
 }
 function sendPasteSpecial(type) {
-	if (!editorWindow.isFocused()) return;
+	if (!editorWindow?.isFocused()) return;
 	editorWindow.webContents.send('paste-special', type);
 }
 function sendGroupObjects() {
-	if (!editorWindow.isFocused()) return;
+	if (!editorWindow?.isFocused()) return;
 	editorWindow.webContents.send('group');
 }
 function sendUngroupObjects() {
-	if (!editorWindow.isFocused()) return;
+	if (!editorWindow?.isFocused()) return;
 	editorWindow.webContents.send('ungroup');
 }
 function sendMergeObjects() {
-	if (!editorWindow.isFocused()) return;
+	if (!editorWindow?.isFocused()) return;
 	editorWindow.webContents.send('merge');
 }
 
 function sendBuild({prompt, play}) {
-	if (!editorWindow.isFocused()) return;
+	if (!editorWindow?.isFocused()) return;
 	let uri = lastOpenedProjectUri;
 	if (uri.endsWith('.d3dproj'))
 		uri = uri.slice(0, -'.d3dproj'.length) + '.d3d';
@@ -388,6 +421,14 @@ function sendBuild({prompt, play}) {
 // --- Menu ---
 const isMac = process.platform === 'darwin';
 
+const standardMenu = [
+	{
+		role: 'appMenu', // macOS only (adds About, Quit)
+	},
+	{
+		role: 'editMenu', // adds Cut/Copy/Paste/Select All automatically
+	},
+];
 const menuTemplate = [
 	...(isMac ? [{
 		label: app.productName,
@@ -709,7 +750,9 @@ const menuTemplate = [
 ];
 
 const appMenu = Menu.buildFromTemplate(menuTemplate);
-Menu.setApplicationMenu(appMenu);
+const appMenuBase = Menu.buildFromTemplate(standardMenu);
+
+Menu.setApplicationMenu(appMenuBase);
 
 function setItemEnabledDeep(item, enabled) {
 	if (!item) 
@@ -792,7 +835,7 @@ ipcMain.on('editor-status', (_, { inputFocussed, codeEditorOpen, activeElement }
 		codeEditorActive = codeEditorOpen;
 	
 	try {
-		editorWindow.webContents.setIgnoreMenuShortcuts(
+		editorWindow && editorWindow.webContents && editorWindow.webContents.setIgnoreMenuShortcuts(
 			activeElement?.tag == 'TEXTAREA' || 
 			(activeElement?.tag == 'INPUT' && activeElement?.type == 'text')
 		);
@@ -805,6 +848,7 @@ ipcMain.on('editor-status', (_, { inputFocussed, codeEditorOpen, activeElement }
 
 // Close editor
 ipcMain.on('close-editor', () => closeEditorWindow());
+ipcMain.on('close-new-proj-window', () => closeNewProjectWindow());
 
 // Show error dialog
 ipcMain.on('show-error', async (_, { title, message, closeEditorWhenDone }) => {
@@ -844,11 +888,27 @@ ipcMain.handle('show-confirm', async (
 
 	return response === 0; // true if "Yes"
 });
+ipcMain.handle('resolve-template-path', (_e, rel) => {
+	// App path in dev vs packaged
+	const base = app.isPackaged
+		? path.join(process.resourcesPath, 'app.asar.unpacked') // or 'app.asar' if packed
+		: app.getAppPath();
+	const cand1 = path.join(base, rel);
+	if (fs.existsSync(cand1)) return cand1;
+
+	// Another common packaged location (if you ship assets unpacked alongside)
+	const cand2 = path.join(process.resourcesPath, rel);
+	if (fs.existsSync(cand2)) return cand2;
+
+	return null;
+});
+ipcMain.handle('show-save-dialog', async (_e, opts) => {
+	return await dialog.showSaveDialog(opts || {});
+});
 
 // Get player URI
 ipcMain.handle('get-current-game-uri', () => playerURI);
 
-// Update window size/title
 ipcMain.on('update-editor-window', (_, { width, height, title }) => {
 	if (editorWindow && !editorWindow.isDestroyed()) {
 		if(width && height)
@@ -857,7 +917,6 @@ ipcMain.on('update-editor-window', (_, { width, height, title }) => {
 		editorWindow.setTitle(`${title} - Damen3D Editor ${pkg.editorVersion}`);
 	}
 });
-
 ipcMain.on('set-dirty', (_, isDirty) => {
 	editorDirty = isDirty;
 	editorWindow.setDocumentEdited(editorDirty);
@@ -867,33 +926,39 @@ ipcMain.on('set-dirty', (_, isDirty) => {
 	
 	editorWindow.setTitle(editorWindow.d3deditortitle + (isDirty ? ' *' : ''));
 });
-
 ipcMain.on('show-in-finder', (_, uri) => {
 	shell.showItemInFolder(uri);
 });
-
-// Update window size/title
 ipcMain.on('update-window', (_, { width, height, title }) => {
 	if (gameWindow && !gameWindow.isDestroyed()) {
 		gameWindow.setContentSize(width, height);
 		gameWindow.setTitle(title);
 	}
 });
-
 ipcMain.on('open-player', (_, uri) => {
 	playerURI = uri;
 	createGameWindow();
 });
-
 ipcMain.on('console-message', (_, {level, message}) => {
 	console.log('csm', level, message);
 	editorWindow.webContents.send('csm', {level, message});
 });
-
 ipcMain.on('echo-save', () => {
 	sendSaveProject();
 })
-
 ipcMain.on('echo-build', (_, {prompt, play}) => {
 	sendBuild({prompt, play});
-})
+});
+ipcMain.on('ctx-menu', (event, {template, x, y}) => {
+	template.forEach(t => {
+		t.click = () => editorWindow.webContents.send('ctx-menu-action', t.id);
+	});
+	
+	const menu = Menu.buildFromTemplate(template);
+	const bw = BrowserWindow.fromWebContents(event.sender);
+	
+	menu.popup({ window: bw, x, y });
+});
+ipcMain.on('open-project-uri', (_, uri) => {
+	openProject(uri);
+});

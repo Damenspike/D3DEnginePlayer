@@ -155,6 +155,9 @@ body.dark {
 	.color-field-swatch {
 		outline: 2px solid rgba(255, 255, 255, 0.2);
 	}
+	.color-field-popup {
+		background: #333;
+	}
 }
 
 /* TOP BAR (top bar) */
@@ -1100,6 +1103,15 @@ body.dark {
 	padding: 0;
 	min-width: 0 !important;
 	outline: 2px solid rgba(0, 0, 0, 0.8);
+}
+.color-field-popup {
+	position: absolute;
+	z-index: 10000;
+	background: #fff;
+	border-radius: 8px;
+	padding: 10px;
+	box-shadow: 0 10px 24px rgba(0,0,0,0.35);
+	max-height: min(90vh,440px);
 }
 .drawbar-draw2d {
 	font-size: 12px;

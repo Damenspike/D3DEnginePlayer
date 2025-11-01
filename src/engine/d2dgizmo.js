@@ -100,7 +100,7 @@ export default class D2DGizmo {
 			const x = Math.min(a.x, b.x);
 			const y = Math.min(a.y, b.y);
 			const w = Math.abs(b.x - a.x);
-			const h = Math.abs(b.y - b.y);
+			const h = Math.abs(b.y - a.y);
 
 			ctx.save();
 			ctx.lineWidth = Math.max(px, 1 * px) * 1;
@@ -686,9 +686,9 @@ export default class D2DGizmo {
 	_pickTop(wx, wy) {
 		const roots = this._marqueeRootsUnderFocus();
 		if (!roots.length) return null;
-
+		
 		roots.sort((a, b) => (a.position?.z || 0) - (b.position?.z || 0));
-
+		
 		for (let i = roots.length - 1; i >= 0; --i) {
 			const r = roots[i];
 			if (r.__editorState?.locked || r.noSelect) continue;

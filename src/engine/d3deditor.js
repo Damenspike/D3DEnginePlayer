@@ -1064,6 +1064,13 @@ async function onImportAssets(paths) {
 	onAssetsUpdated();
 }
 function addComponent(type) {
+	if(_editor.selectedObjects.length < 1) {
+		_editor.showError({
+			title: 'Add Component',
+			message: 'No object(s) selected'
+		});
+		return;
+	}
 	_editor.selectedObjects.forEach(d3dobject => {
 		if(d3dobject.hasComponent(type)) {
 			_editor.showError({
@@ -1104,6 +1111,8 @@ _editor.saveProject = saveProject;
 _editor.moveObjectToCameraView = moveObjectToCameraView;
 _editor.onConsoleMessage = onConsoleMessage;
 _editor.buildProject = buildProject;
+_editor.symboliseSelectedObject = symboliseSelectedObject;
+_editor.desymboliseSelectedObject = desymboliseSelectedObject;
 
 D3D.setEventListener('select-all', () => _editor.selectAll());
 D3D.setEventListener('delete', () => _editor.delete());
@@ -1116,8 +1125,8 @@ D3D.setEventListener('request-save-and-close', (uri) => saveProjectAndClose(uri)
 D3D.setEventListener('build', (buildURI, play) => buildProject(buildURI, play));
 
 D3D.setEventListener('add-object', (type) => addD3DObjectEditor(type));
-D3D.setEventListener('symbolise-object', (type) => symboliseSelectedObject(type));
-D3D.setEventListener('desymbolise-object', (type) => desymboliseSelectedObject(type));
+D3D.setEventListener('symbolise-object', () => symboliseSelectedObject());
+D3D.setEventListener('desymbolise-object', () => desymboliseSelectedObject());
 D3D.setEventListener('focus-object', (type) => _editor.focusOnSelectedObjects?.());
 D3D.setEventListener('set-tool', (type) => _editor.setTool(type));
 D3D.setEventListener('set-transform-tool', (type) => _editor.setTransformTool(type));
@@ -1130,3 +1139,4 @@ D3D.setEventListener('paste-special', (type) => _editor.pasteSpecial(type));
 D3D.setEventListener('group', () => _editor.groupObjects(_editor.selectedObjects));
 D3D.setEventListener('ungroup', () => _editor.ungroupObjects(_editor.selectedObjects));
 D3D.setEventListener('merge', () => _editor.mergeObjects(_editor.selectedObjects));
+D3D.setEventListener('ctx-menu-action', (id) => _events.invoke('ctx-menu-action', id));

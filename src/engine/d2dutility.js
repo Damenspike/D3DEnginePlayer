@@ -295,35 +295,54 @@ export function quatFromZ(rad) {
  * @param {object} opts    { renderer, strokePadPx=6 }
  */
 export function hitObject(o, wx, wy, opts = {}) {
-	 if (!passesAncestorMasks(o, wx, wy)) return false;
- 
-	 const pts = localPoints(o);
-	 if (!pts || pts.length < 2) return false;
- 
-	 const Minv = worldMatrixInverse(o);
-	 const lp = applyMat(Minv, wx, wy);
- 
-	 const g = o?.graphic2d || {};
-	 const hasFill   = !!(g.fill || g.filled || g.hasFill || g.fillStyle);
-	 const hasStroke = !!(g.line || g.stroke || g.stroked || g.hasStroke || g.strokeStyle || g.lineWidth);
-	 const strokeW   = Number(g.lineWidth || g.strokeWidth || 0);
- 
-	 const padPx = Number(opts.strokePadPx ?? 6);
-	 const tol = Math.max(pxToWorld(opts.renderer, padPx), strokeW * 0.5);
- 
-	 // Fill: treat as closed
-	 if (hasFill && pointInPolygon(lp.x, lp.y, pts)) return true;
- 
-	 // Stroke: near any segment
-	 if (hasStroke && pointNearPolyline(lp.x, lp.y, pts, tol)) return true;
- 
-	 // Optionally test closing segment for open-but-rendered shapes
-	 if (hasStroke && pts.length > 1) {
-		 const a = pts[pts.length - 1], b = pts[0];
-		 if (distSqToSeg(lp.x, lp.y, a, b) <= tol * tol) return true;
-	 }
- 
-	 return false;
+	if (!passesAncestorMasks(o, wx, wy)) return false;
+	
+	const isBitmap = o.hasComponent('Bitmap2D')
+	
+	if (isBitmap) {
+		// same local rect the renderer uses
+		const rect = localBitmapRectFromGraphic2D(o);
+		if (rect) {
+			const Minv = worldMatrixInverse(o);
+			const lp = applyMat(Minv, wx, wy); // world → local (handles nesting, rotation, scale)
+			const x0 = rect.x, x1 = rect.x + rect.w;
+			const y0 = rect.y, y1 = rect.y + rect.h;
+			if (lp.x >= x0 && lp.x <= x1 && lp.y >= y0 && lp.y <= y1) return true;
+		} else {
+			// fallback: world AABB containment if rect is unavailable
+			const bb = worldAABBDeep(o);
+			if (bb && wx >= bb.minX && wx <= bb.maxX && wy >= bb.minY && wy <= bb.maxY) return true;
+		}
+		// If not inside, continue to generic path logic (in case there is any)
+	}
+	
+	const pts = localPoints(o);
+	if (!pts || pts.length < 2) return false;
+	
+	const Minv = worldMatrixInverse(o);
+	const lp = applyMat(Minv, wx, wy);
+	
+	const g = o?.graphic2d || {};
+	const hasFill   = !!(g.fill || g.filled || g.hasFill || g.fillStyle);
+	const hasStroke = !!(g.line || g.stroke || g.stroked || g.hasStroke || g.strokeStyle || g.lineWidth);
+	const strokeW   = Number(g.lineWidth || g.strokeWidth || 0);
+	
+	const padPx = Number(opts.strokePadPx ?? 6);
+	const tol = Math.max(pxToWorld(opts.renderer, padPx), strokeW * 0.5);
+	
+	// Fill: treat as closed
+	if (hasFill && pointInPolygon(lp.x, lp.y, pts)) return true;
+	
+	// Stroke: near any segment
+	if (hasStroke && pointNearPolyline(lp.x, lp.y, pts, tol)) return true;
+	
+	// Optionally test closing segment for open-but-rendered shapes
+	if (hasStroke && pts.length > 1) {
+	const a = pts[pts.length - 1], b = pts[0];
+	if (distSqToSeg(lp.x, lp.y, a, b) <= tol * tol) return true;
+	}
+	
+	return false;
  }
 
 /**
@@ -1272,6 +1291,21 @@ export function toCanvasPaint(ctx, paint, bounds) {
 	if (s.startsWith('#') || s.startsWith('0x')) return hex8ToRgba(s, s);
 	// rgb(...) / rgba(...) / named → pass through (but normalize RGB→rgba)
 	return hex8ToRgba(s, s);
+}
+export function localBitmapRectFromGraphic2D(o) {
+	const g = o?.graphic2d;
+	const p0 = g?._paths?.[0];
+	if (!Array.isArray(p0) || p0.length < 2) return null;
+
+	let minX = p0[0].x, maxX = p0[0].x, minY = p0[0].y, maxY = p0[0].y;
+	for (let i = 1; i < p0.length; i++) {
+		const p = p0[i];
+		if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+		if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+	}
+	const w = maxX - minX, h = maxY - minY;
+	if (!(w > 0 && h > 0)) return null;
+	return { x: minX, y: minY, w, h };
 }
 
 /* ========================= DEFAULT BUNDLE ========================= */

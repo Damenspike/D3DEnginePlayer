@@ -1,0 +1,9 @@
+{
+	"name": "Silver",
+	"type": "MeshStandardMaterial",
+	"color": "0xC4C4C4",
+	"metalness": 0.0,
+	"roughness": 0.5,
+	"emissive": 0,
+	"wireframe": false
+}

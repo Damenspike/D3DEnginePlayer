@@ -1,6 +1,7 @@
 // GameView.jsx
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { loadD3DProj } from '../../../engine/d3deditor.js';
+import { eventToWorld } from '../../../engine/d2dutility.js';
 
 const MIME = 'application/x-d3d-objectrow';
 
@@ -99,6 +100,173 @@ export default function GameView({editorMode}) {
 
 		return () => observer.disconnect();
 	}, []);
+	
+	// Right click menu on canvas 2d
+	useEffect(() => {
+		if(!game2dRef?.current)
+			return;
+		
+		const canvas2d = game2dRef.current;
+		let objectHit;
+		let p;
+		
+		const onRightClick = (e) => {
+			
+			const defaultCtx = [
+				{
+					id: 'paste-point',
+					label: 'Paste',
+					enabled: _editor.clipboard?.length > 0
+				},
+				{
+					id: 'paste',
+					label: 'Paste in Place',
+					enabled: _editor.clipboard?.length > 0
+				},
+				{ type: 'separator' },
+				{
+					id: 'snap-points',
+					type: 'checkbox',
+					checked: !!_editor.draw2d.snapToPoints,
+					label: 'Snap to Points'
+				},
+				{
+					id: 'snap-objects',
+					type: 'checkbox',
+					checked: !!_editor.draw2d.snapToObjects,
+					label: 'Snap to Objects'
+				}
+			];
+			const objectCtx = [
+				{
+					id: 'cut-object',
+					label: 'Cut'
+				},
+				{
+					id: 'copy-object',
+					label: 'Copy'
+				},
+				{
+					id: 'paste-point',
+					label: 'Paste',
+					enabled: _editor.clipboard?.length > 0
+				},
+				{
+					id: 'paste',
+					label: 'Paste in Place',
+					enabled: _editor.clipboard?.length > 0
+				},
+				{ type: 'separator' },
+				{
+					id: 'front-object',
+					label: 'Bring to Front'
+				},
+				{
+					id: 'forwards-object',
+					label: 'Bring Forward'
+				},
+				{
+					id: 'back-object',
+					label: 'Send to Back'
+				},
+				{
+					id: 'backwards-object',
+					label: 'Send Backwards'
+				},
+				{ type: 'separator' },
+				{
+					id: 'symbolise-object',
+					label: 'Symbolise'
+				},
+				{
+					id: 'group',
+					label: 'Group'
+				},
+				{
+					id: 'ungroup',
+					label: 'Ungroup'
+				},
+				{ type: 'separator' },
+				{
+					id: 'code',
+					label: 'Code'
+				}
+			];
+			
+			let template = defaultCtx;
+			p = eventToWorld(e, _editor.renderer2d.domElement, _editor.renderer2d);
+			
+			const x = e.clientX + 2;
+			const y = e.clientY + 2;
+			
+			objectHit = _editor.renderer2d.gizmo._pickTop(p.x, p.y);
+			
+			if(objectHit) {
+				template = objectCtx;
+				
+				if(!_editor.isSelected(objectHit))
+					_editor.setSelection([objectHit]);
+			}
+			
+			D3D.openContextMenu({template, x, y});
+		}
+		const onCtxMenuAction = async (id) => {
+			if(id == 'snap-points') {
+				_editor.draw2d.snapToPoints = !_editor.draw2d.snapToPoints;
+			}else
+			if(id == 'snap-objects') {
+				_editor.draw2d.snapToObjects = !_editor.draw2d.snapToObjects;
+			}else
+			if(id == 'cut-object') {
+				_editor.cut();
+			}else
+			if(id == 'copy-object') {
+				_editor.copy();
+			}else
+			if(id == 'paste') {
+				_editor.paste();
+			}else
+			if(id == 'paste-point' && !isNaN(p?.x) && !isNaN(p?.y)) {
+				const pastedObjects = await _editor.paste();
+				pastedObjects.forEach(d3dobject => {
+					d3dobject.position.x = p.x;
+					d3dobject.position.y = p.y;
+				});
+			}else
+			if(id == 'front-object') {
+				_editor.bringObjectsToFront();
+			}else
+			if(id == 'forwards-object') {
+				_editor.bringObjectsForwards();
+			}else
+			if(id == 'back-object') {
+				_editor.sendObjectsToBack();
+			}else
+			if(id == 'backwards-object') {
+				_editor.sendObjectsBackwards();
+			}else
+			if(id == 'code') {
+				_editor.editCode();
+			}else
+			if(id == 'symbolise-object') {
+				_editor.symboliseSelectedObject();
+			}else
+			if(id == 'group') {
+				_editor.group();
+			}else
+			if(id == 'ungroup') {
+				_editor.ungroup();
+			}
+		}
+		
+		_events.on('ctx-menu-action', onCtxMenuAction);
+		canvas2d.addEventListener('contextmenu', onRightClick);
+		
+		return () => {
+			_events.un('ctx-menu-action', onCtxMenuAction);
+			canvas2d.removeEventListener('contextmenu', onRightClick);
+		};
+	}, [game2dRef]);
 	
 	const drawFocusPath = () => {
 		if(!objectFrame)

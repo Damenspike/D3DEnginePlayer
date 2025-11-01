@@ -251,13 +251,14 @@ export default function Inspector() {
 									update();
 								}}
 								onBlur={e => {
+									const object = objects[0];
 									const val = String(e.target.value).trim() || '';
 									
-									if(!val || !objects[0].isNameAllowed(val)) {
-										dummyObject.name = objects[0].name; // revert
+									if(!val || !object.isNameAllowed(val)) {
+										dummyObject.name = object.name; // revert
 										update();
 										
-										return _editor.showError(`Object name not allowed. ${val != '' && !objects[0].isValidName(val) ? 'Object names can only contain alphanumeric characters.' : ''}`);
+										return _editor.showError(`Object name not allowed. ${val != '' && !object.isValidName(val) ? 'Object names can only contain alphanumeric characters.' : ''}`);
 									}
 									
 									const oldName = object.name;
@@ -1786,6 +1787,45 @@ export default function Inspector() {
 			const tr = s.endsWith('/') ? s.slice(0, -1) : s;
 			return tr.split('/').pop();
 		};
+		// Returns a normalized list of items to drag based on what was grabbed.
+		const getDragPaths = (clickedPath) => {
+			const np = normPath(clickedPath);
+			// Drag the whole selection if the clicked item is in it; otherwise just the clicked one.
+			return selectedAssetPaths.has(np)
+				? Array.from(selectedAssetPaths).map(normPath)
+				: [np];
+		};
+		const getPayloadPaths = (payload) => {
+			if (!payload) return [];
+			if (Array.isArray(payload.paths) && payload.paths.length) return payload.paths.map(normPath);
+			if (payload.path) return [normPath(payload.path)];
+			return [];
+		};
+		const moveManyTo = async (srcPaths, destDir) => {
+			const dst = normPath(destDir);           // folder path (no trailing slash)
+			const destSlash = `${dst}/`;
+			const moved = [];
+		
+			for (const raw of srcPaths) {
+				const src = normPath(raw);
+				const srcIsDir = isDirectory(zip, src);
+		
+				// block moving a folder into itself/descendant
+				if (srcIsDir) {
+					if (dst === src || dst.startsWith(`${src}/`)) {
+						continue; // skip invalid move, carry on with others
+					}
+				}
+		
+				// moveZipEntry should accept dest dir with trailing slash
+				const res = await moveZipEntry(zip, src, destSlash, { updateIndex });
+				// res may shape as {dir: '...', file: '...'} — normalize:
+				const movedTo = normPath(res?.dir || res?.file || joinPath(dst, baseName(src)));
+				moved.push(movedTo);
+			}
+		
+			return moved;
+		};
 	
 		if (!zip) return <div className="no-label">No project file mounted</div>;
 	
@@ -1877,14 +1917,14 @@ export default function Inspector() {
 		const isSelected = (p) => selectedAssetPaths.has(normPath(p));
 		
 		const selectNone = () => {
-			_editor.setSelection([]);
+			_editor.setSelection([], false, false);
 			setSelectedAssetPaths(() => new Set());
 			setLastSelectedPath(null);
 		};
 	
 		const setSingleSelection = (p) => {
 			const np = p ? p : null;
-			_editor.setSelection([]);
+			_editor.setSelection([], false, false);
 			setSelectedAssetPaths(() => (np ? new Set([np]) : new Set()));
 			setLastSelectedPath(np);
 		};
@@ -1895,25 +1935,60 @@ export default function Inspector() {
 				next.has(p) ? next.delete(p) : next.add(p);
 				return next;
 			});
-			_editor.setSelection([]);
+			_editor.setSelection([], false, false);
 			setLastSelectedPath(p);
 		};
 	
 		const selectRange = (siblings, fromPath, toPath) => {
-			if (!fromPath || !toPath) return setSingleSelection(toPath);
-			const filesOnly = siblings.filter(n => n.type === 'file');
-			const idxA = filesOnly.findIndex(n => n.path === fromPath);
-			const idxB = filesOnly.findIndex(n => n.path === toPath);
-			if (idxA === -1 || idxB === -1) return setSingleSelection(toPath);
-			const start = Math.min(idxA, idxB);
-			const end = Math.max(idxA, idxB);
+			// normalize inputs
+			const A = fromPath ? normPath(fromPath) : null;
+			const B = toPath ? normPath(toPath) : null;
+		
+			// trivial cases
+			if (!B) return;
+			if (!A || A === B) return setSingleSelection(B);
+		
+			const sibs = Array.isArray(siblings) ? siblings : [];
+		
+			// helpers
+			const byPath = (list, p) => list.find(n => normPath(n.path) === p);
+			const idxIn  = (list, p) => list.findIndex(n => normPath(n.path) === p);
+		
+			const aNode = byPath(sibs, A);
+			const bNode = byPath(sibs, B);
+		
+			// choose the selection pool
+			let pool;
+			if (aNode && bNode && aNode.type === 'file' && bNode.type === 'file') {
+				pool = sibs.filter(n => n.type === 'file');
+			} else if (aNode && bNode && aNode.type === 'dir' && bNode.type === 'dir') {
+				pool = sibs.filter(n => n.type === 'dir');
+			} else {
+				pool = sibs; // mixed endpoints → select across both files and dirs
+			}
+		
+			// find indices inside chosen pool; if either not found, fall back to full siblings
+			let iA = idxIn(pool, A);
+			let iB = idxIn(pool, B);
+			if (iA === -1 || iB === -1) {
+				pool = sibs;
+				iA = idxIn(pool, A);
+				iB = idxIn(pool, B);
+				if (iA === -1 || iB === -1) return setSingleSelection(B);
+			}
+		
+			const start = Math.min(iA, iB);
+			const end   = Math.max(iA, iB);
+		
 			setSelectedAssetPaths(prev => {
 				const next = new Set(prev);
-				for (let i = start; i <= end; i++) next.add(filesOnly[i].path);
+				for (let i = start; i <= end; i++) next.add(normPath(pool[i].path));
 				return next;
 			});
-			_editor.setSelection([]);
-			setLastSelectedPath(toPath);
+		
+			// keep editor selection model in sync (use your signature)
+			_editor.setSelection([], false, false);
+			setLastSelectedPath(B);
 		};
 	
 		// ------------------------------
@@ -2035,7 +2110,11 @@ export default function Inspector() {
 						selected={selected}
 						style={{ paddingLeft: 6 + depth * 24 }}
 						draggable
-						dragData={{ kind: 'asset', path: node.path }}
+						dragData={{
+							kind: 'assets',
+							primary: node.path,
+							paths: getDragPaths(node.path)   // <-- multi-drag
+						}}
 						onRename={async (newName) => {
 							try {
 								const newPath = await renameZipFile(zip, node.path, newName, updateIndex);
@@ -2084,37 +2163,32 @@ export default function Inspector() {
 							style={{ paddingLeft: 6 + depth * 14 }}
 							droppable
 							draggable
-							dragData={{ kind: 'folder', path: node.path }}
+							dragData={{
+								kind: 'assets',
+								primary: node.path,
+								paths: getDragPaths(node.path)   // <-- multi-drag
+							}}
 							onDrop={async (e, payload) => {
 								e.stopPropagation();
 								e.preventDefault();
-								
 								try {
-									if (!payload?.path) return;
+									const paths = getPayloadPaths(payload);
+									if (!paths.length) return;
 							
-									const destDir = node.path.endsWith('/') ? node.path : (node.path + '/');
-									const srcIsDir = isDirectory(zip, payload.path);
-									const srcDir = srcIsDir ? (payload.path.endsWith('/') ? payload.path : payload.path + '/') : null;
-							
-									// prevent moving a folder into itself/descendant
-									if (srcIsDir && (destDir === srcDir || destDir.startsWith(srcDir))) return;
-							
-									// IMPORTANT: pass destDir (not node.path)
-									const moveResult = await moveZipEntry(zip, payload.path, destDir, { updateIndex });
-									const movedTo = moveResult.dir;
+									const destDir = node.path; // normalized (no trailing slash)
+									const movedTo = await moveManyTo(paths, destDir);
 							
 									setAssetTree(buildTree());
 									setAssetExpanded(prev => {
 										const next = new Set(prev);
-										next.add(destDir.replace(/\/$/, '')); // expand destination folder
+										next.add(destDir);
 										return next;
 									});
 							
-									// Select the thing we actually moved
-									if (movedTo) {
-										const movedIsDir = isDirectory(zip, movedTo);
-										const selectPath = movedIsDir ? movedTo.replace(/\/$/, '') : movedTo;
-										setSingleSelection(selectPath);
+									// Re-select everything that successfully moved
+									if (movedTo.length) {
+										setSelectedAssetPaths(new Set(movedTo.map(normPath)));
+										setLastSelectedPath(movedTo[movedTo.length - 1]);
 									}
 							
 									_editor.onAssetsUpdated();
@@ -2270,26 +2344,21 @@ export default function Inspector() {
 				onDrop={async (e) => {
 					if (!canAccept(e)) return;
 					e.preventDefault();
-					const payload = unpack(e);
-					if (!payload?.path) return;
 				
-					const dstDir = ROOT; // 'assets/'
-					await moveZipEntry(zip, payload.path, dstDir, { updateIndex });
+					const payload = unpack(e);
+					const paths = getPayloadPaths(payload);
+					if (!paths.length) return;
+				
+					const dstDir = ROOT;
+					const movedTo = await moveManyTo(paths, dstDir);
 				
 					setAssetTree(buildTree());
+					setAssetExpanded(prev => new Set(prev).add(dstDir));
 				
-					// select moved item (not root)
-					const movedName = payload.path.split('/').pop();
-					const movedIsDir = isDirectory(zip, payload.path);
-					const movedPath = normPath(
-						dstDir + movedName + (movedIsDir ? '/' : '')
-					);
-				
-					setSelectedAssetPaths(new Set([movedPath]));
-					setLastSelectedPath(movedPath);
-				
-					// expand root, do NOT select it
-					setAssetExpanded(prev => new Set(prev).add(ROOT));
+					if (movedTo.length) {
+						setSelectedAssetPaths(new Set(movedTo.map(normPath)));
+						setLastSelectedPath(movedTo[movedTo.length - 1]);
+					}
 				
 					_editor.onAssetsUpdated();
 				}}

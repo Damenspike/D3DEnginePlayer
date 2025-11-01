@@ -1,0 +1,9 @@
+{
+	"name": "Purple",
+	"type": "MeshStandardMaterial",
+	"color": "0x800080",
+	"metalness": 0.0,
+	"roughness": 0.5,
+	"emissive": 0,
+	"wireframe": false
+}

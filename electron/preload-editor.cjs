@@ -2,12 +2,26 @@
 const { contextBridge, ipcRenderer } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
+const JSZip = require('jszip');
 const { existsSync } = require('fs');
 
 const events = {};
 const fireEvent = (event, ...args) => events[event]?.(...args);
 const addIPCListener = (name) => 
 	ipcRenderer.on(name, (_, ...args) => fireEvent(name, ...args));
+const showError = ({title, message, closeEditorWhenDone}) => {
+	ipcRenderer.send('show-error', {
+		title: String(title) || 'Error',
+		message: String(message) || '',
+		closeEditorWhenDone: !!closeEditorWhenDone
+	});
+}
+const showConfirm = ({title, message}) => {
+	return ipcRenderer.invoke('show-confirm', {
+		title: String(title),
+		message: String(message)
+	});
+}
 
 contextBridge.exposeInMainWorld('D3D', {
 	setEventListener: (event, listener) => {
@@ -24,25 +38,15 @@ contextBridge.exposeInMainWorld('D3D', {
 	},
 	
 	closeEditor: () => ipcRenderer.send('close-editor'),
-	showError: ({title, message, closeEditorWhenDone}) => {
-		ipcRenderer.send('show-error', {
-			title: String(title) || 'Error',
-			message: String(message) || '',
-			closeEditorWhenDone: !!closeEditorWhenDone
-		});
-	},
-	showConfirm: ({title, message}) => {
-		return ipcRenderer.invoke('show-confirm', {
-			title: String(title),
-			message: String(message)
-		});
-	},
+	showError: showError,
+	showConfirm: showConfirm,
 	saveProject: async (targetPath, buffer) => {
 		const b64 = Buffer.from(buffer).toString('base64');
 		return ipcRenderer.invoke('project:save', { targetPath, bufferBase64: b64 });
 	},
 	startNewProject: () => ipcRenderer.invoke('new-project'),
 	openProjectDialog: () => ipcRenderer.invoke('open-project'),
+	openProject: (uri) => ipcRenderer.send('open-project-uri', uri),
 	setDirty: (dirty) => ipcRenderer.send('set-dirty', !!dirty),
 	getCurrentProjectURI: () => ipcRenderer.invoke('get-current-project-uri'),
 	updateEditorWindow: (options) => ipcRenderer.send('update-editor-window', options),
@@ -64,8 +68,8 @@ contextBridge.exposeInMainWorld('D3D', {
 		if(ext != 'd3dproj')
 			throw new Error('Could not read file of this type');
 		
-		const b64 = await fs.readFile(filePath);
-		return Uint8Array.from(Buffer.from(b64, 'base64'));
+		const data = await fs.readFile(filePath);
+		return Uint8Array.from(Buffer.from(data, 'base64'));
 	},
 	echoSave: () => ipcRenderer.send('echo-save'),
 	echoBuild: ({prompt, play}) => ipcRenderer.send('echo-build', {prompt, play}),
@@ -102,6 +106,74 @@ contextBridge.exposeInMainWorld('D3D', {
 	openPlayer: (uri) => ipcRenderer.send('open-player', uri),
 	onConsoleMessage: ({level, message}) => 
 		ipcRenderer.send('console-message', {level, message}),
+	openContextMenu: ({template, x, y}) => 
+		ipcRenderer.send('ctx-menu', {template, x, y}),
+	createNewProject: async ({ name, author, width, height, closeNewWindow, onComplete }) => {
+		try {
+			if (!name || !name.trim()) {
+				return showError('Project must have a name');
+			}
+			
+			author = typeof author === 'string' ? author : '';
+			
+			let w = Number(width);
+			let h = Number(height);
+			
+			if (!Number.isFinite(w)) 
+				return showError('Invalid width');
+			if (!Number.isFinite(h)) 
+				return showError('Invalid height');
+			
+			w = Math.max(10, Math.round(w));
+			h = Math.max(10, Math.round(h));
+			
+			// --- load template .d3dproj ---
+			const tplPath = await resolveTemplatePath();
+			const data = await fs.readFile(tplPath); // Buffer
+			const zip = await JSZip.loadAsync(data);
+			
+			const manifestPath = 'manifest.json';
+			const hasManifest = !!zip.file(manifestPath);
+			
+			const manifestStr = await zip.file(manifestPath).async('string');
+			let manifest = {};
+			try { manifest = JSON.parse(manifestStr); } catch {
+				console.warn('Template manifest is invalid JSON');
+			}
+			manifest.name = name.trim();
+			manifest.author = author;
+			manifest.width = w;
+			manifest.height = h;
+			
+			zip.file(manifestPath, JSON.stringify(manifest, null, 2));
+			
+			const outBuf = await zip.generateAsync({
+				type: 'nodebuffer', 
+				compression: 'DEFLATE' 
+			});
+			const saveTo = await ipcRenderer.invoke('show-save-dialog', {
+				title: 'Save New Project',
+				defaultPath: `${name}.d3dproj`,
+				filters: [{ name: 'D3D Project', extensions: ['d3dproj'] }]
+			});
+			if (!saveTo || saveTo.canceled || !saveTo.filePath) {
+				return; // user cancelled
+			}
+			
+			await fs.writeFile(saveTo.filePath, outBuf);
+			
+			if(closeNewWindow) {
+				ipcRenderer.send('close-new-proj-window');
+			}
+			
+			onComplete({ 
+				path: saveTo.filePath, name, author, width: w, height: h 
+			});
+		} catch (err) {
+			console.error(err);
+			showError('Failed to create project');
+		}
+	},
 	
 	theme: {
 		get: () => ipcRenderer.invoke('get-theme'),
@@ -121,6 +193,16 @@ function getExtension(path) {
 		return '';
 	
 	return path.slice(lastDot + 1).toLowerCase();
+}
+
+async function resolveTemplatePath() {
+	// Prefer asking the main process (works in dev & prod)
+	try {
+		const p = await ipcRenderer.invoke('resolve-template-path', 'public/engine/newproject.d3dproj');
+		if (p) return p;
+	} catch {}
+	// Fallbacks (dev)
+	return path.join(__dirname, '..', 'public', 'engine', 'newproject.d3dproj');
 }
 
 addIPCListener('select-all');
@@ -147,3 +229,4 @@ addIPCListener('paste-special');
 addIPCListener('group');
 addIPCListener('ungroup');
 addIPCListener('merge');
+addIPCListener('ctx-menu-action');

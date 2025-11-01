@@ -154,7 +154,7 @@ export default class D3DEditorState {
 			redo: () => this.setSelection(newSelection, false)
 		});
 	}
-	setSelection(selectObjects, addStep = true) {
+	setSelection(selectObjects, addStep = true, deselectAssets = true) {
 		if(!selectObjects || !Array.isArray(selectObjects))
 			selectObjects = [];
 			
@@ -171,7 +171,7 @@ export default class D3DEditorState {
 		);
 		
 		this.selectedObjects = objects;
-		this.selectNoAssets?.();
+		deselectAssets && this.selectNoAssets?.();
 		this.probeSelection();
 	}
 	addSelection(selectObjects, addStep = true) {
@@ -629,6 +629,13 @@ export default class D3DEditorState {
 		_events.invoke('delete-action');
 	}
 	
+	group() {
+		this.groupObjects(this.selectedObjects);
+	}
+	ungroup() {
+		this.ungroupObjects(this.selectedObjects);
+	}
+	
 	async groupObjects(d3dobjects, containingParent, addStep = true) {
 		if(d3dobjects.length < 1) {
 			this.showError({
@@ -772,5 +779,27 @@ export default class D3DEditorState {
 		}
 		
 		return newStates;
+	}
+	bringObjectsToFront() {
+		const newDepth = this.focus.getNextHighestDepth();
+		this.selectedObjects.forEach(d3dobject => {
+			d3dobject.position.z = newDepth;
+		});
+	}
+	sendObjectsToBack() {
+		const newDepth = this.focus.getNextLowestDepth();
+		this.selectedObjects.forEach(d3dobject => {
+			d3dobject.position.z = newDepth;
+		});
+	}
+	bringObjectsForwards() {
+		this.selectedObjects.forEach(d3dobject => {
+			d3dobject.position.z += 1;
+		});
+	}
+	sendObjectsBackwards() {
+		this.selectedObjects.forEach(d3dobject => {
+			d3dobject.position.z -= 1;
+		});
 	}
 }

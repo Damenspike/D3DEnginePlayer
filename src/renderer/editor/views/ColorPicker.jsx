@@ -169,14 +169,8 @@ export default function ColorPicker({
 					ref={panelRef}
 					className="color-field-popup"
 					style={{
-						position: 'absolute',
 						top: panelStyle.top,
-						left: panelStyle.left,
-						zIndex: 10000,
-						background: '#222',
-						borderRadius: 8,
-						padding: 10,
-						boxShadow: '0 10px 24px rgba(0,0,0,0.35)'
+						left: panelStyle.left
 					}}
 				>
 					<RgbaColorPicker 

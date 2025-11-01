@@ -9,7 +9,7 @@
 <style>
 	.new-project {
 		flex: 1;
-		padding: 20px;
+		padding: 10px;
 		
 		.tf {
 			width: 100%;
@@ -22,7 +22,7 @@
 		<div class="field">
 			<label for="project-name">Project name</label>
 			<input
-				id="project-name"
+				id="newproj_name"
 				type="text"
 				class="tf"
 			/>
@@ -31,7 +31,7 @@
 		<div class="field">
 			<label for="author">Author</label>
 			<input
-				id="author"
+				id="newproj_author"
 				type="text"
 				class="tf"
 			/>
@@ -40,6 +40,7 @@
 		<div class="field">
 			<label>Default dimensions</label>
 			<input
+				id="newproj_width"
 				name="width"
 				type="number"
 				class="tf tf--num"
@@ -47,6 +48,7 @@
 				placeholder="Width px"
 			/>
 			<input
+				id="newproj_height"
 				name="height"
 				type="number"
 				class="tf tf--num"
@@ -56,7 +58,7 @@
 		</div>
 		
 		<button
-			onclick="javascript:;"
+			onclick="createProject()"
 			style="width: 100%;"
 		>
 			Create Project
@@ -65,3 +67,20 @@
 	</div>
 </body>
 </html>
+<script>
+	function createProject() {
+		const name = document.getElementById('newproj_name').value;
+		const author = document.getElementById('newproj_author').value;
+		const width = Number(document.getElementById('newproj_width').value);
+		const height = Number(document.getElementById('newproj_height').value);
+		
+		D3D.createNewProject({name, author, width, height, 
+			onComplete: onProjectCreated,
+			closeNewWindow: true
+		});
+	}
+	function onProjectCreated({path}) {
+		console.log('Project created', path);
+		D3D.openProject(path);
+	}
+</script>
