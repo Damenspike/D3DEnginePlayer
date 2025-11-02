@@ -43,6 +43,20 @@ body.dark {
 			background: #121212;
 			color: white;
 		}
+		.code-editor__file__btn {
+			color: white; 
+		}
+		.code-editor__file__btn:hover {
+			background: white;
+			color: black;
+		}
+		.code-editor__file__pin {
+			margin-right: 5px;
+		}
+		.code-editor__file__pin--pinned {
+			background: white;
+			color: black;
+		}
 	}
 	.tabs {
 		.tab {
@@ -806,7 +820,7 @@ body.dark {
 		height: 16px;
 		border-radius: 50%;
 		margin-right: 2px;
-		color: white; 
+		color: black; 
 		font-size: 12px;
 		line-height: 1;
 		cursor: pointer;

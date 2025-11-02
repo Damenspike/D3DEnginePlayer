@@ -27,6 +27,7 @@ import {
 } from './d3deditordrop.js';
 
 import $ from 'jquery';
+import D2DRenderer from './d2drenderer.js';
 import D3DObject from './d3dobject.js';
 import D3DInput from './d3dinput.js';
 import D3DTime from './d3dtime.js';
@@ -36,13 +37,14 @@ import D3DTransformGizmo from './d3dtransformgizmo.js';
 import D3DComponents from './d3dcomponents.js';
 import D3DEventSystem from './d3devents.js';
 import D3DPhysics from './d3dphysics.js';
-import D2DRenderer from './d2drenderer.js';
+import D3DDimensions from './d3ddimensions.js';
 
 window.THREE = THREE;
 window._editor = new D3DEditorState();
 window._events = new D3DEventSystem();
 window._input = new D3DInput();
 window._time = new D3DTime();
+window._dimensions = new D3DDimensions();
 window._physics = new D3DPhysics();
 
 // Host
@@ -1100,6 +1102,131 @@ function onConsoleMessage({ level, message }) {
 
 	_events.invoke('editor-console', _editor.console);
 }
+function moveSelectionToView() {
+	if(_editor.mode != '3D') {
+		_editor.showError({
+			title: '3D Mode',
+			message: 'This operation is for 3D objects'
+		});
+		return;
+	}
+	
+	const camerad3d = _editor.cameraD3D;
+	const selectedObjects = [..._editor.selectedObjects];
+	const camPos = camerad3d.position.clone();
+	const camRot = camerad3d.rotation.clone();
+	
+	const doMove = (recordMstv = true) => {
+		selectedObjects.forEach(d3dobject => {
+			if(recordMstv) {
+				d3dobject.__mstvOrigin = {
+					position: d3dobject.position.clone(),
+					rotation: d3dobject.rotation.clone()
+				}
+			}
+			
+			d3dobject.position = camPos.clone();
+			d3dobject.rotation = camRot.clone();
+		});
+	}
+	const undoMove = () => {
+		selectedObjects.forEach(d3dobject => {
+			d3dobject.position = d3dobject.__mstvOrigin.position.clone();
+			d3dobject.rotation = d3dobject.__mstvOrigin.rotation.clone();
+		});
+	}
+	
+	doMove();
+	
+	_editor.addStep({
+		name: 'Move selection to view',
+		undo: () => undoMove(),
+		redo: () => doMove(false)
+	});
+}
+function alignSelectionToView() {
+	if(_editor.mode != '3D') {
+		_editor.showError({
+			title: '3D Mode',
+			message: 'This operation is for 3D objects'
+		});
+		return;
+	}
+	
+	const camerad3d = _editor.cameraD3D;
+	const selectedObjects = [..._editor.selectedObjects];
+	
+	const forwardMult = 1;
+	const camFwd = camerad3d.forward.multiplyScalar(-1); // THREE.Vector3
+	const camPos = camerad3d.position.clone().add(camFwd.multiplyScalar(forwardMult));
+	const camRot = camerad3d.rotation.clone();
+	
+	const doMove = (recordMstv = true) => {
+		selectedObjects.forEach(d3dobject => {
+			if(recordMstv) {
+				d3dobject.__mstvOrigin = {
+					position: d3dobject.position.clone(),
+					rotation: d3dobject.rotation.clone()
+				}
+			}
+			
+			d3dobject.position = camPos.clone();
+			d3dobject.rotation = camRot.clone();
+		});
+	}
+	const undoMove = () => {
+		selectedObjects.forEach(d3dobject => {
+			d3dobject.position = d3dobject.__mstvOrigin.position.clone();
+			d3dobject.rotation = d3dobject.__mstvOrigin.rotation.clone();
+		});
+	}
+	
+	doMove();
+	
+	_editor.addStep({
+		name: 'Move selection to view',
+		undo: () => undoMove(),
+		redo: () => doMove(false)
+	});
+}
+function dropSelectionToGround() {
+	if(_editor.mode != '3D') {
+		_editor.showError({
+			title: '3D Mode',
+			message: 'This operation is for 3D objects'
+		});
+		return;
+	}
+	
+	const selectedObjects = [..._editor.selectedObjects];
+	
+	const doMove = (recordDtg = true) => {
+		selectedObjects.forEach(d3dobject => {
+			if(recordDtg) {
+				d3dobject.__dtgOrigin = {
+					position: d3dobject.position.clone(),
+					rotation: d3dobject.rotation.clone()
+				}
+			}
+			
+			dropToGroundIfPossible(d3dobject.object3d);
+		});
+	}
+	const undoMove = () => {
+		selectedObjects.forEach(d3dobject => {
+			d3dobject.position = d3dobject.__dtgOrigin.position.clone();
+			d3dobject.rotation = d3dobject.__dtgOrigin.rotation.clone();
+		});
+	}
+	
+	doMove();
+	
+	_editor.addStep({
+		name: 'Drop selection to ground',
+		undo: () => undoMove(),
+		redo: () => doMove(false)
+	});
+}
 
 // INTERNAL
 
@@ -1118,6 +1245,9 @@ _editor.onConsoleMessage = onConsoleMessage;
 _editor.buildProject = buildProject;
 _editor.symboliseSelectedObject = symboliseSelectedObject;
 _editor.desymboliseSelectedObject = desymboliseSelectedObject;
+_editor.moveSelectionToView = moveSelectionToView;
+_editor.alignSelectionToView = alignSelectionToView;
+_editor.dropSelectionToGround = dropSelectionToGround;
 
 D3D.setEventListener('select-all', () => _editor.selectAll());
 D3D.setEventListener('delete', () => _editor.delete());
@@ -1145,3 +1275,6 @@ D3D.setEventListener('group', () => _editor.groupObjects(_editor.selectedObjects
 D3D.setEventListener('ungroup', () => _editor.ungroupObjects(_editor.selectedObjects));
 D3D.setEventListener('merge', () => _editor.mergeObjects(_editor.selectedObjects));
 D3D.setEventListener('ctx-menu-action', (id) => _events.invoke('ctx-menu-action', id));
+D3D.setEventListener('move-sel-view', () => _editor.moveSelectionToView());
+D3D.setEventListener('align-sel-view', () => _editor.alignSelectionToView());
+D3D.setEventListener('drop-to-ground', () => _editor.dropSelectionToGround());

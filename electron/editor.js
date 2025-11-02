@@ -389,6 +389,18 @@ function sendMergeObjects() {
 	if (!editorWindow?.isFocused()) return;
 	editorWindow.webContents.send('merge');
 }
+function sendMoveToView() {
+	if (!editorWindow?.isFocused()) return;
+	editorWindow.webContents.send('move-sel-view');
+}
+function sendAlignToView() {
+	if (!editorWindow?.isFocused()) return;
+	editorWindow.webContents.send('align-sel-view');
+}
+function sendDropToGround() {
+	if (!editorWindow?.isFocused()) return;
+	editorWindow.webContents.send('drop-to-ground');
+}
 
 function sendBuild({prompt, play}) {
 	if (!editorWindow?.isFocused()) return;
@@ -607,6 +619,21 @@ const menuTemplate = [
 				label: 'Focus',
 				accelerator: 'F',
 				click: () => sendFocusObject()
+			},
+			{
+				label: 'Move to View',
+				accelerator: 'CmdOrCtrl+Alt+M',
+				click: () => sendMoveToView()
+			},
+			{
+				label: 'Align to View',
+				accelerator: 'CmdOrCtrl+Alt+A',
+				click: () => sendAlignToView()
+			},
+			{
+				label: 'Drop to Ground',
+				accelerator: 'CmdOrCtrl+Alt+G',
+				click: () => sendDropToGround()
 			},
 			{ type: 'separator' },
 			{

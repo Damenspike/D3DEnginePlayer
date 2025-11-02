@@ -230,3 +230,6 @@ addIPCListener('group');
 addIPCListener('ungroup');
 addIPCListener('merge');
 addIPCListener('ctx-menu-action');
+addIPCListener('move-sel-view');
+addIPCListener('align-sel-view');
+addIPCListener('drop-to-ground');

@@ -113,13 +113,16 @@ export default function CodeEditor({isOpen, theme}) {
 			const selectMe = () => {
 				setObjectOpen(d3dobject);
 			}
-			const pinMe = () => {
+			const pinMe = (e) => {
 				if(pinnedObjects.includes(d3dobject))
 					pinnedObjects.splice(pinnedObjects.indexOf(d3dobject), 1);
 				else
 					pinnedObjects.push(d3dobject);
 				
 				setPinnedObjects([...pinnedObjects]);
+				
+				e.preventDefault();
+				e.stopPropagation();
 			}
 			
 			const drawClose = () => (
@@ -146,7 +149,7 @@ export default function CodeEditor({isOpen, theme}) {
 					onClick={selectMe}
 				>
 					{d3dobject != _root && drawClose()}
-					{d3dobject != _root && drawPin()}
+					{drawPin()}
 					{d3dobject.name}
 				</div>
 			)

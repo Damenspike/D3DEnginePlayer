@@ -1,19 +1,21 @@
 // d3dplayer.js
 import * as THREE from 'three';
 
+import D2DRenderer from './d2drenderer.js';
 import D3DObject from './d3dobject.js';
 import D3DInput from './d3dinput.js';
 import D3DTime from './d3dtime.js';
 import D3DEventSystem from './d3devents.js';
 import D3DConsole from './d3dconsole.js';
 import D3DPhysics from './d3dphysics.js';
-import D2DRenderer from './d2drenderer.js';
+import D3DDimensions from './d3ddimensions.js';
 
 window.THREE = THREE;
 window._events = new D3DEventSystem();
 window._input = new D3DInput();
 window._time = new D3DTime();
 window._physics = new D3DPhysics();
+window._dimensions = new D3DDimensions();
 window._player = {};
 
 // Host
@@ -139,6 +141,8 @@ function updateObject(methods, d3dobj) {
 function startAnimationLoop() {
 	function animate(nowMs) {
 		_time.tick(nowMs); // updates _time.delta (seconds) + _time.now
+		
+		_dimensions.update();
 		
 		updateObject([
 			'__onInternalEnterFrame',

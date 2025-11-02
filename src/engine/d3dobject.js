@@ -701,6 +701,7 @@ export default class D3DObject {
 			_input,
 			_time,
 			_physics,
+			_dimensions,
 			Math,
 			_editor: window._editor,
 			root: this.root,

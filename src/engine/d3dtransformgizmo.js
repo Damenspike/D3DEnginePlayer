@@ -628,7 +628,6 @@ export default class D3DTransformGizmo {
 	_updateHover() {
 		if (!_input.getIsGameInFocus()) { 
 			this._setHover(null); 
-			console.log('return here');
 			return; 
 		}
 		if (_input.getLeftMouseButtonDown())
