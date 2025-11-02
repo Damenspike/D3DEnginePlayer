@@ -592,24 +592,24 @@ const menuTemplate = [
 				label: 'Add Component',
 				submenu: [
 					{
-						id: 'animation',
 						label: 'Animation',
 						click: () => sendAddComponent('Animation')
 					},
 					{
-						id: 'rigidbody',
 						label: 'Rigidbody',
 						click: () => sendAddComponent('Rigidbody')
 					},
 					{
-						id: 'charcontroller',
 						label: 'Character Controller',
 						click: () => sendAddComponent('CharacterController')
 					},
 					{
-						id: 'tpc',
 						label: 'Third Person Camera',
 						click: () => sendAddComponent('ThirdPersonCamera')
+					},
+					{
+						label: 'Layout (2D)',
+						click: () => sendAddComponent('Layout2D')
 					}
 				]
 			},

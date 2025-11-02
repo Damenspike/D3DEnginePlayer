@@ -188,6 +188,10 @@ export default function GameView({editorMode}) {
 				},
 				{ type: 'separator' },
 				{
+					id: 'edit',
+					label: 'Edit in Place'
+				},
+				{
 					id: 'code',
 					label: 'Code'
 				}
@@ -256,6 +260,10 @@ export default function GameView({editorMode}) {
 			}else
 			if(id == 'ungroup') {
 				_editor.ungroup();
+			}else
+			if(id == 'edit') {
+				_editor.setSelection([]);
+				_editor.focus = objectHit;
 			}
 		}
 		

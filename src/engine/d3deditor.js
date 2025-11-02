@@ -93,7 +93,8 @@ export async function loadD3DProj(uri) {
 	if(!_root.manifest?.editorConfig) {
 		_editor.showError({
 			title: 'Project Error',
-			message: 'This is not a valid project'
+			message: `${fileName(uri)} is not a valid project`,
+			closeEditorWhenDone: true
 		});
 		return;
 	}
@@ -328,6 +329,8 @@ function startAnimationLoop() {
 		outlinePass.selectedObjects = _editor.selectedObjects
 		.filter(d => !!d.object3d)
 		.map(d => d.object3d);
+		
+		_dimensions.update();
 		
 		if(_editor.mode == '3D') {
 			composer.render(); // render 3d

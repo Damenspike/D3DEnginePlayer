@@ -826,7 +826,7 @@ export default function Inspector() {
 					case 'colorbest': {
 						fieldContent = (
 							<ColorPickerBest
-								value={String(current)}
+								value={current}
 								onClick={val => {
 									dummyComponent.__oldValue = val;
 								}}

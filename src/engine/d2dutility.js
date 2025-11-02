@@ -1307,6 +1307,34 @@ export function localBitmapRectFromGraphic2D(o) {
 	if (!(w > 0 && h > 0)) return null;
 	return { x: minX, y: minY, w, h };
 }
+/**
+ * Scale all local path points of a Graphic2D object around a local-space origin (ox, oy).
+ * Keeps structure; scales only point coordinates.
+ */
+export function scaleGraphicPathsLocalAround(obj, sx, sy, ox = 0, oy = 0) {
+	const paths = Array.isArray(obj?.graphic2d?._paths) ? obj.graphic2d._paths : [];
+	if (paths.length === 0) 
+		return;
+
+	const Sx = Number.isFinite(sx) ? Number(sx) : 1;
+	const Sy = Number.isFinite(sy) ? Number(sy) : 1;
+	const OX = Number(ox) || 0;
+	const OY = Number(oy) || 0;
+
+	for (const path of paths) {
+		if (!Array.isArray(path)) 
+			continue;
+		for (const p of path) {
+			const px = +p.x || 0;
+			const py = +p.y || 0;
+			p.x = OX + (px - OX) * Sx;
+			p.y = OY + (py - OY) * Sy;
+		}
+	}
+
+	obj.checkSymbols?.();
+	obj.invalidateGraphic2D?.();
+}
 
 /* ========================= DEFAULT BUNDLE ========================= */
 

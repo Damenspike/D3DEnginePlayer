@@ -130,7 +130,7 @@ export default function CodeEditor({isOpen, theme}) {
 					className='code-editor__file__btn vm'
 					onClick={closeMe}
 				>
-					x
+					<MdClose />
 				</div>
 			)
 			const drawPin = () => (

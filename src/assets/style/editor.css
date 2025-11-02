@@ -786,6 +786,24 @@ body.dark {
 	z-index: 9999;
 	pointer-events: none;
 	
+	.tab--selected {
+		.code-editor__file__btn {
+			svg {
+				color: white;
+			}
+		}
+		.code-editor__file__btn:hover {
+			svg {
+				color: black;
+			}
+		}
+		.code-editor__file__pin--pinned {
+			svg {
+				color: black;
+			}
+		}
+	}
+	
 	.code-editor__window {
 		position: absolute;
 		top: 100px;           /* starting position */

@@ -13,6 +13,7 @@ import D3DThirdPersonCameraManager from './d3dmgr_thirdpersoncamera.js';
 import D2DTextManager from './d2dmgr_text.js';
 import D2DBitmapManager from './d2dmgr_bitmap.js';
 import D2DGraphic2DManager from './d2dmgr_graphic2d.js';
+import D2DLayoutManager from './d2dmgr_layout.js';
 
 import { WebSafeFonts } from './d3dfonts.js';
 
@@ -689,6 +690,106 @@ const D3DComponents = {
 			}
 		},
 		manager: D2DBitmapManager
+	},
+	Layout2D: {
+		name: 'Layout 2D',
+		fields: {
+			'anchor': {
+				label: 'Auto anchor',
+				type: 'boolean',
+				def: false,
+				section: 'anchor',
+				description: 'Automatically positions object to anchor relative to parent'
+			},
+			'anchorVertical': {
+				label: 'Vertical',
+				type: 'select',
+				options: [
+					{ name: 'top', label: 'Top' },
+					{ name: 'center', label: 'Center' },
+					{ name: 'bottom', label: 'Bottom' }
+				],
+				def: 'center',
+				section: 'anchor',
+				condition: c => c.properties.anchor == true
+			},
+			'anchorHorizontal': {
+				label: 'Horizontal',
+				type: 'select',
+				options: [
+					{ name: 'left', label: 'Left' },
+					{ name: 'center', label: 'Center' },
+					{ name: 'right', label: 'Right' }
+				],
+				def: 'center',
+				section: 'anchor',
+				condition: c => c.properties.anchor == true
+			},
+			'anchorOffsetAuto': {
+				label: 'Auto calculate offset',
+				type: 'boolean',
+				def: true,
+				section: 'anchor',
+				condition: c => c.properties.anchor == true
+			},
+			'anchorOffsetX': {
+				label: 'Offset X',
+				type: 'number',
+				def: 0,
+				section: 'anchor',
+				condition: c => c.properties.anchor == true && c.properties.anchorOffsetAuto == false
+			},
+			'anchorOffsetY': {
+				label: 'Offset Y',
+				type: 'number',
+				def: 0,
+				section: 'anchor',
+				condition: c => c.properties.anchor == true && c.properties.anchorOffsetAuto == false
+			},
+			'size': {
+				label: 'Auto size',
+				type: 'boolean',
+				def: false,
+				section: 'size',
+				description: 'Automatically resizes graphic to match the parent size (requires Graphic2D)'
+			},
+			'sizeWidth': {
+				label: 'Width',
+				type: 'boolean',
+				def: true,
+				section: 'anchor',
+				condition: c => c.properties.size == true
+			},
+			'sizeHeight': {
+				label: 'Height',
+				type: 'boolean',
+				def: true,
+				section: 'anchor',
+				condition: c => c.properties.size == true
+			},
+			'sizeOffsetAuto': {
+				label: 'Auto calculate offset',
+				type: 'boolean',
+				def: true,
+				section: 'anchor',
+				condition: c => c.properties.size == true
+			},
+			'sizeOffsetX': {
+				label: 'Offset width',
+				type: 'number',
+				def: 0,
+				section: 'anchor',
+				condition: c => c.properties.size == true && c.properties.sizeOffsetAuto == false
+			},
+			'sizeOffsetY': {
+				label: 'Offset height',
+				type: 'number',
+				def: 0,
+				section: 'anchor',
+				condition: c => c.properties.size == true && c.properties.sizeOffsetAuto == false
+			},
+		},
+		manager: D2DLayoutManager
 	}
 }
 

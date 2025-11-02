@@ -2,6 +2,13 @@ export default class D3DDimensions {
 	constructor() {
 		this.update();
 	}
+	
+	get width() {
+		return window._root?.manifest?.width;
+	}
+	get height() {
+		return window._root?.manifest?.height;
+	}
 
 	update() {
 		const pr = window.devicePixelRatio || 1;
@@ -12,10 +19,6 @@ export default class D3DDimensions {
 		this.viewportWidth  = window.innerWidth  | 0;
 		this.viewportHeight = window.innerHeight | 0;
 		this.pixelRatio = pr;
-
-		// --- project (root) logical size ---
-		this.width  = window._root?.manifest?.width  || 0;
-		this.height = window._root?.manifest?.height || 0;
 
 		// --- renderer2d extents (includes letterbox) ---
 		const r = window._host?.renderer2d;
