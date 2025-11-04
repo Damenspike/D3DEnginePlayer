@@ -23,7 +23,7 @@ export default class D2DEdit {
 		this.lastLocal = null;
 		this.hasMoved = false;
 
-		// snapshots for standard point edits
+		// snapshots for standard/uniform edits
 		this.undoSnapshot = null; // { obj, items:[{pidx,i,x,y}] }
 		this.redoSnapshot = null;
 
@@ -37,6 +37,10 @@ export default class D2DEdit {
 
 		// alignment snap (Flash-like)
 		this._activeAlign = null; // { v:number|null, h:number|null, ttl:number }
+
+		// scale meta (used for both iso + axis)
+		// mode: 'iso' | 'axis' ; axis: 'x' | 'y' (when mode === 'axis')
+		this._scaleMeta = null; // { active, mode, axis?, pivot:{x,y}, grab0:{x,y}, affected:Map(pidx->Set(li)), base:Map(pidx->items), undoSnapshot }
 
 		// bindings
 		this._onMouseDown = this._onMouseDown.bind(this);
@@ -83,8 +87,6 @@ export default class D2DEdit {
 
 		const objs = Array.isArray(_editor.selectedObjects) ? _editor.selectedObjects : [];
 		if (objs.length === 0) return;
-
-		const gs = U.canvasScale(this.d2drenderer);
 
 		ctx.save();
 		ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -158,7 +160,7 @@ export default class D2DEdit {
 		drawer._rebuildSnapCache();
 
 		// Alt+click inserts
-		if (e.altKey) {
+		if (e.altKey && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
 			this._onAltInsert(e);
 			e.preventDefault();
 			return;
@@ -172,7 +174,7 @@ export default class D2DEdit {
 		}
 
 		const mod = (e.metaKey || e.ctrlKey);
-		const add = e.shiftKey;
+		const add = e.shiftKey && !this.dragging; // still allows shift-add on mousedown
 
 		if (add) {
 			if (!this._isSelected(hit.obj, hit.pidx, hit.lindex)) this.selectedPoints.push(hit);
@@ -184,7 +186,6 @@ export default class D2DEdit {
 		}
 
 		// local cursor in dragged object's space
-		const gs = U.canvasScale(this.d2drenderer);
 		const world = U.worldDOMMatrix(hit.obj);
 		const screen = U.viewMatrix(this.d2drenderer).multiply(world);
 		const inv = screen.inverse();
@@ -202,17 +203,20 @@ export default class D2DEdit {
 
 		this._beginSnapSession(hit.obj?.parent);
 
-		// Decide whether to use rect-edge mode (Text2D/Bitmap2D) or standard point move
+		// Decide whether to use rect-edge mode (Text2D/Bitmap2D) or standard/scale point move
 		if (U.isRectLike2D(this.dragObj)) {
 			this._textDrag = U.buildTextDragMeta(this.dragObj, this.grabPath, this.grabLIndex);
 			this._pathSnapshotBefore = U.clonePaths(this.dragObj.graphic2d._paths);
 			this._pathSnapshotAfter  = null;
 			this.undoSnapshot = null; this.redoSnapshot = null;
+			this._scaleMeta = null;
 		} else {
 			this._textDrag = null;
+			// Base snapshot for normal point moves (selected points)
 			this.undoSnapshot = U.snapshotPointsFor(this.dragObj, this._selectedLogicalByPathFor(this.dragObj));
 			this.redoSnapshot = null;
 			this._pathSnapshotBefore = null; this._pathSnapshotAfter = null;
+			this._scaleMeta = null; // lazy-init if Alt/Shift held during drag
 		}
 
 		this.canvas.style.cursor = 'grabbing';
@@ -229,7 +233,6 @@ export default class D2DEdit {
 			const paths = Array.isArray(g?._paths) ? g._paths : [];
 			if (paths.length === 0) return;
 
-			const gs = U.canvasScale(this.d2drenderer);
 			const world = U.worldDOMMatrix(obj);
 			const screen = U.viewMatrix(this.d2drenderer).multiply(world);
 			const inv = screen.inverse();
@@ -255,13 +258,12 @@ export default class D2DEdit {
 				}
 			}
 
+			// Rect-like: move edges
 			if (this._textDrag?.active) {
-				// Rect-like: set edges to targetLocal.x/.y
 				const pidx = this._textDrag.pidx;
 				const path = paths[pidx] || [];
 				if (path.length) {
 					const { moveXIdx, moveYIdx, wasClosed } = this._textDrag;
-
 					for (const i of moveXIdx) if (path[i]) path[i].x = targetLocal.x;
 					for (const i of moveYIdx) if (path[i]) path[i].y = targetLocal.y;
 
@@ -274,28 +276,53 @@ export default class D2DEdit {
 					this.hasMoved = true;
 					this.lastLocal = targetLocal;
 				}
-			} else {
-				// Normal mode: delta-based move of selected logicals
-				const dx = targetLocal.x - this.lastLocal.x;
-				const dy = targetLocal.y - this.lastLocal.y;
-				
-				if (dx !== 0 || dy !== 0) {
+				this.canvas.style.cursor = 'grabbing';
+				e.preventDefault();
+				return;
+			}
+
+			let wantIso  = !!e.spaceKey;
+			let wantFree = !!e.shiftKey && !wantIso;
+			
+			if ((wantIso || wantFree) && !this._scaleMeta?.active) {
+				this._initScaleMeta(obj, targetLocal, wantIso ? 'iso' : 'free');
+			}
+			if (this._scaleMeta?.active) {
+				if (this._scaleMeta.mode === 'iso' && wantIso) {
+					this._applyScale_ISO(obj, targetLocal);
 					this.hasMoved = true;
-				
-					const byPath = this._selectedLogicalByPathFor(obj);
-					for (const [pidx, lis] of byPath.entries()) {
-						const path = paths[pidx] || [];
-						for (const li of lis) {
-							const map = U.logicalIndexMap(path, li);
-							for (const pi of map) {
-								path[pi].x += dx;
-								path[pi].y += dy;
-							}
+					this.lastLocal = targetLocal;
+					this.canvas.style.cursor = 'grabbing';
+					e.preventDefault();
+					return;
+				} else if (this._scaleMeta.mode === 'free' && wantFree) {
+					this._applyScale_FREE(obj, targetLocal);
+					this.hasMoved = true;
+					this.lastLocal = targetLocal;
+					this.canvas.style.cursor = 'grabbing';
+					e.preventDefault();
+					return;
+				}
+				// modifier released mid-drag -> fall through to normal move
+			}
+
+			// Normal move (translate) of selected logicals
+			const dx = targetLocal.x - this.lastLocal.x;
+			const dy = targetLocal.y - this.lastLocal.y;
+			if (dx !== 0 || dy !== 0) {
+				this.hasMoved = true;
+				const byPath = this._selectedLogicalByPathFor(obj);
+				for (const [pidx, lis] of byPath.entries()) {
+					const path = paths[pidx] || [];
+					for (const li of lis) {
+						const map = U.logicalIndexMap(path, li);
+						for (const pi of map) {
+							path[pi].x += dx;
+							path[pi].y += dy;
 						}
 					}
-				
-					this.lastLocal = targetLocal;
 				}
+				this.lastLocal = targetLocal;
 			}
 
 			this.canvas.style.cursor = 'grabbing';
@@ -332,9 +359,20 @@ export default class D2DEdit {
 						redo: () => { obj.graphic2d._paths = U.clonePaths(after);  obj.checkSymbols?.(); }
 					});
 				}
+			} else if (this._scaleMeta?.active && this._scaleMeta?.undoSnapshot) {
+				const before = this._scaleMeta.undoSnapshot;
+				const after  = U.snapshotPointsFor(obj, this._scaleMeta.affected);
+				const name = (this._scaleMeta.mode === 'iso')
+				? 'Uniform Scale 2D Points'
+				: 'Free Scale 2D Points';
+				_editor?.addStep?.({
+					name,
+					undo: () => U.applyPointsSnapshot(obj, before),
+					redo: () => U.applyPointsSnapshot(obj, after)
+				});
+				obj.checkSymbols?.();
 			} else if (this.undoSnapshot) {
 				this._maybeAutoCloseOnEnd(obj);
-				
 				this.redoSnapshot = U.snapshotPointsFor(obj, this._selectedLogicalByPathFor(obj));
 				const before = this.undoSnapshot;
 				const after  = this.redoSnapshot;
@@ -348,7 +386,7 @@ export default class D2DEdit {
 		}
 
 		this._endSnapSession();
-		drawer._rebuildSnapCache();
+		drawer?._rebuildSnapCache?.();
 		
 		this.dragObj = null;
 		this.grabPath = null;
@@ -362,6 +400,7 @@ export default class D2DEdit {
 		this._pathSnapshotBefore = null;
 		this._pathSnapshotAfter  = null;
 		this._textDrag = null;
+		this._scaleMeta = null;
 	}
 
 	/* ============================== keyboard (objects only + alignment snapping) ============================== */
@@ -449,7 +488,6 @@ export default class D2DEdit {
 		if (objs.length === 0) return;
 
 		const mouse = U.mouseToCanvas(this.canvas, e);
-		const gs = U.canvasScale(this.d2drenderer);
 
 		let best = null;
 
@@ -603,7 +641,6 @@ export default class D2DEdit {
 		const objs = Array.isArray(_editor?.selectedObjects) ? _editor.selectedObjects : [];
 		if (objs.length === 0) return null;
 
-		const gs = U.canvasScale(this.d2drenderer);
 		let best = null;
 		let bestD2 = Infinity;
 
@@ -704,6 +741,167 @@ export default class D2DEdit {
 	}
 	_endSnapSession() {
 		this._snapSession = null;
+	}
+
+	/* ============================== SCALE (Alt = iso, Shift = axis) ============================== */
+
+	_initScaleMeta(obj, targetLocal, mode /* 'iso'|'free' */) {
+		if (!obj || this.grabPath == null || this.grabLIndex == null) return;
+	
+		const g = obj?.graphic2d;
+		const paths = Array.isArray(g?._paths) ? g._paths : [];
+		if (paths.length === 0) return;
+	
+		// Determine affected logical indices
+		const selected = this._selectedLogicalByPathFor(obj);
+		let affected = new Map(selected);
+		let onlyGrabSelected = false;
+	
+		if (affected.size === 0) {
+			onlyGrabSelected = true;
+		} else if (affected.size === 1) {
+			const arr = affected.get(this.grabPath) || [];
+			if (arr.length === 1 && arr[0] === this.grabLIndex) onlyGrabSelected = true;
+		}
+	
+		if (onlyGrabSelected) {
+			// use entire logical range of the grabbed path
+			const path = paths[this.grabPath] || [];
+			const logical = U.logicalPoints(path);
+			affected = new Map([[this.grabPath, Array.from({length: logical.length}, (_,i)=>i)]]);
+		}
+	
+		// Bounds + grabbed point (local)
+		let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
+		let grabbed0 = null;
+	
+		for (const [pidx, lis] of affected.entries()) {
+			const path = paths[pidx] || [];
+			const logical = U.logicalPoints(path);
+			for (const li of lis) {
+				const p = logical[li];
+				minx = Math.min(minx, p.x); miny = Math.min(miny, p.y);
+				maxx = Math.max(maxx, p.x); maxy = Math.max(maxy, p.y);
+				if (pidx === this.grabPath && li === this.grabLIndex) grabbed0 = { x: p.x, y: p.y };
+			}
+		}
+		if (!Number.isFinite(minx) || !grabbed0) return;
+	
+		const cx = (minx + maxx) * 0.5;
+		const cy = (miny + maxy) * 0.5;
+	
+		// Opposite corner to the grabbed point (fallback center)
+		let pivot = {
+			x: (grabbed0.x < cx) ? maxx : minx,
+			y: (grabbed0.y < cy) ? maxy : miny
+		};
+		if (!Number.isFinite(pivot.x) || !Number.isFinite(pivot.y)) {
+			pivot = { x: cx, y: cy };
+		}
+	
+		// Base per-affected logical
+		const base = new Map(); // pidx -> [{li, rawIdxs:int[], p0:{x,y}}...]
+		for (const [pidx, lis] of affected.entries()) {
+			const path = paths[pidx] || [];
+			const logical = U.logicalPoints(path);
+			const list = [];
+			for (const li of lis) {
+				const p = logical[li];
+				const rawIdxs = U.logicalIndexMap(path, li);
+				list.push({ li, rawIdxs, p0: { x: p.x, y: p.y } });
+			}
+			base.set(pidx, list);
+		}
+	
+		const affectedSets = new Map(
+			Array.from(affected.entries()).map(([pidx, arr]) => [pidx, new Set(arr)])
+		);
+		const undoSnapshot = U.snapshotPointsFor(obj, affectedSets);
+	
+		this._scaleMeta = {
+			active: true,
+			mode,           // 'iso' | 'free'
+			pivot,
+			grab0: grabbed0,
+			affected: affectedSets,
+			base,
+			undoSnapshot
+		};
+	}
+	
+	_applyScale_ISO(obj, currentLocal) {
+		const u = this._scaleMeta;
+		if (!u?.active || u.mode !== 'iso') return;
+	
+		const v0x = u.grab0.x - u.pivot.x;
+		const v0y = u.grab0.y - u.pivot.y;
+		const v1x = currentLocal.x - u.pivot.x;
+		const v1y = currentLocal.y - u.pivot.y;
+	
+		const len0 = Math.hypot(v0x, v0y);
+		const len1 = Math.hypot(v1x, v1y);
+	
+		let s = (len0 > 1e-6) ? (len1 / len0) : 1.0;
+		if (!Number.isFinite(s)) s = 1.0;
+		if (s < 0) s = Math.abs(s);
+	
+		this._applyScaleWithFactors(obj, s, s);
+	}
+	
+	_applyScale_FREE(obj, currentLocal) {
+		const u = this._scaleMeta;
+		if (!u?.active || u.mode !== 'free') return;
+	
+		// Independent sx, sy based on pivot-to-grab vs pivot-to-current
+		let sx = 1.0, sy = 1.0;
+	
+		const denomX = (u.grab0.x - u.pivot.x);
+		const denomY = (u.grab0.y - u.pivot.y);
+	
+		if (Math.abs(denomX) > 1e-6) {
+			sx = (currentLocal.x - u.pivot.x) / denomX;
+		}
+		if (Math.abs(denomY) > 1e-6) {
+			sy = (currentLocal.y - u.pivot.y) / denomY;
+		}
+	
+		if (!Number.isFinite(sx)) sx = 1.0;
+		if (!Number.isFinite(sy)) sy = 1.0;
+	
+		// avoid accidental negative flips
+		if (sx < 0) sx = Math.abs(sx);
+		if (sy < 0) sy = Math.abs(sy);
+	
+		this._applyScaleWithFactors(obj, sx, sy);
+	}
+	
+	_applyScaleWithFactors(obj, sx, sy) {
+		const u = this._scaleMeta;
+		if (!u?.active) return;
+	
+		const g = obj?.graphic2d;
+		const paths = Array.isArray(g?._paths) ? g._paths : [];
+		if (paths.length === 0) return;
+	
+		for (const [pidx, items] of u.base.entries()) {
+			const path = paths[pidx] || [];
+			for (const { rawIdxs, p0 } of items) {
+				const dx = p0.x - u.pivot.x;
+				const dy = p0.y - u.pivot.y;
+				const nx = u.pivot.x + dx * sx;
+				const ny = u.pivot.y + dy * sy;
+				for (const ri of rawIdxs) {
+					if (path[ri]) { path[ri].x = nx; path[ri].y = ny; }
+				}
+			}
+			// Keep closed paths closed
+			if (U.isClosedPoints(path) && path.length >= 2) {
+				const a = path[0], b = path[path.length - 1];
+				if (!U.approx(a.x, b.x) || !U.approx(a.y, b.y)) {
+					path[path.length - 1] = { x: a.x, y: a.y };
+				}
+			}
+		}
 	}
 
 	/* ============================== keyboard alignment helpers ============================== */

@@ -690,6 +690,14 @@ export default class D3DEditorState {
 			addStep && undoables.push(() => this.groupObjects(children, parent, false));
 		});
 		
+		if(ungrouped.length < 1) {
+			this.showError({
+				title: 'Ungroup',
+				message: 'Nothing to ungroup'
+			})
+			return;
+		}
+		
 		this.setSelection(ungrouped, false);
 		this.updateInspector?.();
 		

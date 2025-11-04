@@ -757,35 +757,35 @@ const D3DComponents = {
 				label: 'Width',
 				type: 'boolean',
 				def: true,
-				section: 'anchor',
+				section: 'size',
 				condition: c => c.properties.size == true
 			},
 			'sizeHeight': {
 				label: 'Height',
 				type: 'boolean',
 				def: true,
-				section: 'anchor',
+				section: 'size',
 				condition: c => c.properties.size == true
 			},
 			'sizeOffsetAuto': {
 				label: 'Auto calculate offset',
 				type: 'boolean',
 				def: true,
-				section: 'anchor',
+				section: 'size',
 				condition: c => c.properties.size == true
 			},
 			'sizeOffsetX': {
 				label: 'Offset width',
 				type: 'number',
 				def: 0,
-				section: 'anchor',
+				section: 'size',
 				condition: c => c.properties.size == true && c.properties.sizeOffsetAuto == false
 			},
 			'sizeOffsetY': {
 				label: 'Offset height',
 				type: 'number',
 				def: 0,
-				section: 'anchor',
+				section: 'size',
 				condition: c => c.properties.size == true && c.properties.sizeOffsetAuto == false
 			},
 		},

@@ -31,6 +31,7 @@ export default class D2DGizmo {
 
 			// cached selection bounds (screen space) at gesture start
 			startSelRectCanvas: null,
+			clickTime: 0,
 
 			// cached object guides for current gesture
 			guides: null           // { xs:number[], ys:number[] }
@@ -251,7 +252,9 @@ export default class D2DGizmo {
 		const ttool = _editor.transformTool;
 		const canSelect = tool === 'select' || tool === 'transform';
 		if (!canSelect) return;
-
+		
+		this.clickTime = _time.now;
+		
 		const hit = this._hitGizmo(e, ttool);
 		if (hit) {
 			const p = U.eventToWorld(e, this.canvas, this.d2drenderer);
@@ -302,58 +305,62 @@ export default class D2DGizmo {
 		if (this.state.mode === 'move') {
 			const dWx = p.x - this.state.start.x;
 			const dWy = p.y - this.state.start.y;
-
-			let addWorldX = 0, addWorldY = 0;
-
-			if (_editor?.draw2d?.snapToObjects) {
-				// cache selection rect baseline in canvas at gesture start
-				const selObjs = _editor.selectedObjects.filter(o => o?.is2D);
-				if (!this.state.startSelRectCanvas) {
-					this.state.startSelRectCanvas = this._selectionRectCanvas(selObjs);
+			
+			if( (Math.abs(dWx) > 0 || Math.abs(dWy) > 0) && 
+				_time.now - this.clickTime > 0.2 
+			) {
+				let addWorldX = 0, addWorldY = 0;
+				
+				if (_editor?.draw2d?.snapToObjects) {
+					// cache selection rect baseline in canvas at gesture start
+					const selObjs = _editor.selectedObjects.filter(o => o?.is2D);
+					if (!this.state.startSelRectCanvas) {
+						this.state.startSelRectCanvas = this._selectionRectCanvas(selObjs);
+					}
+					// cache guide lines from all 2D objects under focus (excluding selection)
+					if (!this.state.guides) {
+						this.state.guides = this._collectGuidesCanvas(_editor?.focus, new Set(selObjs));
+					}
+				
+					const startRect = this.state.startSelRectCanvas;
+					if (startRect) {
+						const gs = U.canvasScale(this.d2drenderer);
+						const dCanvasX = dWx * gs;
+						const dCanvasY = dWy * gs;
+				
+						const proposed = {
+							l: startRect.l + dCanvasX,
+							r: startRect.r + dCanvasX,
+							t: startRect.t + dCanvasY,
+							b: startRect.b + dCanvasY,
+							cx: startRect.cx + dCanvasX,
+							cy: startRect.cy + dCanvasY
+						};
+				
+						const snapPx = Math.max(4, Number(_editor?.draw2d?.snapPx || 10));
+						const snap = this._findSnapDeltaCanvas(proposed, this.state.guides, snapPx); // {dx, dy, vLine, hLine}
+				
+						// visuals
+						this.state.alignGuide = { v: snap.vLine, h: snap.hLine, ttl: 12 };
+				
+						// convert to world
+						addWorldX = (snap.dx || 0) / gs;
+						addWorldY = (snap.dy || 0) / gs;
+					}
 				}
-				// cache guide lines from all 2D objects under focus (excluding selection)
-				if (!this.state.guides) {
-					this.state.guides = this._collectGuidesCanvas(_editor?.focus, new Set(selObjs));
+				
+				const tWx = dWx + addWorldX;
+				const tWy = dWy + addWorldY;
+				
+				for (const [o, rec] of this.state.orig.entries()) {
+					// apply world delta through parentInv linear part
+					const dxLocal = rec.parentInv.a * tWx + rec.parentInv.c * tWy;
+					const dyLocal = rec.parentInv.b * tWx + rec.parentInv.d * tWy;
+				
+					const pos = o.position || (o.position = { x:0, y:0, z:0 });
+					pos.x = rec.pos0.x + dxLocal;
+					pos.y = rec.pos0.y + dyLocal;
 				}
-
-				const startRect = this.state.startSelRectCanvas;
-				if (startRect) {
-					const gs = U.canvasScale(this.d2drenderer);
-					const dCanvasX = dWx * gs;
-					const dCanvasY = dWy * gs;
-
-					const proposed = {
-						l: startRect.l + dCanvasX,
-						r: startRect.r + dCanvasX,
-						t: startRect.t + dCanvasY,
-						b: startRect.b + dCanvasY,
-						cx: startRect.cx + dCanvasX,
-						cy: startRect.cy + dCanvasY
-					};
-
-					const snapPx = Math.max(4, Number(_editor?.draw2d?.snapPx || 10));
-					const snap = this._findSnapDeltaCanvas(proposed, this.state.guides, snapPx); // {dx, dy, vLine, hLine}
-
-					// visuals
-					this.state.alignGuide = { v: snap.vLine, h: snap.hLine, ttl: 12 };
-
-					// convert to world
-					addWorldX = (snap.dx || 0) / gs;
-					addWorldY = (snap.dy || 0) / gs;
-				}
-			}
-
-			const tWx = dWx + addWorldX;
-			const tWy = dWy + addWorldY;
-
-			for (const [o, rec] of this.state.orig.entries()) {
-				// apply world delta through parentInv linear part
-				const dxLocal = rec.parentInv.a * tWx + rec.parentInv.c * tWy;
-				const dyLocal = rec.parentInv.b * tWx + rec.parentInv.d * tWy;
-
-				const pos = o.position || (o.position = { x:0, y:0, z:0 });
-				pos.x = rec.pos0.x + dxLocal;
-				pos.y = rec.pos0.y + dyLocal;
 			}
 		}
 		else if (this.state.mode === 'rotate') {

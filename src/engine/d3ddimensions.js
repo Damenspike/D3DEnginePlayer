@@ -9,6 +9,25 @@ export default class D3DDimensions {
 	get height() {
 		return window._root?.manifest?.height;
 	}
+	
+	get pixelScale2D() {
+		return _host.renderer2d?.getPixelScale() ?? 1;
+	}
+	set pixelScale2D(v) {
+		if(_host.renderer2d === undefined) {
+			throw new Error('2D renderer is not ready');
+		}
+		_host.renderer2d.setPixelScale(v);
+	}
+	get drawScale2D() {
+		return _host.renderer2d?.getDrawScale() ?? 1;
+	}
+	set drawScale2D(v) {
+		if(_host.renderer2d === undefined) {
+			throw new Error('2D renderer is not ready');
+		}
+		_host.renderer2d.setDrawScale(v);
+	}
 
 	update() {
 		const pr = window.devicePixelRatio || 1;
@@ -39,12 +58,16 @@ export default class D3DDimensions {
 			this.right  = p1.x;
 			this.bottom = p1.y;
 
-			this.pixelWidth  = p1.x; // full pixel width (root space)
-			this.pixelHeight = p1.y; // full pixel height (root space)
+			this.gameWidth  = this.right  - this.left;
+			this.gameHeight = this.bottom - this.top;
 		} else {
 			this.left = this.top = 0;
-			this.right = this.pixelWidth = this.width;
-			this.bottom = this.pixelHeight = this.height;
+			this.right = this.width;
+			this.bottom = this.height;
+
+			// NEW fallbacks
+			this.gameWidth  = this.right  - this.left;   // == this.width
+			this.gameHeight = this.bottom - this.top;    // == this.height
 		}
 	}
 }

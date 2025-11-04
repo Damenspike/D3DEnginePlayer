@@ -23,8 +23,20 @@ import {
 } from './d2dingame.js';
 
 export default class D2DRenderer {
+	get pixelRatio() {
+		if(this.__pr === undefined)
+			this.__pr = 1;
+		
+		return this.__pr * (this.pixelScale || 1);
+	}
+	set pixelRatio(v) {
+		this.__pr = v;
+	}
+	
 	constructor({width, height, pixelRatio, root, addGizmo = false} = {}) {
 		this.pixelRatio = pixelRatio ?? (window.devicePixelRatio || 1);
+		this.pixelScale = 1;
+		this.drawScale = 1;
 		this.width = width ?? 760;
 		this.height = height ?? 480;
 		this.root = root;
@@ -67,8 +79,8 @@ export default class D2DRenderer {
 	}
 	setSize(width, height) {
 		const pr = this.pixelRatio || 1;
-		const projW = Math.max(this.root.manifest.width  | 0, 1);
-		const projH = Math.max(this.root.manifest.height | 0, 1);
+		const projW = Math.max(this.root.manifest.width  | 0, 1) * this.drawScale;
+		const projH = Math.max(this.root.manifest.height | 0, 1) * this.drawScale;
 	
 		// CSS size = window size
 		this.domElement.style.position = 'absolute';
@@ -101,9 +113,26 @@ export default class D2DRenderer {
 		// don't bake view here—call it at draw time
 		this.ctx.setTransform(1,0,0,1,0,0);
 	}
+	getPixelRatio() {
+		return this.pixelRatio;
+	}
 	setPixelRatio(pixelRatio) {
 		this.pixelRatio = Number(pixelRatio) || 1;
-		this.setSize(this.width, this.height);
+		this.refreshSize();
+	}
+	getPixelScale() {
+		return this.pixelScale;
+	}
+	setPixelScale(s) {
+		this.pixelScale = s;
+		this.refreshSize();
+	}
+	getDrawScale() {
+		return this.drawScale;
+	}
+	setDrawScale(s) {
+		this.drawScale = s;
+		this.refreshSize();
 	}
 	clear() {
 		const ctx = this.ctx;
@@ -134,9 +163,13 @@ export default class D2DRenderer {
 		if(window._editor) {
 			if(_editor.focus && _editor.focus != this.root)
 				this.renderParent(_editor.focus);
+			
+			// Draw project frame
+			this.drawProjectFrame();
 		}
 		
 		this.textInput?.endFrame();
+		
 		//this._dirty = false;
 	}
 	renderParent(d3dobject) {
@@ -878,6 +911,40 @@ export default class D2DRenderer {
 				ctx.stroke();
 			}
 		}
+	
+		ctx.restore();
+	}
+	drawProjectFrame() {
+		// Project logical size
+		const projW = Math.max(this.root?.manifest?.width  | 0, 1);
+		const projH = Math.max(this.root?.manifest?.height | 0, 1);
+	
+		// Device-space mapping (letterbox math you already compute)
+		const pr  = this.pixelRatio || 1;
+		const s   = this.viewScale  || 1;
+		const off = this.viewOffset || { x: 0, y: 0 };
+	
+		// Device-space rect that contains the whole project content
+		const x = off.x;
+		const y = off.y;
+		const w = projW * pr * s;
+		const h = projH * pr * s;
+	
+		const ctx = this.ctx;
+		ctx.save();
+	
+		// Draw in pure device space so stroke is always 1px regardless of zoom/scale
+		ctx.setTransform(1, 0, 0, 1, 0, 0);
+		ctx.lineWidth   = 1;
+	
+		// Two-pass hairline (black then white) for visibility on any background
+		// Outer stroke
+		ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+		ctx.strokeRect(Math.round(x) - 0.5, Math.round(y) - 0.5, Math.round(w) + 1, Math.round(h) + 1);
+	
+		// Inner stroke (slight inset)
+		ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+		ctx.strokeRect(Math.round(x) + 0.5, Math.round(y) + 0.5, Math.max(0, Math.round(w) - 1), Math.max(0, Math.round(h) - 1));
 	
 		ctx.restore();
 	}

@@ -5,7 +5,7 @@ export default class D3DTime {
 	get now() {
 		return this._nowMs / 1000;
 	}
-	get nowms() {
+	get nowMs() {
 		return this._nowMs;
 	}
 	constructor() {

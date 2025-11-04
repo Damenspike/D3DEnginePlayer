@@ -1307,19 +1307,60 @@ export function localBitmapRectFromGraphic2D(o) {
 	if (!(w > 0 && h > 0)) return null;
 	return { x: minX, y: minY, w, h };
 }
+export function localAABB(obj) {
+	const g = obj?.graphic2d;
+	const paths = Array.isArray(g?._paths) ? g._paths : [];
+	let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+	for (const path of paths) {
+		if (!Array.isArray(path)) continue;
+		for (const p of path) {
+			const x = +p.x || 0, y = +p.y || 0;
+			if (x < minX) minX = x; if (y < minY) minY = y;
+			if (x > maxX) maxX = x; if (y > maxY) maxY = y;
+		}
+	}
+	if (!isFinite(minX)) return null;
+	return { minX, minY, maxX, maxY, width: (maxX - minX), height: (maxY - minY) };
+}
+export function localBoundsOfGraphic(obj) {
+	const g = obj?.graphic2d;
+	const paths = Array.isArray(g?._paths) ? g._paths : null;
+	if (!paths || paths.length === 0) 
+		return null;
+
+	let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+	for (const path of paths) {
+		if (!Array.isArray(path)) 
+			continue;
+		for (const p of path) {
+			const x = +p.x || 0;
+			const y = +p.y || 0;
+			if (x < minX) minX = x;
+			if (y < minY) minY = y;
+			if (x > maxX) maxX = x;
+			if (y > maxY) maxY = y;
+		}
+	}
+	if (!isFinite(minX) || !isFinite(minY) || !isFinite(maxX) || !isFinite(maxY)) 
+		return null;
+
+	return { minX, minY, maxX, maxY };
+}
 /**
- * Scale all local path points of a Graphic2D object around a local-space origin (ox, oy).
- * Keeps structure; scales only point coordinates.
+ * Scale all local points by (sx, sy) anchored at (ax, ay).
+ * For width-only changes, pass (sx=kx, sy=1) and anchor at minX.
+ * For height-only changes, pass (sx=1, sy=ky) and anchor at minY.
  */
-export function scaleGraphicPathsLocalAround(obj, sx, sy, ox = 0, oy = 0) {
-	const paths = Array.isArray(obj?.graphic2d?._paths) ? obj.graphic2d._paths : [];
-	if (paths.length === 0) 
+export function scaleGraphicPathsLocalFromEdge(obj, sx, sy, ax = 0, ay = 0) {
+	const g = obj?.graphic2d;
+	const paths = Array.isArray(g?._paths) ? g._paths : null;
+	if (!paths || paths.length === 0) 
 		return;
 
-	const Sx = Number.isFinite(sx) ? Number(sx) : 1;
-	const Sy = Number.isFinite(sy) ? Number(sy) : 1;
-	const OX = Number(ox) || 0;
-	const OY = Number(oy) || 0;
+	const Sx = Number.isFinite(sx) ? +sx : 1;
+	const Sy = Number.isFinite(sy) ? +sy : 1;
+	const AX = +ax || 0;
+	const AY = +ay || 0;
 
 	for (const path of paths) {
 		if (!Array.isArray(path)) 
@@ -1327,13 +1368,28 @@ export function scaleGraphicPathsLocalAround(obj, sx, sy, ox = 0, oy = 0) {
 		for (const p of path) {
 			const px = +p.x || 0;
 			const py = +p.y || 0;
-			p.x = OX + (px - OX) * Sx;
-			p.y = OY + (py - OY) * Sy;
+			p.x = AX + (px - AX) * Sx;
+			p.y = AY + (py - AY) * Sy;
 		}
 	}
+}
+export function getGraphicPivotLocal(obj){
+	// Prefer explicit pivots if your system exposes them
+	const g = obj?.graphic2d;
+	if (g && (Number.isFinite(g.pivotX) || Number.isFinite(g.pivotY))) {
+		return { x: +g.pivotX || 0, y: +g.pivotY || 0 };
+	}
+	if (g?.pivot && (Number.isFinite(g.pivot.x) || Number.isFinite(g.pivot.y))) {
+		return { x: +g.pivot.x || 0, y: +g.pivot.y || 0 };
+	}
+	if (obj?.pivot && (Number.isFinite(obj.pivot.x) || Number.isFinite(obj.pivot.y))) {
+		return { x: +obj.pivot.x || 0, y: +obj.pivot.y || 0 };
+	}
 
-	obj.checkSymbols?.();
-	obj.invalidateGraphic2D?.();
+	// Fallback: center of local bounds
+	const bb = localBoundsOfGraphic(obj);
+	if (!bb) return { x: 0, y: 0 };
+	return { x: (bb.minX + bb.maxX) * 0.5, y: (bb.minY + bb.maxY) * 0.5 };
 }
 
 /* ========================= DEFAULT BUNDLE ========================= */

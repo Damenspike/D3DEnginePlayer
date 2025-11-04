@@ -174,8 +174,8 @@ function startAnimationLoop() {
 		
 		if(camera3d)
 			renderer3d.render(_root.object3d, camera3d);
-		else
-			console.warn('No camera found for rendering');
+		//else
+		//	console.warn('No camera found for rendering');
 			
 		renderer2d.render(); // render 2d
 		
@@ -192,7 +192,7 @@ function startAnimationLoop() {
 	
 	// init
 	_time.tick(performance.now());
-	updateObject(['onStart','__onStart'], _root);
+	updateObject(['__onInternalStart','__onStart','onStart'], _root);
 	requestAnimationFrame(animate);
 }
 function onConsoleMessage({ level, message }) {

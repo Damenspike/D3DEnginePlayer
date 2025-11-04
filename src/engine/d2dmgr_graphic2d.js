@@ -1,9 +1,9 @@
 import {
 	hitObject,
 	hitObjectDeep,
-	objBoundsCanvas,
-	canvasToLocal,
-	scaleGraphicPathsLocalAround
+	localBoundsOfGraphic,
+	scaleGraphicPathsLocalFromEdge,
+	getGraphicPivotLocal
 } from './d2dutility.js';
 
 export default class Graphic2DManager {
@@ -12,74 +12,62 @@ export default class Graphic2DManager {
 		this.component = component;
 	}
 
-	updateComponent() {
-		// no-op for now
-	}
+	updateComponent() {}
 
-	_getRenderer() {
-		return _host.renderer2d;
-	}
-	
 	get width() {
-		const d2dr = this._getRenderer();
-		if (!d2dr) 
+		const g = this.d3dobject?.graphic2d;
+		if (!g || !Array.isArray(g._paths) || g._paths.length === 0) 
 			return 0;
-		const b = objBoundsCanvas(d2dr, this.d3dobject);
+	
+		const b = localBoundsOfGraphic(this.d3dobject);
 		if (!b) 
 			return 0;
-		return b.r - b.l;
+	
+		return b.maxX - b.minX; // game/world local units
 	}
-	set width(newWidthPx) {
-		const d2dr = this._getRenderer();
-		if (!d2dr) 
-			return;
-		const b = objBoundsCanvas(d2dr, this.d3dobject);
-		if (!b) 
-			return;
-		const curW = b.r - b.l;
-		if (!(curW > 0) || !Number.isFinite(newWidthPx)) 
-			return;
-			
-		const sx = Number(newWidthPx) / curW;
-		const sy = 1;
-		
-		const originLocal = canvasToLocal(d2dr, this.d3dobject, { x: b.l, y: b.t });
-		scaleGraphicPathsLocalAround(this.d3dobject, sx, sy, originLocal.x, originLocal.y);
-		
+	set width(newWidth) {
+		const b = localBoundsOfGraphic(this.d3dobject);
+		if (!b) return;
+	
+		const curW = b.maxX - b.minX;
+		if (!(curW > 0) || !Number.isFinite(newWidth)) return;
+	
+		const sx = Number(newWidth) / curW;
+		const pivot = getGraphicPivotLocal(this.d3dobject); // <-- pivot in LOCAL coords
+		scaleGraphicPathsLocalFromEdge(this.d3dobject, sx, 1, pivot.x, pivot.y);
+	
+		this.d3dobject.checkSymbols?.();
 		this.d3dobject.invalidateGraphic2D?.();
-		this.updateComponent();
+		this.updateComponent?.();
 	}
 	
 	get height() {
-		const d2dr = this._getRenderer();
-		if (!d2dr) 
+		const g = this.d3dobject?.graphic2d;
+		if (!g || !Array.isArray(g._paths) || g._paths.length === 0) 
 			return 0;
-		const b = objBoundsCanvas(d2dr, this.d3dobject);
-		if (!b) 
-			return 0;
-		return b.b - b.t;
-	}
-	set height(newHeightPx) {
-		const d2dr = this._getRenderer();
-		if (!d2dr) 
-			return;
-		const b = objBoundsCanvas(d2dr, this.d3dobject);
-		if (!b) 
-			return;
-		const curH = b.b - b.t;
-		if (!(curH > 0) || !Number.isFinite(newHeightPx)) 
-			return;
-			
-		const sx = 1;
-		const sy = Number(newHeightPx) / curH;
-		
-		const originLocal = canvasToLocal(d2dr, this.d3dobject, { x: b.l, y: b.t });
-		scaleGraphicPathsLocalAround(this.d3dobject, sx, sy, originLocal.x, originLocal.y);
-		
-		this.d3dobject.invalidateGraphic2D?.();
-		this.updateComponent();
-	}
 	
+		const b = localBoundsOfGraphic(this.d3dobject);
+		if (!b) 
+			return 0;
+	
+		return b.maxY - b.minY; // game/world local units
+	}
+	set height(newHeight) {
+		const b = localBoundsOfGraphic(this.d3dobject);
+		if (!b) return;
+	
+		const curH = b.maxY - b.minY;
+		if (!(curH > 0) || !Number.isFinite(newHeight)) return;
+	
+		const sy = Number(newHeight) / curH;
+		const pivot = getGraphicPivotLocal(this.d3dobject); // <-- pivot in LOCAL coords
+		scaleGraphicPathsLocalFromEdge(this.d3dobject, 1, sy, pivot.x, pivot.y);
+	
+		this.d3dobject.checkSymbols?.();
+		this.d3dobject.invalidateGraphic2D?.();
+		this.updateComponent?.();
+	}
+
 	hitTest({ x, y }) {
 		return hitObject(this.d3dobject, x, y);
 	}

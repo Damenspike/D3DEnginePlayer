@@ -404,6 +404,9 @@ export default class D3DObject {
 			}
 		}
 		
+		this.__onInternalStart = () => {
+			this.invokeEvent('start');
+		}
 		this.__onInternalBeforeRender = () => {
 			//////////////////////////////////////////////
 			//// ENGINE LOOP USED FOR INTERNALS
