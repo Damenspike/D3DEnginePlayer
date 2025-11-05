@@ -11,14 +11,15 @@ import {
 	MdFolder, MdInsertDriveFile, MdExpandMore, MdChevronRight,
 	MdUpload, MdCreateNewFolder, MdRefresh, MdDeleteForever,
 	MdOutlineInterests, MdTexture, MdDirectionsWalk,
-	MdImage, MdFilterBAndW, MdTextFields
+	MdImage, MdFilterBAndW, MdTextFields, 
+	MdAudiotrack, MdOutlineVolumeUp
 } from 'react-icons/md';
 import { BsFonts } from "react-icons/bs";
 
 export function drawIconForObject(object) {
 	if(object.symbol)
 		return <MdOutlineInterests />;
-	if(object.hasComponent('Mesh') || object.hasComponent('SubMesh'))
+	if(object.hasVisibleComponent('Mesh') || object.hasVisibleComponent('SubMesh'))
 		return <MdViewInAr />;
 	else
 	if(object.hasComponent('Light'))
@@ -35,6 +36,9 @@ export function drawIconForObject(object) {
 	else
 	if(object.hasComponent('Graphic2D'))
 		return <MdFilterBAndW />;
+	else
+	if(object.hasComponent('AudioSource'))
+		return <MdOutlineVolumeUp />;
 	else
 		return <MdGames />;
 }
@@ -59,6 +63,17 @@ export function drawIconForExt(ext, isDir = false) {
 		case 'bmp':
 		case 'svg':
 			return <MdImage />;
+		
+		case 'mp3':
+		case 'wav':
+		case 'ogg':
+		case 'm4a':
+		case 'aac':
+		case 'flac':
+		case 'webm':
+		case 'oga':
+		case 'opus':
+			return <MdAudiotrack />;
 		
 		default: return isDir ? <MdFolder /> : <MdInsertDriveFile />;
 	}

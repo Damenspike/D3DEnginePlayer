@@ -574,17 +574,49 @@ const menuTemplate = [
 				id: 'newObject',
 				label: 'New Object',
 				submenu: [
-					{ id: 'newObjectEmpty', label: 'Empty Object', click: () => sendAddObject('empty') },
+					{
+						label: 'Empty Object',
+						click: () => sendAddObject('empty')
+					},
 					{ type: 'separator' },
-					{ id: 'newObjectCube', label: 'Cube', click: () => sendAddObject('cube') },
-					{ id: 'newObjectCapsule', label: 'Capsule', click: () => sendAddObject('capsule') },
-					{ id: 'newObjectSphere', label: 'Sphere', click: () => sendAddObject('sphere') },
-					{ id: 'newObjectPyramid', label: 'Pyramid', click: () => sendAddObject('pyramid') },
-					{ id: 'newObjectPlane', label: 'Plane', click: () => sendAddObject('plane') },
+					{
+						label: 'Cube',
+						click: () => sendAddObject('cube')
+					},
+					{
+						label: 'Capsule',
+						click: () => sendAddObject('capsule')
+					},
+					{
+						label: 'Sphere',
+						click: () => sendAddObject('sphere')
+					},
+					{
+						label: 'Pyramid',
+						click: () => sendAddObject('pyramid')
+					},
+					{
+						label: 'Plane',
+						click: () => sendAddObject('plane')
+					},
 					{ type: 'separator' },
-					{ id: 'newObjectCamera', label: 'Camera', click: () => sendAddObject('camera') },
-					{ id: 'newObjectDirLight', label: 'Directional Light', click: () => sendAddObject('dirlight') },
-					{ id: 'newObjectPointLight', label: 'Point Light', click: () => sendAddObject('pntlight') }
+					{
+						label: 'Camera',
+						click: () => sendAddObject('camera')
+					},
+					{
+						label: 'Directional Light',
+						click: () => sendAddObject('dirlight')
+					},
+					{
+						label: 'Point Light',
+						click: () => sendAddObject('pntlight')
+					},
+					{ type: 'separator' },
+					{
+						label: 'Audio Source',
+						click: () => sendAddObject('audiosrc')
+					}
 				]
 			},
 			{
@@ -608,7 +640,16 @@ const menuTemplate = [
 						click: () => sendAddComponent('ThirdPersonCamera')
 					},
 					{
-						label: 'Layout (2D)',
+						label: 'Audio Listener',
+						click: () => sendAddComponent('AudioListener')
+					},
+					{
+						label: 'Audio Source',
+						click: () => sendAddComponent('AudioSource')
+					},
+					{ type: 'separator' },
+					{
+						label: 'Layout 2D',
 						click: () => sendAddComponent('Layout2D')
 					}
 				]

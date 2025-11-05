@@ -229,7 +229,7 @@ export default function CodeEditor({isOpen, theme}) {
 							theme={theme == 'dark' ? 'damenscript-dark' : 'damenscript-light'}
 							options={{
 								minimap: { enabled: false },
-								tabSize: 6,
+								tabSize: 4,
 								insertSpaces: false,
 								automaticLayout: true,
 								scrollBeyondLastLine: false,

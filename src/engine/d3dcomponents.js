@@ -1,5 +1,9 @@
 import * as THREE from 'three';
 
+import D2DTextManager from './d2dmgr_text.js';
+import D2DBitmapManager from './d2dmgr_bitmap.js';
+import D2DGraphic2DManager from './d2dmgr_graphic2d.js';
+import D2DLayoutManager from './d2dmgr_layout.js';
 import D3DAnimationManager from './d3dmgr_animation.js';
 import D3DMeshManager from './d3dmgr_mesh.js';
 import D3DCameraManager from './d3dmgr_camera.js';
@@ -10,10 +14,8 @@ import D3DSpotLightManager from './d3dmgr_spotlight.js';
 import D3DRigidbodyManager from './d3dmgr_rigidbody.js';
 import D3DCharacterControllerManager from './d3dmgr_charactercontroller.js';
 import D3DThirdPersonCameraManager from './d3dmgr_thirdpersoncamera.js';
-import D2DTextManager from './d2dmgr_text.js';
-import D2DBitmapManager from './d2dmgr_bitmap.js';
-import D2DGraphic2DManager from './d2dmgr_graphic2d.js';
-import D2DLayoutManager from './d2dmgr_layout.js';
+import D3DAudioListenerManager from './d3dmgr_audiolistener.js';
+import D3DAudioSourceManager from './d3dmgr_audiosource.js';
 
 import { WebSafeFonts } from './d3dfonts.js';
 
@@ -390,6 +392,7 @@ const D3DComponents = {
 	Graphic2D: {
 		name: 'Graphic 2D',
 		persistent: true,
+		is2D: true,
 		fields: {
 			'_paths': { // legacy
 				label: '',
@@ -521,6 +524,7 @@ const D3DComponents = {
 	},
 	Container2D: {
 		name: 'Container 2D',
+		is2D: true,
 		persistent: true,
 		hidden: true,
 		fields: {},
@@ -528,6 +532,7 @@ const D3DComponents = {
 	},
 	Text2D: {
 		name: 'Text 2D',
+		is2D: true,
 		sectionsLast: true,
 		fields: {
 			'text': {
@@ -646,6 +651,7 @@ const D3DComponents = {
 	Bitmap2D: {
 		name: 'Bitmap 2D',
 		sectionsLast: true,
+		is2D: true,
 		fields: {
 			'source': {
 				label: 'Bitmap',
@@ -693,6 +699,7 @@ const D3DComponents = {
 	},
 	Layout2D: {
 		name: 'Layout 2D',
+		is2D: true,
 		fields: {
 			'anchor': {
 				label: 'Auto anchor',
@@ -790,6 +797,97 @@ const D3DComponents = {
 			},
 		},
 		manager: D2DLayoutManager
+	},
+	AudioListener: {
+		name: 'Audio Listener',
+		is2Dand3D: true,
+		fields: {
+			'masterVolume': {
+				label: 'Master volume',
+				type: 'number',
+				def: 1
+			}
+		},
+		manager: D3DAudioListenerManager
+	},
+	AudioSource: {
+		name: 'Audio Source',
+		is2Dand3D: true,
+		fields: {
+			'audio': {
+				label: 'Audio',
+				type: 'file',
+				format: 'audio',
+				def: ''
+			},
+			'volume': {
+				label: 'Volume',
+				type: 'slider',
+				min: 0,
+				max: 1,
+				def: 0.5,
+				step: 0.01
+			},
+			'autoPlay': {
+				label: 'Auto play',
+				type: 'boolean',
+				def: true
+			},
+			'loop': {
+				label: 'Loop',
+				type: 'boolean',
+				def: false
+			},
+			'soundSpace': {
+				label: 'Sound space',
+				type: 'select',
+				options: [
+					{ name: '3D', label: '3D' },
+					{ name: '2D', label: '2D' }
+				],
+				def: '3D'
+			},
+			'distanceModel': {
+				label: 'Distance model',
+				type: 'select',
+				options: [
+					{ name: 'linear', label: 'Linear' },
+					{ name: 'inverse', label: 'Inverse' },
+					{ name: 'exponential', label: 'Exponential' },
+				],
+				def: 'linear',
+				condition: (c) => c.properties.soundSpace == '3D'
+			},
+			'refDistance': {
+				label: 'Full volume radius',
+				description: 'The sound is at full volume within this radius',
+				type: 'number',
+				def: 10,
+				condition: (c) => c.properties.soundSpace == '3D'
+			},
+			'maxDistance': {
+				label: 'Cut-off radius',
+				description: 'The sound can not be heard outside of this radius',
+				type: 'number',
+				def: 100,
+				condition: (c) => c.properties.soundSpace == '3D' && c.properties.distanceModel == 'linear'
+			},
+			'rolloffFactor': {
+				label: 'Roll-off factor',
+				description: 'How fast the volume is reduced as the listener moves away from the source',
+				type: 'number',
+				def: 1,
+				condition: (c) => c.properties.soundSpace == '3D' && c.properties.distanceModel != 'linear'
+			}
+		},
+		gizmo3d: {
+			hidden: true,
+			mesh: 'Standard/Models/__Editor/Audio.glb',
+			materials: [
+				'Standard/Materials/__Editor/Gizmo3D.mat'
+			]
+		},
+		manager: D3DAudioSourceManager
 	}
 }
 

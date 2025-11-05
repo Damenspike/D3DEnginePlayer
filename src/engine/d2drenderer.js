@@ -1,4 +1,6 @@
 // d2drenderer.js
+import * as THREE from 'three';
+
 import D2DGizmo from './d2dgizmo.js';
 import D2DEdit from './d2dedit.js';
 import D2DDraw from './d2ddraw.js';
@@ -33,6 +35,37 @@ export default class D2DRenderer {
 		this.__pr = v;
 	}
 	
+	get viewScale() {
+		if(this.__viewScale === undefined)
+			this.__viewScale = 1;
+			
+		if(window._player)
+			return this.__viewScale;
+		
+		return this.__viewScale * this._editor.viewScale;
+	}
+	set viewScale(v) {
+		this.__viewScale = v;
+	}
+	
+	get viewOffset() {
+		if(this.__viewOffset === undefined)
+			this.__viewOffset = new THREE.Vector2();
+		
+		if(window._player)
+			return this.__viewOffset;
+			
+		return this.__viewOffset.clone().add(this._editor.viewOffset);
+	}
+	set viewOffset(v) {
+		if(!v)
+			this.__viewOffset = new THREE.Vector2();
+		if(v.isVector2)
+			this.__viewOffset = v;
+		else
+			this.__viewOffset = new THREE.Vector2(v.x, v.y);
+	}
+	
 	constructor({width, height, pixelRatio, root, addGizmo = false} = {}) {
 		this.pixelRatio = pixelRatio ?? (window.devicePixelRatio || 1);
 		this.pixelScale = 1;
@@ -42,6 +75,10 @@ export default class D2DRenderer {
 		this.root = root;
 		this._dirty = true;
 		this._renderObjects = [];
+		this._editor = {
+			viewScale: 1,
+			viewOffset: new THREE.Vector2()
+		}
 		
 		this.domElement = document.createElement('canvas');
 		this.domElement.style.display = 'block';

@@ -207,6 +207,7 @@ export default function AssetExplorerDialog({
 			setActive(added);
 			scrollIntoView(added);
 		}
+		_editor.onAssetsUpdated();
 	}
 
 	if (!isOpen) return null;

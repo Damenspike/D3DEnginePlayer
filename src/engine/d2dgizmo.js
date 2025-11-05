@@ -6,50 +6,65 @@ export default class D2DGizmo {
 		this.d2drenderer = d2drenderer;
 		this.canvas = d2drenderer.domElement;
 		this.ctx = d2drenderer.ctx;
-
+	
 		this.state = {
 			mode: null,            // 'move' | 'rotate' | 'scale' | 'marquee'
 			handle: null,          // 'l','r','t','b','tl','tr','br','bl'
 			start: { x: 0, y: 0 },
 			last:  { x: 0, y: 0 },
-
+	
 			// frozen frame during active transform
 			cx: 0, cy: 0, theta: 0,
 			theta0: 0, rotBase: 0,
-
+	
 			// scale baseline
-			hx0: 1, hy0: 1,        // half extents of OBB in frame
-			p0L: { x: 0, y: 0 },   // mouse start (frame local)
-
+			hx0: 1, hy0: 1,
+			p0L: { x: 0, y: 0 },
+	
 			// originals for current selection + undo/redo
-			orig: null,            // Map(obj -> { pos0:{x,y}, rot0, scl0:{x,y}, parentInv, begin* })
+			orig: null,
 			stepStart: null,
 			stepEnd: null,
-
+	
 			// snapping visuals (screen space)
 			alignGuide: { v:null, h:null, ttl:0 },
-
-			// cached selection bounds (screen space) at gesture start
+	
+			// cached selection bounds + guides
 			startSelRectCanvas: null,
 			clickTime: 0,
-
-			// cached object guides for current gesture
-			guides: null           // { xs:number[], ys:number[] }
+			guides: null
 		};
-
+	
+		// mouse + keyboard
 		this._onDown = this._onDown.bind(this);
 		this._onMove = this._onMove.bind(this);
-		this._onUp   = this._onUp.bind(this);
-
+		this._onUp = this._onUp.bind(this);
+		this._onWheel = this._onWheel.bind(this);
+		this._onKeyDown = this._onKeyDown.bind(this);
+		this._onMouseTrack = this._onMouseTrack.bind(this);
+	
+		// track mouse for anchored zoom
+		this._mouseCanvasX = NaN;
+		this._mouseCanvasY = NaN;
+	
+		// === event bindings ===
 		this.canvas.addEventListener('mousedown', this._onDown);
+		this.canvas.addEventListener('wheel', this._onWheel, { passive:false });
+		this.canvas.addEventListener('mousemove', this._onMouseTrack, { passive:true });
+	
 		window.addEventListener('mousemove', this._onMove);
-		window.addEventListener('mouseup',   this._onUp);
+		window.addEventListener('mouseup', this._onUp);
+		window.addEventListener('keydown', this._onKeyDown, true);
 	}
-
+	
 	dispose() {
 		this.canvas.removeEventListener('mousedown', this._onDown);
+		this.canvas.removeEventListener('wheel', this._onWheel);
+		this.canvas.removeEventListener('mousemove', this._onMouseTrack);
+	
 		window.removeEventListener('mousemove', this._onMove);
-		window.removeEventListener('mouseup',   this._onUp);
+		window.removeEventListener('mouseup', this._onUp);
+		window.removeEventListener('keydown', this._onKeyDown, true);
 	}
 
 	/* ========================= RENDER ========================= */
@@ -820,6 +835,100 @@ export default class D2DGizmo {
 			vLine: bestVLine,
 			hLine: bestHLine
 		};
+	}
+	
+	/* ============ cursor tracking for anchored zoom ============ */
+	_onMouseTrack(e) {
+		const rect = this.canvas.getBoundingClientRect();
+		const sx = this.canvas.width  / Math.max(rect.width,  1e-6);
+		const sy = this.canvas.height / Math.max(rect.height, 1e-6);
+		this._mouseCanvasX = (e.clientX - rect.left) * sx;
+		this._mouseCanvasY = (e.clientY - rect.top)  * sy;
+	}
+	
+	/* ============ wheel: pan + trackpad pinch (ctrlKey) ============ */
+	_onWheel(e) {
+		const ed = this.d2drenderer._editor;
+		if (!ed) return;
+	
+		if (e.ctrlKey) {
+			const factor = Math.exp(-0.0045 * e.deltaY); // sensitivity knob
+			const rect = this.canvas.getBoundingClientRect();
+			const sx = this.canvas.width  / Math.max(rect.width,  1e-6);
+			const sy = this.canvas.height / Math.max(rect.height, 1e-6);
+			const ax = (e.clientX - rect.left) * sx;      // cursor in canvas pixels
+			const ay = (e.clientY - rect.top)  * sy;
+	
+			this._zoomByCombined(factor, ax, ay);
+			e.preventDefault();
+			return;
+		}
+	
+		// two-finger scroll / mouse wheel → pan (unchanged)
+		const unit = (e.deltaMode === 1) ? 16 : (e.deltaMode === 2) ? this.canvas.height : 1;
+		const dx = e.deltaX * unit;
+		const dy = e.deltaY * unit;
+		ed.viewOffset.x -= dx;
+		ed.viewOffset.y -= dy;
+		e.preventDefault();
+	}
+	
+	_onKeyDown(e) {
+		if (!(e.ctrlKey || e.metaKey)) return;
+	
+		const code = e.code, key = e.key;
+		if (code === 'Equal' || key === '+' || key === '=') {
+			this._zoomStep(+1);
+			e.preventDefault(); e.stopPropagation();
+		} else if (code === 'Minus' || key === '-' || key === '_') {
+			this._zoomStep(-1);
+			e.preventDefault(); e.stopPropagation();
+		} else if (code === 'NumpadAdd') {
+			this._zoomStep(+1);
+			e.preventDefault(); e.stopPropagation();
+		} else if (code === 'NumpadSubtract') {
+			this._zoomStep(-1);
+			e.preventDefault(); e.stopPropagation();
+		}
+	}
+	
+	_zoomStep(dir) {
+		const step = 1.15;
+		const factor = dir > 0 ? step : 1 / step;
+		const ax = this.canvas.width  * 0.5;
+		const ay = this.canvas.height * 0.5;
+		this._zoomByCombined(factor, ax, ay);
+	}
+	
+	_zoomByCombined(factor, anchorX, anchorY) {
+		const ed = this.d2drenderer._editor;
+		if (!ed) return;
+	
+		const MIN = 0.05, MAX = 64;
+		const s0 = ed.viewScale;
+		let   s1 = s0 * factor;
+		if (s1 < MIN) s1 = MIN;
+		if (s1 > MAX) s1 = MAX;
+	
+		// Combined offset at current scale (read-only reference)
+		const Vc0 = this.d2drenderer.viewOffset; // { x, y } in canvas pixels
+		const A = { x: anchorX, y: anchorY };
+	
+		// World point under the anchor BEFORE zoom
+		const Wx = (A.x - Vc0.x) / s0;
+		const Wy = (A.y - Vc0.y) / s0;
+	
+		// Combined offset we need AFTER zoom to keep A fixed
+		const Vc1x = A.x - s1 * Wx;
+		const Vc1y = A.y - s1 * Wy;
+	
+		// Apply ONLY the delta to the editor's offset (letterbox stays intact)
+		const dVx = Vc1x - Vc0.x;
+		const dVy = Vc1y - Vc0.y;
+		ed.viewOffset.x += dVx;
+		ed.viewOffset.y += dVy;
+	
+		ed.viewScale = s1;
 	}
 
 	/* ========================= PICK ROOTS ========================= */

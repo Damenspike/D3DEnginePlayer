@@ -1,0 +1,27 @@
+{
+  "count": 10,
+  "files": [
+    "assets/Eiven Casual.glbcontainer/materials/Eievn_SKin.mat",
+    "assets/Eiven Casual.glbcontainer/materials/Main_Cloth.mat",
+    "assets/Eiven Casual.glbcontainer/materials/Secondary.mat",
+    "assets/Eiven Casual.glbcontainer/materials/Jogger_main.mat",
+    "assets/Eiven Casual.glbcontainer/materials/Secondary_jogger.mat",
+    "assets/Eiven Casual.glbcontainer/materials/Material.009.mat",
+    "assets/Eiven Casual.glbcontainer/materials/Hair.mat",
+    "assets/Eiven Casual.glbcontainer/materials/Material.013.mat",
+    "assets/Eiven Casual.glbcontainer/materials/Material.004.mat",
+    "assets/Eiven Casual.glbcontainer/materials/Drake_trainer.mat"
+  ],
+  "byName": {
+    "Eievn SKin": "assets/Eiven Casual.glbcontainer/materials/Eievn_SKin.mat",
+    "Main Cloth": "assets/Eiven Casual.glbcontainer/materials/Main_Cloth.mat",
+    "Secondary": "assets/Eiven Casual.glbcontainer/materials/Secondary.mat",
+    "Jogger main": "assets/Eiven Casual.glbcontainer/materials/Jogger_main.mat",
+    "Secondary jogger": "assets/Eiven Casual.glbcontainer/materials/Secondary_jogger.mat",
+    "Material.009": "assets/Eiven Casual.glbcontainer/materials/Material.009.mat",
+    "Hair": "assets/Eiven Casual.glbcontainer/materials/Hair.mat",
+    "Material.013": "assets/Eiven Casual.glbcontainer/materials/Material.013.mat",
+    "Material.004": "assets/Eiven Casual.glbcontainer/materials/Material.004.mat",
+    "Drake trainer": "assets/Eiven Casual.glbcontainer/materials/Drake_trainer.mat"
+  }
+}

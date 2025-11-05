@@ -723,6 +723,7 @@ async function addD3DObjectEditor(type) {
 		case 'sphere':
 		case 'pyramid':
 		case 'plane':
+		case 'audiosrc':
 			supported = true;
 		break;
 	}
@@ -762,6 +763,10 @@ async function addD3DObjectEditor(type) {
 					)
 				]
 			});
+		break;
+		case 'audiosrc':
+			newd3dobj.name = 'audio source';
+			newd3dobj.addComponent('AudioSource', {});
 		break;
 	}
 	
@@ -1074,6 +1079,29 @@ async function onImportAssets(paths) {
 	onAssetsUpdated();
 }
 function addComponent(type) {
+	const schema = D3DComponents[type];
+	
+	if(!schema) {
+		_editor.showError({
+			title: 'Add Component',
+			message: `Component ${type} does not exist`
+		});
+		return;
+	}
+	if(!schema.is2Dand3D && schema.is2D && _editor.mode != '2D') {
+		_editor.showError({
+			title: 'Add Component',
+			message: `${schema.name} is only for 2D objects`
+		});
+		return;
+	}
+	if(!schema.is2Dand3D && !schema.is2D && _editor.mode != '3D') {
+		_editor.showError({
+			title: 'Add Component',
+			message: `${schema.name} is only for 3D objects`
+		});
+		return;
+	}
 	if(_editor.selectedObjects.length < 1) {
 		_editor.showError({
 			title: 'Add Component',

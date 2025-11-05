@@ -3,8 +3,8 @@ import * as THREE from 'three';
 export default class D3DInfiniteGrid extends THREE.Object3D {
 	constructor({
 		size = 500,        // size of the grid
-		color1 = 0x444444, // fine lines
-		color2 = 0x222222  // coarse lines
+		color1 = 0x888888, // fine lines
+		color2 = 0x444444  // coarse lines
 	} = {}) {
 		super();
 

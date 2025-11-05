@@ -353,7 +353,7 @@ export default function GameView({editorMode}) {
 		>
 			<div
 				id='game3d-container'
-				className='game'
+				className='game game3d'
 				ref={game3dRef}
 				tabIndex={0}
 				style={{ 
@@ -362,7 +362,7 @@ export default function GameView({editorMode}) {
 			/>
 			<div
 				id='game2d-container'
-				className='game'
+				className='game game2d'
 				ref={game2dRef}
 				tabIndex={0}
 				style={{ 

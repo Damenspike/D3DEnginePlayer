@@ -324,15 +324,15 @@ export default class D2DDraw {
 	async _ensureTemp() {
 		const host = _editor.focus;
 		let name = 'Draw 2D';
-		if (this.tool === 'brush')   name = 'Brush Stroke';
-		if (this.tool === 'pencil')  name = 'Pencil Stroke';
-		if (this.tool === 'line')    name = 'Line';
-		if (this.tool === 'square')  name = 'Rectangle';
-		if (this.tool === 'circle')  name = 'Ellipse';
-		if (this.tool === 'polygon') name = 'Polygon';
-		if (this.tool === 'text')  	 name = 'Text';
+		if (this.tool === 'brush')   name = 'brush stroke';
+		if (this.tool === 'pencil')  name = 'pencil stroke';
+		if (this.tool === 'line')    name = 'line';
+		if (this.tool === 'square')  name = 'rectangle';
+		if (this.tool === 'circle')  name = 'ellipse';
+		if (this.tool === 'polygon') name = 'polygon';
+		if (this.tool === 'text')  	 name = 'text';
 
-		if(_editor.draw2d.subtract) name += ' Erase';
+		if(_editor.draw2d.subtract) name += ' erase';
 
 		const props = { _paths: [[]] }; // single working path
 		// styles

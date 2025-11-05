@@ -405,6 +405,13 @@ export default class D3DObject {
 		}
 		
 		this.__onInternalStart = () => {
+			//////////////////////////////////////////////
+			//// ENGINE OBJ START EVENT USED FOR INTERNALS
+			//////////////////////////////////////////////
+			for(let i in this.__componentInstances) {
+				const mgr = this.__componentInstances[i];
+				mgr?.__onInternalStart?.();
+			}
 			this.invokeEvent('start');
 		}
 		this.__onInternalBeforeRender = () => {
@@ -828,6 +835,11 @@ export default class D3DObject {
 		const component = this.components.find(c => c.type == type);
 		
 		return !!component;
+	}
+	hasVisibleComponent(type) {
+		const component = this.components.find(c => c.type == type);
+		
+		return !!component && component?.properties.__editorOnly !== true;
 	}
 	enableComponent(type) {
 		const component = this.components.find(c => c.type == type);

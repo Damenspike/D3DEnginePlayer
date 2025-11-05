@@ -294,105 +294,105 @@ export default function Inspector() {
 				}
 				
 				<div className="field mt2">
-					<div className="field vector-field">
-						<VectorInput 
-							label="Position"
-							values={objects.map(o => o.position)} 
-							onSave={vector => {
-								objects.forEach(object => {
-									object.__inspApplyPos = () => object.setPosition(
-										new THREE.Vector3(
-											vector.x == '-' ? object.position.x : vector.x, 
-											vector.y == '-' ? object.position.y : vector.y, 
-											vector.z == '-' ? object.position.z : vector.z
-										)
-									);
-									object.__inspApplyPos();
-								});
-								
-								_editor.addStep({
-									name: 'Update position',
-									undo: () => {
-										objects.forEach(object => 
-											object.setPosition(object.__spOldPosition)
-										);
-									},
-									redo: () => {
-										objects.forEach(object => object.__inspApplyPos());
-									}
-								});
-							}}
-						/>
-					</div>
-					<div className="field vector-field">
-						<VectorInput 
-							label="Rotation"
-							values={objects.map(o => (
-								{
-									x: THREE.MathUtils.radToDeg(o.rotation.x),
-									y: THREE.MathUtils.radToDeg(o.rotation.y),
-									z: THREE.MathUtils.radToDeg(o.rotation.z)
-								}
-							))}
-							onSave={vector => {
-								objects.forEach(object => {
-									object.__inspApplyRot = () => object.setRotation(
-										new THREE.Euler(
-											vector.x == '-' ? object.rotation.x : THREE.MathUtils.degToRad(vector.x), 
-											vector.y == '-' ? object.rotation.y : THREE.MathUtils.degToRad(vector.y), 
-											vector.z == '-' ? object.rotation.z : THREE.MathUtils.degToRad(vector.z)
-										)
-									);
-									object.__inspApplyRot();
-								});
-								
-								_editor.addStep({
-									name: 'Update rotation',
-									undo: () => {
-										objects.forEach(object => 
-											object.setRotation(object.__spOldRotation)
-										);
-									},
-									redo: () => {
-										objects.forEach(object => object.__inspApplyRot());
-									}
-								});
-							}}  
-						/>
-					</div>
-					<div className="field vector-field">
-						<VectorInput 
-							label="Scale"
-							values={objects.map(o => o.scale)} 
-							onSave={vector => {
-								objects.forEach(object => {
-									object.__inspApplyScl = () => object.setScale(
-										new THREE.Vector3(
-											vector.x == '-' ? object.scale.x : vector.x, 
-											vector.y == '-' ? object.scale.y : vector.y, 
-											vector.z == '-' ? object.scale.z : vector.z
-										)
-									);
-									object.__inspApplyScl();
-								});
-								
-								_editor.addStep({
-									name: 'Update scale',
-									undo: () => {
-										objects.forEach(object => 
-											object.setScale(object.__spOldScale)
-										);
-									},
-									redo: () => {
-										objects.forEach(object => object.__inspApplyScl());
-									}
-								});
-							}}
-						/>
-					</div>
 					{
 						objectInspectorExpanded && (
 							<>
+								<div className="field vector-field">
+									<VectorInput 
+										label="Position"
+										values={objects.map(o => o.position)} 
+										onSave={vector => {
+											objects.forEach(object => {
+												object.__inspApplyPos = () => object.setPosition(
+													new THREE.Vector3(
+														vector.x == '-' ? object.position.x : vector.x, 
+														vector.y == '-' ? object.position.y : vector.y, 
+														vector.z == '-' ? object.position.z : vector.z
+													)
+												);
+												object.__inspApplyPos();
+											});
+											
+											_editor.addStep({
+												name: 'Update position',
+												undo: () => {
+													objects.forEach(object => 
+														object.setPosition(object.__spOldPosition)
+													);
+												},
+												redo: () => {
+													objects.forEach(object => object.__inspApplyPos());
+												}
+											});
+										}}
+									/>
+								</div>
+								<div className="field vector-field">
+									<VectorInput 
+										label="Rotation"
+										values={objects.map(o => (
+											{
+												x: THREE.MathUtils.radToDeg(o.rotation.x),
+												y: THREE.MathUtils.radToDeg(o.rotation.y),
+												z: THREE.MathUtils.radToDeg(o.rotation.z)
+											}
+										))}
+										onSave={vector => {
+											objects.forEach(object => {
+												object.__inspApplyRot = () => object.setRotation(
+													new THREE.Euler(
+														vector.x == '-' ? object.rotation.x : THREE.MathUtils.degToRad(vector.x), 
+														vector.y == '-' ? object.rotation.y : THREE.MathUtils.degToRad(vector.y), 
+														vector.z == '-' ? object.rotation.z : THREE.MathUtils.degToRad(vector.z)
+													)
+												);
+												object.__inspApplyRot();
+											});
+											
+											_editor.addStep({
+												name: 'Update rotation',
+												undo: () => {
+													objects.forEach(object => 
+														object.setRotation(object.__spOldRotation)
+													);
+												},
+												redo: () => {
+													objects.forEach(object => object.__inspApplyRot());
+												}
+											});
+										}}  
+									/>
+								</div>
+								<div className="field vector-field">
+									<VectorInput 
+										label="Scale"
+										values={objects.map(o => o.scale)} 
+										onSave={vector => {
+											objects.forEach(object => {
+												object.__inspApplyScl = () => object.setScale(
+													new THREE.Vector3(
+														vector.x == '-' ? object.scale.x : vector.x, 
+														vector.y == '-' ? object.scale.y : vector.y, 
+														vector.z == '-' ? object.scale.z : vector.z
+													)
+												);
+												object.__inspApplyScl();
+											});
+											
+											_editor.addStep({
+												name: 'Update scale',
+												undo: () => {
+													objects.forEach(object => 
+														object.setScale(object.__spOldScale)
+													);
+												},
+												redo: () => {
+													objects.forEach(object => object.__inspApplyScl());
+												}
+											});
+										}}
+									/>
+								</div>
 								<div style={{height: 20}}></div>
 								<div className="vector-input vector-input--top">
 									<div>
@@ -702,6 +702,7 @@ export default function Inspector() {
 									onKeyDown={autoBlur}
 									min={field.min}
 									max={field.max}
+									step={field.step || 1}
 									readOnly={field.readOnly}
 									onChange={e => {
 										let val = Number(e.target.value) || 0;

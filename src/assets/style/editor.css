@@ -241,7 +241,7 @@ body.dark {
 	background: black;
 	
 	canvas {
-		background: white;
+		
 	}
 }
 .game {
@@ -253,6 +253,11 @@ body.dark {
 .game:focus {
 	outline: none;
 	border-color: #0099ff;
+}
+.game2d {
+	background:
+	conic-gradient(from 90deg, #eee 25%, #ddd 0 50%, #eee 0 75%, #ddd 0)
+	0 0 / 16px 16px;
 }
 
 /* CONSOLE (bottom panel) */
@@ -1175,7 +1180,6 @@ body.dark {
 		transform: translateX(4px);
 		writing-mode: vertical-lr;
 		direction: rtl;
-		appearance: slider-vertical;
 		width: 16px;
 		height: 80px;
 		vertical-align: bottom;

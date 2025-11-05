@@ -104,8 +104,28 @@ export const D3D_OBJECT_SCHEMA = {
 		type: 'Function():void',
 		doc: 'Called before the frame is rendered.'
 	},
+	onBeforeRender: {
+		type: 'Function():void',
+		doc: 'Called after onEnterFrame but still before the frame is rendered.'
+	},
 	onExitFrame: {
 		type: 'Function():void',
 		doc: 'Called after the frame is rendered.'
+	},
+	getComponent: {
+		type: 'Function():ComponentManager',
+		doc: 'Returns the component manager attached to a D3DObject'
+	},
+	hasComponent: {
+		type: 'Function():boolean',
+		doc: 'Returns whether a component is attached to a D3DObject'
+	},
+	addComponent: {
+		type: 'Function(type:string, parameters:object):void',
+		doc: 'Attaches a component to a D3DObject'
+	},
+	removeComponent: {
+		type: 'Function():void',
+		doc: 'Removes an already attached component from a D3DObject'
 	}
 };
