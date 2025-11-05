@@ -206,7 +206,7 @@ body.dark {
 
 /* DRAW BAR (2D Only) */
 .drawbar {
-	width: 29px;
+	width: 31px;
 	height: 100%;
 	overflow-x: hidden;
 	overflow-y: scroll;

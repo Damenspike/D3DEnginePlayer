@@ -167,7 +167,7 @@ export default function CodeEditor({isOpen, theme}) {
 			<div ref={panelRef} className='code-editor__window'>
 				
 				<div className='code-editor__container'>
-					<div className='tabs'>
+					<div className='tabs no-scrollbar'>
 						{drawOpenObjects()}
 					</div>
 					<button 

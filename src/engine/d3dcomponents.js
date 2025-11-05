@@ -221,6 +221,7 @@ const D3DComponents = {
 	},
 	Animation: {
 		name: 'Animation',
+		is2Dand3D: true,
 		fields: {
 			'clips': {
 				label: 'Clips',

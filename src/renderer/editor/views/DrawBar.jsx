@@ -58,7 +58,7 @@ export default function DrawBar() {
 		)
 	}
 	const drawDrawingOptions = () => {
-		if(_tool == 'select' || _tool == 'transform' || _tool == 'text') return;
+		if(_tool == 'select' || _tool == 'orbit' || _tool == 'pan' || _tool == 'transform' || _tool == 'text') return;
 		
 		return (
 			<>

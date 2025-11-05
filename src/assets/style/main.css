@@ -241,6 +241,10 @@ body, button, input, select {
 		flex: 1 1 auto;
 	}
 }
+.no-scrollbar::-webkit-scrollbar {
+	width: 0;
+	height: 0;
+}
 
 button {
 	background: #0099ff;

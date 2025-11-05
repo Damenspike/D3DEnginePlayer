@@ -11,6 +11,7 @@ import {
 // Tool enum
 export const Tools = Object.freeze({
 	Select: 'select',
+	Orbit: 'orbit',
 	Pan: 'pan',
 	Transform: 'transform',
 	Brush: 'brush',

@@ -755,6 +755,11 @@ const menuTemplate = [
 				accelerator: 'p',
 				click: () => sendSetTool('pan')
 			},
+			{
+				label: 'Orbit',
+				accelerator: 'o',
+				click: () => sendSetTool('orbit')
+			},
 			{ type: 'separator' },
 			{ 
 				id: 'toolTranslate', 

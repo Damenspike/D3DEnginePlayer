@@ -2500,7 +2500,7 @@ export default function Inspector() {
 	return (
 		<div className='insp-view'>
 			<div className='tabs-container'>
-				<div className='tabs'>
+				<div className='tabs no-scrollbar'>
 					{drawTabButtons()}
 				</div>
 			</div>

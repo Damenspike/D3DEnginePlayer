@@ -19,6 +19,27 @@ export default class D3DDimensions {
 		}
 		_host.renderer2d.setPixelScale(v);
 	}
+	
+	get pixelRatio2D() {
+		return _host.renderer2d?.getPixelRatio() ?? 1;
+	}
+	set pixelRatio2D(v) {
+		if(_host.renderer2d === undefined) {
+			throw new Error('2D renderer is not ready');
+		}
+		_host.renderer2d.setPixelRatio(v);
+	}
+	
+	get pixelRatio3D() {
+		return _host.renderer3d?.getPixelRatio() ?? 1;
+	}
+	set pixelRatio3D(v) {
+		if(_host.renderer3d === undefined) {
+			throw new Error('3D renderer is not ready');
+		}
+		_host.renderer3d.setPixelRatio(v);
+	}
+	
 	get drawScale2D() {
 		return _host.renderer2d?.getDrawScale() ?? 1;
 	}
@@ -27,6 +48,19 @@ export default class D3DDimensions {
 			throw new Error('2D renderer is not ready');
 		}
 		_host.renderer2d.setDrawScale(v);
+	}
+	
+	get canvasSize2D() {
+		return {
+			width: _host.renderer2d.domElement.width,
+			height: _host.renderer2d.domElement.height
+		}
+	}
+	get canvasSize3D() {
+		return {
+			width: _host.renderer3d.domElement.width,
+			height: _host.renderer3d.domElement.height
+		}
 	}
 
 	update() {

@@ -3,6 +3,7 @@ const mouseSensitivity = 0.4;
 const zoomSpeed = 0.4;
 
 let wasForcingPan = false;
+let wasForcingOrbit = false;
 let initialTool = 'select';
 
 function updateMotion() {
@@ -224,6 +225,79 @@ function updateOrbit(usePivot) {
 	// Remember last mode
 	this.__lastUsePivot = usePivot;
 }
+function updatePan() {
+	const cam = this.object3d;
+	const { w, h } = getViewportPx();
+	if (!w || !h) return;
+	
+	// mouse delta in CSS px (movementX/Y already in CSS px)
+	const md = _input.getMouseDelta();
+	const dxPx = md.x;
+	const dyPx = md.y;
+	
+	// derive camera basis
+	const forward = Vector3();
+	cam.getWorldDirection(forward).normalize(); // camera -Z in world
+	const worldUp = Vector3(0, 1, 0);
+	let right = Vector3().crossVectors(forward, worldUp).normalize();
+	let upVec = Vector3().crossVectors(right, forward).normalize(); // camera's "up" in world
+	
+	// how many world units does 1px correspond to?
+	let worldPerPxX, worldPerPxY;
+	
+	if (cam.isPerspectiveCamera) {
+		// distance to pivot (if available) for stable feel; fallback to some depth
+		let dist;
+		if (this._orbit) {
+			dist = cam.position.distanceTo(this._orbit);
+		} else {
+			// distance to a point in front of the camera
+			dist = Math.max(1.0, 0.1 * cam.position.length());
+		}
+
+		const vFov = MathUtils.degToRad(cam.fov);
+		const worldScreenHeight = 2 * Math.tan(vFov * 0.5) * dist; // at that depth
+		const worldScreenWidth  = worldScreenHeight * cam.aspect;
+
+		worldPerPxY = worldScreenHeight / h;
+		worldPerPxX = worldScreenWidth  / w;
+	} else if (cam.isOrthographicCamera) {
+		const worldScreenHeight = (cam.top - cam.bottom);
+		const worldScreenWidth  = (cam.right - cam.left);
+		worldPerPxY = worldScreenHeight / h;
+		worldPerPxX = worldScreenWidth  / w;
+	} else {
+		// default: treat like perspective with fixed depth
+		const vFov = MathUtils.degToRad(60);
+		const dist = 10;
+		const worldScreenHeight = 2 * Math.tan(vFov * 0.5) * dist;
+		const worldScreenWidth  = worldScreenHeight * (w / h);
+		worldPerPxY = worldScreenHeight / h;
+		worldPerPxX = worldScreenWidth  / w;
+	}
+
+	// move camera so content follows the hand (drag right -> move right; drag up -> move up)
+	const moveX = -dxPx * worldPerPxX; // negative so dragging right moves content right
+	const moveY =  dyPx * worldPerPxY; // dragging up moves content up
+
+	const delta = Vector3()
+		.addScaledVector(right, moveX)
+		.addScaledVector(upVec, moveY);
+		
+	cam.position.add(delta);
+	
+	// keep looking at the same target if you have an orbit pivot
+	if (this._orbit) cam.lookAt(this._orbit);
+}
+function getViewportPx() {
+	const canvasSize = _dimensions.canvasSize3D;
+	const pr = _dimensions.pixelRatio3D;
+	
+	const w = canvasSize.width / pr;
+	const h = canvasSize.height / pr;
+	
+	return { w, h, pr };
+}
 
 this.onEditorEnterFrame = () => {
 	const isGameInFocus = _input.getIsGameInFocus();
@@ -232,6 +306,17 @@ this.onEditorEnterFrame = () => {
 	
 	if(isGameInFocus) {
 		if(_input.getRightMouseButtonDown()) {
+			if(!wasForcingOrbit)
+				initialTool = _editor.tool;
+			
+			_editor.setTool('orbit');
+			wasForcingOrbit = true;
+		}else
+		if(wasForcingOrbit) {
+			_editor.setTool(initialTool);
+			wasForcingOrbit = false;
+		}else
+		if(_input.getMiddleMouseButtonDown()) {
 			if(!wasForcingPan)
 				initialTool = _editor.tool;
 			
@@ -246,8 +331,11 @@ this.onEditorEnterFrame = () => {
 		if (_input.getKeyDown('alt') && _input.getLeftMouseButtonDown())
 			updateOrbit(true);
 		else
-		if(_editor.tool == 'pan' && (_input.getLeftMouseButtonDown() || _input.getRightMouseButtonDown()))
+		if(_editor.tool == 'orbit' && (_input.getLeftMouseButtonDown() || _input.getRightMouseButtonDown()))
 			updateOrbit(false);
+		else
+		if(_editor.tool == 'pan' && (_input.getLeftMouseButtonDown() || _input.getMiddleMouseButtonDown()) )
+			updatePan();
 		
 		updateMotion();
 	}

@@ -31,7 +31,7 @@ export default function EditorMain({theme}) {
 				<Inspector />
 			</div>
 			{editorMode == '2D' && (
-				<div className="drawbar no-select" ref={drawBarRef}>
+				<div className="drawbar no-select no-scrollbar" ref={drawBarRef}>
 					<DrawBar />
 				</div>
 			)}

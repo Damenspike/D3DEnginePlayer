@@ -34,6 +34,7 @@ export default class D2DGizmo {
 			clickTime: 0,
 			guides: null
 		};
+		this._pan = { active:false, x0:0, y0:0, vox:0, voy:0 };
 	
 		// mouse + keyboard
 		this._onDown = this._onDown.bind(this);
@@ -42,6 +43,7 @@ export default class D2DGizmo {
 		this._onWheel = this._onWheel.bind(this);
 		this._onKeyDown = this._onKeyDown.bind(this);
 		this._onMouseTrack = this._onMouseTrack.bind(this);
+		this._onAuxClick = (e) => { if (e.button === 1) e.preventDefault(); };
 	
 		// track mouse for anchored zoom
 		this._mouseCanvasX = NaN;
@@ -51,6 +53,7 @@ export default class D2DGizmo {
 		this.canvas.addEventListener('mousedown', this._onDown);
 		this.canvas.addEventListener('wheel', this._onWheel, { passive:false });
 		this.canvas.addEventListener('mousemove', this._onMouseTrack, { passive:true });
+		this.canvas.addEventListener('auxclick', this._onAuxClick);
 	
 		window.addEventListener('mousemove', this._onMove);
 		window.addEventListener('mouseup', this._onUp);
@@ -61,6 +64,7 @@ export default class D2DGizmo {
 		this.canvas.removeEventListener('mousedown', this._onDown);
 		this.canvas.removeEventListener('wheel', this._onWheel);
 		this.canvas.removeEventListener('mousemove', this._onMouseTrack);
+		this.canvas.removeEventListener('auxclick', this._onAuxClick);
 	
 		window.removeEventListener('mousemove', this._onMove);
 		window.removeEventListener('mouseup', this._onUp);
@@ -260,6 +264,30 @@ export default class D2DGizmo {
 	/* ========================= EVENTS ========================= */
 
 	_onDown(e) {
+		// --- MIDDLE BUTTON: start panning ---
+		if (_editor.tool == 'pan' || e.button === 1) {
+			const ed = this.d2drenderer._editor;
+			if (!ed) return;
+		
+			// get mouse in *canvas device pixels*
+			const rect = this.canvas.getBoundingClientRect();
+			const sx = this.canvas.width  / Math.max(rect.width,  1e-6);
+			const sy = this.canvas.height / Math.max(rect.height, 1e-6);
+			const cx = (e.clientX - rect.left) * sx;
+			const cy = (e.clientY - rect.top)  * sy;
+		
+			this._pan.active = true;
+			this._pan.x0 = cx;
+			this._pan.y0 = cy;
+			this._pan.vox = ed.viewOffset.x;
+			this._pan.voy = ed.viewOffset.y;
+		
+			this.state.mode = 'pan';
+			e.preventDefault();
+			this._setCursorGrab(true);
+			return;
+		}
+		
 		if (e.button !== 0) return;
 		if (this.d2drenderer.edit?.hoverPoint) return;
 
@@ -316,7 +344,27 @@ export default class D2DGizmo {
 		this.state.last = p;
 
 		if (this.state.mode === 'marquee') return;
-
+		if (this.state.mode === 'pan' && this._pan.active) {
+			const ed = this.d2drenderer._editor;
+			if (!ed) return;
+		
+			const rect = this.canvas.getBoundingClientRect();
+			const sx = this.canvas.width  / Math.max(rect.width,  1e-6);
+			const sy = this.canvas.height / Math.max(rect.height, 1e-6);
+			const cx = (e.clientX - rect.left) * sx;
+			const cy = (e.clientY - rect.top)  * sy;
+		
+			const dx = cx - this._pan.x0;
+			const dy = cy - this._pan.y0;
+		
+			// content follows the hand (same direction as drag)
+			ed.viewOffset.x = this._pan.vox + dx;
+			ed.viewOffset.y = this._pan.voy + dy;
+		
+			e.preventDefault();
+			this._setCursorGrab(true);
+			return; // don't run gizmo logic while panning
+		}
 		if (this.state.mode === 'move') {
 			const dWx = p.x - this.state.start.x;
 			const dWy = p.y - this.state.start.y;
@@ -459,6 +507,13 @@ export default class D2DGizmo {
 
 		if (!this.state.mode || this.state.mode === 'marquee') {
 			this._resetGestureState();
+			return;
+		}
+		// --- finish pan ---
+		if (this._pan.active && this.state.mode === 'pan') {
+			this._pan.active = false;
+			this.state.mode = null;
+			this._resetCursor();
 			return;
 		}
 
@@ -851,7 +906,7 @@ export default class D2DGizmo {
 		const ed = this.d2drenderer._editor;
 		if (!ed) return;
 	
-		if (e.ctrlKey) {
+		if (e.ctrlKey || e.metaKey) {
 			const factor = Math.exp(-0.0045 * e.deltaY); // sensitivity knob
 			const rect = this.canvas.getBoundingClientRect();
 			const sx = this.canvas.width  / Math.max(rect.width,  1e-6);
@@ -957,5 +1012,14 @@ export default class D2DGizmo {
 			case 'bl': return { sx: -1, sy: +1 };
 			default:   return { sx: 0,  sy: 0  };
 		}
+	}
+	
+	_setCursorGrab(active) {
+		const c = this.canvas;
+		c.style.cursor = active ? 'grabbing' : 'grab';
+	}
+	
+	_resetCursor() {
+		this.canvas.style.cursor = '';
 	}
 }

@@ -6,8 +6,10 @@ import {
 	MdOutlineSync,
 	MdCameraswitch,
 	MdCode,
-	MdPlayArrow
+	MdPlayArrow,
+	MdBackHand
 } from "react-icons/md";
+import { PiHandGrabbingFill } from "react-icons/pi";
 import { BiExpand } from "react-icons/bi";
 
 export default function Topbar() {
@@ -78,6 +80,14 @@ export default function Topbar() {
 				{
 					drawToolButton(
 						(<MdCameraswitch />),
+						() => _tool == 'orbit',
+						() => setTool('orbit'),
+						'3D camera orbit tool'
+					)
+				}
+				{
+					drawToolButton(
+						(<PiHandGrabbingFill />),
 						() => _tool == 'pan',
 						() => setTool('pan'),
 						'3D camera pan tool'

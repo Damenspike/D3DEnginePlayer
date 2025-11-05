@@ -179,11 +179,19 @@ const DamenScript = (() => {
 	function Block(){ expect('punc','{'); const body=[]; while(!(peek().type==='punc'&&peek().value==='}')) body.push(Statement()); expect('punc','}'); return {type:'BlockStatement', body}; }
 
 	function VarDecl(){
-	  const kind=next().value; const declarations=[];
+	  const kind = next().value; // let|const|var
+	  const declarations = [];
 	  do {
-		const idTok=expect('ident'); let init=null;
-		if (match('op','=')) init=Expression();
-		declarations.push({ type:'VariableDeclarator', id:{type:'Identifier',name:idTok.value}, init });
+		// identifier or binding pattern
+		let idNode;
+		if (peek().type==='punc' && (peek().value==='{' || peek().value==='[')) {
+		  idNode = BindingPattern();
+		} else {
+		  idNode = { type:'Identifier', name: expect('ident').value };
+		}
+		let init = null;
+		if (match('op','=')) init = Expression();
+		declarations.push({ type:'VariableDeclarator', id:idNode, init });
 	  } while (match('punc',','));
 	  match('punc',';');
 	  return { type:'VariableDeclaration', kind, declarations };
@@ -333,8 +341,26 @@ const DamenScript = (() => {
 	  if (t.type==='op' && ['=','+=','-=','*=','/=','%='].includes(t.value)) {
 		next();
 		const right = Assignment(); // right-assoc
-		if (!(left.type==='Identifier' || left.type==='MemberExpression')) throw DSyntax('Invalid assignment target', t.line, t.col);
-		return { type:'AssignmentExpression', operator:t.value, left, right };
+	
+		if (t.value !== '=') {
+		  // compound assignments require simple LHS
+		  if (!(left.type==='Identifier' || left.type==='MemberExpression'))
+			throw DSyntax('Invalid assignment target for compound operator', t.line, t.col);
+		  return { type:'AssignmentExpression', operator:t.value, left, right };
+		}
+	
+		// '=' assignment: allow destructuring
+		if (left.type==='Identifier' || left.type==='MemberExpression') {
+		  return { type:'AssignmentExpression', operator:'=', left, right };
+		}
+	
+		// transform object/array literal LHS into pattern
+		if (left.type==='ObjectExpression' || left.type==='ArrayExpression') {
+		  const pattern = ExpressionToBindingPattern(left);
+		  return { type:'DestructuringAssignment', pattern, right };
+		}
+	
+		throw DSyntax('Invalid assignment target', t.line, t.col);
 	  }
 	  return left;
 	}
@@ -603,6 +629,155 @@ const DamenScript = (() => {
 
 	  throw DSyntax(`Unexpected token ${t.value}`, t.line, t.col);
 	}
+	
+	// ---- Binding patterns (used in declarations and assignment-target re-interpret)
+	function BindingIdentifier() {
+	  const idTok = expect('ident');
+	  return { type:'Identifier', name:idTok.value };
+	}
+	
+	function BindingPattern() {
+	  const t = peek();
+	  if (t.type === 'punc' && t.value === '{') return ObjectBindingPattern();
+	  if (t.type === 'punc' && t.value === '[') return ArrayBindingPattern();
+	  return BindingIdentifier();
+	}
+	
+	function ObjectBindingPattern() {
+	  expect('punc','{');
+	  const props = [];
+	  if (!(peek().type==='punc' && peek().value==='}')) {
+		do {
+		  // rest: ...rest
+		  if (match('spread','...')) {
+			const arg = BindingIdentifier();
+			props.push({ type:'RestElement', argument: arg });
+			// rest must be last
+			break;
+		  }
+	
+		  const keyTok = next();
+		  if (keyTok.type!=='ident' && keyTok.type!=='str')
+			throw DSyntax('Invalid object binding key', keyTok.line, keyTok.col);
+		  const keyName = keyTok.value;
+	
+		  let target;
+		  if (match('punc',':')) {
+			target = BindingPattern();
+		  } else {
+			// shorthand { w }
+			target = { type:'Identifier', name:keyName };
+		  }
+	
+		  // default: { w = 10 } or { w: x = 10 }
+		  let def = null;
+		  if (match('op','=')) def = Expression();
+	
+		  props.push({ type:'PatternProperty', key:keyName, target, default:def });
+	
+		} while (match('punc',','));
+	  }
+	  expect('punc','}');
+	  return { type:'ObjectPattern', properties: props };
+	}
+	
+	function ArrayBindingPattern() {
+	  expect('punc','[');
+	  const elements = [];
+	  if (!(peek().type==='punc' && peek().value===']')) {
+		do {
+		  if (peek().type==='punc' && peek().value===',') {
+			// hole
+			elements.push(null);
+			continue;
+		  }
+		  if (match('spread','...')) {
+			const arg = BindingPattern();
+			elements.push({ type:'RestElement', argument: arg });
+			// rest must be last
+			break;
+		  }
+		  let target = BindingPattern();
+		  let def = null;
+		  if (match('op','=')) def = Expression();
+		  elements.push({ type:'PatternElement', target, default:def });
+		} while (match('punc',','));
+	  }
+	  expect('punc',']');
+	  return { type:'ArrayPattern', elements };
+	}
+	
+	// Re-interpret an Object/ArrayExpression (from lhs) into a binding pattern
+	function ExpressionToBindingPattern(node) {
+	  if (node.type === 'ObjectExpression') {
+		const props = [];
+		for (const p of node.properties) {
+		  if (p.type === 'SpreadElement') {
+			if (p.argument.type !== 'Identifier')
+			  throw DSyntax('Object rest element must be an identifier');
+			props.push({ type:'RestElement', argument:{type:'Identifier', name:p.argument.name} });
+		  } else {
+			const key = p.key.name;
+			let target;
+			let def = null;
+	
+			// object expr property value might be Identifier (shorthand) or any expr; for pattern we only allow id/nested pattern (+ optional default)
+			if (p.value.type === 'Identifier') {
+			  target = { type:'Identifier', name:p.value.name };
+			} else if (p.value.type === 'AssignmentExpression' && p.value.operator === '=') {
+			  if (p.value.left.type === 'Identifier') {
+				target = { type:'Identifier', name:p.value.left.name };
+				def = p.value.right; // keep expression; evaluated later
+			  } else {
+				throw DSyntax('Invalid default in object destructuring');
+			  }
+			} else if (p.value.type === 'ObjectExpression' || p.value.type === 'ArrayExpression') {
+			  target = ExpressionToBindingPattern(p.value);
+			} else {
+			  throw DSyntax('Invalid object destructuring target');
+			}
+	
+			props.push({ type:'PatternProperty', key, target, default:def });
+		  }
+		}
+		return { type:'ObjectPattern', properties: props };
+	  }
+	
+	  if (node.type === 'ArrayExpression') {
+		const elements = [];
+		for (const el of node.elements) {
+		  if (!el) { elements.push(null); continue; }
+		  if (el.type === 'SpreadElement') {
+			if (el.argument.type !== 'Identifier')
+			  throw DSyntax('Array rest element must be an identifier');
+			elements.push({ type:'RestElement', argument:{type:'Identifier', name:el.argument.name} });
+			continue;
+		  }
+		  if (el.type === 'AssignmentExpression' && el.operator === '=') {
+			let target;
+			if (el.left.type==='Identifier') {
+			  target = { type:'Identifier', name:el.left.name };
+			} else if (el.left.type==='ObjectExpression' || el.left.type==='ArrayExpression') {
+			  target = ExpressionToBindingPattern(el.left);
+			} else {
+			  throw DSyntax('Invalid array destructuring target with default');
+			}
+			elements.push({ type:'PatternElement', target, default: el.right });
+			continue;
+		  }
+		  if (el.type==='Identifier') {
+			elements.push({ type:'PatternElement', target:{type:'Identifier', name:el.name}, default:null });
+		  } else if (el.type==='ObjectExpression' || el.type==='ArrayExpression') {
+			elements.push({ type:'PatternElement', target:ExpressionToBindingPattern(el), default:null });
+		  } else {
+			throw DSyntax('Invalid array destructuring element');
+		  }
+		}
+		return { type:'ArrayPattern', elements };
+	  }
+	
+	  throw DSyntax('Invalid destructuring left-hand side');
+	}
 
 	return Program();
   }
@@ -750,6 +925,116 @@ const DamenScript = (() => {
 		}
 	  };
 	}
+	
+	function safeOwnKeys(obj) {
+	  return Object.keys(obj).filter(k => !BLOCKED_PROPS.has(k));
+	}
+	function safeGet(obj, key) {
+	  if (BLOCKED_PROPS.has(key)) throw DRuntime(`Forbidden property: ${key}`);
+	  return obj[key];
+	}
+	
+	function bindPatternDeclare(kind, pattern, value, scope) {
+	  // Throws like JS if value is null/undefined when destructuring
+	  if (pattern.type==='ObjectPattern') {
+		if (value==null || typeof value!=='object') throw DRuntime('Cannot destructure non-object');
+		const used = new Set();
+		for (const p of pattern.properties) {
+		  if (p.type === 'RestElement') {
+			const out = Object.create(null);
+			for (const k of safeOwnKeys(value)) {
+			  if (!used.has(k)) out[k] = safeGet(value, k);
+			}
+			// argument must be Identifier or nested pattern; we support only Identifier for rest
+			if (p.argument.type !== 'Identifier') throw DRuntime('Object rest must bind to identifier');
+			scope.declare(kind, p.argument.name, out);
+		  } else {
+			const k = p.key;
+			const v = Object.prototype.hasOwnProperty.call(value, k) ? safeGet(value, k) : undefined;
+			used.add(k);
+			const bound = (v === undefined && p.default != null) ? evalNode(p.default, scope) : v;
+			bindPatternDeclare(kind, p.target, bound, scope);
+		  }
+		}
+		return;
+	  }
+	
+	  if (pattern.type==='ArrayPattern') {
+		if (!Array.isArray(value)) throw DRuntime('Cannot destructure non-array');
+		let i=0;
+		for (const el of pattern.elements) {
+		  if (el === null) { i++; continue; } // hole
+		  if (el.type === 'RestElement') {
+			if (el.argument.type !== 'Identifier') throw DRuntime('Array rest must bind to identifier');
+			const restArr = value.slice(i);
+			scope.declare(kind, el.argument.name, restArr);
+			i = value.length;
+			break;
+		  }
+		  const got = value[i++];
+		  const bound = (got === undefined && el.default != null) ? evalNode(el.default, scope) : got;
+		  bindPatternDeclare(kind, el.target, bound, scope);
+		}
+		return;
+	  }
+	
+	  // Identifier
+	  if (pattern.type==='Identifier') {
+		scope.declare(kind, pattern.name, value);
+		return;
+	  }
+	
+	  throw DRuntime('Unsupported binding pattern');
+	}
+	
+	function assignPattern(pattern, value, scope) {
+	  if (pattern.type==='ObjectPattern') {
+		if (value==null || typeof value!=='object') throw DRuntime('Cannot destructure non-object');
+		const used = new Set();
+		for (const p of pattern.properties) {
+		  if (p.type === 'RestElement') {
+			if (p.argument.type!=='Identifier') throw DRuntime('Object rest must bind to identifier');
+			const out = Object.create(null);
+			for (const k of safeOwnKeys(value)) {
+			  if (!used.has(k)) out[k] = safeGet(value, k);
+			}
+			scope.set(p.argument.name, out);
+		  } else {
+			const k = p.key;
+			const v = Object.prototype.hasOwnProperty.call(value, k) ? safeGet(value, k) : undefined;
+			used.add(k);
+			const bound = (v === undefined && p.default != null) ? evalNode(p.default, scope) : v;
+			assignPattern(p.target, bound, scope);
+		  }
+		}
+		return value;
+	  }
+	
+	  if (pattern.type==='ArrayPattern') {
+		if (!Array.isArray(value)) throw DRuntime('Cannot destructure non-array');
+		let i=0;
+		for (const el of pattern.elements) {
+		  if (el === null) { i++; continue; }
+		  if (el.type === 'RestElement') {
+			if (el.argument.type!=='Identifier') throw DRuntime('Array rest must bind to identifier');
+			const restArr = value.slice(i);
+			scope.set(el.argument.name, restArr);
+			i = value.length;
+			break;
+		  }
+		  const got = value[i++];
+		  const bound = (got === undefined && el.default != null) ? evalNode(el.default, scope) : got;
+		  assignPattern(el.target, bound, scope);
+		}
+		return value;
+	  }
+	
+	  if (pattern.type==='Identifier') {
+		return scope.set(pattern.name, value);
+	  }
+	
+	  throw DRuntime('Unsupported destructuring assignment');
+	}
 
 	function evalNode(node, scope=top){
 	  bump();
@@ -774,8 +1059,17 @@ const DamenScript = (() => {
 
 		case 'VariableDeclaration': {
 		  for (const d of node.declarations) {
-			const n=d.id.name; const v=d.init?evalNode(d.init,scope):undefined;
-			scope.declare(node.kind,n,v);
+			if (d.id.type==='Identifier') {
+			  const n = d.id.name;
+			  const v = d.init ? evalNode(d.init, scope) : undefined;
+			  scope.declare(node.kind, n, v);
+			} else if (d.id.type==='ObjectPattern' || d.id.type==='ArrayPattern') {
+			  if (!d.init) throw DRuntime('Destructuring declaration requires an initializer');
+			  const v = evalNode(d.init, scope);
+			  bindPatternDeclare(node.kind, d.id, v, scope);
+			} else {
+			  throw DRuntime('Invalid declaration target');
+			}
 		  }
 		  return undefined;
 		}
@@ -952,6 +1246,11 @@ const DamenScript = (() => {
 			else { const key=node.left.property.name; const cur=(op==='=')?undefined:getProp(obj,key,false); const val=apply(op,cur,rhs); return setProp(obj,key,val,false); }
 		  }
 		  throw DRuntime('Invalid assignment target');
+		}
+		
+		case 'DestructuringAssignment': {
+		  const v = evalNode(node.right, scope);
+		  return assignPattern(node.pattern, v, scope);
 		}
 		
 		case 'ForInStatement': {

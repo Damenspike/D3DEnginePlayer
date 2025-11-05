@@ -46,7 +46,7 @@ export default function ConsoleView() {
 	
 	return (
 		<div className='console-view'>
-			<div className='tabs'>
+			<div className='tabs no-scrollbar'>
 				{drawTabButtons()}
 			</div>
 			<div className='tab-content'>

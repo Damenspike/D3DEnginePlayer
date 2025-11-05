@@ -332,7 +332,9 @@ export default class D2DEdit {
 
 		const hit = this._pickPoint(e);
 		this.hoverPoint = hit ? { obj: hit.obj, pidx: hit.pidx, lindex: hit.lindex } : null;
-		this.canvas.style.cursor = 'default';
+		
+		if(_editor?.tool != 'pan')
+			this.canvas.style.cursor = 'default';
 	}
 
 	_onMouseUp() { this._endDrag(true); }
@@ -344,7 +346,9 @@ export default class D2DEdit {
 		const drawer = this.d2drenderer?.drawer;
 
 		this.dragging = false;
-		this.canvas.style.cursor = 'default';
+		
+		if(_editor?.tool != 'pan')
+			this.canvas.style.cursor = 'default';
 
 		if (commit && this.hasMoved && this.dragObj) {
 			const obj = this.dragObj;

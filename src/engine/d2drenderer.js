@@ -198,8 +198,10 @@ export default class D2DRenderer {
 		
 		// Draw focus
 		if(window._editor) {
-			if(_editor.focus && _editor.focus != this.root)
+			if(_editor.focus && _editor.focus != this.root) {
+				this.drawFocusOverlay();
 				this.renderParent(_editor.focus);
+			}
 			
 			// Draw project frame
 			this.drawProjectFrame();
@@ -983,6 +985,18 @@ export default class D2DRenderer {
 		ctx.strokeStyle = 'rgba(255,255,255,0.9)';
 		ctx.strokeRect(Math.round(x) + 0.5, Math.round(y) + 0.5, Math.max(0, Math.round(w) - 1), Math.max(0, Math.round(h) - 1));
 	
+		ctx.restore();
+	}
+	drawFocusOverlay() {
+		const ctx = this.ctx;
+		
+		ctx.save();
+		
+		ctx.setTransform(1,0,0,1,0,0);
+		ctx.globalCompositeOperation = 'source-over';
+		ctx.fillStyle = 'rgba(0,0,0,0.35)'; // tweak opacity here
+		ctx.fillRect(0, 0, this.domElement.width, this.domElement.height);
+		
 		ctx.restore();
 	}
 }
