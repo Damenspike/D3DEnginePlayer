@@ -401,6 +401,14 @@ function sendDropToGround() {
 	if (!editorWindow?.isFocused()) return;
 	editorWindow.webContents.send('drop-to-ground');
 }
+function sendZoomStep(step) {
+	if (!editorWindow?.isFocused()) return;
+	editorWindow.webContents.send('zoom-step', step);
+}
+function sendResetView() {
+	if (!editorWindow?.isFocused()) return;
+	editorWindow.webContents.send('reset-view');
+}
 
 function sendBuild({prompt, play}) {
 	if (!editorWindow?.isFocused()) return;
@@ -756,9 +764,9 @@ const menuTemplate = [
 				click: () => sendSetTool('pan')
 			},
 			{
-				label: 'Orbit',
-				accelerator: 'o',
-				click: () => sendSetTool('orbit')
+				label: 'Look',
+				accelerator: 'l',
+				click: () => sendSetTool('look')
 			},
 			{ type: 'separator' },
 			{ 
@@ -788,6 +796,21 @@ const menuTemplate = [
 	{
 		label: 'View',
 		submenu: [
+			{
+				label: 'Zoom In', 
+				accelerator: 'CmdOrCtrl+=', 
+				click: () => sendZoomStep(+1)
+			},
+			{
+				label: 'Zoom Out', 
+				accelerator: 'CmdOrCtrl+-', 
+				click: () => sendZoomStep(-1)
+			},
+			{
+				label: 'Reset View', 
+				accelerator: 'CmdOrCtrl+Shift+R', 
+				click: () => sendResetView()
+			},
 			{
 				id: 'toggleDevTools',
 				label: 'Toggle DevTools',

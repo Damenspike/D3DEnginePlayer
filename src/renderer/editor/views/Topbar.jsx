@@ -74,15 +74,15 @@ export default function Topbar() {
 						(<MdNavigation />),
 						() => _tool == 'select',
 						() => setTool('select'),
-						'Select tool'
+						'Select'
 					)
 				}
 				{
 					drawToolButton(
 						(<MdCameraswitch />),
-						() => _tool == 'orbit',
-						() => setTool('orbit'),
-						'3D camera orbit tool'
+						() => _tool == 'look',
+						() => setTool('look'),
+						'3D camera look'
 					)
 				}
 				{
@@ -90,7 +90,7 @@ export default function Topbar() {
 						(<PiHandGrabbingFill />),
 						() => _tool == 'pan',
 						() => setTool('pan'),
-						'3D camera pan tool'
+						'Pan'
 					)
 				}
 			</div>

@@ -1,15 +1,15 @@
-const moveSpeed = 5;
+const moveSpeed = 2;
 const mouseSensitivity = 0.4;
 const zoomSpeed = 0.4;
 
 let wasForcingPan = false;
-let wasForcingOrbit = false;
+let wasForcingLook = false;
 let initialTool = 'select';
 
 function updateMotion() {
 	const delta = _time.delta;
 	const axis = _input.getControllerAxisArrowsOnly();
-	const mult = _input.getKeyDown('control') ? 3 : 1;
+	const mult = _input.getKeyDown('shift') ? 3 : 1;
 	const speed = moveSpeed * mult * delta;
 	
 	if(_input.getKeyDown('alt')) // keyboard rotate mode
@@ -285,9 +285,6 @@ function updatePan() {
 		.addScaledVector(upVec, moveY);
 		
 	cam.position.add(delta);
-	
-	// keep looking at the same target if you have an orbit pivot
-	if (this._orbit) cam.lookAt(this._orbit);
 }
 function getViewportPx() {
 	const canvasSize = _dimensions.canvasSize3D;
@@ -306,15 +303,15 @@ this.onEditorEnterFrame = () => {
 	
 	if(isGameInFocus) {
 		if(_input.getRightMouseButtonDown()) {
-			if(!wasForcingOrbit)
+			if(!wasForcingLook)
 				initialTool = _editor.tool;
 			
-			_editor.setTool('orbit');
-			wasForcingOrbit = true;
+			_editor.setTool('look');
+			wasForcingLook = true;
 		}else
-		if(wasForcingOrbit) {
+		if(wasForcingLook) {
 			_editor.setTool(initialTool);
-			wasForcingOrbit = false;
+			wasForcingLook = false;
 		}else
 		if(_input.getMiddleMouseButtonDown()) {
 			if(!wasForcingPan)
@@ -331,7 +328,7 @@ this.onEditorEnterFrame = () => {
 		if (_input.getKeyDown('alt') && _input.getLeftMouseButtonDown())
 			updateOrbit(true);
 		else
-		if(_editor.tool == 'orbit' && (_input.getLeftMouseButtonDown() || _input.getRightMouseButtonDown()))
+		if(_editor.tool == 'look' && (_input.getLeftMouseButtonDown() || _input.getRightMouseButtonDown()))
 			updateOrbit(false);
 		else
 		if(_editor.tool == 'pan' && (_input.getLeftMouseButtonDown() || _input.getMiddleMouseButtonDown()) )

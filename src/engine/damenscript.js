@@ -51,7 +51,7 @@ const DamenScript = (() => {
   // ===== Lexer =====
   const KEYWORDS = new Set([
 	  'let','const','var','if','else','while','for','true','false','null',
-	  'function','return','undefined','NaN','Infinity','in','of'
+	  'function','return','undefined','NaN','Infinity','in','of','async','await'
   ]);
   const PUNCT = new Set(['(',')','{','}','[',']',';',',','.',':','?']);
   const TWO_CHAR_OPS = new Set([
@@ -138,13 +138,19 @@ const DamenScript = (() => {
   // Token-aware preflight
   function preflight(code) {
 	const tokens = lex(code);
+	let hasAwait = false;
+	let hasAsync = false;
+  
 	for (const t of tokens) {
-	  if ((t.type==='ident' || t.type==='kw') && FORBIDDEN_NAMES.has(t.value)) {
-		if (t.value === 'new') throw DSyntax("DamenScript: 'new' is not supported; use factory functions (e.g., Vector3())", t.line, t.col);
+	  if ((t.type === 'ident' || t.type === 'kw') && FORBIDDEN_NAMES.has(t.value)) {
+		if (t.value === 'new')   throw DSyntax("DamenScript: 'new' is not supported; use a factory", t.line, t.col);
 		if (t.value === 'import') throw DSyntax("DamenScript: 'import' is not supported", t.line, t.col);
 		throw DSyntax(`DamenScript: forbidden identifier: ${t.value}`, t.line, t.col);
 	  }
+	  if (t.type === 'kw' && t.value === 'await') hasAwait = true;
+	  if (t.type === 'kw' && t.value === 'async') hasAsync = true;
 	}
+	return { tokens, hasAwait, hasAsync };
   }
 
   // ===== Parser =====
@@ -160,7 +166,9 @@ const DamenScript = (() => {
 
 	function Statement(){
 	  const t=peek();
-	  if (t.type==='kw' && t.value==='function') return parseFunction(true);
+	  if (t.type==='kw' && t.value==='function') return parsePossiblyAsyncFunction(true);
+	  if (t.type==='kw' && t.value==='async' && tokens[pos+1] && tokens[pos+1].type==='kw' && tokens[pos+1].value==='function')
+		{ return parsePossiblyAsyncFunction(true); }
 	  if (t.type==='kw' && (t.value==='let'||t.value==='const'||t.value==='var')) return VarDecl();
 	  if (t.type==='kw' && t.value==='if') return IfStmt();
 	  if (t.type==='kw' && t.value==='while') return WhileStmt();
@@ -314,6 +322,10 @@ const DamenScript = (() => {
 
 	// ---- Functions ----
 	function parseFunction(isDeclaration){
+	  let isAsync = false;
+	  // we arrive here after seeing 'function' (existing callers), but we also need an entry point for 'async function'
+	  // So we’ll let callers pass after consuming 'async' if present.
+	
 	  expect('kw','function');
 	  let id=null;
 	  if (isDeclaration) {
@@ -323,13 +335,39 @@ const DamenScript = (() => {
 		if (peek().type==='ident') { const nameTok=next(); id={type:'Identifier', name:nameTok.value}; }
 	  }
 	  expect('punc','(');
-	  const params = parseParamList(); // supports defaults
+	  const params = parseParamList();
 	  expect('punc','{');
 	  const body=[];
 	  while (!(peek().type==='punc' && peek().value==='}')) body.push(Statement());
 	  expect('punc','}');
-	  if (isDeclaration) return { type:'FunctionDeclaration', id, params, body:{type:'BlockStatement', body} };
-	  return { type:'FunctionExpression', id, params, body:{type:'BlockStatement', body} };
+	  const node = (isDeclaration)
+		? { type:'FunctionDeclaration', id, params, body:{type:'BlockStatement', body}, async:isAsync }
+		: { type:'FunctionExpression', id, params, body:{type:'BlockStatement', body}, async:isAsync };
+	  return node;
+	}
+	
+	function parsePossiblyAsyncFunction(isDeclaration){
+	  let isAsync = false;
+	  if (peek().type==='kw' && peek().value==='async') {
+		next(); isAsync = true;
+	  }
+	  expect('kw','function');
+	  let id=null;
+	  if (isDeclaration) {
+		const nameTok = expect('ident');
+		id = { type:'Identifier', name:nameTok.value };
+	  } else if (peek().type==='ident') {
+		const nameTok=next(); id={type:'Identifier', name:nameTok.value};
+	  }
+	  expect('punc','(');
+	  const params = parseParamList();
+	  expect('punc','{');
+	  const body=[];
+	  while (!(peek().type==='punc' && peek().value==='}')) body.push(Statement());
+	  expect('punc','}');
+	  return (isDeclaration)
+		? { type:'FunctionDeclaration', id, params, body:{type:'BlockStatement', body}, async:isAsync }
+		: { type:'FunctionExpression', id, params, body:{type:'BlockStatement', body}, async:isAsync };
 	}
 
 	// ---- Expressions ----
@@ -399,9 +437,24 @@ const DamenScript = (() => {
 	function Multiplicative(){ let n=Unary(); while(true){ const t=peek(); if(t.type==='op'&&(['*','/','%'].includes(t.value))){ next(); n={type:'BinaryExpression',operator:t.value,left:n,right:Unary()}; } else break; } return n; }
 
 	function Unary(){
-	  const t=peek();
-	  if (t.type==='op' && (t.value==='!'||t.value==='+'||t.value==='-')) { next(); return { type:'UnaryExpression', operator:t.value, argument: Unary() }; }
-	  if (t.type==='op' && (t.value==='++'||t.value==='--')) { next(); const arg=Postfix(); if(!(arg.type==='Identifier'||arg.type==='MemberExpression')) throw DSyntax('Invalid update target', t.line, t.col); return { type:'UpdateExpression', operator:t.value, argument:arg, prefix:true }; }
+	  const t = peek();
+	
+	  // await expression (unary, same precedence as other prefix ops)
+	  if (t.type==='kw' && t.value==='await') {
+		next();
+		const arg = Unary();
+		return { type:'AwaitExpression', argument: arg };
+	  }
+	
+	  if (t.type==='op' && (t.value==='!'||t.value==='+'||t.value==='-')) {
+		next(); return { type:'UnaryExpression', operator:t.value, argument: Unary() };
+	  }
+	  if (t.type==='op' && (t.value==='++'||t.value==='--')) {
+		next(); const arg=Postfix();
+		if(!(arg.type==='Identifier'||arg.type==='MemberExpression'))
+		  throw DSyntax('Invalid update target', t.line, t.col);
+		return { type:'UpdateExpression', operator:t.value, argument:arg, prefix:true };
+	  }
 	  return Postfix();
 	}
 
@@ -512,15 +565,15 @@ const DamenScript = (() => {
 	}
 
 	// Arrow helpers
-	function ArrowFromParams(params){
+	function ArrowFromParams(params, isAsync=false){
 	  expect('op','=>');
 	  if (match('punc','{')) {
 		const body=[]; while(!(peek().type==='punc'&&peek().value==='}')) body.push(Statement());
 		expect('punc','}');
-		return { type:'ArrowFunctionExpression', params, body:{type:'BlockStatement', body}, expression:false };
+		return { type:'ArrowFunctionExpression', params, body:{type:'BlockStatement', body}, expression:false, async:isAsync };
 	  } else {
 		const bodyExpr = Expression();
-		return { type:'ArrowFunctionExpression', params, body: bodyExpr, expression:true };
+		return { type:'ArrowFunctionExpression', params, body: bodyExpr, expression:true, async:isAsync };
 	  }
 	}
 
@@ -536,6 +589,29 @@ const DamenScript = (() => {
 	  if (t.type==='kw' && t.value==='undefined') { next(); return {type:'Literal', value:undefined}; }
 	  if (t.type==='kw' && t.value==='NaN') { next(); return {type:'Literal', value:NaN}; }
 	  if (t.type==='kw' && t.value==='Infinity') { next(); return {type:'Literal', value:Infinity}; }
+	  
+	 // async x => ...
+	 if (t.type==='kw' && t.value==='async' &&
+		 tokens[pos+1]?.type==='ident' &&
+		 tokens[pos+2]?.type==='op' && tokens[pos+2]?.value==='=>') {
+	   next(); // async
+	   const id = next(); // ident
+	   return ArrowFromParams([{type:'Param', name:id.value, default:null}], true);
+	 }
+	 
+	 // async () => ...   /   async (a=1,b) => ...
+	 if (t.type==='kw' && t.value==='async' &&
+		 tokens[pos+1]?.type==='punc' && tokens[pos+1]?.value==='(') {
+	   next(); // async
+	   expect('punc','(');
+	   const params = parseParamList();
+	   return ArrowFromParams(params, true);
+	 }
+	 
+	 if (t.type==='kw' && t.value==='async' &&
+		 tokens[pos+1]?.type==='kw' && tokens[pos+1]?.value==='function') {
+	   return parsePossiblyAsyncFunction(false);
+	 }
 	  
 	  // function expression
 	  if (t.type==='kw' && t.value==='function') return parseFunction(false);
@@ -1042,7 +1118,8 @@ const DamenScript = (() => {
 		case 'Program': { let last; for (const s of node.body) last=evalNode(s,scope); return last; }
 		case 'BlockStatement': { const inner=new Scope(scope); let last; for (const s of node.body) last=evalNode(s,inner); return last; }
 		case 'ExpressionStatement': return evalNode(node.expression, scope);
-
+		case 'AwaitExpression':
+		  throw DRuntime("await is only valid inside async functions");
 		case 'ReturnStatement': {
 		  const val = node.argument ? evalNode(node.argument, scope) : undefined;
 		  throw { __kind: RETURN, value: val };
@@ -1316,16 +1393,583 @@ const DamenScript = (() => {
 	return evalNode(ast, top);
   }
 
+  async function evalProgramAsync(ast, rootEnv, { maxSteps = 50_000, maxMillis = null } = {}) {
+	  let steps = 0;
+	  let start = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+	  const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+	  const bump = () => {
+		  steps++;
+		  if (maxMillis != null && (now() - start) > maxMillis) throw DRuntime('DamenScript: script exceeded time budget');
+		  if (steps > maxSteps) throw DRuntime('DamenScript: script too complex');
+	  };
+	  const resetBudget = () => { steps = 0; start = now(); };
+  
+	  const top = new Scope(null);
+	  if (rootEnv && typeof rootEnv === 'object') {
+		  for (const k of Object.keys(rootEnv)) top.declare('const', k, rootEnv[k]);
+	  }
+  
+	  const getProp = (obj, key, computed = false) => {
+		  const prop = computed ? coerceKey(key) : key;
+		  if (BLOCKED_PROPS.has(prop)) throw DRuntime(`Forbidden property: ${prop}`);
+		  return obj[prop];
+	  };
+	  const setProp = (obj, key, val, computed = false) => {
+		  const prop = computed ? coerceKey(key) : key;
+		  if (BLOCKED_PROPS.has(prop)) throw DRuntime(`Forbidden property: ${prop}`);
+		  obj[prop] = val;
+		  return val;
+	  };
+  
+	  const RETURN = Symbol('return');
+	  const truthy = v => !!v;
+  
+	  // ---------- Async-safe destructuring helpers ----------
+	  function safeOwnKeys(obj) {
+		  return Object.keys(obj).filter(k => !BLOCKED_PROPS.has(k));
+	  }
+	  function safeGet(obj, key) {
+		  if (BLOCKED_PROPS.has(key)) throw DRuntime(`Forbidden property: ${key}`);
+		  return obj[key];
+	  }
+  
+	  async function bindPatternDeclare(kind, pattern, value, scope) {
+		  if (pattern.type === 'ObjectPattern') {
+			  if (value == null || typeof value !== 'object') throw DRuntime('Cannot destructure non-object');
+			  const used = new Set();
+			  for (const p of pattern.properties) {
+				  if (p.type === 'RestElement') {
+					  if (p.argument.type !== 'Identifier') throw DRuntime('Object rest must bind to identifier');
+					  const out = Object.create(null);
+					  for (const k of safeOwnKeys(value)) {
+						  if (!used.has(k)) out[k] = safeGet(value, k);
+					  }
+					  scope.declare(kind, p.argument.name, out);
+				  } else {
+					  const k = p.key;
+					  const v = Object.prototype.hasOwnProperty.call(value, k) ? safeGet(value, k) : undefined;
+					  used.add(k);
+					  const bound = (v === undefined && p.default != null) ? await evalNode(p.default, scope) : v;
+					  await bindPatternDeclare(kind, p.target, bound, scope);
+				  }
+			  }
+			  return;
+		  }
+		  if (pattern.type === 'ArrayPattern') {
+			  if (!Array.isArray(value)) throw DRuntime('Cannot destructure non-array');
+			  let i = 0;
+			  for (const el of pattern.elements) {
+				  if (el === null) { i++; continue; }
+				  if (el.type === 'RestElement') {
+					  if (el.argument.type !== 'Identifier') throw DRuntime('Array rest must bind to identifier');
+					  const restArr = value.slice(i);
+					  scope.declare(kind, el.argument.name, restArr);
+					  i = value.length;
+					  break;
+				  }
+				  const got = value[i++];
+				  const bound = (got === undefined && el.default != null) ? await evalNode(el.default, scope) : got;
+				  await bindPatternDeclare(kind, el.target, bound, scope);
+			  }
+			  return;
+		  }
+		  if (pattern.type === 'Identifier') {
+			  scope.declare(kind, pattern.name, value);
+			  return;
+		  }
+		  throw DRuntime('Unsupported binding pattern');
+	  }
+  
+	  async function assignPattern(pattern, value, scope) {
+		  if (pattern.type === 'ObjectPattern') {
+			  if (value == null || typeof value !== 'object') throw DRuntime('Cannot destructure non-object');
+			  const used = new Set();
+			  for (const p of pattern.properties) {
+				  if (p.type === 'RestElement') {
+					  if (p.argument.type !== 'Identifier') throw DRuntime('Object rest must bind to identifier');
+					  const out = Object.create(null);
+					  for (const k of safeOwnKeys(value)) {
+						  if (!used.has(k)) out[k] = safeGet(value, k);
+					  }
+					  scope.set(p.argument.name, out);
+				  } else {
+					  const k = p.key;
+					  const v = Object.prototype.hasOwnProperty.call(value, k) ? safeGet(value, k) : undefined;
+					  used.add(k);
+					  const bound = (v === undefined && p.default != null) ? await evalNode(p.default, scope) : v;
+					  await assignPattern(p.target, bound, scope);
+				  }
+			  }
+			  return value;
+		  }
+		  if (pattern.type === 'ArrayPattern') {
+			  if (!Array.isArray(value)) throw DRuntime('Cannot destructure non-array');
+			  let i = 0;
+			  for (const el of pattern.elements) {
+				  if (el === null) { i++; continue; }
+				  if (el.type === 'RestElement') {
+					  if (el.argument.type !== 'Identifier') throw DRuntime('Array rest must bind to identifier');
+					  const restArr = value.slice(i);
+					  scope.set(el.argument.name, restArr);
+					  i = value.length;
+					  break;
+				  }
+				  const got = value[i++];
+				  const bound = (got === undefined && el.default != null) ? await evalNode(el.default, scope) : got;
+				  await assignPattern(el.target, bound, scope);
+			  }
+			  return value;
+		  }
+		  if (pattern.type === 'Identifier') {
+			  return scope.set(pattern.name, value);
+		  }
+		  throw DRuntime('Unsupported destructuring assignment');
+	  }
+  
+	  function bindParams(params, args, parentScope) {
+		  const fnScope = new Scope(parentScope);
+		  for (let i = 0; i < params.length; i++) {
+			  const p = params[i];
+			  let val = (i < args.length && args[i] !== undefined) ? args[i]
+					  : (p.default != null ? undefined : undefined);
+			  fnScope.declare('let', p.name, val);
+		  }
+		  fnScope.declare('let', 'arguments', args);
+		  return fnScope;
+	  }
+  
+	  function createCallable(params, bodyBlock, parentScope, isAsync = false) {
+		  const runner = async (...args) => {
+			  resetBudget();
+			  const fnScope = bindParams(params, args, parentScope);
+			  // apply defaults
+			  for (let i = 0; i < params.length; i++) {
+				  if (fnScope.map[params[i].name] === undefined && params[i].default != null) {
+					  fnScope.map[params[i].name] = await evalNode(params[i].default, fnScope);
+				  }
+			  }
+			  try {
+				  let result;
+				  if (bodyBlock.type === 'BlockStatement') {
+					  for (const stmt of bodyBlock.body) result = await evalNode(stmt, fnScope);
+					  return result;
+				  } else {
+					  return await evalNode(bodyBlock, fnScope);
+				  }
+			  } catch (e) {
+				  if (e && e.__kind === RETURN) return e.value;
+				  throw e;
+			  }
+		  };
+		  // Even non-async functions return a function; only awaited if caller does await
+		  return isAsync ? runner : function (...args) { return runner(...args); };
+	  }
+  
+	  async function evalNode(node, scope = top) {
+		  bump();
+		  switch (node.type) {
+			  case 'Program': {
+				  let last;
+				  for (const s of node.body) last = await evalNode(s, scope);
+				  return last;
+			  }
+			  case 'BlockStatement': {
+				  const inner = new Scope(scope);
+				  let last;
+				  for (const s of node.body) last = await evalNode(s, inner);
+				  return last;
+			  }
+			  case 'ExpressionStatement':
+				  return await evalNode(node.expression, scope);
+  
+			  case 'ReturnStatement': {
+				  const val = node.argument ? await evalNode(node.argument, scope) : undefined;
+				  throw { __kind: RETURN, value: val };
+			  }
+  
+			  case 'FunctionDeclaration': {
+				  const fn = createCallable(node.params, node.body, scope, !!node.async);
+				  scope.declare('const', node.id.name, fn);
+				  return undefined;
+			  }
+			  case 'FunctionExpression':
+				  return createCallable(node.params, node.body, scope, !!node.async);
+  
+			  case 'ArrowFunctionExpression': {
+				  const isAsync = !!node.async;
+				  if (node.expression) {
+					  const parentScope = scope;
+					  const runner = async (...args) => {
+						  resetBudget();
+						  const fnScope = bindParams(node.params, args, parentScope);
+						  for (let i = 0; i < node.params.length; i++) {
+							  if (fnScope.map[node.params[i].name] === undefined && node.params[i].default != null) {
+								  fnScope.map[node.params[i].name] = await evalNode(node.params[i].default, fnScope);
+							  }
+						  }
+						  return await evalNode(node.body, fnScope);
+					  };
+					  return isAsync ? runner : function (...args) { return runner(...args); };
+				  }
+				  return createCallable(node.params, node.body, scope, isAsync);
+			  }
+  
+			  case 'AwaitExpression': {
+				  const v = await evalNode(node.argument, scope);
+				  return await v; // then-able or plain value
+			  }
+  
+			  case 'VariableDeclaration': {
+				  for (const d of node.declarations) {
+					  if (d.id.type === 'Identifier') {
+						  const n = d.id.name;
+						  const v = d.init ? await evalNode(d.init, scope) : undefined;
+						  scope.declare(node.kind, n, v);
+					  } else if (d.id.type === 'ObjectPattern' || d.id.type === 'ArrayPattern') {
+						  if (!d.init) throw DRuntime('Destructuring declaration requires an initializer');
+						  const v = await evalNode(d.init, scope);
+						  await bindPatternDeclare(node.kind, d.id, v, scope);
+					  } else {
+						  throw DRuntime('Invalid declaration target');
+					  }
+				  }
+				  return undefined;
+			  }
+  
+			  case 'IfStatement':
+				  return truthy(await evalNode(node.test, scope))
+					  ? await evalNode(node.consequent, scope)
+					  : (node.alternate ? await evalNode(node.alternate, scope) : undefined);
+  
+			  case 'WhileStatement': {
+				  let r;
+				  while (truthy(await evalNode(node.test, scope))) {
+					  bump();
+					  r = await evalNode(node.body, scope);
+				  }
+				  return r;
+			  }
+  
+			  case 'ForStatement': {
+				  const inner = new Scope(scope);
+				  if (node.init) await evalNode(node.init, inner);
+				  let r;
+				  while (node.test ? truthy(await evalNode(node.test, inner)) : true) {
+					  bump();
+					  r = await evalNode(node.body, inner);
+					  if (node.update) await evalNode(node.update, inner);
+				  }
+				  return r;
+			  }
+  
+			  case 'ConditionalExpression':
+				  return truthy(await evalNode(node.test, scope))
+					  ? await evalNode(node.consequent, scope)
+					  : await evalNode(node.alternate, scope);
+  
+			  case 'Literal':
+				  return node.value;
+  
+			  case 'Identifier':
+				  return scope.get(node.name);
+  
+			  case 'ArrayExpression': {
+				  const out = [];
+				  for (const el of node.elements) {
+					  if (!el) { out.push(undefined); continue; }
+					  if (el.type === 'SpreadElement') {
+						  const v = await evalNode(el.argument, scope);
+						  if (Array.isArray(v)) out.push(...v);
+						  else throw DRuntime('Spread in array requires an array');
+					  } else {
+						  out.push(await evalNode(el, scope));
+					  }
+				  }
+				  return out;
+			  }
+  
+			  case 'ObjectExpression': {
+				  const o = Object.create(null);
+				  for (const p of node.properties) {
+					  if (p.type === 'SpreadElement') {
+						  const src = await evalNode(p.argument, scope);
+						  if (src && typeof src === 'object') {
+							  for (const k of Object.keys(src)) {
+								  if (BLOCKED_PROPS.has(k)) throw DRuntime(`Forbidden property: ${k}`);
+								  o[k] = src[k];
+							  }
+						  } else throw DRuntime('Spread in object requires an object');
+					  } else {
+						  const key = p.key.name;
+						  setProp(o, key, await evalNode(p.value, scope), false);
+					  }
+				  }
+				  return o;
+			  }
+  
+			  case 'MemberExpression': {
+				  const obj = await evalNode(node.object, scope);
+				  if (node.optional && (obj == null)) return undefined;
+				  if (node.computed) {
+					  const key = await evalNode(node.property, scope);
+					  return getProp(obj, key, true);
+				  } else {
+					  const key = node.property.name;
+					  return getProp(obj, key, false);
+				  }
+			  }
+  
+			  case 'CallExpression': {
+				  const calleeNode = node.callee;
+				  async function evalArgs() {
+					  const out = [];
+					  for (const a of node.arguments) {
+						  if (a.type === 'SpreadElement') {
+							  const v = await evalNode(a.argument, scope);
+							  if (Array.isArray(v)) out.push(...v);
+							  else throw DRuntime('Spread in call requires an array');
+						  } else {
+							  out.push(await evalNode(a, scope));
+						  }
+					  }
+					  return out;
+				  }
+  
+				  if (calleeNode.type === 'MemberExpression') {
+					  const obj = await evalNode(calleeNode.object, scope);
+					  if (calleeNode.optional && (obj == null)) return undefined;
+  
+					  let fn;
+					  if (calleeNode.computed) {
+						  const key = await evalNode(calleeNode.property, scope);
+						  fn = getProp(obj, key, true);
+					  } else {
+						  const key = calleeNode.property.name;
+						  fn = getProp(obj, key, false);
+					  }
+					  if (node.optional && (fn == null)) return undefined;
+					  if (typeof fn !== 'function')
+						  throw DRuntime('Attempt to call non-function ' + (calleeNode.computed ? '' : calleeNode.property.name));
+					  const args = await evalArgs();
+					  // Do NOT await result here; only AwaitExpression unwraps.
+					  return fn.apply(obj, args);
+				  }
+  
+				  const fn = await evalNode(calleeNode, scope);
+				  if (node.optional && (fn == null)) return undefined;
+				  if (typeof fn !== 'function') throw DRuntime('Attempt to call non-function');
+				  const args = await evalArgs();
+				  return fn.apply(undefined, args);
+			  }
+  
+			  case 'NullishCoalesceExpression': {
+				  const l = await evalNode(node.left, scope);
+				  if (l !== null && l !== undefined) return l;
+				  return await evalNode(node.right, scope);
+			  }
+  
+			  case 'UnaryExpression': {
+				  const v = await evalNode(node.argument, scope);
+				  switch (node.operator) {
+					  case '!': return !v;
+					  case '+': return +v;
+					  case '-': return -v;
+					  default: throw DRuntime(`Unsupported unary ${node.operator}`);
+				  }
+			  }
+  
+			  case 'UpdateExpression': {
+				  const op = node.operator, delta = (op === '++') ? 1 : -1;
+				  async function read(arg) {
+					  if (arg.type === 'Identifier') return { kind: 'id', name: arg.name, value: scope.get(arg.name) };
+					  if (arg.type === 'MemberExpression') {
+						  const obj = await evalNode(arg.object, scope);
+						  if (arg.computed) {
+							  const key = await evalNode(arg.property, scope);
+							  return { kind: 'mem', obj, key, computed: true, value: getProp(obj, key, true) };
+						  } else {
+							  const key = arg.property.name;
+							  return { kind: 'mem', obj, key, computed: false, value: getProp(obj, key, false) };
+						  }
+					  }
+					  throw DRuntime('Invalid update target');
+				  }
+				  const tgt = await read(node.argument);
+				  const old = Number(tgt.value);
+				  if (!Number.isFinite(old)) throw DRuntime('Update operator on non-number');
+				  const val = old + delta;
+				  if (tgt.kind === 'id') scope.set(tgt.name, val);
+				  else setProp(tgt.obj, tgt.key, val, tgt.computed);
+				  return node.prefix ? val : old;
+			  }
+  
+			  case 'BinaryExpression': {
+				  const l = await evalNode(node.left, scope), r = await evalNode(node.right, scope);
+				  switch (node.operator) {
+					  case '+': return l + r;
+					  case '-': return l - r;
+					  case '*': return l * r;
+					  case '/': return l / r;
+					  case '%': return l % r;
+					  case '==': return l == r;
+					  case '!=': return l != r;
+					  case '===': return l === r;
+					  case '!==': return l !== r;
+					  case '<': return l < r;
+					  case '<=': return l <= r;
+					  case '>': return l > r;
+					  case '>=': return l >= r;
+					  default: throw DRuntime(`Unsupported binary ${node.operator}`);
+				  }
+			  }
+  
+			  case 'LogicalExpression': {
+				  if (node.operator === '&&') {
+					  const l = await evalNode(node.left, scope);
+					  return l ? await evalNode(node.right, scope) : l;
+				  }
+				  if (node.operator === '||') {
+					  const l = await evalNode(node.left, scope);
+					  return l ? l : await evalNode(node.right, scope);
+				  }
+				  throw DRuntime(`Unsupported logical ${node.operator}`);
+			  }
+  
+			  case 'AssignmentExpression': {
+				  const op = node.operator;
+				  const rhs = await evalNode(node.right, scope);
+				  const apply = (op, a, b) => {
+					  switch (op) {
+						  case '=': return b;
+						  case '+=': return a + b;
+						  case '-=': return a - b;
+						  case '*=': return a * b;
+						  case '/=': return a / b;
+						  case '%=': return a % b;
+						  default: throw DRuntime(`Unsupported assignment operator ${op}`);
+					  }
+				  };
+  
+				  if (node.left.type === 'Identifier') {
+					  const name = node.left.name;
+					  const cur = (op === '=') ? undefined : scope.get(name);
+					  const val = apply(op, cur, rhs);
+					  return scope.set(name, val);
+				  }
+				  if (node.left.type === 'MemberExpression') {
+					  const obj = await evalNode(node.left.object, scope);
+					  if (node.left.computed) {
+						  const key = await evalNode(node.left.property, scope);
+						  const cur = (op === '=') ? undefined : getProp(obj, key, true);
+						  const val = apply(op, cur, rhs);
+						  return setProp(obj, key, val, true);
+					  } else {
+						  const key = node.left.property.name;
+						  const cur = (op === '=') ? undefined : getProp(obj, key, false);
+						  const val = apply(op, cur, rhs);
+						  return setProp(obj, key, val, false);
+					  }
+				  }
+				  throw DRuntime('Invalid assignment target');
+			  }
+  
+			  case 'DestructuringAssignment': {
+				  const v = await evalNode(node.right, scope);
+				  return await assignPattern(node.pattern, v, scope);
+			  }
+  
+			  case 'ForInStatement': {
+				  const obj = await evalNode(node.right, scope);
+				  if (obj == null || typeof obj !== 'object') return undefined;
+				  const loopScope = new Scope(scope);
+  
+				  const setLoopVar = async (val) => {
+					  if (node.left && node.left.kind) {
+						  loopScope.declare(node.left.kind, node.left.id.name, val);
+					  } else {
+						  const name = node.left.name;
+						  try { loopScope.set(name, val); }
+						  catch { loopScope.declare('let', name, val); }
+					  }
+				  };
+  
+				  for (const k in obj) {
+					  if (!Object.prototype.hasOwnProperty.call(obj, k)) continue;
+					  const iterScope = new Scope(loopScope);
+					  await setLoopVar(k);
+					  await evalNode(node.body, iterScope);
+				  }
+				  return undefined;
+			  }
+  
+			  case 'ForOfStatement': {
+				  const iterable = await evalNode(node.right, scope);
+				  if (iterable == null) return undefined;
+				  if (typeof iterable[Symbol.iterator] !== 'function')
+					  throw DRuntime('Right-hand side of for-of is not iterable');
+  
+				  const loopScope = new Scope(scope);
+  
+				  const setLoopVar = async (val) => {
+					  if (node.left && node.left.kind) {
+						  loopScope.declare(node.left.kind, node.left.id.name, val);
+					  } else {
+						  const name = node.left.name;
+						  try { loopScope.set(name, val); }
+						  catch { loopScope.declare('let', name, val); }
+					  }
+				  };
+  
+				  for (const v of iterable) {
+					  const iterScope = new Scope(loopScope);
+					  await setLoopVar(v);
+					  await evalNode(node.body, iterScope);
+				  }
+				  return undefined;
+			  }
+  
+			  default:
+				  throw DRuntime(`Unsupported node type ${node.type}`);
+		  }
+	  }
+  
+	  return await evalNode(ast, top);
+  }
+  
+  function hasTopLevelAwait(ast) {
+	  let found = false;
+	  (function walk(node, inFunc) {
+		  if (!node || found) return;
+  
+		  if (node.type === 'AwaitExpression' && !inFunc) {
+			  found = true; return;
+		  }
+  
+		  const entersFunc =
+			  node.type === 'FunctionDeclaration' ||
+			  node.type === 'FunctionExpression' ||
+			  node.type === 'ArrowFunctionExpression';
+  
+		  for (const k in node) {
+			  const v = node[k];
+			  if (!v || typeof v !== 'object') continue;
+			  if (Array.isArray(v)) { for (const ch of v) walk(ch, inFunc || entersFunc); }
+			  else walk(v, inFunc || entersFunc);
+		  }
+	  })(ast, false);
+	  return found;
+  }
+
   // ===== Public API =====
-  function run(code, env={}, opts) {
-	preflight(code);
+  async function run(code, env = {}, opts) {
+	const pf = preflight(code);
 	const ast = parse(code);
-	
-	env = {
-		...BASIC_ENV,
-		...env
-	};
-	
+	env = { ...BASIC_ENV, ...env };
+  
+	// Choose async path if the program uses await anywhere OR declares async functions/arrows
+	if (pf.hasAwait || pf.hasAsync) {
+	  return await evalProgramAsync(ast, env, opts);
+	}
 	return evalProgram(ast, env, opts);
   }
 

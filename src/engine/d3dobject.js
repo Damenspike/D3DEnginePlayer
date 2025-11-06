@@ -4,6 +4,8 @@ import JSZip from 'jszip';
 import DamenScript from './damenscript.js';
 import D3DComponents from './d3dcomponents.js';
 import D3DConsole from './d3dconsole.js';
+import D3DPromise from './d3dpromise.js';
+import D3DWebsocket from './d3dwebsocket.js';
 import Tween from './d3dtween.js';
 import { v4 as uuidv4 } from 'uuid';
 import {
@@ -706,36 +708,68 @@ export default class D3DObject {
 		}
 	}
 	__runInSandbox(script) {
-		const sandbox = {
+		const sandbox = Object.freeze({
+			// D3DEngine
 			_root,
 			_input,
 			_time,
 			_physics,
 			_dimensions,
-			Math,
+			
+			// JS Like
+			fetch,
+			setTimeout,
+			setInterval,
+			clearTimeout,
+			clearInterval,
+			performance: Object.freeze({ now: () => globalThis.performance.now() }),
+			queueMicrotask: (fn) => globalThis.queueMicrotask(fn),
+			crypto: Object.freeze({
+				getRandomValues: (a) => globalThis.crypto.getRandomValues(a),
+				randomUUID: () => globalThis.crypto.randomUUID()
+			}),
+			
+			Math: Object.freeze(Math),
+			JSON: Object.freeze(JSON),
+			
+			// JS Adaptors
+			Promise: Object.freeze(D3DPromise),
+			WebSocket: Object.freeze(D3DWebsocket),
+			
+			// Editor relevant only
 			_editor: window._editor,
+			
+			// D3DObject intances
 			root: this.root,
 			parent: this.parent,
 			self: this,
-			console: {
+			
+			// Console
+			console: Object.freeze({
 				log: (...args) => D3DConsole.log(`[${this.name}]`, ...args),
 				warn: (...args) => D3DConsole.warn(`[${this.name}]`, ...args),
 				error: (...args) => D3DConsole.error(`[${this.name}]`, ...args),
 				assert: (...args) => D3DConsole.assert(...args)
-			},
-			Vector3: (...args) => new THREE.Vector3(...args),
-			Vector2: (...args) => new THREE.Vector2(...args),
-			Quaternion: (...args) => new THREE.Quaternion(...args),
-			Box3: (...args) => new THREE.Box3(...args),
-			MathUtils: THREE.MathUtils
-		};
+			}),
+			
+			// THREE
+			MathUtils: Object.freeze(THREE.MathUtils),
+			Vector3: (...a) => new THREE.Vector3(...a),
+			Vector2: (...a) => new THREE.Vector2(...a),
+			Quaternion: (...a) => new THREE.Quaternion(...a),
+			Box3: (...a) => new THREE.Box3(...a),
+			Matrix4: (...a) => new THREE.Matrix4(...a),
+			Euler: (...a) => new THREE.Euler(...a),
+			Color: (...a) => new THREE.Color(...a),
+			Raycaster: (...a) => new THREE.Raycaster(...a),
+			Sphere: (...a) => new THREE.Sphere(...a),
+			Plane: (...a) => new THREE.Plane(...a),
+		});
 		
-		try {
-			DamenScript.run(script, sandbox);
-		}catch(e) {
+		DamenScript.run(script, sandbox).catch(e => {
 			D3DConsole.error(`[${this.name}]`, e.name, e.message);
 			console.error(`[${this.name}]`, e);
-		}
+		});
 	}
 	setComponentValue(type, field, value) {
 		const component = this.components.find(c => c.type == type);

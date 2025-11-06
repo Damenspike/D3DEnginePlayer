@@ -932,16 +932,11 @@ export default class D2DGizmo {
 		if (!(e.ctrlKey || e.metaKey)) return;
 	
 		const code = e.code, key = e.key;
-		if (code === 'Equal' || key === '+' || key === '=') {
+		if(code === 'NumpadAdd') {
 			this._zoomStep(+1);
 			e.preventDefault(); e.stopPropagation();
-		} else if (code === 'Minus' || key === '-' || key === '_') {
-			this._zoomStep(-1);
-			e.preventDefault(); e.stopPropagation();
-		} else if (code === 'NumpadAdd') {
-			this._zoomStep(+1);
-			e.preventDefault(); e.stopPropagation();
-		} else if (code === 'NumpadSubtract') {
+		}else 
+		if(code === 'NumpadSubtract') {
 			this._zoomStep(-1);
 			e.preventDefault(); e.stopPropagation();
 		}
@@ -1000,6 +995,76 @@ export default class D2DGizmo {
 		});
 
 		return Array.from(roots);
+	}
+	
+	// Focus the current 2D selection in view (pan+zoom)
+	// opts: { padding:number=1.15, minWorldSize:number=0, clamp:[min,max]=[0.05,64] }
+	focusSelected2D(opts = {}) {
+		const padding = Number(opts.padding ?? 1.15);
+		const minSize = Number(opts.minWorldSize ?? 0);
+		const [MIN, MAX] = opts.clamp ?? [0.05, 64];
+	
+		const r  = this.d2drenderer;
+		const ed = r?._editor;
+		if (!r || !ed) return;
+	
+		// selection (world AABB)
+		const sel = (window._editor?.selectedObjects || []).filter(o => o?.is2D);
+		if (!sel.length) return;
+	
+		let minX = +Infinity, minY = +Infinity, maxX = -Infinity, maxY = -Infinity;
+		for (const o of sel) {
+			const bb = U.worldAABBDeep(o);
+			if (!bb) continue;
+			if (bb.minX < minX) minX = bb.minX;
+			if (bb.minY < minY) minY = bb.minY;
+			if (bb.maxX > maxX) maxX = bb.maxX;
+			if (bb.maxY > maxY) maxY = bb.maxY;
+		}
+		if (!isFinite(minX) || !isFinite(minY) || !isFinite(maxX) || !isFinite(maxY)) return;
+	
+		// world size + center
+		let w = Math.max(maxX - minX, minSize);
+		let h = Math.max(maxY - minY, minSize);
+		const cx = (minX + maxX) * 0.5;
+		const cy = (minY + maxY) * 0.5;
+	
+		// device canvas size (backing store pixels)
+		const cw = r.domElement.width;
+		const ch = r.domElement.height;
+		if (cw <= 0 || ch <= 0) return;
+	
+		// known factors
+		const pr = r.pixelRatio || 1;
+		const vt = r.viewScale || 1;        // total = base * editor
+		const sEd0 = ed.viewScale || 1;
+		const base = vt / sEd0;             // base = letterbox scale (unknown field, derived)
+	
+		// choose new editor scale so: pr * base * sEd * w <= cw/padding, similarly for h
+		let sEd = Math.min(
+			cw / (Math.max(w, 1e-6) * pr * base * padding),
+			ch / (Math.max(h, 1e-6) * pr * base * padding)
+		);
+		if (!isFinite(sEd) || sEd <= 0) sEd = sEd0 || 1;
+		sEd = Math.min(Math.max(sEd, MIN), MAX);
+	
+		// base letterbox offset (in device px) = combined - editor
+		// r.viewOffset returns (baseOff + ed.viewOffset)
+		const combinedOff = r.viewOffset;            // Vector2 (device px)
+		const baseOff = combinedOff.clone().sub(ed.viewOffset);
+	
+		// place world center at canvas center A with total transform:
+		// device = (baseOff + edOff) + (pr * base * sEd) * world
+		const ax = cw * 0.5;
+		const ay = ch * 0.5;
+		const totalScale = pr * base * sEd;
+	
+		const edOffX = ax - totalScale * cx - baseOff.x;
+		const edOffY = ay - totalScale * cy - baseOff.y;
+	
+		ed.viewScale   = sEd;
+		ed.viewOffset.x = edOffX;
+		ed.viewOffset.y = edOffY;
 	}
 
 	/* ========================= HELPERS ========================= */

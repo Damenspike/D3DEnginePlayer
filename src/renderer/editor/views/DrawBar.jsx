@@ -58,7 +58,7 @@ export default function DrawBar() {
 		)
 	}
 	const drawDrawingOptions = () => {
-		if(_tool == 'select' || _tool == 'orbit' || _tool == 'pan' || _tool == 'transform' || _tool == 'text') return;
+		if(_tool == 'select' || _tool == 'look' || _tool == 'pan' || _tool == 'transform' || _tool == 'text') return;
 		
 		return (
 			<>
@@ -166,19 +166,21 @@ export default function DrawBar() {
 					</div>
 				)}
 				
-				<div className='drawbar-draw2d'>
-					<div className='mt gray smallx'>
-						ERASE
+				{(_tool != 'fill') && (
+					<div className='drawbar-draw2d'>
+						<div className='mt gray smallx'>
+							ERASE
+						</div>
+						<input 
+							type="checkbox" 
+							checked={_subtract} 
+							onChange={e => {
+								setSubtract(e.target.checked);
+								_editor.draw2d.subtract = e.target.checked;
+							}}
+						/>
 					</div>
-					<input 
-						type="checkbox" 
-						checked={_subtract} 
-						onChange={e => {
-							setSubtract(e.target.checked);
-							_editor.draw2d.subtract = e.target.checked;
-						}}
-					/>
-				</div>
+				)}
 			</>
 		)
 	}

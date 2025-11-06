@@ -11,7 +11,7 @@ import {
 // Tool enum
 export const Tools = Object.freeze({
 	Select: 'select',
-	Orbit: 'orbit',
+	Look: 'look',
 	Pan: 'pan',
 	Transform: 'transform',
 	Brush: 'brush',
@@ -38,7 +38,7 @@ export default class D3DEditorState {
 	}
 	set focus(value) {
 		this._focus = value ?? _root;
-		this.onEditorFocusChanged();
+		this.onEditorFocusChanged?.();
 		_events.invoke('editor-focus', value);
 		_editor.updateInspector?.();
 	}
@@ -53,6 +53,10 @@ export default class D3DEditorState {
 			value = '3D';
 		
 		this._mode = value;
+		
+		if(window._root)
+			this.focus = null;
+		
 		_events.invoke('editor-mode', value);
 		_editor.updateInspector?.();
 		_editor.setSelection([]);

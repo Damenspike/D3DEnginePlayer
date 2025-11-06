@@ -1258,6 +1258,52 @@ function dropSelectionToGround() {
 		redo: () => doMove(false)
 	});
 }
+function zoomIn2D() {
+	_editor.renderer2d.gizmo._zoomStep(+1);
+}
+function zoomOut2D() {
+	_editor.renderer2d.gizmo._zoomStep(-1);
+}
+function resetView2D() {
+	_editor.renderer2d._editor.viewOffset = new THREE.Vector2();
+	_editor.renderer2d._editor.viewScale = 1;
+}
+function resetView() {
+	if(_editor.mode == '2D') {
+		_editor.resetView2D();
+	}else
+	if(_editor.mode == '3D') {
+		_editor.cameraD3D.position = new THREE.Vector3();
+		_editor.cameraD3D.rotation = new THREE.Vector3();	
+	}
+}
+function zoomStep(step) {
+	if(step > 0)
+		step = 1;
+	else
+		step = -1;
+		
+	if(_editor.mode == '2D') {
+		_editor.renderer2d.gizmo._zoomStep(step);
+	}else
+	if(_editor.mode == '3D') {
+		_editor.camera.translateZ(-step);
+	}
+}
+function focusOnSelected() {
+	if(_editor.selectedObjects.length < 1) {
+		_editor.showError({
+			title: 'Focus',
+			message: 'Select object(s) to focus on'
+		});
+		return;
+	}
+	if(_editor.mode == '3D')
+		_editor.focusOnSelectedObjects?.(); // editor camera managed
+	else
+	if(_editor.mode == '2D')
+		_editor.renderer2d.gizmo.focusSelected2D();
+}
 
 // INTERNAL
 
@@ -1279,6 +1325,11 @@ _editor.desymboliseSelectedObject = desymboliseSelectedObject;
 _editor.moveSelectionToView = moveSelectionToView;
 _editor.alignSelectionToView = alignSelectionToView;
 _editor.dropSelectionToGround = dropSelectionToGround;
+_editor.zoomIn2D = zoomIn2D;
+_editor.zoomOut2D = zoomOut2D;
+_editor.zoomStep = zoomStep;
+_editor.resetView = resetView;
+_editor.resetView2D = resetView2D;
 
 D3D.setEventListener('select-all', () => _editor.selectAll());
 D3D.setEventListener('delete', () => _editor.delete());
@@ -1293,7 +1344,7 @@ D3D.setEventListener('build', (buildURI, play) => buildProject(buildURI, play));
 D3D.setEventListener('add-object', (type) => addD3DObjectEditor(type));
 D3D.setEventListener('symbolise-object', () => symboliseSelectedObject());
 D3D.setEventListener('desymbolise-object', () => desymboliseSelectedObject());
-D3D.setEventListener('focus-object', (type) => _editor.focusOnSelectedObjects?.());
+D3D.setEventListener('focus-object', () => focusOnSelected());
 D3D.setEventListener('set-tool', (type) => _editor.setTool(type));
 D3D.setEventListener('set-transform-tool', (type) => _editor.setTransformTool(type));
 D3D.setEventListener('new-asset', (extension) => _editor.newAsset(extension));
@@ -1309,3 +1360,5 @@ D3D.setEventListener('ctx-menu-action', (id) => _events.invoke('ctx-menu-action'
 D3D.setEventListener('move-sel-view', () => _editor.moveSelectionToView());
 D3D.setEventListener('align-sel-view', () => _editor.alignSelectionToView());
 D3D.setEventListener('drop-to-ground', () => _editor.dropSelectionToGround());
+D3D.setEventListener('zoom-step', (step) => _editor.zoomStep(step));
+D3D.setEventListener('reset-view', () => _editor.resetView());

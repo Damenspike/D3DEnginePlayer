@@ -93,6 +93,11 @@ export default function GameView({editorMode}) {
 		
 		_events.on('select-all', () => {
 			// select all in game view
+			const allObjects = _editor.focus.children.filter(o => 
+				(o.is2D && _editor.mode == '2D') || 
+				(o.is3D && _editor.mode == '3D')
+			);
+			_editor.setSelection(allObjects);
 		});
 		_events.on('editor-focus', (focus) => {
 			setObjectFrame(focus);
@@ -113,6 +118,19 @@ export default function GameView({editorMode}) {
 		const onRightClick = (e) => {
 			
 			const defaultCtx = [
+				{
+					id: 'zoom-in',
+					label: 'Zoom In'
+				},
+				{
+					id: 'zoom-out',
+					label: 'Zoom Out'
+				},
+				{
+					id: 'reset-view',
+					label: 'Reset View'
+				},
+				{ type: 'separator' },
 				{
 					id: 'paste-point',
 					label: 'Paste',
@@ -264,6 +282,15 @@ export default function GameView({editorMode}) {
 			if(id == 'edit') {
 				_editor.setSelection([]);
 				_editor.focus = objectHit;
+			}else
+			if(id == 'zoom-in') {
+				_editor.zoomIn2D();
+			}else
+			if(id == 'zoom-out') {
+				_editor.zoomOut2D();
+			}else
+			if(id == 'reset-view') {
+				_editor.resetView2D();
 			}
 		}
 		

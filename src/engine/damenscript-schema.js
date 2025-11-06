@@ -1,24 +1,38 @@
 export const KEYWORDS = [
-	'var', 'let','const','function','return','if','else','for','while','break','continue',
+	'var', 'let','const','function','return','if','else','for','while','break','continue', 'async', 'await',
 	'true','false','null','undefined','import','from','export','struct','enum','match',
 	'case','default','try','catch','finally','throw', 'this', 'root', '_root', 'parent'
 ]
 export const TYPE_KEYWORDS = [
-	'number','string','bool','Vector2','Vector3','Vector4','MathUtils','Box3','Quaternion'
+	'number','string','bool','Vector2','Vector3','Vector4','MathUtils','Box3','Quaternion','crypto','Math','JSON','Promise','WebSocket','console','Raycaster','Color','Euler','Box4','Sphere','Plane'
 ]
 export const FORBIDDEN_KEYWORDS = [
 	'window','document','globalThis',
 	'require','process',
 	'Function','eval',
 	'import','new'
-]
+];
 export const FORBIDDEN_PROPS = [
+	// hard blockers (escape hatches / proto pivots)
 	'constructor','prototype','__proto__',
-	   'caller','callee','arguments',
-	   'call','apply','bind', '__script',
-	   '__onInternalEnterFrame', '__onEditorEnterFrame',
-	   '__componentInstances', '__deleted', '__animatedTransformChange', '_animation', '_mesh', '_camera', '_directionallight', '_ambientlight', '_pointlight', '__runInSandbox'
-]
+	
+	// call plumbing (prevents rebinding/currying tricks)
+	'caller','callee','arguments',
+	'call','apply','bind',
+	
+	// legacy meta accessors (close weird edges)
+	'__defineGetter__','__defineSetter__',
+	'__lookupGetter__','__lookupSetter__',
+	
+	// optionals
+	'toString','valueOf',
+
+	// engine internals
+	'__script','__onInternalEnterFrame','__onEditorEnterFrame',
+	'__componentInstances','__deleted','__animatedTransformChange',
+	'_animation','_mesh','_camera','_directionallight','_ambientlight',
+	'_pointlight','__runInSandbox'
+];
 export const D3D_OBJECT_SCHEMA = {
 	name: {
 		type: 'string',
