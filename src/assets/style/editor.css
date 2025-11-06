@@ -1189,3 +1189,15 @@ body.dark {
 	display: flex;
 	flex-direction: row;
 }
+.small-logo {
+	position: absolute;
+	right: 5px;
+	top: 5px;
+	
+	img {
+		width: 50px;
+	}
+}
+.small-logo:hover {
+	cursor: pointer;
+}

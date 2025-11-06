@@ -1,8 +1,8 @@
 {
   "name": "Damen3DPlayer",
   "productName": "Damen3D Player",
-  "playerVersion": "1.0.0 Alpha",
-  "editorVersion": "1.0.0 Alpha",
+  "playerVersion": "1.0.0 Beta",
+  "editorVersion": "1.0.0 Beta",
   "main": "index.js",
   "license": "MIT",
   "scripts": {

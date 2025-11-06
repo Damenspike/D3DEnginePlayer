@@ -842,6 +842,25 @@ const menuTemplate = [
 				click: () => editorWindow.close()
 			}
 		]
+	},
+	{
+		label: 'Help',
+		role: 'help',
+		submenu: [
+			{
+				label: 'Damen3D Engine Help',
+				click: () => shell.openExternal('https://damen3d.com/help?origin=editor-help')
+			},
+			{
+				label: 'Scripting Documentation',
+				click: () => shell.openExternal('https://damen3d.com/scripting?origin=editor-help')
+			},
+			{ type: 'separator' },
+			{
+				label: 'Drake Hall Forums',
+				click: () => shell.openExternal('https://drakehall.co.uk/?origin=d3d-editor')
+			}
+		]
 	}
 ];
 

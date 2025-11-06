@@ -35,11 +35,16 @@ export default function GameView({editorMode}) {
 	const onDrop = useCallback((e) => {
 		e.preventDefault();
 		const payload = unpack(e);
+		
 		if (!payload)
 			return;
 			
-		if (!payload.path)
+		const path = payload.paths?.[0];
+			
+		if (!path) {
+			console.error('No path associated with payload', payload);
 			return;
+		}
 
 		// Screen → local coords
 		const host = game3dRef.current;
@@ -50,7 +55,7 @@ export default function GameView({editorMode}) {
 		const sx = e.clientX - r.left;
 		const sy = e.clientY - r.top;
 		
-		window._editor.onAssetDroppedIntoGameView(payload.path, { x: sx, y: sy });
+		window._editor.onAssetDroppedIntoGameView(path, { x: sx, y: sy });
 	}, [unpack]);
 
 	useEffect(() => {

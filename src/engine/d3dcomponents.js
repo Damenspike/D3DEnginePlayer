@@ -373,19 +373,27 @@ const D3DComponents = {
 				max: Infinity,
 				def: 1
 			},
+			'allowScroll': {
+				label: 'Allow scroll',
+				description: 'Allow the player to control the distance of the camera?',
+				type: 'boolean',
+				def: false
+			},
 			'minDist': {
 				label: 'Minimum distance',
 				type: 'number',
 				min: 0,
 				max: Infinity,
-				def: 0.25
+				def: 0.25,
+				condition: c => c.properties.allowScroll === true
 			},
 			'maxDist': {
 				label: 'Maximum distance',
 				type: 'number',
 				min: 0,
 				max: Infinity,
-				def: 6
+				def: 100,
+				condition: c => c.properties.allowScroll === true
 			}
 		},
 		manager: D3DThirdPersonCameraManager

@@ -12,6 +12,9 @@ import {
 import { PiHandGrabbingFill } from "react-icons/pi";
 import { BiExpand } from "react-icons/bi";
 
+import smallLogoLight from '../../../assets/images/d3dicon-small.png';
+import smallLogoDark from '../../../assets/images/d3dicon-small-dark.png';
+
 export default function Topbar() {
 	const [_tool, setTool] = useState(_editor.tool);
 	const [_transformTool, setTransformTool] = useState(_editor.transformTool);
@@ -47,6 +50,10 @@ export default function Topbar() {
 	useEffect(() => {
 		_editor.setTransformTool(_transformTool);
 	}, [_transformTool]);
+	
+	const openDamen3DWebsite = () => {
+		D3D.openWebsite();
+	}
 	
 	const drawToolButton = (content, activeCondition, onClick, title = '') => {
 		const classes = ['tool-option', 'no-select'];
@@ -158,6 +165,10 @@ export default function Topbar() {
 						'Build and play'
 					)
 				}
+			</div>
+			
+			<div className="small-logo no-select" onClick={openDamen3DWebsite}>
+				<img src={_host.theme == 'dark' ? smallLogoLight : smallLogoDark} />
 			</div>
 		</div>
 	);

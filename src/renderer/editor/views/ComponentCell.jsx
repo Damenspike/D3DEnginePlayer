@@ -6,6 +6,7 @@ export default function ComponentCell({
 	bar,
 	enabled,
 	onToggleEnable,
+	togglable = false,
 	defaultOpen = true 
 }) {
 	const [open, setOpen] = useState(defaultOpen);
@@ -33,7 +34,7 @@ export default function ComponentCell({
 					}
 				}}
 			>
-				{drawCheckbox()}
+				{togglable && drawCheckbox()}
 				{title}
 				{bar}
 			</div>

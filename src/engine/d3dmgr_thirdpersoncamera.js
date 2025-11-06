@@ -37,11 +37,13 @@ export default class ThirdPersonCameraManager {
 
 			if (this._yaw >  Math.PI) this._yaw -= Math.PI * 2;
 			if (this._yaw < -Math.PI) this._yaw += Math.PI * 2;
-
-			this._distance += wheel.y * zoomSpeed;
-			if (this._distance < minDist) this._distance = minDist;
-			if (this._distance > maxDist) this._distance = maxDist;
-
+			
+			if(this.allowScroll) {
+				this._distance += wheel.y * zoomSpeed;
+				if (this._distance < minDist) this._distance = minDist;
+				if (this._distance > maxDist) this._distance = maxDist;
+			}
+			
 			const fx = Math.sin(-this._yaw) * Math.cos(this._pitch);
 			const fy = Math.sin(this._pitch);
 			const fz = Math.cos(-this._yaw) * Math.cos(this._pitch);
@@ -82,6 +84,11 @@ export default class ThirdPersonCameraManager {
 		this.component.properties.distance = v;
 		const n = Number(v ?? 1);
 		if (!Number.isNaN(n)) this._distance = n;
+	}
+	
+	get allowScroll() { return this.component.properties.allowScroll; }
+	set allowScroll(v) {
+		this.component.properties.allowScroll = !!v;
 	}
 
 	updateComponent() {

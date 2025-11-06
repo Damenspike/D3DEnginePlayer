@@ -1249,6 +1249,7 @@ export default function Inspector() {
 					key={rows.length}
 					title={schema.name || component.type}
 					enabled={component.enabled}
+					togglable={true}
 					onToggleEnable={(enabled) => {
 						component.enabled = enabled;
 						update();

@@ -1,5 +1,5 @@
 // preload.js
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, shell } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
 const JSZip = require('jszip');
@@ -51,6 +51,7 @@ contextBridge.exposeInMainWorld('D3D', {
 	getCurrentProjectURI: () => ipcRenderer.invoke('get-current-project-uri'),
 	updateEditorWindow: (options) => ipcRenderer.send('update-editor-window', options),
 	updateEditorStatus: (options) => ipcRenderer.send('editor-status', options),
+	openWebsite: () => shell.openExternal('https://damen3d.com/?origin=editor'),
 	
 	readAsFiles: async (paths) => {
 		const files = [];

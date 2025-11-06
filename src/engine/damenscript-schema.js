@@ -4,7 +4,12 @@ export const KEYWORDS = [
 	'case','default','try','catch','finally','throw', 'this', 'root', '_root', 'parent'
 ]
 export const TYPE_KEYWORDS = [
-	'number','string','bool','Vector2','Vector3','Vector4','MathUtils','Box3','Quaternion','crypto','Math','JSON','Promise','WebSocket','console','Raycaster','Color','Euler','Box4','Sphere','Plane'
+	'number','string','bool','Vector2','Vector3','Vector4','MathUtils','Box3','Quaternion','crypto','Math','JSON','Promise','WebSocket','console','Raycaster','Color','Euler','Box4','Sphere','Plane',
+	
+	'onEnterFrame','onBeforeRender','onExitFrame',
+	'onMouseOver', 'onMouseOut', 'onMouseMove',
+	'onMouseDown', 'onMouseUp', 'onMouseWheel',
+	'addEventListener','removeEventListener'
 ]
 export const FORBIDDEN_KEYWORDS = [
 	'window','document','globalThis',
