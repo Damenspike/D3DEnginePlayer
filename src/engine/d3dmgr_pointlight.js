@@ -37,7 +37,7 @@ export default class PointLightManager {
 	}
 
 	updateComponent() {
-		if (!this.component.__setup) this.setup();
+		if (!this.__setup) this.setup();
 		else this.updateLight();
 	}
 	
@@ -51,7 +51,7 @@ export default class PointLightManager {
 			c.decay ?? 1
 		);
 		this.d3dobject.replaceObject3D(light);
-		this.component.__setup = true;
+		this.__setup = true;
 	}
 	
 	updateLight() {

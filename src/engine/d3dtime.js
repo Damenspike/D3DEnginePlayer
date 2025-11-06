@@ -8,8 +8,12 @@ export default class D3DTime {
 	get nowMs() {
 		return this._nowMs;
 	}
+	get sinceStart() {
+		return this.now - this._start;
+	}
 	constructor() {
 		this._nowMs = performance.now();
+		this._start = this.now;
 		this.delta = 0;      // seconds
 	}
 	tick(nowMs) {            // call once per RAF

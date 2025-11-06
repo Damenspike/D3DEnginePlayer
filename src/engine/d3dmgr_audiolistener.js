@@ -16,7 +16,7 @@ export default class AudioListenerManager {
 	}
 
 	updateComponent() {
-		if (!this.component.__setup) 
+		if (!this.__setup) 
 			this.setup();
 	}
 	setup() {
@@ -38,6 +38,6 @@ export default class AudioListenerManager {
 		
 		_host.audioListener = this.__threeAudioListener;
 		
-		this.component.__setup = true;
+		this.__setup = true;
 	}
 }

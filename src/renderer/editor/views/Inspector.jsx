@@ -622,7 +622,7 @@ export default function Inspector() {
 									let val = e.target.value;
 									
 									if(field.convert)
-										val = field.covert(val);
+										val = field.convert(val);
 									
 									dummyComponent.properties[fieldId] = val;
 									update();
@@ -631,7 +631,7 @@ export default function Inspector() {
 									let val = String(e.target.value) || '';
 									
 									if(field.convert)
-										val = field.covert(val);
+										val = field.convert(val);
 										
 									addStep(val);
 									
@@ -675,7 +675,7 @@ export default function Inspector() {
 										val = field.max;
 									
 									if(field.convert)
-										val = field.covert(val);
+										val = field.convert(val);
 										
 									addStep(val);
 									
@@ -714,7 +714,7 @@ export default function Inspector() {
 											val = field.max;
 											
 										if(field.convert)
-											val = field.covert(val);
+											val = field.convert(val);
 											
 										addStep(val);
 										

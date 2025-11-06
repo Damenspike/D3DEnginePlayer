@@ -1,3 +1,5 @@
+import D3DConsole from './d3dconsole.js';
+
 export default class CharacterControllerManager {
 	constructor(d3dobject, component) {
 		this.d3dobject = d3dobject;
@@ -24,7 +26,13 @@ export default class CharacterControllerManager {
 			const gravityStrength = Number(props.gravityStrength ?? 1);
 			
 			const state = this.component._state;
-			const camera = _root.camera;
+			const camera = this.camera ?? this.d3dobject.root.find(this.cameraName || 'camera');
+			const forward = camera?.forward ?? this.d3dobject.forward;
+			
+			if(!camera && !this._noCameraWarning && _time.sinceStart > 0.5) {
+				D3DConsole.warn(`[${this.d3dobject.name}] No camera referenced by character controller. The character won't know which way to face. It will default to local forward.`);
+				this._noCameraWarning = true;
+			}
 			
 			this._ensureController(state);
 			
@@ -40,7 +48,7 @@ export default class CharacterControllerManager {
 				
 			const dt = _time.delta;
 			
-			let fx = camera.forward.x, fz = camera.forward.z;
+			let fx = forward.x, fz = forward.z;
 			const fl = Math.hypot(fx, fz) || 1;
 			fx /= fl; 
 			fz /= fl;
@@ -100,42 +108,44 @@ export default class CharacterControllerManager {
 	}
 
 	get moveSpeed() {
-		return this.component.properties?.moveSpeed;
+		return this.component.properties.moveSpeed;
 	}
 	set moveSpeed(v) {
-		if (!this.component.properties) this.component.properties = {};
 		this.component.properties.moveSpeed = v;
 	}
 
 	get turnSpeed() {
-		return this.component.properties?.turnSpeed;
+		return this.component.properties.turnSpeed;
 	}
 	set turnSpeed(v) {
-		if (!this.component.properties) this.component.properties = {};
 		this.component.properties.turnSpeed = v;
 	}
 
 	get jumpHeight() {
-		return this.component.properties?.jumpHeight;
+		return this.component.properties.jumpHeight;
 	}
 	set jumpHeight(v) {
-		if (!this.component.properties) this.component.properties = {};
 		this.component.properties.jumpHeight = v;
 	}
 
 	get gravityStrength() {
-		return this.component.properties?.gravityStrength;
+		return this.component.properties.gravityStrength;
 	}
 	set gravityStrength(v) {
-		if (!this.component.properties) this.component.properties = {};
 		this.component.properties.gravityStrength = v;
+	}
+	
+	get cameraName() {
+		return this.component.properties.cameraName;
+	}
+	set cameraName(v) {
+		this.component.properties.cameraName = v;
 	}
 
 	updateComponent() {
 		if (!_physics?.ready) 
 			return;
 		if (!this.inited) this.setup();
-		this._drive();
 	}
 
 	dispose() {

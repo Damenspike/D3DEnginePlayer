@@ -32,7 +32,7 @@ export default class CameraManager {
 	}
 
 	updateComponent() {
-		if (!this.component.__setup) 
+		if (!this.__setup) 
 			this.setup();
 		else 
 			this.updateCamera();
@@ -63,7 +63,7 @@ export default class CameraManager {
 		);
 		
 		this.d3dobject.replaceObject3D(camera);
-		this.component.__setup = true;
+		this.__setup = true;
 	}
 
 	updateCamera() {

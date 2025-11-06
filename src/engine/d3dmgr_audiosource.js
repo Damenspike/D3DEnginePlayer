@@ -61,7 +61,7 @@ export default class AudioSourceManager {
 		if (!window._player) return;
 		
 		this.__onInternalStart = () => {
-			if (!this.component.__setup) 
+			if (!this.__setup) 
 				this.setup();
 		}
 	}
@@ -86,7 +86,7 @@ export default class AudioSourceManager {
 
 		if (this.audio) this._reloadBuffer();
 
-		this.component.__setup = true;
+		this.__setup = true;
 	}
 
 	deinitialize() {

@@ -1,3 +1,5 @@
+import D3DConsole from './d3dconsole.js';
+
 const MIN_PITCH = -Math.PI * 0.45;
 const MAX_PITCH =  Math.PI * 0.45;
 
@@ -15,10 +17,12 @@ export default class ThirdPersonCameraManager {
 				return;
 
 			const p = this.component.properties || {};
-			const target = this.d3dobject.target ?? this.d3dobject.root.find(p.targetName);
+			const target = this.target ?? this.d3dobject.root.find(p.targetName);
 			
-			if (!target) 
-				return;
+			if(!target && !this._noTargetWarning && !this._firstRan) {
+				D3DConsole.warn(`[${this.d3dobject.name}] No target referenced by third person camera.`);
+				this._noTargetWarning = true;
+			}
 
 			const rotateSpeed = Number(p.rotateSpeed ?? 1) * 0.002;
 			const zoomSpeed   = Number(p.zoomSpeed   ?? 1) * 0.002;
@@ -100,6 +104,8 @@ export default class ThirdPersonCameraManager {
 		
 		if (!Number.isNaN(desiredDist)) 
 			this._distance = desiredDist;
+		
+		this._firstRan = true;
 	}
 
 	dispose() {

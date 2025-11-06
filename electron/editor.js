@@ -613,12 +613,20 @@ const menuTemplate = [
 						click: () => sendAddObject('camera')
 					},
 					{
+						label: 'Ambient Light',
+						click: () => sendAddObject('amblight')
+					},
+					{
 						label: 'Directional Light',
 						click: () => sendAddObject('dirlight')
 					},
 					{
 						label: 'Point Light',
 						click: () => sendAddObject('pntlight')
+					},
+					{
+						label: 'Spot Light',
+						click: () => sendAddObject('spotlight')
 					},
 					{ type: 'separator' },
 					{

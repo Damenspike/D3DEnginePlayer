@@ -41,14 +41,14 @@ export default class BitmapManager {
 	}
 	
 	updateComponent() {
-		if(!this.component.__setup)
+		if(!this.__setup)
 			this.setup();
 		else
 			this.update();
 	}
 	setup() {
 		this.d3dobject.__simpleHit = true;
-		this.component.__setup = true;
+		this.__setup = true;
 	}
 	update() {
 		

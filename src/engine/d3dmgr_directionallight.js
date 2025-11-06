@@ -21,7 +21,7 @@ export default class DirectionalLightManager {
 	}
 
 	updateComponent() {
-		if (!this.component.__setup) this.setup();
+		if (!this.__setup) this.setup();
 		else this.updateLight();
 	}
 
@@ -53,7 +53,7 @@ export default class DirectionalLightManager {
 		};
 		
 		this.__onInternalEnterFrame = updateTarget;
-		this.component.__setup = true;
+		this.__setup = true;
 	}
 
 	updateLight() {

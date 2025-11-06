@@ -101,7 +101,7 @@ export default class Layout2DManager {
 	}
 
 	updateComponent() {
-		if (!this.component.__setup) 
+		if (!this.__setup) 
 			this.setup();
 		else 
 			this.updateLayout();
@@ -114,7 +114,7 @@ export default class Layout2DManager {
 		if(window._player)
 			this.__onInternalEnterFrame = () => this.updateLayout();
 		
-		this.component.__setup = true;
+		this.__setup = true;
 	}
 	updateOffset() {
 		const properties = this.component.properties;

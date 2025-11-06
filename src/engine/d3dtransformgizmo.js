@@ -773,28 +773,47 @@ export default class D3DTransformGizmo {
 			return;
 		}
 		else if (id === 'sX' || id === 'sY' || id === 'sZ') {
-			kind = 'scale-axis';
-			axis = (id === 'sX') ? axX : (id === 'sY') ? axY : axZ;
-			plane = new THREE.Plane().setFromNormalAndCoplanarPoint(this._viewNormal(worldPos), worldPos);
-			this._raycaster.setFromCamera(this._getMouseNDC(), this.camera);
-			t0 = this._projectRayToAxis(this._raycaster.ray, worldPos, axis);
+			const worldPos = this._group.getWorldPosition(new THREE.Vector3());
+			const worldQuat = this._group.getWorldQuaternion(new THREE.Quaternion());
+			const axX = new THREE.Vector3(1, 0, 0).applyQuaternion(worldQuat);
+			const axY = new THREE.Vector3(0, 1, 0).applyQuaternion(worldQuat);
+			const axZ = new THREE.Vector3(0, 0, 1).applyQuaternion(worldQuat);
+		
+			const axisWorld = (id === 'sX') ? axX : (id === 'sY') ? axY : axZ;
 			const axisIndex = (id === 'sX') ? 0 : (id === 'sY') ? 1 : 2;
-	
+		
+			const startMouse = this._mousePx();
+			const axis2D = this._screenAxisDir2D(axisWorld, worldPos);      // normalized 2D dir for this axis
+			const wuPerPx = this._worldUnitsPerPixelAt(worldPos);           // world units per pixel at pivot
+			const refLen = Math.max(1e-6, this._group.scale.x);             // gizmo world size at this distance
+		
 			this._dragData = {
-				kind, axis, plane, worldPos,
-				startPoint: null, t0,
+				kind: 'scale-axis',
+				worldPos,
+				axisWorld,
 				axisIndex,
+				startMouse,
+				axis2D,
+				wuPerPx,
+				refLen,
 				pivotStartPosW: this._pivotStartPosW.clone(),
 				targets: this._targetsInfo
 			};
 			return;
 		}
 		else if (id === 'sU') {
-			kind = 'scale-uniform';
+			const worldPos = this._group.getWorldPosition(new THREE.Vector3());
+			const startMouse = this._mousePx();
+			const wuPerPx = this._worldUnitsPerPixelAt(worldPos);
+			const refLen = Math.max(1e-6, this._group.scale.x);
+		
 			this._dragData = {
-				kind,
-				startMouse: this._mousePx(),
+				kind: 'scale-uniform',
+				startMouse,
+				// dir2D will be chosen after small deadband, from the mouse gesture
 				dir2D: null,
+				wuPerPx,
+				refLen,
 				activated: false,
 				pivotStartPosW: this._pivotStartPosW.clone(),
 				targets: this._targetsInfo
@@ -934,20 +953,31 @@ export default class D3DTransformGizmo {
 			}
 		}
 		else if (d.kind === 'scale-axis') {
-			const tNow = this._projectRayToAxis(ray, d.worldPos, d.axis);
-			if (tNow == null || d.t0 == null) return;
-			let s = 1 + (d.t0 - tNow);
-			if (this.snap.scale) {
-				const step = this.snap.scale;
-				s = Math.max(1e-4, Math.round(s / step) * step);
-			}
-	
+			// Screen-projected scaling like Unity: pixel delta along handle → world delta → scale factor.
+			const cur = this._mousePx();
+			const dx = cur.x - d.startMouse.x;
+			const dy = cur.y - d.startMouse.y;
+			// positive when moving "along" axis on screen
+			const alongPx = dx * d.axis2D.x + dy * d.axis2D.y;
+		
+			// Convert pixels → world units at pivot, then to a unit-less multiplier by dividing by a ref length
+			const deltaW = alongPx * d.wuPerPx;
+			let s = 1 + (deltaW / d.refLen);
+		
+			// Prevent runaway / inversion near zero
+			s = Math.max(1e-4, s);
+			// Optional soft cap to avoid accidental huge numbers; comment out if you prefer no cap
+			// s = Math.min(1000, s);
+			
+			const multi = Array.isArray(d.targets) && d.targets.length > 1;
 			if (multi) {
-				this._applyToTargetsScaleAxis(d.axis, d.pivotStartPosW, s, d.axisIndex);
+				this._applyToTargetsScaleAxis(d.axisWorld, d.pivotStartPosW, s, d.axisIndex);
 			} else {
-				const start = d.targets?.[0];
-				const newScale = (start?.startLocalScale || this.object.scale.clone());
+				const start = d.targets[0];
+				const newScale = start.startLocalScale.clone();
+				
 				newScale.setComponent(d.axisIndex, Math.max(1e-4, newScale.getComponent(d.axisIndex) * s));
+				
 				this.object.scale.copy(newScale);
 				this.object.updateMatrixWorld();
 			}
@@ -956,30 +986,40 @@ export default class D3DTransformGizmo {
 			const cur = this._mousePx();
 			let dx = cur.x - d.startMouse.x;
 			let dy = cur.y - d.startMouse.y;
+		
+			// Establish a stable 2D direction from the gesture, after a tiny deadband
 			const deadband = 3;
 			const dist = Math.hypot(dx, dy);
 			if (!d.dir2D) {
 				if (dist <= deadband) return;
-				const vx = dx, vy = -dy;
-				const len = Math.hypot(vx, vy) || 1;
-				d.dir2D = { x: vx / len, y: vy / len };
-				dx = cur.x - d.startMouse.x;
-				dy = cur.y - d.startMouse.y;
+				// Use opposite-y for conventional screen coords (down positive)
+				d.dir2D = new THREE.Vector2(dx, dy).normalize();
 			}
-			const along = (dx * d.dir2D.x) + ((-dy) * d.dir2D.y);
-			const sens = this.uniformScaleSensitivity ?? 0.0015;
-			let s = Math.exp(along * sens);
+		
+			// Pixels moved along that initial gesture dir
+			const alongPx = dx * d.dir2D.x + dy * d.dir2D.y;
+		
+			// Map pixels → world → unitless via ref length; exponential for smoothness (Unity-like feel)
+			const deltaW = alongPx * d.wuPerPx;
+			let s = 1 + (deltaW / d.refLen);
+			s = Math.max(1e-4, s);
+		
+			// Optional soft cap
+			// s = Math.min(1000, s);
+		
+			// Snap (multiplicative)
 			if (this.snap?.scale) {
 				const step = this.snap.scale;
 				const k = (step > 0 && step < 1) ? (1 + step) : Math.max(step, 1e-6);
-				s = Math.exp(Math.round(Math.log(Math.max(1e-6, s)) / Math.log(k)) * Math.log(k));
+				s = Math.exp(Math.round(Math.log(s) / Math.log(k)) * Math.log(k));
 			}
-	
+		
+			const multi = Array.isArray(d.targets) && d.targets.length > 1;
 			if (multi) {
 				this._applyToTargetsScaleUniform(d.pivotStartPosW, s);
 			} else {
 				const startScale = d.targets?.[0]?.startLocalScale || this.object.scale.clone();
-				this.object.scale.copy(startScale.clone().multiplyScalar(Math.max(1e-4, s)));
+				this.object.scale.copy(startScale.clone().multiplyScalar(s));
 				this.object.updateMatrixWorld();
 			}
 		}
@@ -1268,6 +1308,26 @@ export default class D3DTransformGizmo {
 			it.obj.scale.copy(newLocalScale);
 			it.obj.updateMatrixWorld(true);
 		}
+	}
+	
+	_screenAxisDir2D(axisW, pivotW) {
+		// Take a tiny step along the world axis from the pivot, project both to screen, make 2D dir
+		const step = this._group.scale.x; // gizmo auto-scales with distance; good stable step
+		const a = this._worldToScreenPx(pivotW);
+		const b = this._worldToScreenPx(pivotW.clone().add(axisW.clone().normalize().multiplyScalar(step)));
+		const v = new THREE.Vector2(b.x - a.x, b.y - a.y);
+		if (v.lengthSq() < 1e-8) return new THREE.Vector2(1, 0);
+		return v.normalize();
+	}
+	
+	// Approx. world units per 1 screen pixel at a given world position
+	_worldUnitsPerPixelAt(pivotW) {
+		// Project a tiny world step and measure resulting pixels; invert to get wu/px
+		const step = this._group.scale.x;	// world length that maps to a few pixels at current distance
+		const a = this._worldToScreenPx(pivotW);
+		const b = this._worldToScreenPx(pivotW.clone().add(new THREE.Vector3(step, 0, 0)));
+		const px = Math.max(1e-6, Math.hypot(b.x - a.x, b.y - a.y));
+		return step / px;
 	}
 }
 

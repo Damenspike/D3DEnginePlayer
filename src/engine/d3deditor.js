@@ -717,7 +717,9 @@ async function addD3DObjectEditor(type) {
 		case 'empty':
 		case 'camera':
 		case 'dirlight':
+		case 'amblight':
 		case 'pntlight':
+		case 'spotlight':
 		case 'cube':
 		case 'capsule':
 		case 'sphere':
@@ -739,6 +741,10 @@ async function addD3DObjectEditor(type) {
 			newd3dobj.name = 'camera';
 			newd3dobj.addComponent('Camera');
 		break;
+		case 'amblight':
+			newd3dobj.name = 'ambient light';
+			newd3dobj.addComponent('AmbientLight');
+		break;
 		case 'dirlight':
 			newd3dobj.name = 'directional light';
 			newd3dobj.addComponent('DirectionalLight');
@@ -746,6 +752,10 @@ async function addD3DObjectEditor(type) {
 		case 'pntlight':
 			newd3dobj.name = 'point light';
 			newd3dobj.addComponent('PointLight');
+		break;
+		case 'spotlight':
+			newd3dobj.name = 'spot light';
+			newd3dobj.addComponent('SpotLight');
 		break;
 		case 'cube':
 		case 'capsule':

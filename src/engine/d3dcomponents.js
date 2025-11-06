@@ -95,6 +95,12 @@ const D3DComponents = {
 				label: 'Color',
 				type: 'color',
 				def: '#ffffff'
+			},
+			'intensity': { 
+				label: 'Intensity', 
+				type: 'number',
+				min: 0,
+				def: 1
 			}
 		},
 		gizmo3d: {
@@ -194,15 +200,14 @@ const D3DComponents = {
 				label: 'Distance', 
 				type: 'number',
 				min: 0,
-				def: 0
+				def: 10
 			},
 			'angle': { 
-				label: 'Distance', 
+				label: 'Angle', 
 				type: 'slider',
 				min: 0,
 				max: 360,
-				def: 0,
-				convert: (val) => THREE.MathUtils.degToRad(val)
+				def: 45
 			},
 			'castShadow': { 
 				label: 'Casts shadows', 
@@ -303,6 +308,12 @@ const D3DComponents = {
 	CharacterController: {
 		name: 'Character Controller',
 		fields: {
+			'cameraName': {
+				label: 'Camera name',
+				description: 'Path to the camera object instance that determines the direction of the character (.camera property pointing to an object instance overrides this value)',
+				type: 'string',
+				def: ''
+			},
 			'moveSpeed': {
 				label: 'Move speed',
 				type: 'number',
@@ -339,7 +350,7 @@ const D3DComponents = {
 		fields: {
 			'targetName': {
 				label: 'Target name',
-				description: 'Instance name of the target object (.target property pointing to an object instance overrides this value)',
+				description: 'Path to the target object instance (.target property pointing to an object instance overrides this value)',
 				type: 'string',
 				def: ''
 			},
