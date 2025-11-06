@@ -113,43 +113,64 @@ export function installDamenScript(monaco) {
 		tokenPostfix: '.ds',
 		keywords: KEYWORDS,
 		typeKeywords: TYPE_KEYWORDS,
-		banned: [...FORBIDDEN_KEYWORDS, ...FORBIDDEN_PROPS], // <- paint these red
+		banned: [...FORBIDDEN_KEYWORDS, ...FORBIDDEN_PROPS],
 		operators: ['=','>','<','!','~','?','::',':','==','<=','>=','!=','&&','||','++','--','+','-','*','/','&','|','^','%','<<','>>','>>>'],
 		symbols: /[=><!~?:&|+\-*/^%]+/,
 		escapes: /\\(?:[abfnrtv\\"'`]|x[0-9A-Fa-f]{2}|u[0-9A-Fa-f]{4})/,
+	
 		tokenizer: {
 			root: [
-				[/[a-zA-Z_]\w*/, {
+				// --- comments (multi-line via state) ---
+				[/\/\*/, 'comment', '@comment'],
+				[/\/\/.*$/, 'comment'],
+	
+				// --- identifiers/keywords ---
+				[/[A-Za-z_]\w*/, {
 					cases: {
-						'@banned': 'banned',      // <- custom token
+						'@banned': 'banned',
 						'@keywords': 'keyword',
 						'@typeKeywords': 'type',
 						'@default': 'identifier'
 					}
 				}],
+	
 				{ include: '@whitespace' },
+	
+				// --- brackets & operators ---
 				[/[{}()[\]]/, '@brackets'],
 				[/@symbols/, { cases: { '@operators': 'operator', '@default': '' } }],
+	
+				// --- numbers ---
 				[/\d*\.\d+([eE][\-+]?\d+)?/, 'number.float'],
 				[/0[xX][0-9a-fA-F]+/, 'number.hex'],
 				[/\d+/, 'number'],
-				[/"([^"\\]|\\.)*$/, 'string.invalid'],
+	
+				// --- strings ---
+				[/"([^"\\]|\\.)*$/, 'string.invalid'],  // unterminated (for highlighting)
 				[/"/, 'string', '@string'],
-				[/'[^\\']'/, 'string'],
 				[/'([^'\\]|\\.)*$/, 'string.invalid'],
 				[/'/, 'string', '@stringSingle'],
 			],
+	
+			// multiline comments that span lines
+			comment: [
+				[/[^/*]+/, 'comment'],
+				[/\*\//, 'comment', '@pop'],
+				[/[/*]/, 'comment']
+			],
+	
 			whitespace: [
 				[/[ \t\r\n]+/, 'white'],
-				[/\/\/.*$/, 'comment'],
-				[/\/\*.*?\*\//, 'comment']
+				// (line comments handled in root)
 			],
+	
 			string: [
 				[/[^\\"]+/, 'string'],
 				[/@escapes/, 'string.escape'],
 				[/\\./, 'string.escape.invalid'],
-				[/"/, 'string']
+				[/"/, 'string', '@pop']          // <-- pop!
 			],
+	
 			stringSingle: [
 				[/[^\\']+/, 'string'],
 				[/@escapes/, 'string.escape'],
