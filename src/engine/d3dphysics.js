@@ -1,6 +1,22 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 
 export default class D3DPhysics {
+	// -------------------- World Settings --------------------
+	
+	get gravity() {
+		if (!this.world) return { x: 0, y: -9.81, z: 0 };
+		const g = this.world.gravity;
+		return { x: g.x, y: g.y, z: g.z };
+	}
+	
+	set gravity(v) {
+		if (!this.world) return;
+		const gx = v?.x ?? 0;
+		const gy = v?.y ?? -9.81;
+		const gz = v?.z ?? 0;
+		this.world.gravity = { x: gx, y: gy, z: gz };
+	}
+	
 	constructor() {
 		this.world = null;
 		this.ready = false;

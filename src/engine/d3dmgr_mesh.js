@@ -292,6 +292,7 @@ export default class MeshManager {
 			
 			const uuids = this.component.properties.materials;
 			await this._applyMaterialsToThreeMesh(node, uuids);
+			this.d3dobject.updateVisibility(true);
 			return;
 		}
 		
@@ -411,6 +412,8 @@ export default class MeshManager {
 			await bindChildrenDirect(sceneRoot, this.d3dobject);
 			this.d3dobject.traverse(d3d => d3d.updateComponents());
 		}
+		
+		this.d3dobject.updateVisibility(true);
 	}
 
 	async dispose() {

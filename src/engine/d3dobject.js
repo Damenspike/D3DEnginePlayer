@@ -9,7 +9,8 @@ import D3DWebsocket from './d3dwebsocket.js';
 import Tween from './d3dtween.js';
 import { v4 as uuidv4 } from 'uuid';
 import {
-	getExtension
+	getExtension,
+	applyOpacity
 } from './d3dutility.js';
 const { path } = D3D;
 
@@ -101,12 +102,12 @@ export default class D3DObject {
 		this.object3d.position.copy(targetW);
 		this.object3d.updateMatrixWorld(true);
 	}
+	
 	get worldRotation() {
 		// return Euler in radians
 		const q = this.object3d.getWorldQuaternion(new THREE.Quaternion());
 		return new THREE.Euler().setFromQuaternion(q, 'XYZ');
 	}
-	
 	set worldRotation({ x, y, z }) {
 		if (Number.isNaN(x) || Number.isNaN(y) || Number.isNaN(z))
 			return;
@@ -127,6 +128,26 @@ export default class D3DObject {
 		}
 	
 		this.object3d.quaternion.copy(targetQ);
+		this.object3d.updateMatrixWorld(true);
+	}
+	
+	get worldQuaternion() {
+		return this.object3d.getWorldQuaternion(new THREE.Quaternion());
+	}
+	set worldQuaternion(qWorld) {
+		if (!qWorld || !(qWorld instanceof THREE.Quaternion))
+			return;
+	
+		// If there's a parent, convert world quaternion into local space
+		if (this.object3d.parent) {
+			const parentQ = this.object3d.parent.getWorldQuaternion(new THREE.Quaternion());
+			const invParentQ = parentQ.invert();
+			this.object3d.quaternion.copy(qWorld.clone().multiply(invParentQ));
+		} else {
+			// No parent: just copy directly
+			this.object3d.quaternion.copy(qWorld);
+		}
+	
 		this.object3d.updateMatrixWorld(true);
 	}
 	
@@ -155,6 +176,105 @@ export default class D3DObject {
 		if (Number.isNaN(x) || Number.isNaN(y) || Number.isNaN(z) || Number.isNaN(w))
 			return;
 		this.object3d.quaternion.set(x, y, z, w);
+	}
+	
+	get localAttitude() {
+		// Build local basis (relative to parent) from the local quaternion
+		const q = this.object3d.quaternion;
+		
+		const f = new THREE.Vector3(0, 0, -1).applyQuaternion(q); // forward
+		const r = new THREE.Vector3(1, 0, 0).applyQuaternion(q);  // right
+		const u = new THREE.Vector3(0, 1, 0).applyQuaternion(q);  // up
+		
+		// Stable aircraft-style angles (no Euler decomposition):
+		// yaw   = heading around parent-up
+		// pitch = nose up/down
+		// bank  = roll around forward
+		const yaw   = Math.atan2(f.x, -f.z);                       // rad
+		const pitch = Math.atan2(f.y, Math.hypot(f.x, f.z));       // rad
+		const bank  = Math.atan2(r.y, u.y);                        // rad
+		
+		const toDeg = THREE.MathUtils.radToDeg;
+		const wrap360 = a => (a % 360 + 360) % 360;
+		
+		return {
+			pitch: toDeg(pitch),
+			yaw:   toDeg(yaw),
+			bank:  toDeg(bank),
+		};
+	}
+	set localAttitude({ pitch = 0, yaw = 0, bank = 0 }) {
+		const obj = this.object3d;
+	
+		// Convert to radians
+		const p = THREE.MathUtils.degToRad(pitch);
+		const y = THREE.MathUtils.degToRad(yaw);
+		const b = THREE.MathUtils.degToRad(bank);
+	
+		// Build quaternions for yaw (Y), pitch (X), and bank/roll (Z)
+		const qYaw   = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), y);
+		const qPitch = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), p);
+		const qBank  = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), b);
+	
+		// Compose final rotation — yaw * pitch * bank (Y → X → Z)
+		const qFinal = new THREE.Quaternion()
+			.multiply(qYaw)
+			.multiply(qPitch)
+			.multiply(qBank);
+	
+		obj.quaternion.copy(qFinal);
+		obj.rotation.setFromQuaternion(qFinal);
+		obj.updateMatrixWorld(true);
+	}
+	
+	get worldAttitude() {
+		// Get world quaternion (orientation in global space)
+		const q = this.object3d.getWorldQuaternion(new THREE.Quaternion());
+	
+		const f = new THREE.Vector3(0, 0, -1).applyQuaternion(q); // forward
+		const r = new THREE.Vector3(1, 0, 0).applyQuaternion(q);  // right
+		const u = new THREE.Vector3(0, 1, 0).applyQuaternion(q);  // up
+	
+		// Stable aircraft-style angles (no Euler decomposition)
+		const yaw   = Math.atan2(f.x, -f.z);                 // rad
+		const pitch = Math.atan2(f.y, Math.hypot(f.x, f.z)); // rad
+		const bank  = Math.atan2(r.y, u.y);                  // rad
+	
+		const toDeg = THREE.MathUtils.radToDeg;
+		return {
+			pitch: toDeg(pitch),
+			yaw:   toDeg(yaw),
+			bank:  toDeg(bank)
+		};
+	}
+	set worldAttitude({ pitch = 0, yaw = 0, bank = 0 }) {
+		const obj = this.object3d;
+	
+		// Convert to radians
+		const p = THREE.MathUtils.degToRad(pitch);
+		const y = THREE.MathUtils.degToRad(yaw);
+		const b = THREE.MathUtils.degToRad(bank);
+	
+		// Compose world quaternion in Y→X→Z order (yaw, pitch, bank)
+		const qYaw   = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), y);
+		const qPitch = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), p);
+		const qBank  = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), b);
+	
+		const qWorld = new THREE.Quaternion()
+			.multiply(qYaw)
+			.multiply(qPitch)
+			.multiply(qBank);
+	
+		// If object has a parent, convert world → local:
+		if (this.parent) {
+			const qParent = this.parent.object3d.getWorldQuaternion(new THREE.Quaternion());
+			qParent.invert();
+			qWorld.premultiply(qParent);
+		}
+	
+		obj.quaternion.copy(qWorld);
+		obj.rotation.setFromQuaternion(qWorld);
+		obj.updateMatrixWorld(true);
 	}
 	
 	get scale() {
@@ -209,64 +329,11 @@ export default class D3DObject {
 	}
 	
 	get opacity() {
-		if(this.is2D) {
-			return this._2dopacity ?? 1;
-		}
-		
-		let value = 1;
-	
-		function findOpacity(o) {
-			if (o.material) {
-				if (Array.isArray(o.material)) {
-					// just take the first non-null material
-					for (let m of o.material) {
-						if (m) {
-							value = m.opacity;
-							return true; // stop search
-						}
-					}
-				} else {
-					value = o.material.opacity;
-					return true;
-				}
-			}
-			if (o.children && o.children.length) {
-				for (let child of o.children) {
-					if (findOpacity(child)) return true;
-				}
-			}
-			return false;
-		}
-	
-		findOpacity(this.object3d);
-		return value;
+		return this._opacity ?? 1;
 	}
 	set opacity(value) {
-		const opacity = Math.max(0, Math.min(1, Number(value)));
-		
-		if(this.is2D) {
-			this._2dopacity = opacity;
-			return;
-		}
-		
-		function applyOpacity(o) {
-			if (o.material) {
-				if (Array.isArray(o.material)) {
-					o.material.forEach(m => {
-						m.transparent = opacity < 1;
-						m.opacity = opacity;
-						m.needsUpdate = true;
-					});
-				} else {
-					o.material.transparent = opacity < 1;
-					o.material.opacity = opacity;
-					o.material.needsUpdate = true;
-				}
-			}
-			if (o.children && o.children.length) o.children.forEach(applyOpacity);
-		}
-		
-		applyOpacity(this.object3d);
+		this._opacity = Math.max(0, Math.min(1, Number(value))) ?? 0;
+		this.updateVisibility();
 		this.checkSymbols();
 	}
 	
@@ -301,17 +368,17 @@ export default class D3DObject {
 	}
 	get forward() {
 		const fwd = THREE.Vector3.forward.clone();
-		fwd.applyQuaternion(this.quaternion);
+		fwd.applyQuaternion(this.worldQuaternion);
 		return fwd;
 	}
 	get right() {
 		const right = THREE.Vector3.right.clone();
-		right.applyQuaternion(this.quaternion);
+		right.applyQuaternion(this.worldQuaternion);
 		return right;
 	}
 	get up() {
 		const up = THREE.Vector3.up.clone();
-		up.applyQuaternion(this.quaternion);
+		up.applyQuaternion(this.worldQuaternion);
 		return up;
 	}
 	get is3D() {
@@ -354,10 +421,7 @@ export default class D3DObject {
 				if(!this.object3d)
 					return;
 				
-				if(this.__editorState.hidden !== undefined) {
-					const v = this.visible && !this.__editorState.hidden;
-					this.object3d.visible = v;
-				}
+				this.updateVisibility();
 				
 				if(!this.lastMatrixLocal) {
 					this.lastMatrixLocal = new THREE.Matrix4().copy(this.object3d.matrix);
@@ -430,6 +494,7 @@ export default class D3DObject {
 			//////////////////////////////////////////////
 			//// ENGINE LOOP USED FOR INTERNALS
 			//////////////////////////////////////////////
+			this.updateVisibility();
 			for(let i in this.__componentInstances) {
 				const mgr = this.__componentInstances[i];
 				mgr?.__onInternalEnterFrame?.();
@@ -681,7 +746,7 @@ export default class D3DObject {
 		let scriptName = `__script[${this.name}]`;
 		
 		if(this.engineScript) {
-			const url = new URL(`/engine/${this.engineScript}`, window.location.origin);
+			const url = new URL(`/engine/scripts/${this.engineScript}`, window.location.origin);
 			const res = await fetch(url.toString());
 			if (!res.ok) 
 				throw new Error(`Failed to fetch engine script ${filename}: ${res.status}`);
@@ -749,7 +814,8 @@ export default class D3DObject {
 				log: (...args) => D3DConsole.log(`[${this.name}]`, ...args),
 				warn: (...args) => D3DConsole.warn(`[${this.name}]`, ...args),
 				error: (...args) => D3DConsole.error(`[${this.name}]`, ...args),
-				assert: (...args) => D3DConsole.assert(...args)
+				assert: (...args) => D3DConsole.assert(...args),
+				clear: () => D3DConsole.clear()
 			}),
 			
 			// THREE
@@ -1264,7 +1330,7 @@ export default class D3DObject {
 		// --- wire back to D3D ---
 		this.object3d = newObject3D;
 		this.object3d.userData.d3dobject = this;
-	
+		
 		// --- ensure matrices are coherent for anything that reads this frame ---
 		this.object3d.updateMatrixWorld(true);
 	}
@@ -1474,6 +1540,32 @@ export default class D3DObject {
 			
 			this.__preAnimationTransform = null;
 		}
+	}
+	updateVisibility(force = false) {
+		if(!this.object3d)
+			return;
+		
+		let v = this.visible;
+		
+		if(window._editor && this.__editorState?.hidden === true)
+			v = false;
+		
+		if(this.__lastOpacity != this.opacity || force) {
+			let o = 1;
+			let p = this;
+			while(p) {
+				o *= p.opacity;
+				p = p.parent;
+			}
+			
+			applyOpacity(this.object3d, o);
+			
+			this.children.forEach(c => c.updateVisibility(true));
+			
+			this.__lastOpacity = this.opacity;
+		}
+		
+		this.object3d.visible = v;
 	}
 	
 	getNextHighestDepth() {

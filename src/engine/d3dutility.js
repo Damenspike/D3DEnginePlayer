@@ -312,7 +312,9 @@ export function pickWorldPointAtScreen(sx, sy, camera, scene) {
 	return camera.getWorldPosition(new THREE.Vector3())
 		.add(new THREE.Vector3(0, 0, -1).applyQuaternion(camera.getWorldQuaternion(new THREE.Quaternion())).multiplyScalar(5));
 }
-export function dropToGroundIfPossible(obj3d) {
+export function dropToGroundIfPossible(d3dobject) {
+	const obj3d = d3dobject.object3d;
+	if(!obj3d) return;
 	const box = new THREE.Box3().setFromObject(obj3d);
 	if (box.isEmpty()) {
 		return;
@@ -327,9 +329,14 @@ export function dropToGroundIfPossible(obj3d) {
 	if (parent) {
 		const worldTarget = worldPos.clone().add(new THREE.Vector3(0, deltaY, 0));
 		parent.worldToLocal(worldTarget);
-		obj3d.position.copy(worldTarget);
+		
+		d3dobject.setPosition(worldTarget);
 	} else {
-		obj3d.position.y += deltaY;
+		const p = obj3d.position.clone();
+		
+		p.y += deltaY;
+		
+		d3dobject.setPosition(p);
 	}
 	obj3d.updateMatrixWorld(true);
 }
@@ -471,4 +478,99 @@ export function getSelectionCenter(selectedObjects) {
 		center.divideScalar(count);
 
 	return center;
+}
+export function randUnitVec3() {
+	const u = Math.random()*2 - 1;
+	const t = Math.random()*Math.PI*2;
+	const s = Math.sqrt(1 - u*u);
+	return new THREE.Vector3(Math.cos(t)*s, u, Math.sin(t)*s);
+}
+export function parseColor(v) {
+	if (!v) return { r:1, g:1, b:1, a:1 };
+
+	// String inputs
+	if (typeof v === 'string') {
+		const s = v.trim().toLowerCase();
+
+		// --- hex formats: #rrggbb, #rrggbbaa, 0xrrggbb, 0xrrggbbaa ---
+		if (s[0] === '#' || s.startsWith('0x')) {
+			let hex = s.startsWith('0x') ? s.slice(2) : s.slice(1);
+
+			// expand shorthand (#f80 → #ff8800)
+			if (hex.length === 3 || hex.length === 4) {
+				hex = hex.split('').map(ch => ch + ch).join('');
+			}
+
+			let r=255,g=255,b=255,a=255;
+			if (hex.length === 8) {
+				r = parseInt(hex.slice(0,2),16);
+				g = parseInt(hex.slice(2,4),16);
+				b = parseInt(hex.slice(4,6),16);
+				a = parseInt(hex.slice(6,8),16);
+			} else if (hex.length === 6) {
+				r = parseInt(hex.slice(0,2),16);
+				g = parseInt(hex.slice(2,4),16);
+				b = parseInt(hex.slice(4,6),16);
+			} else if (hex.length === 4) {
+				// rgba short 0xf80c
+				r = parseInt(hex.slice(0,1).repeat(2),16);
+				g = parseInt(hex.slice(1,2).repeat(2),16);
+				b = parseInt(hex.slice(2,3).repeat(2),16);
+				a = parseInt(hex.slice(3,4).repeat(2),16);
+			} else if (hex.length === 3) {
+				r = parseInt(hex.slice(0,1).repeat(2),16);
+				g = parseInt(hex.slice(1,2).repeat(2),16);
+				b = parseInt(hex.slice(2,3).repeat(2),16);
+			}
+
+			return { r:r/255, g:g/255, b:b/255, a:a/255 };
+		}
+
+		// --- rgb()/rgba() ---
+		if (s.startsWith('rgb')) {
+			const m = s.match(/rgba?\s*\(\s*([0-9.]+)\s*[, ]\s*([0-9.]+)\s*[, ]\s*([0-9.]+)(?:\s*[,/]\s*([0-9.]+))?\s*\)/i);
+			if (m) {
+				let r = parseFloat(m[1]);
+				let g = parseFloat(m[2]);
+				let b = parseFloat(m[3]);
+				let a = (m[4] !== undefined) ? parseFloat(m[4]) : 1;
+
+				if (r > 1 || g > 1 || b > 1) { r/=255; g/=255; b/=255; }
+				if (a > 1) a/=255;
+				return { r, g, b, a };
+			}
+		}
+
+		// fallback → white
+		return { r:1, g:1, b:1, a:1 };
+	}
+
+	// --- Object inputs ---
+	if (typeof v === 'object') {
+		let r = v.r ?? v.red ?? 1;
+		let g = v.g ?? v.green ?? 1;
+		let b = v.b ?? v.blue ?? 1;
+		let a = v.a ?? v.alpha ?? 1;
+		if (r > 1 || g > 1 || b > 1) { r/=255; g/=255; b/=255; }
+		if (a > 1) a/=255;
+		return { r:+r||0, g:+g||0, b:+b||0, a:+a||0 };
+	}
+
+	// fallback
+	return { r:1, g:1, b:1, a:1 };
+}
+export function applyOpacity(o, opacity) {
+	if (o.material) {
+		if (Array.isArray(o.material)) {
+			o.material.forEach(m => {
+				m.transparent = opacity < 1;
+				m.opacity = opacity;
+				m.needsUpdate = true;
+			});
+		} else {
+			o.material.transparent = opacity < 1;
+			o.material.opacity = opacity;
+			o.material.needsUpdate = true;
+		}
+	}
 }

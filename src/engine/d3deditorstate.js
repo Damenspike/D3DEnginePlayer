@@ -89,7 +89,7 @@ export default class D3DEditorState {
 			snapToPoints: true,
 			snapToObjects: true,
 			subtract: false,
-			closePolygon: false
+			closePolygon: true
 		}
 	}
 

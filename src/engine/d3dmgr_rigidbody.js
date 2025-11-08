@@ -90,6 +90,33 @@ export default class RigidbodyManager {
 		if (!this.component.properties) this.component.properties = {};
 		this.component.properties.shapeBias = v;
 	}
+	
+	get drag() {
+		return this.component.properties?.drag ?? 0;
+	}
+	set drag(v) {
+		if (!this.component.properties) this.component.properties = {};
+		const d = Math.max(0, Number(v) || 0);
+		this.component.properties.drag = d;
+		// live update if rb exists
+		const rb = this.component._rb;
+		if (rb && typeof rb.setLinearDamping === 'function')
+			rb.setLinearDamping(d);
+	}
+	
+	get angularDrag() {
+		return this.component.properties?.angularDrag ?? 0;
+	}
+	set angularDrag(v) {
+		if (!this.component.properties) this.component.properties = {};
+		const d = Math.max(0, Number(v) || 0);
+		this.component.properties.angularDrag = d;
+	
+		// live update if rb exists
+		const rb = this.component._rb;
+		if (rb && typeof rb.setAngularDamping === 'function')
+			rb.setAngularDamping(d);
+	}
 
 	dispose() {
 		this._teardownBody();
@@ -98,46 +125,106 @@ export default class RigidbodyManager {
 	}
 	
 	setPosition({ x, y, z }) {
-		const q = this.d3dobject.object3d.quaternion;
-		_physics.setNextKinematicTransform(
-			this.d3dobject,
-			{ x, y, z },
-			{ x: q.x, y: q.y, z: q.z, w: q.w }
-		);
+		const obj = this.d3dobject.object3d;
+		const rb  = this.component._rb;
+		const q   = obj.quaternion;
+	
+		if (!rb) {
+			obj.position.set(x, y, z);
+			obj.updateMatrixWorld(true);
+			return;
+		}
+	
+		if (this.kind === 'kinematicPosition') {
+			_physics.setNextKinematicTransform(
+				this.d3dobject,
+				{ x, y, z },
+				{ x: q.x, y: q.y, z: q.z, w: q.w }
+			);
+		} else {
+			rb.setTranslation({ x, y, z }, true);
+		}
+	
+		obj.position.set(x, y, z);
+		obj.updateMatrixWorld(true);
 	}
 	
 	setRotation({ x, y, z, w }) {
-		const p = this.d3dobject.object3d.position;
-		_physics.setNextKinematicTransform(
-			this.d3dobject,
-			{ x: p.x, y: p.y, z: p.z },
-			{ x, y, z, w }
-		);
+		const obj = this.d3dobject.object3d;
+		const rb  = this.component._rb;
+		const p   = obj.position;
+	
+		if (!rb) {
+			obj.quaternion.set(x, y, z, w);
+			obj.updateMatrixWorld(true);
+			return;
+		}
+	
+		if (this.kind === 'kinematicPosition') {
+			_physics.setNextKinematicTransform(
+				this.d3dobject,
+				{ x: p.x, y: p.y, z: p.z },
+				{ x, y, z, w }
+			);
+		} else {
+			rb.setRotation({ x, y, z, w }, true);
+		}
+	
+		obj.quaternion.set(x, y, z, w);
+		obj.updateMatrixWorld(true);
 	}
 	
 	setTransform(pos, rot) {
-		_physics.setNextKinematicTransform(this.d3dobject, pos, rot);
+		const obj = this.d3dobject.object3d;
+		const rb  = this.component._rb;
+		const p = pos ?? obj.position;
+		const q = rot ?? obj.quaternion;
+	
+		if (!rb) {
+			obj.position.set(p.x, p.y, p.z);
+			obj.quaternion.set(q.x, q.y, q.z, q.w);
+			obj.updateMatrixWorld(true);
+			return;
+		}
+	
+		if (this.kind === 'kinematicPosition') {
+			_physics.setNextKinematicTransform(
+				this.d3dobject,
+				{ x: p.x, y: p.y, z: p.z },
+				{ x: q.x, y: q.y, z: q.z, w: q.w }
+			);
+		} else {
+			rb.setTranslation({ x: p.x, y: p.y, z: p.z }, true);
+			rb.setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }, true);
+		}
+	
+		obj.position.set(p.x, p.y, p.z);
+		obj.quaternion.set(q.x, q.y, q.z, q.w);
+		obj.updateMatrixWorld(true);
 	}
 
 	/* ------------------- helpers ------------------- */
 
 	_readComponent() {
 		const props = this.component.properties || {};
-
+	
 		const kind        = props.kind        ?? 'dynamic';
 		let   shapeType   = props.shape       ?? 'trimesh';
 		const friction    = Number(props.friction    ?? 0.5);
 		const restitution = Number(props.bounciness  ?? 0.5);
 		const density     = Number(props.density     ?? 1.0);
 		const shapeBias   = Number(props.shapeBias   ?? 1.0);
-
+		const drag        = Math.max(0, Number(props.drag ?? 0));
+		const angularDrag = Math.max(0, Number(props.angularDrag ?? 0));
+	
 		if (kind !== 'fixed' && shapeType === 'trimesh') {
 			console.warn(`[RigidbodyManager] Dynamic body cannot use trimesh. Using convex instead.`);
 			shapeType = 'convex';
 		}
-
+	
 		const shape = this._buildScaledShape(this.d3dobject, shapeType, shapeBias);
-		return { kind, shapeType, shape, friction, restitution, density };
+		
+		return { kind, shapeType, shape, friction, restitution, density, drag, angularDrag };
 	}
 
 	_setupBody(opts) {
@@ -148,6 +235,10 @@ export default class RigidbodyManager {
 			restitution: this._clamp01(opts.restitution),
 			density: Math.max(1e-6, opts.density)
 		});
+		
+		rb.setLinearDamping(Math.max(0, Number(opts.drag) || 0));
+		rb.setAngularDamping(Math.max(0, Number(opts.angularDrag) || 0));
+	
 		this.component._rb = rb;
 	}
 
@@ -159,14 +250,15 @@ export default class RigidbodyManager {
 	}
 
 	_changed(a, b) {
-		if (!a) 
-			return true;
+		if (!a) return true;
 		return (
 			a.kind !== b.kind ||
 			a.shapeType !== b.shapeType ||
 			a.friction !== b.friction ||
 			a.restitution !== b.restitution ||
 			a.density !== b.density ||
+			a.drag !== b.drag || 
+			a.angularDrag !== b.angularDrag || 
 			this._shapeChanged(a.shape, b.shape)
 		);
 	}
@@ -394,5 +486,193 @@ export default class RigidbodyManager {
 		const vel = rb.linvel();
 		const speed = Math.hypot(vel.x, vel.y, vel.z);
 		return speed;
+	}
+	
+	/* ------------------- velocity / force helpers ------------------- */
+	
+	// Returns current linear velocity as THREE.Vector3
+	getVelocity() {
+		const rb = this.component._rb;
+		if (!rb) return new THREE.Vector3();
+		const v = rb.linvel?.() ?? { x: 0, y: 0, z: 0 };
+		return new THREE.Vector3(v.x, v.y, v.z);
+	}
+	
+	// Sets linear velocity; wakes body if supported
+	_setVelocity(vx, vy, vz) {
+		const rb = this.component._rb;
+		if (!rb) return;
+	
+		// prefer direct method on rb
+		if (typeof rb.setLinvel === 'function') {
+			rb.setLinvel({ x: vx, y: vy, z: vz }, true);
+			return;
+		}
+		if (typeof rb.setLinearVelocity === 'function') {
+			rb.setLinearVelocity({ x: vx, y: vy, z: vz });
+			return;
+		}
+		// fall back to engine wrapper if exposed
+		if (typeof _physics?.setLinearVelocity === 'function') {
+			_physics.setLinearVelocity(this.d3dobject, { x: vx, y: vy, z: vz });
+			return;
+		}
+		console.warn('[RigidbodyManager] No API available to set linear velocity.');
+	}
+	
+	// Add a velocity delta
+	// space: 'world' | 'local'
+	addVelocity(vec, space = 'local') {
+		const rb = this.component._rb;
+		if (!rb || this.kind === 'fixed') return;
+	
+		// start with input vector
+		const d = new THREE.Vector3(vec.x || 0, vec.y || 0, vec.z || 0);
+	
+		// rotate only here if local
+		if (space === 'local') {
+			this.d3dobject.object3d.updateMatrixWorld();
+			const qWorld = this.d3dobject.object3d.getWorldQuaternion(new THREE.Quaternion());
+			d.applyQuaternion(qWorld);
+		}
+	
+		const v = this.getVelocity().add(d);
+		this._setVelocity(v.x, v.y, v.z);
+	}
+	
+	// AddForce. Modes:
+	// 'force'          -> F * dt / m     (continuous force over a frame)
+	// 'impulse'        -> J / m          (instantaneous impulse)
+	// 'velocityChange' -> Δv directly    (ignores mass)
+	// space: 'world' | 'local'
+	addForce(vec, { mode = 'force', space = 'local' } = {}) {
+		const rb = this.component._rb;
+		if (!rb || this.kind === 'fixed') return;
+	
+		const dt = _physics?.fixedDt ?? (1/60);
+		const m  = (typeof rb.mass === 'function' ? rb.mass() : rb.mass) ?? 1;
+	
+		// DO NOT rotate here; keep in the provided space
+		const f = new THREE.Vector3(vec.x || 0, vec.y || 0, vec.z || 0);
+	
+		let dv;
+		switch (mode) {
+			case 'velocityChange': dv = f; break;
+			case 'impulse':        dv = f.clone().multiplyScalar(1 / Math.max(1e-6, m)); break;
+			case 'force':
+			default:               dv = f.clone().multiplyScalar(dt / Math.max(1e-6, m)); break;
+		}
+	
+		// pass through the same space; addVelocity will rotate if needed
+		this.addVelocity(dv, space);
+	}
+	
+	// Convenience: Add an impulse directly (world/local)
+	addImpulse(vec, space = 'local') {
+		this.addForce(vec, { mode: 'impulse', space });
+	}
+	
+	/* ------------------- ANGULAR helpers ------------------- */
+	
+	// Returns angular velocity as THREE.Vector3 (rad/s)
+	getAngularVelocity() {
+		const rb = this.component._rb;
+		if (!rb) return new THREE.Vector3();
+		const w = rb.angvel?.() ?? { x: 0, y: 0, z: 0 };
+		return new THREE.Vector3(w.x, w.y, w.z);
+	}
+	
+	// Sets angular velocity
+	_setAngularVelocity(wx, wy, wz) {
+		const rb = this.component._rb;
+		if (!rb) return;
+	
+		if (typeof rb.setAngvel === 'function') {
+			rb.setAngvel({ x: wx, y: wy, z: wz }, true);
+			return;
+		}
+		if (typeof _physics?.setAngularVelocity === 'function') {
+			_physics.setAngularVelocity(this.d3dobject, { x: wx, y: wy, z: wz });
+			return;
+		}
+		console.warn('[RigidbodyManager] No API available to set angular velocity.');
+	}
+	
+	// Add angular velocity Δω (rad/s)
+	addAngularVelocity(vec, space = 'local') {
+		const rb = this.component._rb;
+		if (!rb || this.kind === 'fixed') return;
+	
+		const d = new THREE.Vector3(vec.x || 0, vec.y || 0, vec.z || 0);
+	
+		if (space === 'local') {
+			this.d3dobject.object3d.updateMatrixWorld();
+			const qWorld = this.d3dobject.object3d.getWorldQuaternion(new THREE.Quaternion());
+			d.applyQuaternion(qWorld);
+		}
+	
+		const w = this.getAngularVelocity().add(d);
+		this._setAngularVelocity(w.x, w.y, w.z);
+	}
+	
+	/**
+	 * Unity-like AddTorque
+	 * Modes:
+	 *  - 'torque'          : continuous τ (N·m) → impulse = τ * dt
+	 *  - 'impulse'         : instantaneous torque impulse (N·m·s)
+	 *  - 'velocityChange'  : direct Δω (rad/s), ignores inertia
+	 * space: 'world' | 'local'
+	 */
+	addTorque(vec, { mode = 'torque', space = 'local' } = {}) {
+		const rb = this.component._rb;
+		if (!rb || this.kind === 'fixed') return;
+	
+		const dt = _physics?.fixedDt ?? (1/60);
+	
+		// DO NOT rotate here; keep in the provided space
+		const t = new THREE.Vector3(vec.x || 0, vec.y || 0, vec.z || 0);
+	
+		switch (mode) {
+			case 'velocityChange':
+				this.addAngularVelocity(t, space);
+				break;
+			case 'impulse': {
+				// rotate inside addAngularVelocity if wrapper missing
+				if (typeof rb.applyTorqueImpulse === 'function') {
+					// need world-space for Rapier call
+					let tw = t.clone();
+					if (space === 'local') {
+						this.d3dobject.object3d.updateMatrixWorld();
+						const qWorld = this.d3dobject.object3d.getWorldQuaternion(new THREE.Quaternion());
+						tw.applyQuaternion(qWorld);
+					}
+					rb.applyTorqueImpulse({ x: tw.x, y: tw.y, z: tw.z }, true);
+				} else {
+					this.addAngularVelocity(t, space);
+				}
+				break;
+			}
+			case 'torque':
+			default: {
+				// τ * dt -> impulse
+				let jt = t.clone().multiplyScalar(dt);
+				if (typeof rb.applyTorqueImpulse === 'function') {
+					if (space === 'local') {
+						this.d3dobject.object3d.updateMatrixWorld();
+						const qWorld = this.d3dobject.object3d.getWorldQuaternion(new THREE.Quaternion());
+						jt.applyQuaternion(qWorld);
+					}
+					rb.applyTorqueImpulse({ x: jt.x, y: jt.y, z: jt.z }, true);
+				} else {
+					this.addAngularVelocity(jt, space);
+				}
+				break;
+			}
+		}
+	}
+	
+	// Convenience alias
+	addTorqueImpulse(vec, space = 'local') {
+		return this.addTorque(vec, { mode: 'impulse', space });
 	}
 }

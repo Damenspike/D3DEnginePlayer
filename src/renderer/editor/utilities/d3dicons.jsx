@@ -22,7 +22,7 @@ export function drawIconForObject(object) {
 	if(object.hasVisibleComponent('Mesh') || object.hasVisibleComponent('SubMesh'))
 		return <MdViewInAr />;
 	else
-	if(object.hasComponent('Light'))
+	if(object.hasComponent('AmbientLight') || object.hasComponent('DirectionalLight') || object.hasComponent('PointLight') || object.hasComponent('SpotLight'))
 		return <MdLightbulbOutline />;
 	else
 	if(object.hasComponent('Camera'))

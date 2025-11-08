@@ -610,6 +610,32 @@ export default function Inspector() {
 				let fieldContent;
 				
 				switch(field.type) {
+					case 'vector3': {
+						fieldContent = (
+							<VectorInput 
+								values={[current]} 
+								onSave={vector => {
+									let val = vector;
+									
+									if(field.convert)
+										val = field.convert(val);
+										
+									addStep(val);
+									
+									dummyComponent.properties[fieldId] = val;
+									
+									object.setComponentValue(
+										component.type,
+										fieldId,
+										val
+									);
+									
+									update();
+								}}
+							/>
+						);
+						break;
+					}
 					case 'string': {
 						fieldContent = (
 							<input 
@@ -1225,14 +1251,21 @@ export default function Inspector() {
 				if(schema.sectionsLast)
 					rows.push(...fields);
 				
-				for(let i in sections) {
-					const rws = sections[i];
+				for(let sectionName in sections) {
+					const rws = sections[sectionName];
+					
+					const drawSectionName = () => (
+						<div className='insp-title' style={{cursor: 'auto'}}>
+							{sectionName}
+						</div>
+					)
 					
 					rows.push(
 						<div 
 							key={rows.length+1000} 
 							className='component-section shade'
 						>
+							{schema.displaySectionNames && drawSectionName()}
 							{rws}
 						</div>
 					);

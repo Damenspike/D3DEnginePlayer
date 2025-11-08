@@ -16,6 +16,7 @@ import D3DCharacterControllerManager from './d3dmgr_charactercontroller.js';
 import D3DThirdPersonCameraManager from './d3dmgr_thirdpersoncamera.js';
 import D3DAudioListenerManager from './d3dmgr_audiolistener.js';
 import D3DAudioSourceManager from './d3dmgr_audiosource.js';
+import D3DParticleSystemManager from './d3dmgr_particlesystem.js';
 
 import { WebSafeFonts } from './d3dfonts.js';
 
@@ -286,21 +287,40 @@ const D3DComponents = {
 				type: 'number',
 				min: 0,
 				max: 1,
-				def: 0.5
+				def: 0.5,
+				condition: c => c.properties.kind !== 'fixed'
 			},
 			'bounciness': {
 				label: 'Bounciness',
 				type: 'number',
 				min: 0,
 				max: 1,
-				def: 0.5
+				def: 0.5,
+				condition: c => c.properties.kind !== 'fixed'
 			},
 			'density': {
 				label: 'Density',
 				type: 'number',
 				min: 0,
 				max: Infinity,
-				def: 1
+				def: 1,
+				condition: c => c.properties.kind !== 'fixed'
+			},
+			'drag': {
+				label: 'Drag',
+				type: 'number',
+				min: 0,
+				max: Infinity,
+				def: 1,
+				condition: c => c.properties.kind !== 'fixed'
+			},
+			'angularDrag': {
+				label: 'Angular drag',
+				type: 'number',
+				min: 0,
+				max: Infinity,
+				def: 1,
+				condition: c => c.properties.kind !== 'fixed'
 			}
 		},
 		manager: D3DRigidbodyManager
@@ -908,6 +928,212 @@ const D3DComponents = {
 			]
 		},
 		manager: D3DAudioSourceManager
+	},
+	ParticleSystem: {
+		name: 'Particle System',
+		is2Dand3D: true,
+		displaySectionNames: true,
+		manager: D3DParticleSystemManager,
+		fields: {
+			// ==== Main ====
+			maxParticles: {
+				section: 'Main',
+				label: 'Max particles',
+				type: 'number',
+				def: 1000,
+				min: 1,
+				step: 1
+			},
+			lifetime: {
+				section: 'Main',
+				label: 'Lifetime (s)',
+				type: 'number',
+				def: 2.0,
+				min: 0.01,
+				step: 0.01
+			},
+			startSpeed: {
+				section: 'Main',
+				label: 'Start speed',
+				type: 'number',
+				def: 2.0,
+				step: 0.01
+			},
+			startSize: {
+				section: 'Main',
+				label: 'Start size',
+				type: 'number',
+				def: 1,
+				min: 0,
+				step: 0.001
+			},
+			endSize: {
+				section: 'Main',
+				label: 'End size',
+				type: 'number',
+				def: 1,
+				min: 0,
+				step: 0.001
+			},
+			color: {
+				section: 'Main',
+				label: 'Color',
+				type: 'colorbest',
+				def: 'rgba(255,255,255,1)',
+				description: "The color of the particles. Use a gradient to smoothly change color and transparency over the particle’s lifetime."
+			},
+			prewarm: {
+				section: 'Main',
+				label: 'Prewarm',
+				type: 'boolean',
+				def: false,
+				description: 'Simulate full lifetime on start for seamless startup.'
+			},
+			simulationSpace: {
+				section: 'Main',
+				label: 'Simulation',
+				type: 'select',
+				options: [
+					{ name: 'local', label: 'Local' },
+					{ name: 'world', label: 'World' }
+				],
+				def: 'local'
+			},
+		
+			// ==== Emission / Playback ====
+			emissionRate: {
+				section: 'Emission / Playback',
+				label: 'Emission /s',
+				type: 'number',
+				def: 50,
+				min: 0,
+				step: 1
+			},
+			looping: {
+				section: 'Emission / Playback',
+				label: 'Looping',
+				type: 'boolean',
+				def: true
+			},
+			playOnAwake: {
+				section: 'Emission / Playback',
+				label: 'Auto play',
+				type: 'boolean',
+				def: true
+			},
+		
+			// ==== Shape ====
+			shape: {
+				section: 'Shape',
+				label: 'Shape',
+				type: 'select',
+				options: [
+					{ name: 'point',  label: 'Point' },
+					{ name: 'sphere', label: 'Sphere' },
+					{ name: 'cone',   label: 'Cone' },
+					{ name: 'box',    label: 'Box' }
+				],
+				def: 'sphere'
+			},
+			shapeRadius: {
+				section: 'Shape',
+				label: 'Radius',
+				type: 'number',
+				def: 0.5,
+				min: 0,
+				step: 0.01,
+				condition: c => c.properties.shape === 'sphere'
+			},
+			coneAngleDeg: {
+				section: 'Shape',
+				label: 'Cone angle (°)',
+				type: 'slider',
+				def: 20,
+				min: 0,
+				max: 89,
+				step: 0.1,
+				condition: c => c.properties.shape === 'cone'
+			},
+			boxSize: {
+				section: 'Shape',
+				label: 'Box size',
+				type: 'vector3',
+				def: { x: 1, y: 1, z: 1 },
+				condition: c => c.properties.shape === 'box'
+			},
+		
+			// ==== Renderer ====
+			texture: {
+				section: 'Renderer',
+				label: 'Texture',
+				type: 'file',
+				def: '',
+				format: 'img'
+			},
+			blending: {
+				section: 'Renderer',
+				label: 'Blending',
+				type: 'select',
+				options: [
+					{ name: 'normal',   label: 'Normal' },
+					{ name: 'add',      label: 'Additive' },
+					{ name: 'multiply', label: 'Multiply' }
+				],
+				def: 'add'
+			},
+			sizeAttenuation: {
+				section: 'Renderer',
+				label: 'Size attenuation',
+				type: 'boolean',
+				def: true
+			},
+		
+			// ==== Over Lifetime ====
+			velocityOverLifetime: {
+				section: 'Over Lifetime',
+				label: 'Velocity over lifetime',
+				type: 'vector3',
+				def: { x: 0, y: 0, z: 0 }
+			},
+			velocityOverLifetimeEntropy: {
+				section: 'Over Lifetime',
+				label: 'Velocity entropy',
+				description: 'Random multiplier applied per particle (no clamp).',
+				type: 'number',
+				def: 0,
+				step: 0.01
+			},
+			angularVelocityOverLifetime: {
+				section: 'Over Lifetime',
+				label: 'Angular velocity over lifetime',
+				description: 'Billboard spin; uses Z (radians/sec).',
+				type: 'vector3',
+				def: { x: 0, y: 0, z: 0 }
+			},
+			angularVelocityOverLifetimeEntropy: {
+				section: 'Over Lifetime',
+				label: 'Angular velocity entropy',
+				description: 'Random multiplier applied per particle (no clamp).',
+				type: 'number',
+				def: 0,
+				step: 0.01
+			},
+			startRotationDeg: {
+				section: 'Over Lifetime',
+				label: 'Start rotation °',
+				type: 'number',
+				def: 0,
+				step: 0.1
+			},
+			startRotationEntropy: {
+				section: 'Over Lifetime',
+				label: 'Start rotation entropy',
+				description: 'Random multiplier applied per particle (no clamp).',
+				type: 'number',
+				def: 0,
+				step: 0.01
+			}
+		}
 	}
 }
 

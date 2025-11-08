@@ -14,6 +14,23 @@ Math.lerp = (a, b, time, easeFn) => {
 	const u  = Math.max(0, Math.min(1, time));
 	return a + (b - a) * fn(u);
 };
+Math.reverseNumber = (value, min, max) => {
+	return (max + min) - value;
+}
+Math.rcoeff = (value) => {
+	return Math.reverseNumber(value, 0.0, 1.0);
+}
+Math.clamp = function(value, min, max) {
+	return Math.min(Math.max(value, min), max);
+}
+Math.clamp01 = function(value) {
+	return Math.min(Math.max(value, 0), 1);
+}
+Math.norm180 = d => {
+	let a = (d + 180) % 360;
+	if (a < 0) a += 360;
+	return a - 180;
+}
 
 const DamenScript = (() => {
   // ===== Utilities / Guards =====
@@ -30,6 +47,7 @@ const DamenScript = (() => {
   const BASIC_ENV = Object.freeze({
   	isFinite, Math: SAFE_MATH
   });
+  const DS_BIND_CACHE = Symbol.for('DamenScript.bindCache');
 
   const isWS = c => c === ' ' || c === '\t' || c === '\r' || c === '\n';
   const isIdStart = c => /[A-Za-z_$]/.test(c);
@@ -884,28 +902,54 @@ const DamenScript = (() => {
 	  }
 	  
 	  get(n){
-		  if (n === 'this')
-			  return this.get('self'); // `this` -> `self`
-		  
-		  if (this.hasLocal(n))
-			  return this.map[n];
-		  
-		  if (this.parent)
-			  return this.parent.get(n);
-		  
-		  // --- fallback: resolve from `self` (aka `this`) if present
-		  const selfObj = this._getSelf();
-		  
-		  if (selfObj && typeof selfObj === 'object') {
-			  if (BLOCKED_PROPS.has(n))
-				  throw DRuntime(`Forbidden property: ${n}`);
-			  
-			  if (Object.prototype.hasOwnProperty.call(selfObj, n))
-				  return selfObj[n];
-		  }
-		  
-		  throw DRuntime(`Unknown identifier: ${n}`);
-	  }
+		 if (n === 'this')
+			 return this.get('self'); // alias
+	 
+		 // 1) local
+		 if (this.hasLocal(n))
+			 return this.map[n];
+	 
+		 // 2) parent chain
+		 if (this.parent) {
+			 try {
+				 return this.parent.get(n);
+			 } catch (e) {
+				 if (!(e && /Unknown identifier/.test(String(e.message)))) throw e;
+			 }
+		 }
+	 
+		 // 3) self/this fallback (match assignment behavior + auto-bind methods)
+		 const selfObj = this._getSelf();
+		 if (selfObj && typeof selfObj === 'object') {
+			 if (BLOCKED_PROPS.has(n))
+				 throw DRuntime(`Forbidden property: ${n}`);
+	 
+			 let v = selfObj[n]; // may be undefined; fine
+	 
+			 // Auto-bind plain functions to self so "getComponent(...)" works
+			 if (typeof v === 'function') {
+				 // cache per-self to avoid rebinding every lookup
+				 let cache = selfObj[DS_BIND_CACHE];
+				 if (!cache) {
+					 cache = new WeakMap();
+					 Object.defineProperty(selfObj, DS_BIND_CACHE, {
+						 value: cache, configurable: false, enumerable: false, writable: false
+					 });
+				 }
+				 let bound = cache.get(v);
+				 if (!bound) {
+					 bound = v.bind(selfObj);
+					 cache.set(v, bound);
+				 }
+				 return bound;
+			 }
+	 
+			 return v; // primitives/objects just pass through
+		 }
+	 
+		 // 4) no self to fall back to
+		 throw DRuntime(`Unknown identifier: ${n}`);
+	 }
 	  
 	  set(n, v) {
 		  if (this.hasLocal(n)) {

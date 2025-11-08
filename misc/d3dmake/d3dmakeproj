@@ -1,1 +1,1 @@
-cd $2 && zip -r ../$1.d3dproj . -x "__MACOSX" "*.DS_Store" && cd ..
+cd $1 && zip -r ../$1.d3dproj . -x "__MACOSX" "*.DS_Store" && cd ..

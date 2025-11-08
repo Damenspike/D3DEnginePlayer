@@ -175,7 +175,14 @@ async function initEditorCamera() {
 		editorAlwaysVisible: true,
 		engineScript: 'd3deditorcamera.js',
 		uuid: '',
-		components: [{ type: 'Camera', properties: {fieldOfView: 60, clipNear: 0.0001} }]
+		components: [{
+			type: 'Camera',
+			properties: {
+				fieldOfView: 60,
+				clipNear: 0.1,          // was 0.0001
+				clipFar: 100000         // was 10000000
+			}
+		}]
 	});
 	const editorLight = await cameraD3DObj.createObject({
 		name: 'Editor Camera Light',
@@ -725,6 +732,7 @@ async function addD3DObjectEditor(type) {
 		case 'sphere':
 		case 'pyramid':
 		case 'plane':
+		case 'particlesys':
 		case 'audiosrc':
 			supported = true;
 		break;
@@ -777,6 +785,10 @@ async function addD3DObjectEditor(type) {
 		case 'audiosrc':
 			newd3dobj.name = 'audio source';
 			newd3dobj.addComponent('AudioSource', {});
+		break;
+		case 'particlesys':
+			newd3dobj.name = 'particle system';
+			newd3dobj.addComponent('ParticleSystem', {});
 		break;
 	}
 	
@@ -1133,6 +1145,11 @@ function addComponent(type) {
 	_editor.updateInspector();
 }
 function onConsoleMessage({ level, message }) {
+	if(level == 'clear') {
+		_events.invoke('clear-console');
+		return;
+	}
+	
 	_editor.console.push({ level, message });
 
 	const maxLog = 10000;
@@ -1166,14 +1183,14 @@ function moveSelectionToView() {
 				}
 			}
 			
-			d3dobject.position = camPos.clone();
-			d3dobject.rotation = camRot.clone();
+			d3dobject.setPosition(camPos.clone());
+			d3dobject.setRotation(camRot.clone());
 		});
 	}
 	const undoMove = () => {
 		selectedObjects.forEach(d3dobject => {
-			d3dobject.position = d3dobject.__mstvOrigin.position.clone();
-			d3dobject.rotation = d3dobject.__mstvOrigin.rotation.clone();
+			d3dobject.setPosition(d3dobject.__mstvOrigin.position.clone());
+			d3dobject.setRotation(d3dobject.__mstvOrigin.rotation.clone())
 		});
 	}
 	
@@ -1211,14 +1228,14 @@ function alignSelectionToView() {
 				}
 			}
 			
-			d3dobject.position = camPos.clone();
-			d3dobject.rotation = camRot.clone();
+			d3dobject.setPosition(camPos.clone());
+			d3dobject.setRotation(camRot.clone());
 		});
 	}
 	const undoMove = () => {
 		selectedObjects.forEach(d3dobject => {
-			d3dobject.position = d3dobject.__mstvOrigin.position.clone();
-			d3dobject.rotation = d3dobject.__mstvOrigin.rotation.clone();
+			d3dobject.setPosition(d3dobject.__mstvOrigin.position.clone());
+			d3dobject.setRotation(d3dobject.__mstvOrigin.rotation.clone());
 		});
 	}
 	
@@ -1250,13 +1267,13 @@ function dropSelectionToGround() {
 				}
 			}
 			
-			dropToGroundIfPossible(d3dobject.object3d);
+			dropToGroundIfPossible(d3dobject);
 		});
 	}
 	const undoMove = () => {
 		selectedObjects.forEach(d3dobject => {
-			d3dobject.position = d3dobject.__dtgOrigin.position.clone();
-			d3dobject.rotation = d3dobject.__dtgOrigin.rotation.clone();
+			d3dobject.setPosition(d3dobject.__dtgOrigin.position.clone());
+			d3dobject.setRotation(d3dobject.__dtgOrigin.rotation.clone())
 		});
 	}
 	

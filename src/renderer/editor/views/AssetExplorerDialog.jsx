@@ -24,6 +24,9 @@ const EXT_GROUPS = {
 	all: []
 };
 
+const NONE_ITEM = Object.freeze({ path: '__NONE__', name: '' });
+function isNone(item){ return item?.path === NONE_ITEM.path; }
+
 function extOf(name) {
 	const m = /\.[a-z0-9]+$/i.exec(name || '');
 	return m ? m[0].toLowerCase() : '';
@@ -41,7 +44,7 @@ function listAssetsFromZip(zip, folder = 'assets/') {
 	zip.forEach((rel, file) => {
 		if (file.dir) return;
 		if (!rel.startsWith(folder)) return;
-		if(rel.includes('__Editor')) return;
+		if (rel.includes('__Editor')) return;
 		const name = rel.slice(folder.length);
 		if (!name) return;
 		out.push({ path: rel, name, compressedSize: file._dataCompressed?.length ?? 0 });
@@ -78,29 +81,30 @@ export default function AssetExplorerDialog({
 	// load/reset when opened
 	useEffect(() => {
 		_input.assetExplorerOpen = isOpen;
-		
 		if (!isOpen) return;
+
 		const items = listAssetsFromZip(zip, folder);
 		setAll(items);
 		setQuery('');
 		setExtFilter(defaultFilter);
 		setCustomExt('');
-	
+
 		// build a full path from selectedAsset (if it isn't already)
 		const fullPath = selectedAsset
 			? (selectedAsset.startsWith(folder) ? selectedAsset : `${folder}${selectedAsset}`)
 			: '';
-	
+
 		// try: match by full path, then by name (relative path)
 		let initial =
 			(fullPath && items.find(i => i.path === fullPath)) ||
 			(selectedAsset && items.find(i => i.name === selectedAsset)) ||
-			items[0] || null;
-	
+			(selectedAsset ? null : NONE_ITEM) || // if nothing selected, default to None
+			items[0] || NONE_ITEM;
+
 		setActive(initial);
-	
-		// scroll once the row actually exists in the DOM
-		if (initial) {
+
+		// scroll once the row actually exists in the DOM (skip for NONE row)
+		if (initial && !isNone(initial)) {
 			requestAnimationFrame(() => scrollIntoView(initial));
 		}
 	}, [isOpen, zip, folder, defaultFilter, selectedAsset]);
@@ -109,7 +113,7 @@ export default function AssetExplorerDialog({
 	useEffect(() => {
 		let cancelled = false;
 		(async () => {
-			if (!isOpen || !active) {
+			if (!isOpen || !active || isNone(active)) {
 				if (previewURL) URL.revokeObjectURL(previewURL);
 				setPreviewURL(null);
 				return;
@@ -127,19 +131,19 @@ export default function AssetExplorerDialog({
 	}, [active, isOpen]);
 
 	// ---- ENFORCED FILTER LOGIC ----
-	// If allowChangeFormat is false, we always use defaultFilter (ignore UI).
 	const effectiveFilter = allowChangeFormat ? extFilter : defaultFilter;
 	const effectiveCustomExt = allowChangeFormat ? customExt : '';
 	const allowedExts = resolveExts(effectiveFilter, effectiveCustomExt);
 
-	// Visible list (search + enforced filter)
+	// Visible list (search + enforced filter) + ALWAYS put "None" at top
 	const filtered = useMemo(() => {
 		const q = query.trim().toLowerCase();
-		return all.filter(it => {
+		const base = all.filter(it => {
 			if (q && !it.name.toLowerCase().includes(q)) return false;
 			if (effectiveFilter === 'all') return true;
 			return allowedExts.includes(extOf(it.name));
 		});
+		return [NONE_ITEM, ...base]; // ensure "None" is always first
 	}, [all, query, effectiveFilter, allowedExts]);
 
 	function handleKeyDown(e) {
@@ -167,6 +171,7 @@ export default function AssetExplorerDialog({
 	}
 
 	function scrollIntoView(item) {
+		if (isNone(item)) return;
 		const container = listRef.current;
 		if (!container) return;
 		const child = container.querySelector(`[data-path="${item.path}"]`);
@@ -174,7 +179,13 @@ export default function AssetExplorerDialog({
 	}
 
 	function tryCommitSelect(name) {
-		// If format change is disallowed, block wrong extensions
+		// Selecting NONE always passes '' and bypasses extension checks
+		if (name === '' || isNone(active)) {
+			onSelect?.('');
+			onClose?.();
+			return;
+		}
+		// Enforce allowed types otherwise
 		if (effectiveFilter !== 'all' && !allowedExts.includes(extOf(name))) {
 			const msg = `This field only accepts: ${allowedExts.join(', ')}`;
 			window._editor?.showError?.(msg) ?? alert(msg);
@@ -213,6 +224,7 @@ export default function AssetExplorerDialog({
 	if (!isOpen) return null;
 
 	const activeAllowed =
+		isNone(active) ? true :
 		!active ? false :
 		effectiveFilter === 'all' ? true :
 		allowedExts.includes(extOf(active.name));
@@ -238,7 +250,7 @@ export default function AssetExplorerDialog({
 						className="tf"
 						value={extFilter}
 						onChange={e => setExtFilter(e.target.value)}
-						disabled={!allowChangeFormat} /* locked when enforcing */
+						disabled={!allowChangeFormat}
 					>
 						<option value="all">All</option>
 						<option value="model">3D Models</option>
@@ -288,6 +300,24 @@ export default function AssetExplorerDialog({
 					<div className="asset-dialog__list" ref={listRef}>
 						{filtered.map(it => {
 							const isActive = it.path === active?.path;
+							if (isNone(it)) {
+								return (
+									<div
+										key={it.path}
+										data-path={it.path}
+										className={`asset-row${isActive ? ' is-active' : ''}`}
+										onClick={() => setActive(NONE_ITEM)}
+										onDoubleClick={() => tryCommitSelect('')}
+										title="No asset"
+									>
+										<div className="asset-row__name">
+											<span className="asset-row__file">
+												<div className='ib vm'>No asset</div>
+											</span>
+										</div>
+									</div>
+								);
+							}
 							const ext = getExtension(it.path);
 							return (
 								<div
@@ -299,33 +329,35 @@ export default function AssetExplorerDialog({
 									title={it.path.slice(folder.length)}
 								>
 									<div className="asset-row__name">
-									  <span className="asset-row__path">
-										{it.name
-										  .split('/')
-										  .slice(0, -1)
-										  .map(n => fileNameNoExt(n))
-										  .join('/') + '/'}
-									  </span>
-									<span className="asset-row__file">
-										<div className='ib vm mrvs'>
-											{drawIconForExt(ext)}
-										</div>
-										<div className='ib vm'>
-											{fileNameNoExt(it.name.split('/').pop())}
-										</div>
-									</span>
-								</div>
+										<span className="asset-row__path">
+											{it.name
+												.split('/')
+												.slice(0, -1)
+												.map(n => fileNameNoExt(n))
+												.join('/') + '/'}
+										</span>
+										<span className="asset-row__file">
+											<div className='ib vm mrvs'>
+												{drawIconForExt(ext)}
+											</div>
+											<div className='ib vm'>
+												{fileNameNoExt(it.name.split('/').pop())}
+											</div>
+										</span>
+									</div>
 								</div>
 							);
 						})}
-						{!filtered.length && <div className="asset-empty">No assets</div>}
+						{filtered.length === 1 && isNone(filtered[0]) && (
+							<div className="asset-empty">No assets</div>
+						)}
 					</div>
 
 					<div className="asset-dialog__preview">
-						{active ? (
+						{active && !isNone(active) ? (
 							<PreviewPane name={active.name} url={previewURL} />
 						) : (
-							<div className="asset-preview__placeholder">Select an asset</div>
+							<div className="asset-preview__placeholder">No asset selected</div>
 						)}
 					</div>
 				</div>
@@ -334,8 +366,11 @@ export default function AssetExplorerDialog({
 					<button className="btn btn--ghost" onClick={onClose}>Cancel</button>
 					<button
 						className="btn"
-						disabled={!active || !activeAllowed}
-						onClick={() => { if (active) tryCommitSelect(active.name); }}
+						disabled={!activeAllowed}
+						onClick={() => {
+							if (isNone(active)) return tryCommitSelect('');
+							if (active) return tryCommitSelect(active.name);
+						}}
 						title={!activeAllowed ? `Allowed: ${allowedExts.join(', ')}` : undefined}
 					>
 						Select
@@ -354,14 +389,9 @@ function PreviewPane({ name, url }) {
 	const isAudio = /\.(mp3|ogg|wav|m4a|flac)$/.test(lower) && url;
 	const isMat = /\.mat$/.test(lower) && url;
 	
-	if (isMat) 
-		return <MaterialSphere url={url} />;
-	if (isImg) 
-		return <img className="asset-preview__image" src={url} alt={name} />;
-	if (isAudio) 
-		return <audio className="asset-preview__audio" src={url} controls />;
-	if (isText) 
-		return <iframe className="asset-preview__text" src={url} title={name} />;
-	
+	if (isMat) return <MaterialSphere url={url} />;
+	if (isImg) return <img className="asset-preview__image" src={url} alt={name} />;
+	if (isAudio) return <audio className="asset-preview__audio" src={url} controls />;
+	if (isText) return <iframe className="asset-preview__text" src={url} title={name} />;
 	return <div className="asset-preview__placeholder">No preview</div>;
 }

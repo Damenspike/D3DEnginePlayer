@@ -109,10 +109,11 @@ contextBridge.exposeInMainWorld('D3D', {
 		ipcRenderer.send('console-message', {level, message}),
 	openContextMenu: ({template, x, y}) => 
 		ipcRenderer.send('ctx-menu', {template, x, y}),
-	createNewProject: async ({ name, author, width, height, closeNewWindow, onComplete }) => {
+	createNewProject: async ({ name, author, width, height, template, closeNewWindow, onComplete }) => {
 		try {
+			const showErrorMessage = (msg) => showError({title: 'New Project', message: msg});
 			if (!name || !name.trim()) {
-				return showError('Project must have a name');
+				return showErrorMessage('Project must have a name');
 			}
 			
 			author = typeof author === 'string' ? author : '';
@@ -120,16 +121,33 @@ contextBridge.exposeInMainWorld('D3D', {
 			let w = Number(width);
 			let h = Number(height);
 			
-			if (!Number.isFinite(w)) 
-				return showError('Invalid width');
-			if (!Number.isFinite(h)) 
-				return showError('Invalid height');
+			if (!Number.isFinite(w) || !w) 
+				return showErrorMessage('Invalid width');
+			if (!Number.isFinite(h) || !h) 
+				return showErrorMessage('Invalid height');
+				
+			let templateName = 'newproject';
+			
+			switch(template) {
+				case 'aviation':
+				case 'waddle':
+				case 'car':
+				case 'jetpack':
+				case 'space':
+					templateName = template;
+				break;
+			}
 			
 			w = Math.max(10, Math.round(w));
 			h = Math.max(10, Math.round(h));
 			
 			// --- load template .d3dproj ---
-			const tplPath = await resolveTemplatePath();
+			const tplPath = await resolveTemplatePath(templateName);
+			
+			if(!tplPath) {
+				return showErrorMessage('Could not find template. You may need to re-install. Location: ' + tplPath);
+			}
+			
 			const data = await fs.readFile(tplPath); // Buffer
 			const zip = await JSZip.loadAsync(data);
 			
@@ -172,7 +190,7 @@ contextBridge.exposeInMainWorld('D3D', {
 			});
 		} catch (err) {
 			console.error(err);
-			showError('Failed to create project');
+			showErrorMessage('Failed to create project. ' + err.toString());
 		}
 	},
 	
@@ -196,14 +214,15 @@ function getExtension(path) {
 	return path.slice(lastDot + 1).toLowerCase();
 }
 
-async function resolveTemplatePath() {
+async function resolveTemplatePath(templateName = 'newproject') {
 	// Prefer asking the main process (works in dev & prod)
 	try {
-		const p = await ipcRenderer.invoke('resolve-template-path', 'public/engine/newproject.d3dproj');
+		const p = await ipcRenderer.invoke('resolve-template-path', `public/engine/templates/${templateName}.d3dproj`);
 		if (p) return p;
 	} catch {}
+	
 	// Fallbacks (dev)
-	return path.join(__dirname, '..', 'public', 'engine', 'newproject.d3dproj');
+	return path.join(__dirname, '..', 'public', 'engine', 'templates', `${templateName}.d3dproj`);
 }
 
 addIPCListener('select-all');

@@ -97,6 +97,9 @@ export default function GameView({editorMode}) {
 		});
 		
 		_events.on('select-all', () => {
+			if(!game2dref.current.contains(document.activeElement) && !game3dref.current.contains(document.activeElement))
+				return;
+			
 			// select all in game view
 			const allObjects = _editor.focus.children.filter(o => 
 				(o.is2D && _editor.mode == '2D') || 

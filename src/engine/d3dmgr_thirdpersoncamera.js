@@ -8,6 +8,7 @@ export default class ThirdPersonCameraManager {
 		this.d3dobject = d3dobject;
 		this.component = component;
 
+		this.distanceMultiplier = 1;
 		this._yaw = 0;
 		this._pitch = 0;
 		this._distance = Number(this.component?.properties?.distance ?? 1);
@@ -56,7 +57,7 @@ export default class ThirdPersonCameraManager {
 			focus.y += height;
 
 			const offset = this.d3dobject.forward.clone();
-			offset.set(fx, fy, fz).multiplyScalar(-this._distance);
+			offset.set(fx, fy, fz).multiplyScalar(-this._distance * this.distanceMultiplier);
 
 			const camPos = focus.clone().add(offset);
 

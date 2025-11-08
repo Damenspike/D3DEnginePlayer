@@ -1388,14 +1388,16 @@ export default function AnimationInspector() {
 								setDraggingKey(false);
 								const dx = Math.abs(startKeyframePos.x - e.pageX);
 								
-								if(keyed && dx < 5) {
-									// select key if no dragging happened
-									selectKey(e, key); 
-									
-									e.stopPropagation();
-								}else
-								if(dx > 5) {
-									e.stopPropagation();
+								if(!isBoxSelecting) {
+									if(keyed && dx < 5) {
+										// select key if no dragging happened
+										selectKey(e, key); 
+										
+										e.stopPropagation();
+									}else
+									if(dx > 5) {
+										e.stopPropagation();
+									}
 								}
 								
 								onFinishDraggingKeys?.();
@@ -1540,6 +1542,7 @@ export default function AnimationInspector() {
 					setSelectedKeys([]);
 					setSelectedTracks([]);
 				}
+				console.log('hello?');
 				boxDragUp(e);
 			}}
 			onMouseMove={updateMouseMove}

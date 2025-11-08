@@ -57,6 +57,21 @@
 			/>
 		</div>
 		
+		<div class="field">
+			<label>Template</label>
+			<select
+				id="newproj_template"
+				class="tf"
+			>
+				<option value="none">Empty Project</option>
+				<option value="aviation">Aviation Demo</option>
+				<option value="waddle">Waddle Demo</option>
+				<option value="car">Car Demo</option>
+				<option value="jetpack">Jetpack Demo</option>
+				<option value="space">Space Demo</option>
+			</select>
+		</div>
+		
 		<button
 			onclick="createProject()"
 			style="width: 100%;"
@@ -73,8 +88,9 @@
 		const author = document.getElementById('newproj_author').value;
 		const width = Number(document.getElementById('newproj_width').value);
 		const height = Number(document.getElementById('newproj_height').value);
+		const template = document.getElementById('newproj_template').value;
 		
-		D3D.createNewProject({name, author, width, height, 
+		D3D.createNewProject({name, author, width, height, template, 
 			onComplete: onProjectCreated,
 			closeNewWindow: true
 		});

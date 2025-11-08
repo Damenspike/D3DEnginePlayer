@@ -27,7 +27,7 @@ export default function EditorMain({theme}) {
 
 	return (
 		<div className="editor-main">
-			<div className="inspector resizable no-select" ref={inspRef}>
+			<div className="inspector resizable no-select no-scrollbar" ref={inspRef}>
 				<Inspector />
 			</div>
 			{editorMode == '2D' && (

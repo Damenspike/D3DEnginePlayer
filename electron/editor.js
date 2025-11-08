@@ -65,7 +65,7 @@ function createNewProjectWindow() {
 	newProjectWindow = new BrowserWindow({
 		title: 'New Project',
 		width: 380,
-		height: 350,
+		height: 430,
 		resizable: false,
 		webPreferences: {
 			preload: path.join(__dirname, 'preload-editor.cjs'),
@@ -152,7 +152,7 @@ async function createEditorWindow() {
 		});
 	
 		if(response === 0) {
-			editorWindow.webContents.send('request-save-and-close');
+			editorWindow.webContents.send('request-save-and-close', lastOpenedProjectUri);
 		}else
 		if (response === 1) {
 			editorDirty = false;
@@ -630,6 +630,10 @@ const menuTemplate = [
 					},
 					{ type: 'separator' },
 					{
+						label: 'Particle System',
+						click: () => sendAddObject('particlesys')
+					},
+					{
 						label: 'Audio Source',
 						click: () => sendAddObject('audiosrc')
 					}
@@ -654,6 +658,10 @@ const menuTemplate = [
 					{
 						label: 'Third Person Camera',
 						click: () => sendAddComponent('ThirdPersonCamera')
+					},
+					{
+						label: 'Particle System',
+						click: () => sendAddComponent('ParticleSystem')
 					},
 					{
 						label: 'Audio Listener',

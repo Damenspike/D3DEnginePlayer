@@ -27,6 +27,9 @@ const D3DConsole = {
 			const msg = args.length ? formatMessage(args) : 'Assertion failed';
 			_host.onConsoleMessage({ level: 'assert', message: msg });
 		}
+	},
+	clear: () => {
+		_host.onConsoleMessage({ level: 'clear' });
 	}
 };
 
