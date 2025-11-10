@@ -80,10 +80,7 @@ export default class MeshManager {
 		return zf ? await zf.async('string') : null;
 	}
 
-	async _loadTextureFromRel(relPath) {
-		if (!relPath) 
-			return null;
-		const uuid = _root.resolveAssetId(this._norm(relPath));
+	async _loadTexture(uuid) {
 		if (!uuid) 
 			return null;
 		const rel = this.d3dobject.resolvePathNoAssets(uuid);
@@ -100,10 +97,11 @@ export default class MeshManager {
 		return tex;
 	}
 
-	async _setMapRel(mat, key, relPath, isColor = false) {
+	async _setMapRel(mat, key, uuid, isColor = false) {
 		if (!(key in mat)) 
 			return;
-		if (!relPath) {
+		
+		if (!uuid) {
 			if (mat[key]) {
 				try { mat[key].dispose?.(); } catch {}
 				mat[key] = null;
@@ -111,15 +109,21 @@ export default class MeshManager {
 			}
 			return;
 		}
-		const tex = await this._loadTextureFromRel(relPath);
-		if (!tex) 
-			return;
+		
+		const tex = await this._loadTexture(uuid);
+		if (!tex) return;
+		
+		// glTF-friendly defaults
+		tex.flipY = false;
+		
 		if (isColor) {
 			if ('colorSpace' in tex) tex.colorSpace = THREE.SRGBColorSpace;
 			else tex.encoding = THREE.sRGBEncoding;
 		}
+		
 		tex.wrapS = THREE.RepeatWrapping;
 		tex.wrapT = THREE.RepeatWrapping;
+		
 		mat[key] = tex;
 		mat.needsUpdate = true;
 	}
@@ -130,19 +134,31 @@ export default class MeshManager {
 			doubleSided,
 			mapOffset, mapRepeat,
 			normalMapOffset, normalMapRepeat,
+	
+			// pull top-level map fields too
+			map, normalMap, roughnessMap, metalnessMap, emissiveMap, aoMap, alphaMap,
+	
 			...rest
 		} = params;
-		
+	
+		// clean ctor params (avoid passing string paths to material ctor)
 		delete rest.mapOffset; 
 		delete rest.mapRepeat;
 		delete rest.normalMapOffset; 
 		delete rest.normalMapRepeat;
 		delete rest.doubleSided; 
 		delete rest.maps;
-		
-		if (doubleSided === true) 
-			rest.side = THREE.DoubleSide;
-		
+	
+		delete rest.map;
+		delete rest.normalMap;
+		delete rest.roughnessMap;
+		delete rest.metalnessMap;
+		delete rest.emissiveMap;
+		delete rest.aoMap;
+		delete rest.alphaMap;
+	
+		if (doubleSided === true) rest.side = THREE.DoubleSide;
+	
 		if (type === 'MeshBasicMaterial') {
 			delete rest.metalness;
 			delete rest.roughness;
@@ -150,7 +166,23 @@ export default class MeshManager {
 			delete rest.emissiveIntensity;
 			delete rest.envMapIntensity;
 		}
-		return { ctorParams: rest, pulled: { maps, mapOffset, mapRepeat, normalMapOffset, normalMapRepeat } };
+	
+		// merge nested + top-level into one 'maps' bundle the loader understands
+		const mergedMaps = {
+			...(maps || {}),
+			...(map           ? { map } : null),
+			...(normalMap     ? { normalMap } : null),
+			...(roughnessMap  ? { roughnessMap } : null),
+			...(metalnessMap  ? { metalnessMap } : null),
+			...(emissiveMap   ? { emissiveMap } : null),
+			...(aoMap         ? { aoMap } : null),
+			...(alphaMap      ? { alphaMap } : null),
+		};
+	
+		return {
+			ctorParams: rest,
+			pulled: { maps: mergedMaps, mapOffset, mapRepeat, normalMapOffset, normalMapRepeat }
+		};
 	}
 
 	async _buildMaterialFromMatUUID(uuid) {

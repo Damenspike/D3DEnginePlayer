@@ -1,17 +1,21 @@
 /**
  * Interpolate a clip at absolute time (seconds).
  *
- * @param {number} timeSec         Absolute time in seconds (NOT normalized)
- * @param {number[]|null} times    Key times in seconds (ascending). If null/omitted, falls back to evenly-spaced behavior.
- * @param {number[]|Array} values  Flat array (xyz/xyzw)* or array of vec/quat-likes (length = keyCount)
+ * @param {number} timeSec Absolute time in seconds (NOT normalized)
+ * @param {number[]|null} times Key times in seconds (ascending). If null/omitted, falls back to evenly-spaced behavior.
+ * @param {number[]|Array} values Flat array (xyz/xyzw)* or array of vec/quat-likes (length = keyCount)
  * @param {'auto'|'vector'|'quaternion'} mode
- * @param {function} tween         Optional easing: u∈[0,1]→[0,1]. If omitted, linear used.
- * @param {function} customInterp  Optional (a,b,u) => interpolated array (same shape as a/b)
+ * @param {function} tween Optional easing: u in [0,1] to [0,1]. If omitted, linear used.
+ * @param {function} customInterp Optional (a,b,u) => interpolated array (same shape as a/b)
+ * @param {boolean} reverse Optional flag to interpolate in reverse direction (default: false)
  * @returns {{x:number,y:number,z:number,w?:number}|null}
  */
 export function interpolateClip(timeSec, times, values, mode = 'auto', tween = (u) => u, customInterp) {
+	const reverse = timeSec < 0;
+	
+	timeSec = Math.abs(timeSec); // always positive
+	
 	if (!values || values.length === 0) return null;
-
 	const isFlat = (typeof values[0] === 'number');
 
 	// Helper: resolve stride for flat arrays
@@ -86,7 +90,10 @@ export function interpolateClip(timeSec, times, values, mode = 'auto', tween = (
 	// If times is not provided, fall back to evenly-spaced behavior over 0..1 scaled by key count
 	if (!Array.isArray(times) || times.length === 0) {
 		// legacy evenly spaced path — interpret timeSec in range [0..1] mapped across keys
-		const tNorm = clamp01(timeSec); // here caller must pass normalized if they were using old behavior
+		let tNorm = clamp01(timeSec); // caller must pass normalized if using old behavior
+		if (reverse) tNorm = 1 - tNorm;
+		tNorm = clamp01(tNorm);
+
 		if (isFlat) {
 			const stride = resolveStrideFlat(values, mode);
 			const keys = values.length / stride;
@@ -102,6 +109,7 @@ export function interpolateClip(timeSec, times, values, mode = 'auto', tween = (
 			if (stride === 4) return toObject(slerpQuat(a, b, uEased));
 			return toObject(lerpVec3(a, b, uEased));
 		}
+
 		const n = values.length;
 		let f = tNorm * (n - 1);
 		let i = Math.floor(f);
@@ -119,6 +127,13 @@ export function interpolateClip(timeSec, times, values, mode = 'auto', tween = (
 	const keyCount = isFlat ? (values.length / resolveStrideFlat(values, mode)) | 0 : values.length;
 	if (keyCount <= 0) return null;
 
+	// Reverse time mapping if requested
+	if (reverse) {
+		const minT = times[0];
+		const maxT = times[times.length - 1];
+		timeSec = minT + maxT - timeSec;
+	}
+
 	// boundary clamps
 	if (timeSec <= times[0]) return toObject(readValue(values, 0, mode));
 	if (timeSec >= times[times.length - 1]) return toObject(readValue(values, keyCount - 1, mode));
@@ -131,17 +146,13 @@ export function interpolateClip(timeSec, times, values, mode = 'auto', tween = (
 		else lo = mid + 1;
 	}
 	const j = lo, i = j - 1;
-
 	const ti = times[i], tj = times[j];
 	const dt = (tj - ti) || 1e-8;
 	let u = (timeSec - ti) / dt;
 	u = clamp01(typeof tween === 'function' ? tween(u) : u);
-
 	const a = readValue(values, i, mode);
 	const b = readValue(values, j, mode);
-
 	if (typeof customInterp === 'function') return toObject(customInterp(a, b, u));
-
 	const stride = (a.length === 4 || mode === 'quaternion') ? 4 : 3;
 	return (stride === 4) ? toObject(slerpQuat(a, b, u)) : toObject(lerpVec3(a, b, u));
 }

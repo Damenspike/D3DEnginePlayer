@@ -17,6 +17,7 @@ import D3DThirdPersonCameraManager from './d3dmgr_thirdpersoncamera.js';
 import D3DAudioListenerManager from './d3dmgr_audiolistener.js';
 import D3DAudioSourceManager from './d3dmgr_audiosource.js';
 import D3DParticleSystemManager from './d3dmgr_particlesystem.js';
+import D3DCameraCollisionManager from './d3dmgr_cameracollision.js';
 
 import { WebSafeFonts } from './d3dfonts.js';
 
@@ -240,6 +241,7 @@ const D3DComponents = {
 	},
 	Rigidbody: {
 		name: 'Rigidbody',
+		sectionsLast: true,
 		fields: {
 			'kind': { 
 				label: 'Kind', 
@@ -263,9 +265,11 @@ const D3DComponents = {
 				],
 				def: 'dynamic'
 			},
+			
 			'shape': { 
 				label: 'Shape', 
 				type: 'select',
+				section: 'shape',
 				options: [
 					{name: 'trimesh', label: 'Mesh'},
 					{name: 'box', label: 'Box'},
@@ -276,15 +280,71 @@ const D3DComponents = {
 				def: 'trimesh',
 				description: 'The type of shape this object will use in physics interactions'
 			},
-			'shapeBias': {
-				label: 'Bias', 
-				type: 'number',
-				def: 1,
-				description: 'Affects the scale of the generated physics shape'
+			// === Shape configuration fields ===
+			'autoCalculateShapes': {
+				label: 'Auto-calculate shapes',
+				type: 'boolean',
+				section: 'shape',
+				def: true,
+				description: 'Automatically derives shape dimensions from the object’s geometry when building the rigidbody.'
 			},
+			'shapeOffset': {
+				label: 'Shape offset',
+				type: 'vector3',
+				section: 'shape',
+				def: { x:0, y:0, z:0 },
+				// show for primitive shapes
+				condition: c => ['box','sphere','capsule'].includes(c.properties.shape)
+			},
+			
+			// ---- Box shape dimensions ----
+			'boxSize': {
+				label: 'Box size',
+				type: 'vector3',
+				section: 'shape',
+				def: { x: 1, y: 1, z: 1 },
+				description: 'Full box dimensions (local space, before world scaling).',
+				condition: c => c.properties.shape === 'box' && !c.properties.autoCalculateShapes
+			},
+			
+			// ---- Sphere shape dimensions ----
+			'sphereRadius': {
+				label: 'Sphere radius',
+				type: 'number',
+				section: 'shape',
+				min: 0,
+				step: 0.01,
+				def: 0.5,
+				description: 'Sphere radius before world scaling.',
+				condition: c => c.properties.shape === 'sphere' && !c.properties.autoCalculateShapes
+			},
+			
+			// ---- Capsule shape dimensions ----
+			'capsuleRadius': {
+				label: 'Capsule radius',
+				type: 'number',
+				section: 'shape',
+				min: 0,
+				step: 0.01,
+				def: 0.5,
+				description: 'Radius of the capsule hemispheres before world scaling.',
+				condition: c => c.properties.shape === 'capsule' && !c.properties.autoCalculateShapes
+			},
+			'capsuleHeight': {
+				label: 'Capsule height',
+				type: 'number',
+				section: 'shape',
+				min: 0,
+				step: 0.01,
+				def: 1,
+				description: 'Height of the capsule cylinder (excluding caps) before world scaling.',
+				condition: c => c.properties.shape === 'capsule' && !c.properties.autoCalculateShapes
+			},
+			
 			'friction': {
 				label: 'Friction',
 				type: 'number',
+				section: 'physics',
 				min: 0,
 				max: 1,
 				def: 0.5,
@@ -293,6 +353,7 @@ const D3DComponents = {
 			'bounciness': {
 				label: 'Bounciness',
 				type: 'number',
+				section: 'physics',
 				min: 0,
 				max: 1,
 				def: 0.5,
@@ -301,6 +362,7 @@ const D3DComponents = {
 			'density': {
 				label: 'Density',
 				type: 'number',
+				section: 'physics',
 				min: 0,
 				max: Infinity,
 				def: 1,
@@ -309,6 +371,7 @@ const D3DComponents = {
 			'drag': {
 				label: 'Drag',
 				type: 'number',
+				section: 'physics',
 				min: 0,
 				max: Infinity,
 				def: 1,
@@ -317,6 +380,7 @@ const D3DComponents = {
 			'angularDrag': {
 				label: 'Angular drag',
 				type: 'number',
+				section: 'physics',
 				min: 0,
 				max: Infinity,
 				def: 1,
@@ -577,7 +641,7 @@ const D3DComponents = {
 		fields: {
 			'text': {
 				label: 'Text',
-				type: 'string',
+				type: 'longstring',
 				def: 'Insert text here'
 			},
 			'fontFamily': {
@@ -931,7 +995,6 @@ const D3DComponents = {
 	},
 	ParticleSystem: {
 		name: 'Particle System',
-		is2Dand3D: true,
 		displaySectionNames: true,
 		manager: D3DParticleSystemManager,
 		fields: {
@@ -1134,6 +1197,37 @@ const D3DComponents = {
 				step: 0.01
 			}
 		}
+	},
+	CameraCollision: {
+		name: 'Camera Collision',
+		fields: {
+			'targetName': {
+				label: 'Target name',
+				description: 'Path to the target object instance (.target property pointing to an object instance overrides this value)',
+				type: 'string',
+				def: ''
+			},
+			'targetOffset': {
+				label: 'Target offset',
+				description: 'Offset applied in world space to the player position before collision resolution',
+				type: 'vector3',
+				def: {x: 0, y: 0, z: 0}
+			},
+			'radius': {
+				label: 'Collision radius',
+				description: 'Camera will offset the collision point by this amount',
+				type: 'number',
+				def: 0.5,
+				step: 0.1
+			},
+			'offset': {
+				label: 'Collision offset',
+				description: 'Offset applied in world space to the camera after a collision is solved',
+				type: 'vector3',
+				def: {x: 0, y: 0, z: 0}
+			}
+		},
+		manager: D3DCameraCollisionManager
 	}
 }
 

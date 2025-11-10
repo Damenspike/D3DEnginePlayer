@@ -47,12 +47,12 @@ export default function AnimationInspector() {
 	const [startKeyframePos_, setStartKeyframePos_] = useState({x: 0, y: 0});
 	const [draggingKey, setDraggingKey] = useState(false);
 	const [recording, setRecording] = useState(false);
+	
 	/* AI BOX SELECT */
 	const [isBoxSelecting, setIsBoxSelecting] = useState(false);
 	const [boxStart, setBoxStart] = useState({ x: 0, y: 0 });   // client coords
 	const [boxNow, setBoxNow] = useState({ x: 0, y: 0 });       // client coords
 	const [boxPrimed, setBoxPrimed] = useState(false);
-	/* AI BOX SELECT */
 	
 	const frameWidth = 10 * (resolution + 0.5);
 	const duration = activeClip?.duration ?? 0;
@@ -425,11 +425,11 @@ export default function AnimationInspector() {
 			return;
 		
 		clipState.updateTransforms(currentTime * activeClip.duration);
-		clipState.setNormalTime(currentTime);
+		clipState.setNormalizedTime(currentTime);
 	}, [currentTime]);
 	
 	useEffect(() => {
-		console.log(activeClip);
+		//console.log(activeClip);
 		
 		// Set duration state for visuals
 		setClipDuration(activeClip?.duration ?? 0);
@@ -444,13 +444,8 @@ export default function AnimationInspector() {
 				if(!selectedObject || !activeClip || !animManager)
 					return;
 				
-				const clipState = animManager.getClipState(activeClip.uuid);
-				
-				if(!clipState)
-					return;
-				
 				console.log('Clicked outside of animation editor, resetting transforms...');
-				clipState.resetAnimationTransforms();
+				resetAnimation();
 			}
 		}
 		
@@ -779,20 +774,21 @@ export default function AnimationInspector() {
 		setCurrentTime(snapped);
 	}
 	const updateZoom = (e) => {
-		e.preventDefault();
-		
-		const baseSens = 0.0015;
+		// no preventDefault — keep natural scrolling alive unless you want to zoom-only mode
+		const baseSens = 0.0005;            // smaller = slower zoom per wheel tick
 		const sens = e.shiftKey ? baseSens * 4 : baseSens;
-		const min = 0.005;
+	
+		const min = 0.0000000000000000000000005;
 		const max = 2;
-		
+	
 		const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
-		
-		setResolution((prev) => {
-			const scale = Math.pow(1 - sens, e.deltaY);
-			return clamp(prev * scale, min, max);
+	
+		setResolution(prev => {
+			// Linear: directly add/subtract scaled delta
+			let next = prev - e.deltaY * sens; // negative deltaY = scroll up = zoom in
+			return clamp(next, min, max);
 		});
-	}
+	};
 	const deleteKey = (key) => {
 		const frameNumber = Math.floor(key.time * fps);
 		const objectTrack = key.objectTrack;
@@ -947,7 +943,20 @@ export default function AnimationInspector() {
 		});
 		const uuid = _root.resolveAssetId(path);
 		await animManager.addClipFromUUID(uuid);
+		
+		resetAnimation();
 		setActiveClip(animManager.clips[uuid]);
+	}
+	const resetAnimation = () => {
+		if(!activeClip)
+			return;
+		
+		const clipState = animManager.getClipState(activeClip.uuid);
+		
+		if(!clipState)
+			return;
+		
+		clipState.resetAnimationTransforms();
 	}
 	
 	const drawAnimationEditor = () => {
@@ -1165,16 +1174,25 @@ export default function AnimationInspector() {
 											return;
 										}
 										
+										resetAnimation();
 										setActiveClip(clip);
 									});
 									return;
 								}
 								
+								resetAnimation();
 								setActiveClip(clip);
 							}}
 						>
 							{drawSelect()}
 						</select>
+						
+						<button 
+							style={{minWidth: 0, width: 30, marginLeft: 5}}
+							onClick={() => createNewAnimationClip()}
+						>
+							+
+						</button>
 					</div>
 				</div>
 			)
@@ -1542,7 +1560,6 @@ export default function AnimationInspector() {
 					setSelectedKeys([]);
 					setSelectedTracks([]);
 				}
-				console.log('hello?');
 				boxDragUp(e);
 			}}
 			onMouseMove={updateMouseMove}

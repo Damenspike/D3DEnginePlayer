@@ -600,6 +600,10 @@ const menuTemplate = [
 						click: () => sendAddObject('sphere')
 					},
 					{
+						label: 'Cone',
+						click: () => sendAddObject('cone')
+					},
+					{
 						label: 'Pyramid',
 						click: () => sendAddObject('pyramid')
 					},
@@ -658,6 +662,10 @@ const menuTemplate = [
 					{
 						label: 'Third Person Camera',
 						click: () => sendAddComponent('ThirdPersonCamera')
+					},
+					{
+						label: 'Camera Collision',
+						click: () => sendAddComponent('CameraCollision')
 					},
 					{
 						label: 'Particle System',
@@ -965,14 +973,16 @@ ipcMain.on('editor-status', (_, { inputFocussed, codeEditorOpen, activeElement }
 	if(typeof codeEditorOpen === 'boolean')
 		codeEditorActive = codeEditorOpen;
 	
-	try {
-		editorWindow && editorWindow.webContents && editorWindow.webContents.setIgnoreMenuShortcuts(
-			activeElement?.tag == 'TEXTAREA' || 
-			(activeElement?.tag == 'INPUT' && activeElement?.type == 'text')
-		);
-	}catch(e) {
-		console.error(e);
-	};
+	if (editorWindow && !editorWindow.isDestroyed()) {
+		const wc = editorWindow.webContents;
+		if (wc && !wc.isDestroyed()) {
+			const shouldIgnore = (
+				activeElement?.tag === 'TEXTAREA' ||
+				(activeElement?.tag === 'INPUT' && activeElement?.type === 'text')
+			);
+			wc.setIgnoreMenuShortcuts(shouldIgnore);
+		}
+	}
 		
 	updateEditorMenusEnabled();
 });

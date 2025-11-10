@@ -17,7 +17,9 @@ import {
 	fileName,
 	fileNameNoExt,
 	isDirectory,
-	upperFirst
+	upperFirst,
+	toggleAllLights,
+	toggleLight
 } from './d3dutility.js';
 import {
 	readLocalTRSFromZip
@@ -347,6 +349,22 @@ function startAnimationLoop() {
 		if(_editor.mode == '2D') {
 			renderer2d.render(); // render 2d
 			renderer2d.renderGizmos();
+		}
+		
+		if (_editor.lightsEnabled !== _editor.__lastLightsEnabled) {
+			const lightsOn = !!_editor.lightsEnabled;
+			const editorLight = _editor.editorLight.object3d;
+		
+			// Mark editor light so global toggle skips it
+			editorLight.userData.ignoreGlobalLightToggle = true;
+		
+			// Apply global state to all NON-editor lights
+			toggleAllLights(_root.object3d, lightsOn);
+			
+			// Flip the editor light to the opposite state
+			toggleLight(editorLight, !lightsOn);
+		
+			_editor.__lastLightsEnabled = lightsOn;
 		}
 		
 		if (_editor.focus != _root) {
@@ -731,6 +749,7 @@ async function addD3DObjectEditor(type) {
 		case 'capsule':
 		case 'sphere':
 		case 'pyramid':
+		case 'cone':
 		case 'plane':
 		case 'particlesys':
 		case 'audiosrc':
@@ -770,6 +789,7 @@ async function addD3DObjectEditor(type) {
 		case 'sphere':
 		case 'pyramid':
 		case 'plane':
+		case 'cone':
 			newd3dobj.name = type;
 			newd3dobj.addComponent('Mesh', {
 				mesh: _root.resolveAssetId(

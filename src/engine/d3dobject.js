@@ -618,6 +618,7 @@ export default class D3DObject {
 				_root.superIndex = {};
 				
 			_root.superIndex[child.uuid] = child;
+			_root.updateSuperIndex();
 		}
 		
 		if(this.object3d) // 2d doesn't have an object3d
@@ -1133,7 +1134,7 @@ export default class D3DObject {
 		const a = this.findAssetByPath(path);
 		
 		if(!a)
-			console.warn(`Can't resolve asset id for path ${path}`);
+			console.trace(`Can't resolve asset id for path ${path}`);
 		
 		return a?.uuid || '';
 	}
@@ -1471,8 +1472,16 @@ export default class D3DObject {
 		if(this.parent == null)
 			throw new Error("Can't delete _root");
 			
-		if(this.__auto_gltf)
-			throw new Error("Can't delete managed object");
+		if(this.__auto_gltf) {
+			if(window._editor) {
+				_editor.showError({
+					title: 'Delete',
+					message: 'This object can not be deleted because it is part of a 3D model'
+				});
+			}
+			console.error("Can't delete managed object");
+			return;
+		}
 		
 		const idx = this.parent.children.indexOf(this);
 		
@@ -1488,6 +1497,8 @@ export default class D3DObject {
 		
 		delete this.parent[this.name];
 		delete _root.superIndex[this.uuid];
+		
+		_root.updateSuperIndex();
 		
 		this.checkSymbols();
 	}
@@ -1727,5 +1738,10 @@ export default class D3DObject {
 			if(l && typeof l === 'function')
 				l();
 		});
+	}
+	updateSuperIndex() {
+		if(this != _root) return;
+		this.superObjects = Object.values(this.superIndex);
+		this.superObjectsThree = this.superObjects.map(o => o.object3d);
 	}
 }

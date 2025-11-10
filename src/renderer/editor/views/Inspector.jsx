@@ -675,6 +675,51 @@ export default function Inspector() {
 						)
 						break;
 					}
+					case 'longstring': {
+						fieldContent = (
+							<textarea
+								className="tf"
+								value={current ?? ''}
+								readOnly={field.readOnly}
+								rows={field.rows ?? 3}
+								onChange={e => {
+									let val = e.target.value;
+									
+									if (field.convert)
+										val = field.convert(val);
+									
+									dummyComponent.properties[fieldId] = val;
+									update();
+								}}
+								onBlur={e => {
+									let val = String(e.target.value) || '';
+									
+									if (field.convert)
+										val = field.convert(val);
+										
+									addStep(val);
+									
+									dummyComponent.properties[fieldId] = val;
+									
+									object.setComponentValue(
+										component.type,
+										fieldId,
+										val
+									);
+									
+									update();
+								}}
+								style={{
+									resize: field.resize ?? 'vertical',
+									width: '100%',
+									minHeight: '60px',
+									fontFamily: 'inherit',
+									fontSize: 'inherit'
+								}}
+							/>
+						);
+						break;
+					}
 					case 'number': {
 						fieldContent = (
 							<input 

@@ -1,4 +1,5 @@
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { ConvexHull } from 'three/addons/math/ConvexHull.js';
 
 export const MIME_D3D_ROW = "application/x-d3d-objectrow";
 
@@ -573,4 +574,106 @@ export function applyOpacity(o, opacity) {
 			o.material.needsUpdate = true;
 		}
 	}
+}
+
+export function toggleAllLights(scene, enabled) {
+	if (!(scene instanceof THREE.Scene)) {
+		console.warn('toggleAllLights: provided object is not a THREE.Scene');
+		return;
+	}
+	scene.traverse((obj) => {
+		// Skip editor light (or any light you mark to ignore)
+		if (obj.isLight && obj.userData?.ignoreGlobalLightToggle) return;
+		toggleLight(obj, enabled);
+	});
+}
+
+export function toggleLight(obj, enabled) {
+	if (!obj.isLight) return;
+
+	ensureIntensityProxy(obj);
+	obj.userData._toggleDisabled = !enabled; // proxy shows 0 when disabled
+	obj.visible = enabled;
+}
+
+// same ensureIntensityProxy from before
+function ensureIntensityProxy(light) {
+	if (light.userData._hasIntensityProxy) return;
+	if (light.userData._rawIntensity === undefined) {
+		light.userData._rawIntensity = light.intensity;
+	}
+	Object.defineProperty(light, 'intensity', {
+		get() { return this.userData._toggleDisabled ? 0 : this.userData._rawIntensity; },
+		set(v) { this.userData._rawIntensity = v; },
+		configurable: true,
+		enumerable: true
+	});
+	light.userData._hasIntensityProxy = true;
+}
+
+export function buildConvexWireGeometry(verts, puff = 1.005) {
+	if (!(verts instanceof Float32Array) || (verts.length % 3) !== 0) {
+		throw new Error('[buildConvexWireGeometry] verts must be Float32Array with length % 3 === 0');
+	}
+	if (!(Number.isFinite(puff)) || puff <= 0) {
+		throw new Error('[buildConvexWireGeometry] puff must be a positive finite number');
+	}
+
+	// Compute centroid for gentle outward "puff"
+	let cx = 0, cy = 0, cz = 0;
+	for (let i = 0; i < verts.length; i += 3) {
+		cx += verts[i + 0];
+		cy += verts[i + 1];
+		cz += verts[i + 2];
+	}
+	const count = verts.length / 3;
+	cx /= count; cy /= count; cz /= count;
+
+	// Build point objects (identity-preserved for indexing later)
+	const pts = new Array(count);
+	const pointToIndex = new Map();
+	for (let i = 0, j = 0; i < count; i++, j += 3) {
+		const x = verts[j + 0], y = verts[j + 1], z = verts[j + 2];
+		if (puff !== 1) {
+			const dx = x - cx, dy = y - cy, dz = z - cz;
+			pts[i] = new THREE.Vector3(cx + dx * puff, cy + dy * puff, cz + dz * puff);
+		} else {
+			pts[i] = new THREE.Vector3(x, y, z);
+		}
+		pointToIndex.set(pts[i], i);
+	}
+
+	// Convex hull
+	const hull = new ConvexHull().setFromPoints(pts);
+
+	// Collect unique edges from faces
+	const edgeSet = new Set(); // "i-j" with i < j
+	hull.faces.forEach((face) => {
+		let e = face.edge;
+		do {
+			const ia = pointToIndex.get(e.head().point);
+			const ib = pointToIndex.get(e.tail().point);
+			if (ia == null || ib == null) {
+				throw new Error('[buildConvexWireGeometry] failed to map hull edge vertices to indices');
+			}
+			const a = Math.min(ia, ib);
+			const b = Math.max(ia, ib);
+			edgeSet.add(`${a}-${b}`);
+			e = e.next;
+		} while (e !== face.edge);
+	});
+
+	// Positions for line segments
+	const positions = new Float32Array(edgeSet.size * 2 * 3);
+	let k = 0;
+	for (const key of edgeSet) {
+		const [a, b] = key.split('-').map(Number);
+		const A = pts[a], B = pts[b];
+		positions[k++] = A.x; positions[k++] = A.y; positions[k++] = A.z;
+		positions[k++] = B.x; positions[k++] = B.y; positions[k++] = B.z;
+	}
+
+	const geom = new THREE.BufferGeometry();
+	geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+	return geom;
 }

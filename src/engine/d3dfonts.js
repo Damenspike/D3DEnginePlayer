@@ -1,6 +1,8 @@
 export const WebSafeFonts = [
 	// Sans-serif
 	'Arial',
+	'Arial Narrow',
+	'Arial Black',
 	'Verdana',
 	'Tahoma',
 	'Trebuchet MS',

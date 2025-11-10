@@ -78,6 +78,7 @@ export default class D3DEditorState {
 		this.console = [];
 		this.lastSingleClick = 0;
 		this._mode = '3D';
+		this.lightsEnabled = false;
 		this.draw2d = {
 			fill: true,
 			line: true,

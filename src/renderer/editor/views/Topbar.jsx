@@ -7,7 +7,8 @@ import {
 	MdCameraswitch,
 	MdCode,
 	MdPlayArrow,
-	MdBackHand
+	MdBackHand,
+	MdLightbulb
 } from "react-icons/md";
 import { PiHandGrabbingFill } from "react-icons/pi";
 import { BiExpand } from "react-icons/bi";
@@ -19,6 +20,7 @@ export default function Topbar() {
 	const [_tool, setTool] = useState(_editor.tool);
 	const [_transformTool, setTransformTool] = useState(_editor.transformTool);
 	const [_mode, setMode] = useState(_editor.mode);
+	const [_lightsEnabled, setLightsEnabled] = useState(_editor.lightsEnabled);
 	
 	useEffect(() => {
 		function onKey(e) {
@@ -50,6 +52,10 @@ export default function Topbar() {
 	useEffect(() => {
 		_editor.setTransformTool(_transformTool);
 	}, [_transformTool]);
+	
+	useEffect(() => {
+		_editor.lightsEnabled = _lightsEnabled;
+	}, [_lightsEnabled]);
 	
 	const openDamen3DWebsite = () => {
 		D3D.openWebsite();
@@ -163,6 +169,17 @@ export default function Topbar() {
 						() => false,
 						() => D3D.echoBuild({prompt: false, play: true}),
 						'Build and play'
+					)
+				}
+			</div>
+			
+			<div className="tools-section">
+				{
+					drawToolButton(
+						(<MdLightbulb />),
+						() => _lightsEnabled,
+						() => setLightsEnabled(!_lightsEnabled),
+						'Lights'
 					)
 				}
 			</div>

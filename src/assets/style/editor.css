@@ -1006,6 +1006,8 @@ body.dark {
 			overflow-x: scroll;
 			outline: none;
 			
+			min-height: 100px;
+			
 			.key {
 				display: inline-block;
 				vertical-align: top;

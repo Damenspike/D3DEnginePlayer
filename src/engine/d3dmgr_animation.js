@@ -13,6 +13,7 @@ import {
 export const WRAP_MODE_ONCE = 'once';
 export const WRAP_MODE_LOOP = 'loop';
 export const WRAP_MODE_BOUNCE = 'bounce';
+export const WRAP_MODE_CLAMP = 'clamp';
 
 export default function AnimationManager(d3dobject, component) {
 	this.clipStates = {};
@@ -27,9 +28,19 @@ export default function AnimationManager(d3dobject, component) {
 		// CALLED BY ON INTERNAL ENTER FRAME PER OBJECT
 		/////////////////////////////////////////////////
 		
+		// Get states ordered by layer
+		const statesInOrder = Object.values(this.clipStates).sort((a, b) => {
+			if(a.layer === b.layer)
+				return 0;
+			else
+			if(a.layer > b.layer)
+				return 1;
+			else
+				return -1;
+		});
+		
 		// Update timing
-		for(let uuid in this.clipStates) {
-			const clipState = this.clipStates[uuid];
+		statesInOrder.forEach(clipState => {
 			const clip = clipState.clip;
 			
 			if(!clipState.playing) {
@@ -39,35 +50,47 @@ export default function AnimationManager(d3dobject, component) {
 				}
 					
 				clipState.wasPlaying = false;
-				continue;
+				return;
 			}
 			
 			clipState.wasPlaying = true;
 			clipState.stopped = false;
 			
-			//clipState.time = clipState.normalizedTime * clip.duration;
 			clipState.time += _time.delta * clipState.speed;
 			
 			// Clip has ended
-			if(clipState.time >= clip.duration) {
+			if(Math.abs(clipState.time) >= clip.duration) {
 				if(clipState.wrapMode == WRAP_MODE_ONCE) {
 					clipState.time = 0;
 					clipState.playing = false;
 					clipState.resetAnimationTransforms();
-				}
+				}else
 				if(clipState.wrapMode == WRAP_MODE_LOOP) {
 					clipState.time = 0;
-				}
+				}else
 				if(clipState.wrapMode == WRAP_MODE_BOUNCE) {
 					clipState.speed = -clipState.speed;
+				}else
+				if(clipState.wrapMode == WRAP_MODE_CLAMP) {
+					// Do nothing
 				}
 			}
 			
 			clipState.normalizedTime = clipState.time / clip.duration;
 			
+			// Clamp time
+			if(clipState.normalizedTime > 1) {
+				clipState.normalizedTime = 1;
+				clipState.time = clip.duration;
+			}else
+			if(clipState.normalizedTime < 0) {
+				clipState.normalizedTime = 0;
+				clipState.time = 0;
+			}
+			
 			clipState.updateListener();
 			clipState.updateTransforms();
-		}
+		});
 	}
 	this.__loadClips = async () => {
 		for(let uuid of component.properties.clips) {
@@ -273,6 +296,7 @@ export default function AnimationManager(d3dobject, component) {
 		clipState.speed = options?.speed ?? clipState.speed;
 		clipState.wrapMode = options?.wrapMode ?? clipState.wrapMode;
 		clipState.tween = options?.tween ?? clipState.tween;
+		clipState.layer = Number(options?.layer) || clipState.layer;
 		clipState.listener = options?.listener;
 	}
 	this.pause = (clipName) => {
@@ -295,12 +319,21 @@ export default function AnimationManager(d3dobject, component) {
 		clip.time = 0;
 		clip.normalizedTime = 0;
 	}
+	this.getState = (clipName) => {
+		const uuid = this.resolveClipUUID(clipName);
+		
+		if(!uuid || !this.clipExists(uuid))
+			return;
+		
+		return this.getClipState(uuid);
+	}
 }
 function AnimationState({d3dobject, clip}) {
 	this.playing = false;
 	this.time = 0;
 	this.normalizedTime = 0;
 	this.speed = 1;
+	this.layer = 0;
 	this.clip = clip;
 	this.wrapMode = WRAP_MODE_ONCE;
 	this.tween = Tween.Linear;
@@ -358,8 +391,10 @@ function AnimationState({d3dobject, clip}) {
 			d3dtarget.resetAnimationTransform();
 		}
 	}
-	this.setNormalTime = (t) => {
+	this.setNormalizedTime = (t) => {
+		if(isNaN(t)) return;
 		this.time = t * this.clip.duration;
+		this.normalizedTime = t;
 	}
 	this.findAnimationTarget = (name) => {
 		return (name == this.d3dobject.name || name == '__self__') ? 

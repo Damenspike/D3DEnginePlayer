@@ -31,7 +31,7 @@ function updateZoom() {
 	const delta = _time.delta;
 	const wheelDelta = _input.getWheelDelta();
 	const mult = _input.getKeyDown('control') ? 3 : 1;
-	const speed = zoomSpeed * mult * delta;
+	const speed = zoomSpeed * mult * delta * (_input.zoomMult || 1);
 	
 	this.object3d.translateZ(wheelDelta.y * speed);
 }
@@ -49,6 +49,8 @@ function moveForward(distance) {
 function focusOn(targets, distance = null, duration = 0.35, padding = 1.15, pointSize = 0.5) {
 	const list = [...targets];
 	if (!list.length) return;
+	
+	_input.zoomMult = 1;
 	
 	// union world-space AABB (includes object scale/children)
 	const box = Box3().makeEmpty();
@@ -124,6 +126,11 @@ function focusOn(targets, distance = null, duration = 0.35, padding = 1.15, poin
 			dist = 5;
 		}
 	}
+	
+	let zm = dist / 20;
+	if(zm < 0.25)
+		zm = 0.25;
+	_input.zoomMult = zm;
 
 	// camera forward
 	const forward = Vector3();
