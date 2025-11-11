@@ -9,6 +9,8 @@ import {
 	FORBIDDEN_PROPS
 } from './damenscript-schema.js';
 
+import Tween from './d3dtween.js';
+
 Math.lerp = (a, b, time, easeFn) => {
 	const fn = easeFn || Tween.Linear;
 	const u  = Math.max(0, Math.min(1, time));

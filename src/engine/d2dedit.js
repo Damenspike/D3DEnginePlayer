@@ -449,7 +449,7 @@ export default class D2DEdit {
 		};
 
 		// guides (canvas center + other 2D objects in focus group)
-		const guides = U.buildAlignGuides(this.d2drenderer, this.canvas, _editor?.focus, objs);
+		const guides = U.buildAlignGuides(this.d2drenderer, this.canvas, _editor?.focus, objs, { center: 'project' });
 		const snapPx = Math.max(4, Number(_editor?.draw2d?.snapPx || 10));
 		const snap = U.findSnapDelta(proposed, guides, snapPx); // { dx, dy, vLine, hLine } in canvas px
 
@@ -499,6 +499,7 @@ export default class D2DEdit {
 			const g = obj?.graphic2d;
 			const paths = Array.isArray(g?._paths) ? g._paths : [];
 			if (paths.length === 0) continue;
+			if (U.isRectLike2D(obj)) continue;
 
 			const world = U.worldDOMMatrix(obj);
 			const screen = U.viewMatrix(this.d2drenderer).multiply(world);

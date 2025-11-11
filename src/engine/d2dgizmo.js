@@ -145,7 +145,7 @@ export default class D2DGizmo {
 		ctx.save();
 		ctx.setTransform(1,0,0,1,0,0);
 		ctx.lineWidth = 1;
-		ctx.strokeStyle = '#37e3ff88';
+		ctx.strokeStyle = '#0099ffff';
 
 		if (Number.isFinite(g.v)) {
 			ctx.beginPath(); ctx.moveTo(g.v, 0); ctx.lineTo(g.v, h); ctx.stroke();
@@ -825,8 +825,13 @@ export default class D2DGizmo {
 		const ys = [];
 
 		// canvas center lines
-		xs.push(this.canvas.width * 0.5);
-		ys.push(this.canvas.height * 0.5);
+		const Mv = U.viewMatrix(this.d2drenderer);
+		const W = _dimensions.width;
+		const H = _dimensions.height;
+		const centers = U.applyDOM(Mv, W * 0.5, H * 0.5);
+		
+		xs.push(centers.x);
+		ys.push(centers.y);
 
 		// gather all 2D descendants under focus (unique top-level roots like your existing helpers)
 		const roots = new Set();

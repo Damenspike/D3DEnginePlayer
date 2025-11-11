@@ -19,7 +19,8 @@ import {
 	isDirectory,
 	upperFirst,
 	toggleAllLights,
-	toggleLight
+	toggleLight,
+	updateObject
 } from './d3dutility.js';
 import {
 	readLocalTRSFromZip
@@ -153,6 +154,12 @@ function initRenderers() {
 	renderer3d.toneMapping = THREE.ACESFilmicToneMapping;
 	renderer3d.toneMappingExposure = 1.0;
 	
+	renderer3d.shadowMap.enabled = true;
+	renderer3d.shadowMap.type = THREE.PCFSoftShadowMap;
+	renderer3d.physicallyCorrectLights = true;
+	renderer3d.toneMapping = THREE.ACESFilmicToneMapping;
+	renderer3d.outputColorSpace = THREE.SRGBColorSpace;
+	
 	renderer2d.setPixelRatio(window.devicePixelRatio);
 	renderer2d.setSize(_container2d.clientWidth, _container2d.clientHeight);
 	
@@ -197,7 +204,8 @@ async function initEditorCamera() {
 		engineScript: 'd3deditorlight.js',
 		components: [{ type: 'DirectionalLight', properties: {
 			color: '0xffffff',
-			intensity: 2
+			intensity: 2,
+			castShadow: false
 		} }]
 	});
 	
@@ -277,11 +285,6 @@ function initFocusOverlay() {
 	});
 	_editor._overlayQuad = new THREE.Mesh(geo, mat);
 	_editor._overlayScene.add(_editor._overlayQuad);
-}
-
-function updateObject(methods, d3dobj) {
-	methods.forEach(method => d3dobj[method]?.());
-	d3dobj.children.forEach(child => updateObject(methods, child));
 }
 
 function afterRenderShowObjects() {
@@ -1334,7 +1337,7 @@ function zoomStep(step) {
 		_editor.renderer2d.gizmo._zoomStep(step);
 	}else
 	if(_editor.mode == '3D') {
-		_editor.camera.translateZ(-step);
+		_editor.camera.translateZ(-step * 2 * (_input.zoomMult || 1));
 	}
 }
 function focusOnSelected() {

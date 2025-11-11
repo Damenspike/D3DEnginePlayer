@@ -705,7 +705,7 @@ const menuTemplate = [
 			},
 			{
 				label: 'Drop to Ground',
-				accelerator: 'CmdOrCtrl+Alt+G',
+				accelerator: 'CmdOrCtrl+G',
 				click: () => sendDropToGround()
 			},
 			{ type: 'separator' },
@@ -724,12 +724,12 @@ const menuTemplate = [
 			{ type: 'separator' },
 			{
 				label: 'Group',
-				accelerator: 'CmdOrCtrl+G',
+				accelerator: 'CmdOrCtrl+Alt+G',
 				click: () => sendGroupObjects()
 			},
 			{
 				label: 'Ungroup',
-				accelerator: 'CmdOrCtrl+Shift+G',
+				accelerator: 'CmdOrCtrl+Alt+U',
 				click: () => sendUngroupObjects()
 			},
 			{ type: 'separator' },

@@ -79,8 +79,8 @@ export default class RigidbodyManager {
 			this.component._cache = next;
 		}
 		
-		this.__onInternalEnterFrame = () => {
-			this._sampleMotionStrict();
+		this.__onInternalPhysicsUpdate = () => {
+			this._sampleMotion();
 		};
 	}
 
@@ -147,10 +147,10 @@ export default class RigidbodyManager {
 	}
 
 	// Convenience prop aliases (property-style)
-	get velocity()           { return Object.freeze({...this.getVelocity()}); }
+	get velocity()           { return Object.freeze(this.getVelocity()); }
 	set velocity(v)          { this.setVelocity(v?.x || 0, v?.y || 0, v?.z || 0); }
 	
-	get angularVelocity()           { return Object.freeze({...this.getAngularVelocity()}); }
+	get angularVelocity()           { return Object.freeze(this.getAngularVelocity()); }
 	set angularVelocity(v)          { this.setAngularVelocity(v?.x || 0, v?.y || 0, v?.z || 0); }
 	
 	get speed()              { return this._cachedSpeed; }
@@ -287,7 +287,7 @@ export default class RigidbodyManager {
 	// ---------------------------------------------------------------------
 	getVelocity() {
 		if (!this.component._rb) throw new Error('[RigidbodyManager] getVelocity with no RB.');
-		return this._cachedVelocity;
+		return this._cachedVelocity.clone();
 	}
 	setVelocity(vx, vy, vz) {
 		const rb = this.component._rb;
@@ -376,7 +376,7 @@ export default class RigidbodyManager {
 	// ---------------------------------------------------------------------
 	getAngularVelocity() {
 		if (!this.component._rb) throw new Error('[RigidbodyManager] getAngularVelocity with no RB.');
-		return this._cachedAngularVelocity;
+		return this._cachedAngularVelocity.clone();
 	}
 	setAngularVelocity(wx, wy, wz) {
 		const rb = this.component._rb;
@@ -410,42 +410,37 @@ export default class RigidbodyManager {
 		this.setAngularVelocity(newAng.x, newAng.y, newAng.z);
 	}
 	
-	/** Unity-style AddTorque – modes: 'torque' | 'impulse' | 'velocityChange' */
 	addTorque(vec, { mode = 'torque', space = 'local' } = {}) {
 		const rb = this.component._rb;
-		if (!rb || this.kind === 'fixed') return;
+		if (!rb) return;
+		
+		const dt = _physics.fixedDt;
 	
-		const dt = _physics?.fixedDt ?? (1 / 60);
-		const t = new THREE.Vector3(vec.x ?? 0, vec.y ?? 0, vec.z ?? 0);
+		// build vector
+		const t = new THREE.Vector3(vec.x || 0, vec.y || 0, vec.z || 0);
 	
-		// ----- native Rapier torque-impulse path -----
-		if (typeof rb.applyTorqueImpulse === 'function') {
-			let torqueImpulse = t.clone();
-	
-			if (mode === 'torque') torqueImpulse.multiplyScalar(dt);
-			// 'impulse' → use as-is
-			// 'velocityChange' → not supported natively – fall back below
-	
-			if (space === 'local') {
-				this.d3dobject.object3d.updateMatrixWorld();
-				const q = this.d3dobject.object3d.getWorldQuaternion(new THREE.Quaternion());
-				torqueImpulse.applyQuaternion(q);
-			}
-	
-			rb.applyTorqueImpulse({ x: torqueImpulse.x, y: torqueImpulse.y, z: torqueImpulse.z }, true);
-			if (mode !== 'velocityChange') return;   // early-out for torque/impulse
+		// local -> world
+		if (space === 'local') {
+			this.d3dobject.object3d.updateMatrixWorld();
+			const q = this.d3dobject.object3d.getWorldQuaternion(new THREE.Quaternion());
+			t.applyQuaternion(q);
 		}
 	
-		// ----- velocityChange or fallback generic path -----
+		// modes
 		if (mode === 'velocityChange') {
-			this.addAngularVelocity(t, space);
+			// interpret vec as Δω (rad/s), world-space
+			this.addAngularVelocity({ x: t.x, y: t.y, z: t.z }, 'world');
 			return;
 		}
-	
-		// generic torque → angular-velocity change (single inertia division)
-		const inertia = 1; // Rapier does not expose inertia tensor easily – treat as 1 (or use mass if you have a better estimate)
-		const dw = t.clone().multiplyScalar(dt / Math.max(1e-6, inertia));
-		this.addAngularVelocity(dw, space);
+		if (mode === 'impulse') {
+			// torque impulse (N·m·s), world-space
+			rb.applyTorqueImpulse({ x: t.x, y: t.y, z: t.z }, true);
+			return;
+		}
+		
+		// mode === 'torque' → τ·dt
+		const imp = t.multiplyScalar(dt);
+		rb.applyTorqueImpulse({ x: imp.x, y: imp.y, z: imp.z }, true);
 	}
 	
 	// Convenience
@@ -1025,48 +1020,65 @@ export default class RigidbodyManager {
 	/* =========================================================
 	 * INTERNAL: MOTION SAMPLING
 	 * ======================================================= */
-	_sampleMotionStrict() {
-		const rb = this.component._rb;
-		if (!rb) throw new Error('[RigidbodyManager] Missing rigid body during play tick.');
-		const dt = _physics?.fixedDt;
-		if (!(dt > 0)) throw new Error('[RigidbodyManager] _physics.fixedDt must be > 0.');
-	
-		// ---- FIXED: always read the *real* velocities from the body first ----
-		let lin = { x: 0, y: 0, z: 0 };
-		let ang = { x: 0, y: 0, z: 0 };
-		if (rb.isSleeping?.()) {
-			lin = { x: 0, y: 0, z: 0 };
-			ang = { x: 0, y: 0, z: 0 };
-		} else {
-			if (rb.linvel) lin = rb.linvel();
-			else if (rb.linearVelocity) lin = rb.linearVelocity();
-	
-			if (rb.angvel) ang = rb.angvel();
-			else if (rb.angularVelocity) ang = rb.angularVelocity();
-		}
-	
-		this._cachedVelocity.set(lin.x, lin.y, lin.z);
-		this._cachedAngularVelocity.set(ang.x, ang.y, ang.z);
-		this._cachedSpeed = this._cachedVelocity.length();
-	
-		// ---- Keep pose sampling for kinematic / sleeping bodies (unchanged) ----
-		const p = rb.translation();
-		const q = rb.rotation();
-		const pos = new THREE.Vector3(p.x, p.y, p.z);
-		const rot = new THREE.Quaternion(q.x, q.y, q.z, q.w);
-	
-		if (!this._hadPrevSample) {
-			this._lastCoMPos.copy(pos);
-			this._lastRot.copy(rot);
-			this._hadPrevSample = true;
+	_takeSnapshot() {
+		return {
+			pos: this.d3dobject.worldPosition.clone(),
+			rot: this.d3dobject.worldQuaternion.clone()
+		};
+	}
+	_sampleMotion() {
+		const now = this._takeSnapshot();
+		const then = this._lastSnapshot || now;
+		const dt = _physics.fixedDt;
+		
+		if(dt <= 0) {
+			this._lastSnapshot = now;
 			return;
 		}
-	
-		// (optional) keep the old delta-based angular velocity as a fallback
-		// – not needed now that we read angvel directly
-	
-		this._lastCoMPos.copy(pos);
-		this._lastRot.copy(rot);
+		
+		// Position
+		{
+			const posDelta = now.pos.clone().sub(then.pos);
+			const velocity = posDelta.clone().divideScalar(dt);
+			
+			this._cachedVelocity.copy(velocity);
+			this._cachedSpeed = velocity.length();
+		}
+		// Rotation → angular velocity (world vector, rad/s)
+		{
+			// delta rotation from then → now
+			const dq = now.rot.clone().multiply(then.rot.clone().invert()).normalize();
+		
+			// make sure we take the shortest arc (q and -q are same rotation)
+			// flipping when w < 0 avoids 2π jumps
+			if (dq.w < 0) dq.set(-dq.x, -dq.y, -dq.z, -dq.w);
+		
+			// angle and axis from quaternion
+			// theta in [0, π]
+			const w = THREE.MathUtils.clamp(dq.w, -1, 1);
+			const theta = 2 * Math.acos(w);                   // total angle rotated
+			const sinHalf = Math.sqrt(Math.max(0, 1 - w*w));  // |v| = sin(theta/2)
+		
+			let axisX = 0, axisY = 0, axisZ = 0;
+			if (sinHalf > 1e-8) {
+				const inv = 1 / sinHalf;                      // normalize imaginary part
+				axisX = dq.x * inv;
+				axisY = dq.y * inv;
+				axisZ = dq.z * inv;
+			} else {
+				// near-identity rotation: axis numerically unstable → use imaginary part directly
+				// this keeps tiny spins from snapping
+				axisX = dq.x * 2; 
+				axisY = dq.y * 2; 
+				axisZ = dq.z * 2;
+			}
+		
+			// angular velocity ω = axis * (theta / dt)
+			const scale = (theta / dt);
+			this._cachedAngularVelocity.set(axisX * scale, axisY * scale, axisZ * scale);
+		}
+		
+		this._lastSnapshot = now;
 	}
 	
 	// add these helpers (copied from your old code)

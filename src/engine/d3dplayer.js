@@ -116,6 +116,12 @@ function initRenderer() {
 	renderer3d.toneMapping = THREE.ACESFilmicToneMapping;
 	renderer3d.toneMappingExposure = 1.0;
 	
+	renderer3d.shadowMap.enabled = true;
+	renderer3d.shadowMap.type = THREE.PCFSoftShadowMap;
+	renderer3d.physicallyCorrectLights = true;
+	renderer3d.toneMapping = THREE.ACESFilmicToneMapping;
+	renderer3d.outputColorSpace = THREE.SRGBColorSpace;
+	
 	renderer2d.setPixelRatio(window.devicePixelRatio);
 	renderer2d.setSize(_container2d.clientWidth, _container2d.clientHeight);
 	

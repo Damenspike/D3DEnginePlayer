@@ -32,6 +32,7 @@ export default class D3DObject {
 		this.suuid = uuidv4();
 		this.parent = parent; // D3DObject or null for root
 		this.name = name;
+		this._enabled = true;
 		
 		// INTERNAL SENSITIVE VARS
 		this.__ready = false;
@@ -47,6 +48,21 @@ export default class D3DObject {
 	///////////////////////////////
 	// Getters and setters only
 	///////////////////////////////
+	get enabled() {
+		return this._enabled;
+	}
+	set enabled(v) {
+		this._enabled = !!v;
+		
+		if(this.parent) {
+			if(this._enabled && !this.parent.object3d.children.includes(this.object3d))
+				this.parent.object3d.add(this.object3d);
+			else
+			if(!this._enabled && this.parent.object3d.children.includes(this.object3d))
+				this.parent.object3d.remove(this.object3d);
+		}
+	}
+	
 	get name() {
 		return this._name;
 	}
@@ -104,9 +120,9 @@ export default class D3DObject {
 	}
 	
 	get worldRotation() {
-		// return Euler in radians
 		const q = this.object3d.getWorldQuaternion(new THREE.Quaternion());
-		return new THREE.Euler().setFromQuaternion(q, 'XYZ');
+		const e = new THREE.Euler().setFromQuaternion(q, 'XYZ');
+		return new THREE.Vector3(e.x, e.y, e.z); // radians as a vector3
 	}
 	set worldRotation({ x, y, z }) {
 		if (Number.isNaN(x) || Number.isNaN(y) || Number.isNaN(z))
@@ -178,6 +194,29 @@ export default class D3DObject {
 		this.object3d.quaternion.set(x, y, z, w);
 	}
 	
+	get localEulerAngles() {
+		const e = new THREE.Euler();
+		e.setFromQuaternion(this.object3d.quaternion, 'YXZ');
+		const d = THREE.MathUtils.radToDeg;
+		const w = a => ((a % 360) + 360) % 360;
+		return Object.freeze({
+			x: w(d(e.x)),   // pitch
+			y: w(d(e.y)),   // yaw
+			z: w(d(e.z))    // roll
+		});
+	}
+	set localEulerAngles({ x = 0, y = 0, z = 0 }) {
+		const e = new THREE.Euler(
+			THREE.MathUtils.degToRad(x),
+			THREE.MathUtils.degToRad(y),
+			THREE.MathUtils.degToRad(z),
+			'YXZ'
+		);
+		this.object3d.quaternion.setFromEuler(e);
+		this.object3d.rotation.copy(e);
+		this.object3d.updateMatrixWorld();
+	}
+	
 	get localAttitude() {
 		// Build local basis (relative to parent) from the local quaternion
 		const q = this.object3d.quaternion;
@@ -197,33 +236,27 @@ export default class D3DObject {
 		const toDeg = THREE.MathUtils.radToDeg;
 		const wrap360 = a => (a % 360 + 360) % 360;
 		
-		return {
+		return Object.freeze({
 			pitch: toDeg(pitch),
 			yaw:   toDeg(yaw),
 			bank:  toDeg(bank),
-		};
+		});
 	}
 	set localAttitude({ pitch = 0, yaw = 0, bank = 0 }) {
 		const obj = this.object3d;
 	
-		// Convert to radians
-		const p = THREE.MathUtils.degToRad(pitch);
-		const y = THREE.MathUtils.degToRad(yaw);
-		const b = THREE.MathUtils.degToRad(bank);
+		// Flip everything
+		const s = -1;
 	
-		// Build quaternions for yaw (Y), pitch (X), and bank/roll (Z)
-		const qYaw   = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), y);
-		const qPitch = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), p);
-		const qBank  = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), b);
+		const e = new THREE.Euler(
+			THREE.MathUtils.degToRad(s * pitch), // X (pitch)
+			THREE.MathUtils.degToRad(s * yaw),   // Y (yaw)
+			THREE.MathUtils.degToRad(s * bank),  // Z (bank/roll)
+			'YXZ'                                 // yaw → pitch → bank
+		);
 	
-		// Compose final rotation — yaw * pitch * bank (Y → X → Z)
-		const qFinal = new THREE.Quaternion()
-			.multiply(qYaw)
-			.multiply(qPitch)
-			.multiply(qBank);
-	
-		obj.quaternion.copy(qFinal);
-		obj.rotation.setFromQuaternion(qFinal);
+		obj.quaternion.setFromEuler(e);
+		obj.rotation.copy(e);
 		obj.updateMatrixWorld(true);
 	}
 	
@@ -511,6 +544,16 @@ export default class D3DObject {
 			}
 			this.invokeEvent('exitFrame');
 		}
+		this.__onInternalPhysicsUpdate = () => {
+			//////////////////////////////////////////////
+			//// ENGINE LOOP USED FOR INTERNALS
+			//////////////////////////////////////////////
+			for(let i in this.__componentInstances) {
+				const mgr = this.__componentInstances[i];
+				mgr?.__onInternalPhysicsUpdate?.();
+			}
+			this.invokeEvent('physicsUpdate');
+		}
 	}
 	
 	async createObject(objData, executeScripts = true) {
@@ -598,6 +641,9 @@ export default class D3DObject {
 		// Assign SUUID
 		child.suuid = suuid ?? child.suuid;
 		
+		// Assign enabled toggle
+		child.enabled = objData.enabled !== undefined ? !!objData.enabled : true;
+		
 		////////////////////////
 		// ----- UUID ----- //
 		////////////////////////
@@ -621,7 +667,7 @@ export default class D3DObject {
 			_root.updateSuperIndex();
 		}
 		
-		if(this.object3d) // 2d doesn't have an object3d
+		if(this.object3d && child.enabled) // 2d doesn't have an object3d
 			this.object3d.add(child.object3d);
 		
 		this.children.push(child);
@@ -741,6 +787,9 @@ export default class D3DObject {
 	}
 	
 	async executeScripts() {
+		if(!this.enabled) 
+			return;
+		
 		const zip = this.root.zip;
 		
 		let script;
@@ -797,6 +846,7 @@ export default class D3DObject {
 			
 			Math: Object.freeze(Math),
 			JSON: Object.freeze(JSON),
+			Infinity,
 			
 			// JS Adaptors
 			Promise: Object.freeze(D3DPromise),
@@ -978,9 +1028,11 @@ export default class D3DObject {
 				
 				if(gizmo3d) {
 					this.addComponent('Mesh', {
-						'mesh': _root.resolveAssetId(gizmo3d.mesh),
-						'materials': gizmo3d.materials.map(path => _root.resolveAssetId(path)),
-						'__editorOnly': true
+						mesh: _root.resolveAssetId(gizmo3d.mesh),
+						materials: gizmo3d.materials.map(path => _root.resolveAssetId(path)),
+						__editorOnly: true,
+						castShadow: false,
+						receiveShadow: false
 					}, false);
 				}
 			})
@@ -1367,6 +1419,7 @@ export default class D3DObject {
 			uuid: this.uuid,
 			suuid: this.suuid,
 			name: this.name,
+			enabled: this.enabled,
 			position: {
 				x: this.position.x, 
 				y: this.position.y, 
@@ -1466,6 +1519,13 @@ export default class D3DObject {
 	lookAt(...params) {
 		if(this.object3d)
 			this.object3d.lookAt(...params)
+	}
+	worldToLocalDirection(dir) {
+		const invQuat = new THREE.Quaternion().copy(this.quaternion).invert();
+		return dir.clone().applyQuaternion(invQuat);
+	}
+	localToWorldDirection(dir) {
+		return dir.clone().applyQuaternion(this.quaternion);
 	}
 	
 	delete() {

@@ -41,6 +41,16 @@ const D3DComponents = {
 				type: 'file[]',
 				format: 'material',
 				def: []
+			},
+			'castShadow': {
+				label: 'Cast shadows',
+				type: 'boolean',
+				def: true
+			},
+			'receiveShadow': {
+				label: 'Receive shadows',
+				type: 'boolean',
+				def: true
 			}
 		},
 		persistent: true,
@@ -53,6 +63,16 @@ const D3DComponents = {
 				type: 'file[]',
 				format: 'material',
 				def: []
+			},
+			'castShadow': {
+				label: 'Cast shadows',
+				type: 'boolean',
+				def: true
+			},
+			'receiveShadow': {
+				label: 'Receive shadows',
+				type: 'boolean',
+				def: true
 			}
 		},
 		manager: D3DMeshManager
@@ -116,6 +136,7 @@ const D3DComponents = {
 	},
 	DirectionalLight: {
 		name: 'Directional Light',
+		sectionsLast: true,
 		fields: {
 			'color': {
 				label: 'Color',
@@ -131,7 +152,77 @@ const D3DComponents = {
 			'castShadow': { 
 				label: 'Casts shadows', 
 				type: 'boolean',
-				def: true
+				def: true,
+				section: 'shadow'
+			},
+			'shadowMapSize': {
+				label: 'Shadow map size',
+				description: 'Resolution of the shadow texture (power of two recommended, e.g. 1024–4096)',
+				type: 'number',
+				min: 128,
+				max: 8192,
+				step: 128,
+				def: 2048,
+				section: 'shadow',
+				condition: (c) => c.properties.castShadow
+			},
+			'shadowNear': {
+				label: 'Shadow camera near',
+				description: 'Near clipping plane for the shadow camera',
+				type: 'number',
+				min: 0.01,
+				step: 0.01,
+				def: 0.01,
+				section: 'shadow',
+				condition: (c) => c.properties.castShadow
+			},
+			'shadowFar': {
+				label: 'Shadow camera far',
+				description: 'Far clipping plane for the shadow camera',
+				type: 'number',
+				min: 1,
+				step: 1,
+				def: 500,
+				section: 'shadow',
+				condition: (c) => c.properties.castShadow
+			},
+			'shadowOrthoSize': {
+				label: 'Shadow orthographic size',
+				description: 'Half-extent of the orthographic shadow volume (larger = covers more scene, lower precision)',
+				type: 'number',
+				min: 1,
+				step: 1,
+				def: 50,
+				section: 'shadow',
+				condition: (c) => c.properties.castShadow
+			},
+			'shadowBias': {
+				label: 'Shadow bias',
+				description: 'Offset applied to depth to reduce shadow acne (negative)',
+				type: 'number',
+				step: 0.0001,
+				def: -0.01,
+				section: 'shadow',
+				condition: (c) => c.properties.castShadow
+			},
+			'shadowNormalBias': {
+				label: 'Shadow normal bias',
+				description: 'Adjusts bias based on surface normals (useful for skinned meshes)',
+				type: 'number',
+				step: 0.001,
+				def: 0,
+				section: 'shadow',
+				condition: (c) => c.properties.castShadow
+			},
+			'shadowRadius': {
+				label: 'Shadow blur radius',
+				description: 'Softness of PCF shadows',
+				type: 'number',
+				min: 0,
+				step: 0.1,
+				def: 1.0,
+				section: 'shadow',
+				condition: (c) => c.properties.castShadow
 			}
 		},
 		gizmo3d: {
@@ -145,6 +236,7 @@ const D3DComponents = {
 	},
 	PointLight: {
 		name: 'Point Light',
+		sectionsLast: true,
 		fields: {
 			'color': {
 				label: 'Color',
@@ -155,24 +247,85 @@ const D3DComponents = {
 				label: 'Intensity', 
 				type: 'number',
 				min: 0,
+				step: 0.01,
 				def: 1
 			},
 			'distance': { 
 				label: 'Distance', 
 				type: 'number',
 				min: 0,
-				def: 0 // no limit
+				step: 0.1,
+				def: 0, // no limit
+				description: 'Maximum range of the light. 0 = infinite.'
 			},
 			'decay': { 
 				label: 'Decay', 
 				type: 'number',
 				min: 0,
-				def: 2
+				step: 0.1,
+				def: 2,
+				description: 'Light attenuation over distance (physically correct = 2).'
 			},
 			'castShadow': { 
 				label: 'Casts shadows', 
 				type: 'boolean',
-				def: true
+				def: true,
+				section: 'shadow'
+			},
+			'shadowMapSize': {
+				label: 'Shadow map size',
+				description: 'Resolution of the shadow map texture (power of two).',
+				type: 'number',
+				min: 128,
+				max: 8192,
+				step: 128,
+				def: 1024,
+				section: 'shadow',
+				condition: (c) => c.properties.castShadow
+			},
+			'shadowBias': {
+				label: 'Shadow bias',
+				type: 'number',
+				step: 0.0001,
+				def: -0.01,
+				section: 'shadow',
+				condition: (c) => c.properties.castShadow
+			},
+			'shadowNormalBias': {
+				label: 'Shadow normal bias',
+				type: 'number',
+				step: 0.001,
+				def: 0,
+				section: 'shadow',
+				condition: (c) => c.properties.castShadow
+			},
+			'shadowRadius': {
+				label: 'Shadow blur radius',
+				description: 'Softens shadow edges when using PCFSoftShadowMap.',
+				type: 'number',
+				min: 0,
+				step: 0.1,
+				def: 1.0,
+				section: 'shadow',
+				condition: (c) => c.properties.castShadow
+			},
+			'shadowNear': {
+				label: 'Shadow camera near',
+				type: 'number',
+				min: 0.01,
+				step: 0.01,
+				def: 0.01,
+				section: 'shadow',
+				condition: (c) => c.properties.castShadow
+			},
+			'shadowFar': {
+				label: 'Shadow camera far',
+				type: 'number',
+				min: 1,
+				step: 1,
+				def: 500,
+				section: 'shadow',
+				condition: (c) => c.properties.castShadow
 			}
 		},
 		gizmo3d: {
@@ -186,6 +339,7 @@ const D3DComponents = {
 	},
 	SpotLight: {
 		name: 'Spot Light',
+		sectionsLast: true,
 		fields: {
 			'color': {
 				label: 'Color',
@@ -196,12 +350,14 @@ const D3DComponents = {
 				label: 'Intensity', 
 				type: 'number',
 				min: 0,
+				step: 0.01,
 				def: 1
 			},
 			'distance': { 
 				label: 'Distance', 
 				type: 'number',
 				min: 0,
+				step: 0.1,
 				def: 10
 			},
 			'angle': { 
@@ -209,12 +365,94 @@ const D3DComponents = {
 				type: 'slider',
 				min: 0,
 				max: 360,
+				step: 1,
 				def: 45
+			},
+			'penumbra': { 
+				label: 'Penumbra', 
+				description: 'Softness of the spotlight edge',
+				type: 'number',
+				min: 0,
+				max: 1,
+				step: 0.01,
+				def: 0
+			},
+			'decay': { 
+				label: 'Decay', 
+				type: 'number',
+				min: 0,
+				step: 0.1,
+				def: 1,
+				description: 'Light attenuation over distance'
 			},
 			'castShadow': { 
 				label: 'Casts shadows', 
 				type: 'boolean',
-				def: true
+				def: true,
+				section: 'shadow'
+			},
+			'shadowMapSize': {
+				label: 'Shadow map size',
+				type: 'number',
+				min: 128,
+				max: 8192,
+				step: 128,
+				def: 1024,
+				section: 'shadow',
+				condition: (c) => c.properties.castShadow
+			},
+			'shadowBias': {
+				label: 'Shadow bias',
+				type: 'number',
+				step: 0.0001,
+				def: -0.01,
+				section: 'shadow',
+				condition: (c) => c.properties.castShadow
+			},
+			'shadowNormalBias': {
+				label: 'Shadow normal bias',
+				type: 'number',
+				step: 0.001,
+				def: 0,
+				section: 'shadow',
+				condition: (c) => c.properties.castShadow
+			},
+			'shadowRadius': {
+				label: 'Shadow blur radius',
+				type: 'number',
+				min: 0,
+				step: 0.1,
+				def: 1.0,
+				section: 'shadow',
+				condition: (c) => c.properties.castShadow
+			},
+			'shadowNear': {
+				label: 'Shadow camera near',
+				type: 'number',
+				min: 0.01,
+				step: 0.01,
+				def: 0.01,
+				section: 'shadow',
+				condition: (c) => c.properties.castShadow
+			},
+			'shadowFar': {
+				label: 'Shadow camera far',
+				type: 'number',
+				min: 1,
+				step: 1,
+				def: 50,
+				section: 'shadow',
+				condition: (c) => c.properties.castShadow
+			},
+			'shadowFov': {
+				label: 'Shadow camera FOV',
+				type: 'number',
+				min: 1,
+				max: 120,
+				step: 1,
+				def: 45,
+				section: 'shadow',
+				condition: (c) => c.properties.castShadow
 			}
 		},
 		gizmo3d: {
@@ -282,18 +520,18 @@ const D3DComponents = {
 			},
 			// === Shape configuration fields ===
 			'autoCalculateShapes': {
-				label: 'Auto-calculate shapes',
+				label: 'Auto calculate shapes',
 				type: 'boolean',
 				section: 'shape',
 				def: true,
-				description: 'Automatically derives shape dimensions from the object’s geometry when building the rigidbody.'
+				description: 'Automatically derives shape dimensions from the object’s geometry when building the rigidbody.',
+				condition: c => ['box','sphere','capsule'].includes(c.properties.shape)
 			},
 			'shapeOffset': {
 				label: 'Shape offset',
 				type: 'vector3',
 				section: 'shape',
 				def: { x:0, y:0, z:0 },
-				// show for primitive shapes
 				condition: c => ['box','sphere','capsule'].includes(c.properties.shape)
 			},
 			

@@ -314,32 +314,13 @@ export function pickWorldPointAtScreen(sx, sy, camera, scene) {
 		.add(new THREE.Vector3(0, 0, -1).applyQuaternion(camera.getWorldQuaternion(new THREE.Quaternion())).multiplyScalar(5));
 }
 export function dropToGroundIfPossible(d3dobject) {
-	const obj3d = d3dobject.object3d;
-	if(!obj3d) return;
-	const box = new THREE.Box3().setFromObject(obj3d);
-	if (box.isEmpty()) {
-		return;
+	const hit = _physics.raycast(d3dobject.position, new THREE.Vector3(0, -1, 0), Infinity, {
+		filter: o => o.rootParent != d3dobject.rootParent
+	});
+	
+	if(hit) {
+		d3dobject.setPosition(hit.point);
 	}
-	const height = box.max.y - box.min.y;
-	// move so its bottom touches y=0
-	const worldPos = new THREE.Vector3();
-	obj3d.getWorldPosition(worldPos);
-	const deltaY = -box.min.y; // how much to lift/lower to bring bottom to 0
-	// convert delta to local (parent space)
-	const parent = obj3d.parent;
-	if (parent) {
-		const worldTarget = worldPos.clone().add(new THREE.Vector3(0, deltaY, 0));
-		parent.worldToLocal(worldTarget);
-		
-		d3dobject.setPosition(worldTarget);
-	} else {
-		const p = obj3d.position.clone();
-		
-		p.y += deltaY;
-		
-		d3dobject.setPosition(p);
-	}
-	obj3d.updateMatrixWorld(true);
 }
 export function fileName(filePath) {
 	const a = filePath.split(/[\\/]/);
@@ -676,4 +657,35 @@ export function buildConvexWireGeometry(verts, puff = 1.005) {
 	const geom = new THREE.BufferGeometry();
 	geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 	return geom;
+}
+export function updateObject(methods, d3dobj, ...params) {
+	methods.forEach(method => d3dobj[method]?.(...params));
+	d3dobj.children.forEach(child => updateObject(methods, child, ...params));
+}
+export function getHitNormalRotation(face, d3dobject) {
+	const object3d = d3dobject?.object3d;
+	
+	if(!object3d)
+		return;
+	
+	// Convert local-space face normal to world-space
+	const worldNormal = face.normal.clone()
+		.transformDirection(object3d.matrixWorld)
+		.normalize();
+
+	// Create a rotation that makes object's +Y axis align with worldNormal
+	const quat = new THREE.Quaternion();
+	const up = new THREE.Vector3(0, 1, 0);
+
+	// Handle edge case where normal is nearly opposite to up
+	if (Math.abs(up.dot(worldNormal)) > 0.9999) {
+		// Flip 180° around X if pointing straight down
+		quat.setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI);
+	} else {
+		const axis = new THREE.Vector3().crossVectors(up, worldNormal).normalize();
+		const angle = Math.acos(THREE.MathUtils.clamp(up.dot(worldNormal), -1, 1));
+		quat.setFromAxisAngle(axis, angle);
+	}
+
+	return quat;
 }

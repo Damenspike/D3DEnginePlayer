@@ -23,7 +23,8 @@ import {
 	MdUpload, MdCreateNewFolder, MdRefresh, MdDeleteForever,
 	MdOutlineInterests, MdTexture, MdDirectionsWalk,
 	MdFormatAlignLeft, MdFormatAlignCenter, MdFormatAlignRight,
-	MdLock, MdLockOpen
+	MdLock, MdLockOpen,
+	MdCheckBox, MdCheckBoxOutlineBlank
 } from 'react-icons/md';
 
 import { IoMdEye, IoMdEyeOff } from 'react-icons/io';
@@ -1647,6 +1648,21 @@ export default function Inspector() {
 								{
 									!!object.__editorState.hidden ? 
 										<IoMdEyeOff /> : <IoMdEye style={{opacity: 0.5}} />
+								}
+							</div>
+							<div 
+								className='option-button option-button--hidden'
+								title='Enabled'
+								onClick={(e) => {
+									e.stopPropagation();
+									object.enabled = !object.enabled;
+									update();
+								}}
+							>
+								{
+									!!object.enabled ? 
+										<MdCheckBox /> : 
+										<MdCheckBoxOutlineBlank style={{opacity: 0.5}} />
 								}
 							</div>
 						</div>

@@ -212,7 +212,7 @@ export default class D2DRenderer {
 		//this._dirty = false;
 	}
 	renderParent(d3dobject) {
-		if(!d3dobject.visible || d3dobject.__editorState.hidden)
+		if(!d3dobject.visible || d3dobject.__editorState.hidden || !d3dobject.enabled)
 			return;
 		
 		this.draw(d3dobject);

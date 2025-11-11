@@ -1,4 +1,8 @@
 import RAPIER from '@dimforge/rapier3d-compat';
+import {
+	updateObject,
+	getHitNormalRotation
+} from './d3dutility.js';
 
 export default class D3DPhysics {
 	// -------------------- World Settings --------------------
@@ -22,6 +26,7 @@ export default class D3DPhysics {
 		this.ready = false;
 		this.fixedDt = 1 / 60;
 		this._accum = 0;
+		this.delta = 0;
 
 		this._bodies = new Map(); // d3dobj.uuid -> { rb, colliders:[] }
 		this._toObj  = new Map(); // rb.handle -> d3dobj
@@ -41,20 +46,38 @@ export default class D3DPhysics {
 	}
 
 	step(dt) {
-		this._accum += dt;
-		while (this._accum >= this.fixedDt) {
+		this._accum = Math.min(this._accum + dt, this.fixedDt * 5); // clamp to avoid spiral
+		let didSteps = 0;
+	
+		while(this._accum >= this.fixedDt) {
 			this.world.timestep = this.fixedDt;
 			this.world.step();
 			this._accum -= this.fixedDt;
+			didSteps++;
 		}
-		// Sync RB -> Three/D3D
-		this._bodies.forEach(({ rb }, uuid) => {
-			const obj = this._toObj.get(rb.handle);
-			const t = rb.translation();
-			const q = rb.rotation();
-			obj.object3d.position.set(t.x, t.y, t.z);
-			obj.object3d.quaternion.set(q.x, q.y, q.z, q.w);
-		});
+		
+		if(didSteps > 0) {
+			// Sync RB -> Three/D3D *after* all substeps this render frame
+			this._bodies.forEach(({ rb }, uuid) => {
+				const obj = this._toObj.get(rb.handle);
+				const t = rb.translation();
+				const q = rb.rotation();
+				obj.object3d.position.set(t.x, t.y, t.z);
+				obj.object3d.quaternion.set(q.x, q.y, q.z, q.w);
+				obj.object3d.updateMatrixWorld(true);
+			});
+			
+			// Fire physics callbacks ONCE (because at least one substep ran)
+			if (window._player) {
+				updateObject([
+					'__onInternalPhysicsUpdate',
+					'__onPhysicsUpdate',
+					'onPhysicsUpdate'
+				], _root);
+			}
+		}
+		
+		return didSteps; // optional: useful for stats
 	}
 
 	dispose() {
@@ -172,21 +195,12 @@ export default class D3DPhysics {
 	}
 	
 	// -------------------- Raycasting --------------------
-	/**
-	 * Fast visual raycast using THREE.Raycaster.
-	 * Perfect for mouse picking, UI, line-of-sight.
-	 *
-	 * @param {THREE.Vector3} origin
-	 * @param {THREE.Vector3} direction (normalized recommended)
-	 * @param {number} maxDist
-	 * @param {Array} objects - Array of D3D objects (or their .object3d)
-	 * @returns {{hit: boolean, point: THREE.Vector3, distance: number, object: any}|null}
-	 */
-	raycast(origin, direction, maxDist = Infinity, opts = {}) {
+	raycast(origin, direction, opts = {}) {
 		const filter = opts.filter;
 		const all = !!opts.all;
+		const maxDist = Number(opts.maxDistance) || Infinity;
 		
-		let objects = opts.objects || [];
+		let objects = opts.objects?.filter(Boolean).map(d3d => d3d.object3d) || [];
 		if (!objects || objects.length === 0) {
 			objects = _root.superObjectsThree;
 		}
@@ -199,19 +213,23 @@ export default class D3DPhysics {
 		
 		if (intersects.length === 0) return null;
 		
-		const hits = intersects.map(hit => (
+		const hits = intersects
+		.filter(hit => !!hit.object.userData.d3dobject)
+		.map(hit => (
 			{
 				hit: true,
 				point: hit.point.clone(),
 				distance: hit.distance,
 				face: hit.face,
-				object: hit.object.userData.d3dobject
+				object: hit.object.userData.d3dobject,
+				object3d: hit.object,
+				normal: hit.face.normal
 			}
 		));
 		
 		return all ? hits : hits[0];
 	}
-	raycastFromCamera(camera, mouseX, mouseY, maxDist = 1000) {
+	raycastFromCamera(camera, mouseX, mouseY, maxDistance = 1000) {
 		if(!camera)
 			return;
 		
@@ -220,7 +238,7 @@ export default class D3DPhysics {
 		
 		const raycaster = new THREE.Raycaster();
 		raycaster.setFromCamera({ x: mouseX, y: mouseY }, camera);
-		return this.raycast(raycaster.ray.origin, raycaster.ray.direction, maxDist);
+		return this.raycast(raycaster.ray.origin, raycaster.ray.direction, { maxDistance });
 	}
 	
 	/**
@@ -321,9 +339,9 @@ export default class D3DPhysics {
 	linecast(start, end, opts = {}) {
 		// Compute direction & distance (exactly like raycast does internally)
 		const direction = new THREE.Vector3().subVectors(end, start);
-		const maxDist = start.distanceTo(end);
+		const maxDistance = start.distanceTo(end);
 		
-		const hit = this.raycast(start, direction, maxDist, opts);
+		const hit = this.raycast(start, direction, {...opts, maxDistance});
 		
 		if (!hit) return null;
 		

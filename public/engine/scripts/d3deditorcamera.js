@@ -127,7 +127,7 @@ function focusOn(targets, distance = null, duration = 0.35, padding = 1.15, poin
 		}
 	}
 	
-	let zm = dist / 20;
+	let zm = dist / 10;
 	if(zm < 0.25)
 		zm = 0.25;
 	_input.zoomMult = zm;
