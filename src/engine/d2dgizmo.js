@@ -6,6 +6,7 @@ export default class D2DGizmo {
 		this.d2drenderer = d2drenderer;
 		this.canvas = d2drenderer.domElement;
 		this.ctx = d2drenderer.ctx;
+		this.pivotPointRadius = 10;
 	
 		this.state = {
 			mode: null,            // 'move' | 'rotate' | 'scale' | 'marquee'
@@ -25,6 +26,9 @@ export default class D2DGizmo {
 			orig: null,
 			stepStart: null,
 			stepEnd: null,
+			
+			// pivot drag
+			pivotDrag: null,
 	
 			// snapping visuals (screen space)
 			alignGuide: { v:null, h:null, ttl:0 },
@@ -43,7 +47,7 @@ export default class D2DGizmo {
 		this._onWheel = this._onWheel.bind(this);
 		this._onKeyDown = this._onKeyDown.bind(this);
 		this._onMouseTrack = this._onMouseTrack.bind(this);
-		this._onAuxClick = (e) => { if (e.button === 1) e.preventDefault(); };
+		this._onAuxClick = (e) => { if(e.button === 1) e.preventDefault(); };
 	
 		// track mouse for anchored zoom
 		this._mouseCanvasX = NaN;
@@ -78,7 +82,7 @@ export default class D2DGizmo {
 		const ttool = _editor.transformTool; // 'Translate' | 'Rotate' | 'Scale' | 'All'
 		const sel = _editor.selectedObjects.filter(o => o?.is2D);
 		const showMarquee = this.state.mode === 'marquee';
-		if (!sel.length && !showMarquee && (this.state.alignGuide.ttl|0) <= 0) return;
+		if(!sel.length && !showMarquee && (this.state.alignGuide.ttl|0) <= 0) return;
 
 		const ctx = this.ctx;
 		ctx.save();
@@ -99,23 +103,32 @@ export default class D2DGizmo {
 
 		for (const o of sel) {
 			const r = U.worldAABBDeep(o);
-			if (!r) continue;
+			if(!r) continue;
 			ctx.strokeRect(r.minX, r.minY, r.maxX - r.minX, r.maxY - r.minY);
 		}
 
 		// gizmo
-		if (sel.length > 0) {
+		if(sel.length > 0) {
 			let frame = U.selectionFrame(sel);
-			if (!frame) { ctx.restore(); return; }
-			if (this.state.mode === 'scale' || this.state.mode === 'rotate') {
+			
+			if(!frame) { 
+				ctx.restore(); 
+				
+				if(tool == 'transform')
+					this._drawPivotPoint();
+				
+				return; 
+			}
+			
+			if(this.state.mode === 'scale' || this.state.mode === 'rotate') {
 				frame = { cx: this.state.cx, cy: this.state.cy, theta: this.state.theta };
 			}
 			const obb = U.selectionOBB(sel, frame);
-			if (obb) this._drawGizmo(frame, obb, px, ttool);
+			if(obb) this._drawGizmo(frame, obb, px, ttool);
 		}
 
 		// marquee
-		if (showMarquee) {
+		if(showMarquee) {
 			const a = this.state.start, b = this.state.last;
 			const x = Math.min(a.x, b.x);
 			const y = Math.min(a.y, b.y);
@@ -134,12 +147,15 @@ export default class D2DGizmo {
 		}
 
 		ctx.restore();
+		
+		if(tool == 'transform')
+			this._drawPivotPoint();
 	}
 
 	_renderAlignGuidesScreen(ctx) {
 		const g = this.state.alignGuide;
-		if (!g) return;
-		if ((g.ttl|0) <= 0) return;
+		if(!g) return;
+		if((g.ttl|0) <= 0) return;
 
 		const w = this.canvas.width, h = this.canvas.height;
 		ctx.save();
@@ -147,10 +163,10 @@ export default class D2DGizmo {
 		ctx.lineWidth = 1;
 		ctx.strokeStyle = '#0099ffff';
 
-		if (Number.isFinite(g.v)) {
+		if(Number.isFinite(g.v)) {
 			ctx.beginPath(); ctx.moveTo(g.v, 0); ctx.lineTo(g.v, h); ctx.stroke();
 		}
-		if (Number.isFinite(g.h)) {
+		if(Number.isFinite(g.h)) {
 			ctx.beginPath(); ctx.moveTo(0, g.h); ctx.lineTo(w, g.h); ctx.stroke();
 		}
 		ctx.restore();
@@ -176,13 +192,13 @@ export default class D2DGizmo {
 		ctx.translate(cx, cy);
 		ctx.rotate(theta);
 
-		if (showRotate || showScale) {
+		if(showRotate || showScale) {
 			ctx.strokeStyle = 'rgba(30,144,255,1)';
 			ctx.setLineDash([]);
 			ctx.strokeRect(minX, minY, w, h);
 		}
 
-		if (showScale) {
+		if(showScale) {
 			const handles = [
 				{ n:'tl', x:minX,        y:minY        },
 				{ n:'t',  x:minX + w/2,  y:minY        },
@@ -202,7 +218,7 @@ export default class D2DGizmo {
 			}
 		}
 
-		if (showRotate) {
+		if(showRotate) {
 			ctx.setLineDash([6 * px, 6 * px]);
 			ctx.strokeStyle = 'rgba(0,0,0,0.45)';
 			ctx.beginPath();
@@ -229,6 +245,51 @@ export default class D2DGizmo {
 		ctx.restore();
 	}
 
+	_drawPivotPoint() {
+		const ctx = this.ctx;
+		if(!ctx) return;
+	
+		const objs = (_editor.selectedObjects || []).filter(o => o?.is2D);
+		if(!objs.length) return;
+	
+		ctx.save();
+	
+		// Apply the same world-to-canvas projection as the rest of the scene
+		this.d2drenderer.applyDeviceTransform(ctx);
+	
+		// Convert pixel sizes to world units so it stays the same size visually
+		const rPx   = this.pivotPointRadius;
+		const rW    = U.pxToWorld(this.d2drenderer, rPx);
+		const lwW   = U.pxToWorld(this.d2drenderer, 2);
+		const cross = U.pxToWorld(this.d2drenderer, rPx * 1.5); // same proportion as before
+	
+		ctx.lineWidth   = lwW;
+		ctx.fillStyle   = '#ffffff';
+		ctx.strokeStyle = '#0099ff';
+	
+		for (const obj of objs) {
+			// pivot (local 0,0) in world space
+			const Mw = U.worldMatrix(obj);
+			const p  = U.applyMat(Mw, 0, 0);
+	
+			// --- circle ---
+			ctx.beginPath();
+			ctx.arc(p.x, p.y, rW, 0, Math.PI * 2);
+			ctx.fill();
+			ctx.stroke();
+	
+			// --- cross ---
+			ctx.beginPath();
+			ctx.moveTo(p.x - cross, p.y);
+			ctx.lineTo(p.x + cross, p.y);
+			ctx.moveTo(p.x, p.y - cross);
+			ctx.lineTo(p.x, p.y + cross);
+			ctx.stroke();
+		}
+	
+		ctx.restore();
+	}
+	
 	_drawOriginCross(o) {
 		const ctx = this.ctx;
 		const px = U.pxToWorld(this.d2drenderer, 1);
@@ -265,9 +326,9 @@ export default class D2DGizmo {
 
 	_onDown(e) {
 		// --- MIDDLE BUTTON: start panning ---
-		if (_editor.tool == 'pan' || e.button === 1) {
+		if(_editor.tool == 'pan' || e.button === 1) {
 			const ed = this.d2drenderer._editor;
-			if (!ed) return;
+			if(!ed) return;
 		
 			// get mouse in *canvas device pixels*
 			const rect = this.canvas.getBoundingClientRect();
@@ -288,18 +349,75 @@ export default class D2DGizmo {
 			return;
 		}
 		
-		if (e.button !== 0) return;
-		if (this.d2drenderer.edit?.hoverPoint) return;
+		if(e.button !== 0) return;
+		
+		if(_editor.tool == 'transform') {
+			// --- pivot knob drag (takes precedence) ---
+			const objs = (_editor.selectedObjects || []).filter(o => o?.is2D);
+			if(objs.length === 1) {
+				const obj = objs[0];
+				if(this._hitPivotKnobWorld(e, obj)) {
+		
+					// double-click to center
+					if(this.lastPivotClick) {
+						if(
+							_time.now - this.lastPivotClick.time < 0.4 &&
+							obj === this.lastPivotClick.object
+						) {
+							const { cx, cy } = U.localBoundsCenter(obj);
+							const res = U.repositionPivotTo(obj, cx, cy, { commit: true });
+							if(res) {
+								_editor?.addStep?.({
+									name: 'Center 2D Pivot',
+									undo: () => { obj.graphic2d._paths = U.clonePaths(res.before.paths);
+												  obj.position.x = res.before.pos.x; obj.position.y = res.before.pos.y; obj.checkSymbols?.(); },
+									redo: () => { obj.graphic2d._paths = U.clonePaths(res.after.paths);
+												  obj.position.x = res.after.pos.x;  obj.position.y = res.after.pos.y;  obj.checkSymbols?.(); }
+								});
+							}
+							return;
+						}
+					}
+					this.lastPivotClick = { time: _time.now, object: obj };
+		
+					// Freeze world->local at mouse-down (stable local space during drag)
+					const Mw0   = U.worldMatrix(obj);
+					const inv0  = U.invert(Mw0);
+					const mW    = U.eventToWorld(e, this.canvas, this.d2drenderer);
+					const local = U.applyMat(inv0, mW.x, mW.y);
+		
+					const basePaths = U.clonePaths(obj?.graphic2d?._paths || []);
+					const basePos   = { x: obj.position?.x || 0, y: obj.position?.y || 0 };
+		
+					this.state.pivotDrag = {
+						active: true,
+						obj,
+						startLocal: { x: local.x, y: local.y },
+						lastLocal:  { x: local.x, y: local.y },
+						basePos,
+						basePaths,
+						inv0 // frozen inverse world->local
+					};
+		
+					this.dragging = true; // ensure mouseup is seen
+					this.canvas.style.cursor = 'grabbing';
+					e.preventDefault();
+					return;
+				}
+			}
+		}
+		
+		if(this.d2drenderer.edit?.hoverPoint) return;
 
 		const tool  = _editor.tool;
 		const ttool = _editor.transformTool;
 		const canSelect = tool === 'select' || tool === 'transform';
-		if (!canSelect) return;
+		if(!canSelect) return;
 		
 		this.clickTime = _time.now;
 		
 		const hit = this._hitGizmo(e, ttool);
-		if (hit) {
+		if(hit) {
 			const p = U.eventToWorld(e, this.canvas, this.d2drenderer);
 			this.state.start = p;
 			this.state.last  = p;
@@ -311,22 +429,22 @@ export default class D2DGizmo {
 			this.state.theta = hit.theta || 0;
 			this.state.theta0 = this.state.theta;
 
-			if (hit.type === 'scale' || hit.type === 'rotate') {
+			if(hit.type === 'scale' || hit.type === 'rotate') {
 				const sel = _editor.selectedObjects.filter(o => o?.is2D);
 				const obb = U.selectionOBB(sel, { cx: this.state.cx, cy: this.state.cy, theta: this.state.theta });
-				if (obb) {
+				if(obb) {
 					this.state.hx0 = (obb.maxX - obb.minX) / 2;
 					this.state.hy0 = (obb.maxY - obb.minY) / 2;
 				}
 			}
 
-			if (hit.type === 'rotate') {
+			if(hit.type === 'rotate') {
 				this.state.mode = 'rotate';
 				const lp = U.toFrameLocal(p.x, p.y, hit.cx, hit.cy, hit.theta);
 				this.state.rotBase = Math.atan2(lp.y, lp.x);
 				return;
 			}
-			if (hit.type === 'scale') {
+			if(hit.type === 'scale') {
 				this.state.mode = 'scale';
 				this.state.handle = hit.handle;
 				this.state.p0L = U.toFrameLocal(p.x, p.y, hit.cx, hit.cy, hit.theta);
@@ -338,15 +456,41 @@ export default class D2DGizmo {
 	}
 
 	_onMove(e) {
-		if (!this.state.mode) return;
+		if(_editor.tool == 'transform') {
+			// --- pivot dragging live update ---
+			if (this.state.pivotDrag?.active) {
+				const pd   = this.state.pivotDrag;
+				const inv0 = pd.inv0; // frozen world->local
+				const mW   = U.eventToWorld(e, this.canvas, this.d2drenderer);
+				const curLocal = U.applyMat(inv0, mW.x, mW.y);
+			
+				// local delta since drag began
+				const dx = curLocal.x - pd.startLocal.x;
+				const dy = curLocal.y - pd.startLocal.y;
+			
+				// preview the change from base each frame (no drift)
+				U.repositionPivotTo(pd.obj, dx, dy, {
+					basePaths: pd.basePaths,
+					basePos:   pd.basePos,
+					commit:    false
+				});
+			
+				pd.lastLocal = curLocal; // so mouseup can compute final Δ
+				this.canvas.style.cursor = 'grabbing';
+				e.preventDefault();
+				return;
+			}
+		}
+		
+		if(!this.state.mode) return;
 
 		const p = U.eventToWorld(e, this.canvas, this.d2drenderer);
 		this.state.last = p;
 
-		if (this.state.mode === 'marquee') return;
-		if (this.state.mode === 'pan' && this._pan.active) {
+		if(this.state.mode === 'marquee') return;
+		if(this.state.mode === 'pan' && this._pan.active) {
 			const ed = this.d2drenderer._editor;
-			if (!ed) return;
+			if(!ed) return;
 		
 			const rect = this.canvas.getBoundingClientRect();
 			const sx = this.canvas.width  / Math.max(rect.width,  1e-6);
@@ -365,7 +509,7 @@ export default class D2DGizmo {
 			this._setCursorGrab(true);
 			return; // don't run gizmo logic while panning
 		}
-		if (this.state.mode === 'move') {
+		if(this.state.mode === 'move') {
 			const dWx = p.x - this.state.start.x;
 			const dWy = p.y - this.state.start.y;
 			
@@ -374,19 +518,19 @@ export default class D2DGizmo {
 			) {
 				let addWorldX = 0, addWorldY = 0;
 				
-				if (_editor?.draw2d?.snapToObjects) {
+				if(_editor?.draw2d?.snapToObjects) {
 					// cache selection rect baseline in canvas at gesture start
 					const selObjs = _editor.selectedObjects.filter(o => o?.is2D);
-					if (!this.state.startSelRectCanvas) {
+					if(!this.state.startSelRectCanvas) {
 						this.state.startSelRectCanvas = this._selectionRectCanvas(selObjs);
 					}
 					// cache guide lines from all 2D objects under focus (excluding selection)
-					if (!this.state.guides) {
+					if(!this.state.guides) {
 						this.state.guides = this._collectGuidesCanvas(_editor?.focus, new Set(selObjs));
 					}
 				
 					const startRect = this.state.startSelRectCanvas;
-					if (startRect) {
+					if(startRect) {
 						const gs = U.canvasScale(this.d2drenderer);
 						const dCanvasX = dWx * gs;
 						const dCanvasY = dWy * gs;
@@ -426,7 +570,7 @@ export default class D2DGizmo {
 				}
 			}
 		}
-		else if (this.state.mode === 'rotate') {
+		else if(this.state.mode === 'rotate') {
 			const { cx, cy, theta0 } = this.state;
 			const lp = U.toFrameLocal(p.x, p.y, cx, cy, theta0);
 			const a1 = Math.atan2(lp.y, lp.x);
@@ -444,36 +588,41 @@ export default class D2DGizmo {
 			const pL = U.toFrameLocal(p.x, p.y, this.state.cx, this.state.cy, this.state.theta);
 			const dx = pL.x - p0L.x;
 			const dy = pL.y - p0L.y;
-
+		
 			let sx = 1, sy = 1;
-			const EPS = 1e-6, MIN = 0.01, MAX = 1000;
-
-			switch (handle) {
-				case 'l': sx = 1 - dx / Math.max(hx0, EPS); break;
-				case 'r': sx = 1 + dx / Math.max(hx0, EPS); break;
-				case 't': sy = 1 - dy / Math.max(hy0, EPS); break;
-				case 'b': sy = 1 + dy / Math.max(hy0, EPS); break;
-				case 'tl':
-				case 'tr':
-				case 'bl':
-				case 'br': {
-					const sign = this._cornerSigns(handle);
-					const vx = sign.sx * hx0;
-					const vy = sign.sy * hy0;
-					const len0 = Math.hypot(vx, vy) || 1e-6;
-					const nx = vx / len0, ny = vy / len0;
-					const proj = dx * nx + dy * ny;
-					let s = 1 + proj / len0;
-					if (s < MIN) s = MIN;
-					if (s > MAX) s = MAX;
-					sx = sy = s;
-					break;
+			const EPS = 1e-9; // only to avoid exact zero
+		
+			const isCorner = (handle === 'tl' || handle === 'tr' || handle === 'bl' || handle === 'br');
+		
+			if (isCorner && e.shiftKey) {
+				// FREE RESIZE with mirroring allowed
+				const s = this._cornerSigns(handle);
+				sx = 1 + (dx * s.sx) / hx0;
+				sy = 1 + (dy * s.sy) / hy0;
+		
+				// prevent exact zero (singular transform) but allow negative values
+				if (Math.abs(sx) < EPS) sx = sx < 0 ? -EPS : EPS;
+				if (Math.abs(sy) < EPS) sy = sy < 0 ? -EPS : EPS;
+		
+			} else if (isCorner) {
+				// Existing uniform-from-corner behaviour
+				const s = this._cornerSigns(handle);
+				const vx = s.sx * hx0, vy = s.sy * hy0;
+				const len0 = Math.hypot(vx, vy);
+				const nx = vx / len0, ny = vy / len0;
+				const proj = dx * nx + dy * ny;
+				const k = 1 + proj / len0;
+				sx = k; sy = k;
+			} else {
+				// Edge handles unchanged
+				switch (handle) {
+					case 'l': sx = 1 - dx / hx0; break;
+					case 'r': sx = 1 + dx / hx0; break;
+					case 't': sy = 1 - dy / hy0; break;
+					case 'b': sy = 1 + dy / hy0; break;
 				}
 			}
-
-			sx = Math.min(Math.max(sx, MIN), MAX);
-			sy = Math.min(Math.max(sy, MIN), MAX);
-
+		
 			for (const [o, rec] of this.state.orig.entries()) {
 				const scl = o.scale || (o.scale = { x:1, y:1, z:1 });
 				scl.x = rec.scl0.x * sx;
@@ -484,33 +633,70 @@ export default class D2DGizmo {
 	}
 
 	_onUp() {
-		if (this.state.mode === 'marquee') {
+		// Handle pivot drag first then normal drag
+		if(this.state.pivotDrag?.active) {
+			const pd = this.state.pivotDrag;
+		
+			// absolute local target for the pivot (frozen frame)
+			const px = (pd.lastLocal?.x ?? pd.startLocal.x);
+			const py = (pd.lastLocal?.y ?? pd.startLocal.y);
+		
+			const res = U.repositionPivotTo(pd.obj, px, py, {
+				basePaths: pd.basePaths,
+				basePos:   pd.basePos,
+				commit:    true
+			});
+		
+			if(res) {
+				_editor.addStep?.({
+					name: 'Move 2D Pivot',
+					undo: () => {
+						pd.obj.graphic2d._paths = U.clonePaths(res.before.paths);
+						pd.obj.position.x = res.before.pos.x;
+						pd.obj.position.y = res.before.pos.y;
+						pd.obj.checkSymbols?.();
+					},
+					redo: () => {
+						pd.obj.graphic2d._paths = U.clonePaths(res.after.paths);
+						pd.obj.position.x = res.after.pos.x;
+						pd.obj.position.y = res.after.pos.y;
+						pd.obj.checkSymbols?.();
+					}
+				});
+			}
+		
+			this.state.pivotDrag = null;
+			this.dragging = false;
+			if(_editor.tool != 'pan') this.canvas.style.cursor = 'default';
+			return;
+		}
+		if(this.state.mode === 'marquee') {
 			const a = this.state.start, b = this.state.last;
 			const rect = U.rectFromPoints(a, b);
 			const minPx = 6;
 			const minWorld = U.pxToWorld(this.d2drenderer, minPx);
 			const isRealMarquee = Math.max(rect.w, rect.h) >= minWorld;
 
-			if (isRealMarquee) {
+			if(isRealMarquee) {
 				const roots = this._marqueeRootsUnderFocus();
 				const newlyHit = [];
 				for (const r of roots) {
-					if (r.__editorState?.locked || r.noSelect) continue;
+					if(r.__editorState?.locked || r.noSelect) continue;
 					const bb = U.worldAABBDeep(r);
-					if (!bb) continue;
-					if (U.rectIntersectsAABB(rect, bb)) newlyHit.push(r);
+					if(!bb) continue;
+					if(U.rectIntersectsAABB(rect, bb)) newlyHit.push(r);
 				}
-				if (!event?.shiftKey) _editor.setSelection([]);
-				if (newlyHit.length) _editor.addSelection(newlyHit);
+				if(!event?.shiftKey) _editor.setSelection([]);
+				if(newlyHit.length) _editor.addSelection(newlyHit);
 			}
 		}
 
-		if (!this.state.mode || this.state.mode === 'marquee') {
+		if(!this.state.mode || this.state.mode === 'marquee') {
 			this._resetGestureState();
 			return;
 		}
 		// --- finish pan ---
-		if (this._pan.active && this.state.mode === 'pan') {
+		if(this._pan.active && this.state.mode === 'pan') {
 			this._pan.active = false;
 			this.state.mode = null;
 			this._resetCursor();
@@ -539,13 +725,13 @@ export default class D2DGizmo {
 		for (const entry of end) {
 			const o = entry.obj;
 			const prev = start.find(s => s.obj === o);
-			if (!prev) continue;
+			if(!prev) continue;
 
 			const changed = [];
-			if (prev.pos.x !== entry.pos.x || prev.pos.y !== entry.pos.y) changed.push('pos');
-			if (prev.rot !== entry.rot) changed.push('rot');
-			if (prev.scl.x !== entry.scl.x || prev.scl.y !== entry.scl.y) changed.push('scl');
-			if (!changed.length) continue;
+			if(prev.pos.x !== entry.pos.x || prev.pos.y !== entry.pos.y) changed.push('pos');
+			if(prev.rot !== entry.rot) changed.push('rot');
+			if(prev.scl.x !== entry.scl.x || prev.scl.y !== entry.scl.y) changed.push('scl');
+			if(!changed.length) continue;
 
 			this.d3dobject = o;
 
@@ -581,16 +767,15 @@ export default class D2DGizmo {
 	/* ========================= SELECTION / MOVE ========================= */
 
 	_handleSelection(e) {
+		const tool  = _editor.tool;
 		const p = U.eventToWorld(e, this.canvas, this.d2drenderer);
 		const hit = this._pickTop(p.x, p.y);
-
-		const tool  = _editor.tool;
 		const canMove = tool === 'select' || tool === 'transform';
 		const sel = _editor.selectedObjects;
 
 		// double-click to focus
-		if (this.lastClick) {
-			if (_time.now - this.lastClick.time < 0.4 && hit === this.lastClick.object) {
+		if(this.lastClick) {
+			if(_time.now - this.lastClick.time < 0.4 && hit === this.lastClick.object) {
 				_editor.focus = hit ?? _editor.focus?.parent;
 				_editor.setSelection([]);
 				this.lastClick = null;
@@ -599,15 +784,15 @@ export default class D2DGizmo {
 		}
 		this.lastClick = { time: _time.now, object: hit };
 
-		if (hit) {
-			if (e.shiftKey) {
-				if (sel.includes(hit)) _editor.removeSelection([hit]);
+		if(hit) {
+			if(e.shiftKey) {
+				if(sel.includes(hit)) _editor.removeSelection([hit]);
 				else _editor.addSelection([hit]);
 			} else {
-				if (!sel.includes(hit)) _editor.setSelection([hit]);
+				if(!sel.includes(hit)) _editor.setSelection([hit]);
 			}
 
-			if (canMove) {
+			if(canMove) {
 				this.state.mode = 'move';
 				this.state.start = p;
 				this.state.last  = p;
@@ -620,7 +805,7 @@ export default class D2DGizmo {
 				this.state.guides = this._collectGuidesCanvas(_editor?.focus, new Set(sel2));
 			}
 		} else {
-			if (!e.shiftKey) _editor.setSelection([]);
+			if(!e.shiftKey) _editor.setSelection([]);
 			this.state.mode = 'marquee';
 			this.state.start = p;
 			this.state.last  = p;
@@ -706,12 +891,12 @@ export default class D2DGizmo {
 
 	_hitGizmo(e, ttool) {
 		const sel = _editor.selectedObjects.filter(o => o?.is2D);
-		if (!sel.length) return null;
+		if(!sel.length) return null;
 
 		const frame = U.selectionFrame(sel);
-		if (!frame) return null;
+		if(!frame) return null;
 		const obb = U.selectionOBB(sel, frame);
-		if (!obb) return null;
+		if(!obb) return null;
 
 		const allowRotate = (ttool === 'rotate' || _editor.tool === 'transform');
 		const allowScale  = (ttool === 'scale'  || _editor.tool === 'transform');
@@ -729,13 +914,13 @@ export default class D2DGizmo {
 		const p = U.eventToWorld(e, this.canvas, this.d2drenderer);
 		const lp = U.toFrameLocal(p.x, p.y, cx, cy, theta);
 
-		if (allowRotate) {
+		if(allowRotate) {
 			const dist = Math.hypot(lp.x, lp.y);
-			if (Math.abs(dist - rotRadius) <= knobR * 1.5)
+			if(Math.abs(dist - rotRadius) <= knobR * 1.5)
 				return { type:'rotate', cx, cy, theta };
 		}
 
-		if (allowScale) {
+		if(allowScale) {
 			const handles = [
 				{ n:'tl', x:minX,        y:minY        },
 				{ n:'t',  x:minX + w/2,  y:minY        },
@@ -747,7 +932,7 @@ export default class D2DGizmo {
 				{ n:'l',  x:minX,        y:minY + h/2  }
 			];
 			for (const h of handles) {
-				if (Math.abs(lp.x - h.x) <= hs && Math.abs(lp.y - h.y) <= hs)
+				if(Math.abs(lp.x - h.x) <= hs && Math.abs(lp.y - h.y) <= hs)
 					return { type:'scale', handle:h.n, cx, cy, theta };
 			}
 		}
@@ -762,14 +947,14 @@ export default class D2DGizmo {
 
 	_pickTop(wx, wy) {
 		const roots = this._marqueeRootsUnderFocus();
-		if (!roots.length) return null;
+		if(!roots.length) return null;
 		
 		roots.sort((a, b) => (a.position?.z || 0) - (b.position?.z || 0));
 		
 		for (let i = roots.length - 1; i >= 0; --i) {
 			const r = roots[i];
-			if (r.__editorState?.locked || r.noSelect) continue;
-			if (this._hitObjectDeep(r, wx, wy)) return r;
+			if(r.__editorState?.locked || r.noSelect) continue;
+			if(this._hitObjectDeep(r, wx, wy)) return r;
 		}
 		return null;
 	}
@@ -777,13 +962,13 @@ export default class D2DGizmo {
 	/* ========================= SNAP HELPERS (SCREEN/PIXEL SPACE) ========================= */
 
 	_selectionRectCanvas(objs) {
-		if (!objs || !objs.length) return null;
+		if(!objs || !objs.length) return null;
 		let l = +Infinity, r = -Infinity, t = +Infinity, b = -Infinity;
 		const Mv = U.viewMatrix(this.d2drenderer);
 
 		for (const o of objs) {
 			const bb = U.worldAABBDeep(o);
-			if (!bb) continue;
+			if(!bb) continue;
 			const corners = [
 				{ x: bb.minX, y: bb.minY },
 				{ x: bb.maxX, y: bb.minY },
@@ -792,17 +977,17 @@ export default class D2DGizmo {
 			];
 			for (const c of corners) {
 				const p = U.applyDOM(Mv, c.x, c.y);
-				if (p.x < l) l = p.x; if (p.x > r) r = p.x;
-				if (p.y < t) t = p.y; if (p.y > b) b = p.y;
+				if(p.x < l) l = p.x; if(p.x > r) r = p.x;
+				if(p.y < t) t = p.y; if(p.y > b) b = p.y;
 			}
 		}
-		if (!Number.isFinite(l) || !Number.isFinite(r) || !Number.isFinite(t) || !Number.isFinite(b)) return null;
+		if(!Number.isFinite(l) || !Number.isFinite(r) || !Number.isFinite(t) || !Number.isFinite(b)) return null;
 		return { l, r, t, b, cx:(l+r)/2, cy:(t+b)/2 };
 	}
 
 	_objectRectCanvas(o) {
 		const bb = U.worldAABBDeep(o);
-		if (!bb) return null;
+		if(!bb) return null;
 		const Mv = U.viewMatrix(this.d2drenderer);
 		let l = +Infinity, r = -Infinity, t = +Infinity, b = -Infinity;
 		const corners = [
@@ -813,10 +998,10 @@ export default class D2DGizmo {
 		];
 		for (const c of corners) {
 			const p = U.applyDOM(Mv, c.x, c.y);
-			if (p.x < l) l = p.x; if (p.x > r) r = p.x;
-			if (p.y < t) t = p.y; if (p.y > b) b = p.y;
+			if(p.x < l) l = p.x; if(p.x > r) r = p.x;
+			if(p.y < t) t = p.y; if(p.y > b) b = p.y;
 		}
-		if (!Number.isFinite(l) || !Number.isFinite(r) || !Number.isFinite(t) || !Number.isFinite(b)) return null;
+		if(!Number.isFinite(l) || !Number.isFinite(r) || !Number.isFinite(t) || !Number.isFinite(b)) return null;
 		return { l, r, t, b, cx:(l+r)/2, cy:(t+b)/2 };
 	}
 
@@ -838,18 +1023,18 @@ export default class D2DGizmo {
 		const host = focus || this.d2drenderer.root;
 
 		U.traverse2D(host, (node) => {
-			if (!node?.is2D) return;
+			if(!node?.is2D) return;
 			let r = node;
 			while (r.parent && r.parent !== host) r = r.parent;
-			if (r?.is2D) roots.add(r);
+			if(r?.is2D) roots.add(r);
 		});
 
 		for (const o of roots) {
-			if (excludeSet?.has(o)) continue;
-			if (o.__editorState?.locked || o.noSelect) continue;
+			if(excludeSet?.has(o)) continue;
+			if(o.__editorState?.locked || o.noSelect) continue;
 
 			const rc = this._objectRectCanvas(o);
-			if (!rc) continue;
+			if(!rc) continue;
 
 			// vertical: left, center, right
 			xs.push(rc.l, rc.cx, rc.r);
@@ -870,7 +1055,7 @@ export default class D2DGizmo {
 		for (const gx of guides.xs) {
 			for (const cx of candidatesX) {
 				const d = Math.abs(gx - cx);
-				if (d < bestVDist && d <= snapPx) {
+				if(d < bestVDist && d <= snapPx) {
 					bestVDist = d;
 					bestVX = gx - cx;
 					bestVLine = gx;
@@ -881,7 +1066,7 @@ export default class D2DGizmo {
 		for (const gy of guides.ys) {
 			for (const cy of candidatesY) {
 				const d = Math.abs(gy - cy);
-				if (d < bestHDist && d <= snapPx) {
+				if(d < bestHDist && d <= snapPx) {
 					bestHDist = d;
 					bestHY = gy - cy;
 					bestHLine = gy;
@@ -909,9 +1094,9 @@ export default class D2DGizmo {
 	/* ============ wheel: pan + trackpad pinch (ctrlKey) ============ */
 	_onWheel(e) {
 		const ed = this.d2drenderer._editor;
-		if (!ed) return;
+		if(!ed) return;
 	
-		if (e.ctrlKey || e.metaKey) {
+		if(e.ctrlKey || e.metaKey) {
 			const factor = Math.exp(-0.0045 * e.deltaY); // sensitivity knob
 			const rect = this.canvas.getBoundingClientRect();
 			const sx = this.canvas.width  / Math.max(rect.width,  1e-6);
@@ -934,7 +1119,7 @@ export default class D2DGizmo {
 	}
 	
 	_onKeyDown(e) {
-		if (!(e.ctrlKey || e.metaKey)) return;
+		if(!(e.ctrlKey || e.metaKey)) return;
 	
 		const code = e.code, key = e.key;
 		if(code === 'NumpadAdd') {
@@ -957,13 +1142,13 @@ export default class D2DGizmo {
 	
 	_zoomByCombined(factor, anchorX, anchorY) {
 		const ed = this.d2drenderer._editor;
-		if (!ed) return;
+		if(!ed) return;
 	
 		const MIN = 0.05, MAX = 64;
 		const s0 = ed.viewScale;
 		let   s1 = s0 * factor;
-		if (s1 < MIN) s1 = MIN;
-		if (s1 > MAX) s1 = MAX;
+		if(s1 < MIN) s1 = MIN;
+		if(s1 > MAX) s1 = MAX;
 	
 		// Combined offset at current scale (read-only reference)
 		const Vc0 = this.d2drenderer.viewOffset; // { x, y } in canvas pixels
@@ -993,10 +1178,10 @@ export default class D2DGizmo {
 		const focus = _editor.focus || this.d2drenderer.root;
 
 		U.traverse2D(focus, (node) => {
-			if (!node?.is2D) return;
+			if(!node?.is2D) return;
 			let r = node;
 			while (r.parent && r.parent !== focus) r = r.parent;
-			if (r?.is2D) roots.add(r);
+			if(r?.is2D) roots.add(r);
 		});
 
 		return Array.from(roots);
@@ -1011,22 +1196,22 @@ export default class D2DGizmo {
 	
 		const r  = this.d2drenderer;
 		const ed = r?._editor;
-		if (!r || !ed) return;
+		if(!r || !ed) return;
 	
 		// selection (world AABB)
 		const sel = (window._editor?.selectedObjects || []).filter(o => o?.is2D);
-		if (!sel.length) return;
+		if(!sel.length) return;
 	
 		let minX = +Infinity, minY = +Infinity, maxX = -Infinity, maxY = -Infinity;
 		for (const o of sel) {
 			const bb = U.worldAABBDeep(o);
-			if (!bb) continue;
-			if (bb.minX < minX) minX = bb.minX;
-			if (bb.minY < minY) minY = bb.minY;
-			if (bb.maxX > maxX) maxX = bb.maxX;
-			if (bb.maxY > maxY) maxY = bb.maxY;
+			if(!bb) continue;
+			if(bb.minX < minX) minX = bb.minX;
+			if(bb.minY < minY) minY = bb.minY;
+			if(bb.maxX > maxX) maxX = bb.maxX;
+			if(bb.maxY > maxY) maxY = bb.maxY;
 		}
-		if (!isFinite(minX) || !isFinite(minY) || !isFinite(maxX) || !isFinite(maxY)) return;
+		if(!isFinite(minX) || !isFinite(minY) || !isFinite(maxX) || !isFinite(maxY)) return;
 	
 		// world size + center
 		let w = Math.max(maxX - minX, minSize);
@@ -1037,7 +1222,7 @@ export default class D2DGizmo {
 		// device canvas size (backing store pixels)
 		const cw = r.domElement.width;
 		const ch = r.domElement.height;
-		if (cw <= 0 || ch <= 0) return;
+		if(cw <= 0 || ch <= 0) return;
 	
 		// known factors
 		const pr = r.pixelRatio || 1;
@@ -1050,7 +1235,7 @@ export default class D2DGizmo {
 			cw / (Math.max(w, 1e-6) * pr * base * padding),
 			ch / (Math.max(h, 1e-6) * pr * base * padding)
 		);
-		if (!isFinite(sEd) || sEd <= 0) sEd = sEd0 || 1;
+		if(!isFinite(sEd) || sEd <= 0) sEd = sEd0 || 1;
 		sEd = Math.min(Math.max(sEd, MIN), MAX);
 	
 		// base letterbox offset (in device px) = combined - editor
@@ -1091,5 +1276,19 @@ export default class D2DGizmo {
 	
 	_resetCursor() {
 		this.canvas.style.cursor = '';
+	}
+	
+	_hitPivotKnobWorld(e, obj) {
+		// mouse in world coords
+		const mW = U.eventToWorld(e, this.canvas, this.d2drenderer);
+	
+		// pivot (local 0,0) in world coords
+		const Mw = U.worldMatrix(obj);
+		const pW = U.applyMat(Mw, 0, 0);
+	
+		// compare in world units; knob radius is N pixels -> convert to world
+		const rW = U.pxToWorld(this.d2drenderer, this.pivotPointRadius);
+		const dx = pW.x - mW.x, dy = pW.y - mW.y;
+		return (dx*dx + dy*dy) <= (rW * rW);
 	}
 }

@@ -656,6 +656,14 @@ export function childToHostLocal(hostNode, childNode, pChild){
 	const q = new DOMPoint(pChild.x, pChild.y).matrixTransform(M);
 	return { x: q.x, y: q.y };
 }
+export function localToParentLinear(obj) {
+	// Build the 2×2 from obj.rotation.z and obj.scale (ignore translation)
+	const sx = Number(obj.scale?.x) || 1, sy = Number(obj.scale?.y) || 1;
+	const ang = Number(obj.rotation?.z) || 0;
+	const c = Math.cos(ang), s = Math.sin(ang);
+	// DOMMatrix-like: [ a c ; b d ] in canvas math (x' = a*x + c*y, y' = b*x + d*y)
+	return { a: c*sx, b: s*sx, c: -s*sy, d: c*sy };
+}
 
 /* ---------------- pixels & simplify ---------------- */
 export function pxToLocalScalar(d2dr, px){ return px / ((d2dr.pixelRatio||1) * (d2dr.viewScale||1)); }
@@ -1322,6 +1330,31 @@ export function localAABB(obj) {
 	if (!isFinite(minX)) return null;
 	return { minX, minY, maxX, maxY, width: (maxX - minX), height: (maxY - minY) };
 }
+export function localBoundsCenter(obj) {
+	if (!obj?.graphic2d?._paths) return { cx: 0, cy: 0 };
+
+	let minX = Infinity, minY = Infinity;
+	let maxX = -Infinity, maxY = -Infinity;
+
+	for (const path of obj.graphic2d._paths) {
+		if (!Array.isArray(path)) continue;
+		for (const p of path) {
+			if (!p) continue;
+			if (p.x < minX) minX = p.x;
+			if (p.x > maxX) maxX = p.x;
+			if (p.y < minY) minY = p.y;
+			if (p.y > maxY) maxY = p.y;
+		}
+	}
+
+	if (!Number.isFinite(minX) || !Number.isFinite(maxX))
+		return { cx: 0, cy: 0 };
+
+	return {
+		cx: (minX + maxX) * 0.5,
+		cy: (minY + maxY) * 0.5
+	};
+}
 export function localBoundsOfGraphic(obj) {
 	const g = obj?.graphic2d;
 	const paths = Array.isArray(g?._paths) ? g._paths : null;
@@ -1391,6 +1424,53 @@ export function getGraphicPivotLocal(obj){
 	if (!bb) return { x: 0, y: 0 };
 	return { x: (bb.minX + bb.maxX) * 0.5, y: (bb.minY + bb.maxY) * 0.5 };
 }
+export function repositionPivotTo(obj, dx, dy, opts = {}) {
+	// opts: { basePaths?, basePos?, keepClosed=true, commit=false, preview=false }
+	const keepClosed = opts.keepClosed !== false;
+	if (!obj) return null;
+
+	const g = obj.graphic2d;
+	if (!g || !Array.isArray(g._paths)) return null;
+
+	// establish base state (pre-change) to avoid cumulative error during drags
+	const basePaths = opts.basePaths ? clonePaths(opts.basePaths) : clonePaths(g._paths);
+	const basePos   = opts.basePos ?? { x: obj.position?.x || 0, y: obj.position?.y || 0 };
+
+	// compute AFTER geometry: shift points by -Δ (so origin moves by +Δ)
+	const afterPaths = clonePaths(basePaths);
+	for (const path of afterPaths) {
+		for (let i = 0; i < path.length; i++) {
+			path[i].x = path[i].x - dx;
+			path[i].y = path[i].y - dy;
+		}
+		if (keepClosed && isClosedPoints(path) && path.length >= 2) {
+			const a = path[0], b = path[path.length - 1];
+			if (!approx(a.x, b.x) || !approx(a.y, b.y)) {
+				path[path.length - 1] = { x: a.x, y: a.y };
+			}
+		}
+	}
+
+	// convert local Δ to parent-space offset and update object position
+	const L = localToParentLinear(obj); // {a,b,c,d} rot*scale only
+	const dXp = L.a * dx + L.c * dy;
+	const dYp = L.b * dx + L.d * dy;
+	const afterPos = { x: basePos.x + dXp, y: basePos.y + dYp };
+
+	// apply (preview/apply in-place)
+	g._paths = afterPaths;
+	if (!obj.position) obj.position = { x: 0, y: 0, z: 0 };
+	obj.position.x = afterPos.x;
+	obj.position.y = afterPos.y;
+
+	// snapshots for history if requested
+	if (opts.commit) {
+		const before = { paths: clonePaths(basePaths), pos: { x: basePos.x, y: basePos.y } };
+		const after  = { paths: clonePaths(afterPaths), pos: { x: afterPos.x, y: afterPos.y } };
+		return { before, after };
+	}
+	return null;
+}
 
 /* ========================= DEFAULT BUNDLE ========================= */
 
@@ -1406,11 +1486,13 @@ const D2DUtil = {
 	// selection frames
 	selectionAABB, selectionFrame, selectionOBB,
 	// frames / rects
-	toFrameLocal, rectFromPoints, rectIntersectsAABB,
+	toFrameLocal, rectFromPoints, rectIntersectsAABB, localToParentLinear, localBoundsCenter,
 	// angles / quats
 	snapAngleSoft, quatFromZ,
 	// hits
-	hitObject, hitObjectDeep
+	hitObject, hitObjectDeep,
+	// pivot
+	repositionPivotTo,
 };
 
 export default D2DUtil;
