@@ -1552,6 +1552,11 @@ export default function Inspector() {
 			
 			objects.forEach(object => {
 				const selected = _editor.selectedObjects.includes(object);
+				const styleObj = {};
+				
+				if(!object.enabled) {
+					styleObj.color = '#555';
+				}
 				
 				rows.push(
 					<ObjectRow
@@ -1560,6 +1565,7 @@ export default function Inspector() {
 						name={object.name}
 						selected={selected}
 						isInstance={true}
+						style={styleObj}
 						onRename={(newName) => {
 							//if(!object.isValidName(newName))
 								//return object.name;

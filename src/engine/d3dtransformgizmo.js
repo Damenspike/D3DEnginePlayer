@@ -638,6 +638,24 @@ export default class D3DTransformGizmo {
 		const nx = ((mouse.x - rect.left) / rect.width) * 2 - 1;
 		const ny = -((mouse.y - rect.top) / rect.height) * 2 + 1;
 		this._raycaster.setFromCamera({ x: nx, y: ny }, this.camera);
+		
+		// --- center preference (uniform scale wins near the center) ---
+		if (this.mode === 'scale') {
+			const centerW = this._group.getWorldPosition(new THREE.Vector3());
+			const centerPx = this._worldToScreenPx(centerW);
+			const m = _input.getMouseClientPosition();
+			const rect = this.dom.getBoundingClientRect();
+			const mx = m.x - rect.left, my = m.y - rect.top;
+		
+			// pick radius ~ the sU pick sphere projected size (tweak factor 0.45–0.6 if you like)
+			const pxRadius = this._worldRadiusToPixels(this._group.scale.x * 0.45);
+		
+			const dPx = Math.hypot(mx - centerPx.x, my - centerPx.y);
+			if (dPx <= pxRadius) {
+				this._setHover('sU');
+				return;
+			}
+		}
 	
 		const pickables = [];
 		if (this.mode === 'translate') this._grpT.traverseVisible(o => { if (o.userData.handle) pickables.push(o); });
@@ -1328,6 +1346,13 @@ export default class D3DTransformGizmo {
 		const b = this._worldToScreenPx(pivotW.clone().add(new THREE.Vector3(step, 0, 0)));
 		const px = Math.max(1e-6, Math.hypot(b.x - a.x, b.y - a.y));
 		return step / px;
+	}
+	
+	_worldRadiusToPixels(rWorld) {
+		const p = this._group.getWorldPosition(new THREE.Vector3());
+		const a = this._worldToScreenPx(p);
+		const b = this._worldToScreenPx(p.clone().add(new THREE.Vector3(rWorld, 0, 0)));
+		return Math.max(1, Math.hypot(b.x - a.x, b.y - a.y));
 	}
 }
 

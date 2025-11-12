@@ -103,34 +103,45 @@ const DamenScript = (() => {
 	  skipWS();
 	  const ch = peek();
 	  if (!ch) break;
-
+	
 	  // spread ...
-	  if (ch==='.' && peek(1)==='.' && peek(2)==='.') { add('spread','...'); adv(3); continue; }
-
+	  if (ch === '.' && peek(1) === '.' && peek(2) === '.') {
+		add('spread', '...');
+		adv(3);
+		continue;
+	  }
+	
 	  // string
 	  if (ch === '"' || ch === "'") {
-		const q=adv(); let s='';
+		const q = adv(); let s = '';
 		while (peek() && peek() !== q) {
 		  const c = adv();
 		  if (c === '\\') {
 			const n = adv();
-			const map={n:'\n',r:'\r',t:'\t','"':'"',"\'":"'",'\\':'\\'};
+			const map = { n:'\n', r:'\r', t:'\t', '"':'"', "'":"'", '\\':'\\' };
 			s += map[n] ?? n;
 		  } else s += c;
 		}
 		if (peek() !== q) throw DSyntax('Unterminated string', line, col);
-		adv(); add('str', s); continue;
+		adv(); add('str', s);
+		continue;
 	  }
-
+	
 	  // number
-	  if (isDigit(ch) || (ch==='.' && isDigit(peek(1)))) {
-		let num=''; if (ch === '.') num += adv();
+	  if (isDigit(ch) || (ch === '.' && isDigit(peek(1)))) {
+		let num = '';
+		if (ch === '.') num += adv();
 		while (isDigit(peek())) num += adv();
 		if (peek() === '.') { num += adv(); while (isDigit(peek())) num += adv(); }
-		if (/[eE]/.test(peek())) { num += adv(); if (/[+-]/.test(peek())) num += adv(); while (isDigit(peek())) num += adv(); }
-		add('num', Number(num)); continue;
+		if (/[eE]/.test(peek())) { 
+		  num += adv(); 
+		  if (/[+-]/.test(peek())) num += adv(); 
+		  while (isDigit(peek())) num += adv(); 
+		}
+		add('num', Number(num));
+		continue;
 	  }
-
+	
 	  // identifier / keyword
 	  if (isIdStart(ch)) {
 		let id = adv();
@@ -138,19 +149,22 @@ const DamenScript = (() => {
 		if (KEYWORDS.has(id)) add('kw', id); else add('ident', id);
 		continue;
 	  }
-
-	  // punctuation
-	  if (PUNCT.has(ch)) { add('punc', adv()); continue; }
-
-	  // operators
+	
+	  // ---- operators FIRST (so '??' is seen as a single token) ----
 	  const three = ch + (peek(1) ?? '') + (peek(2) ?? '');
-	  const two = ch + (peek(1) ?? '');
-	  if (TWO_CHAR_OPS.has(three)) { add('op', three); adv(3); continue; }
-	  if (TWO_CHAR_OPS.has(two)) { add('op', two); adv(2); continue; }
+	  const two   = ch + (peek(1) ?? '');
+	  if (TWO_CHAR_OPS.has(three)) { add('op', three); adv(3); continue; } // handles '===', '!=='
+	  if (TWO_CHAR_OPS.has(two))   { add('op', two);   adv(2); continue; } // handles '??', '==', '!=', '<=', '>=', '&&', '||', '++', '--', '=>', '+=', '-=', '*=', '/=', '%='
+	
+	  // one-char ops
 	  if (ONE_CHAR_OPS.has(ch)) { add('op', adv()); continue; }
-
+	
+	  // punctuation (runs AFTER operator checks so '?' won't eat '??')
+	  if (PUNCT.has(ch)) { add('punc', adv()); continue; }
+	
 	  throw DSyntax(`Unexpected character '${ch}'`, line, col);
 	}
+	
 	tokens.push({type:'eof', value:'<eof>', line, col});
 	return tokens;
   }

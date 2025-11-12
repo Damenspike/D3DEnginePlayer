@@ -42,6 +42,7 @@ export default class D3DEditorState {
 		_events.invoke('editor-focus', value);
 		_editor.updateInspector?.();
 	}
+	
 	get mode() {
 		if(this._mode != '2D' && this._mode != '3D')
 			return '3D'; // default
@@ -56,10 +57,28 @@ export default class D3DEditorState {
 		
 		if(window._root)
 			this.focus = null;
+			
+		if(this._mode == '3D' && this.tool == 'transform')
+			this.tool = 'select';
 		
 		_events.invoke('editor-mode', value);
 		_editor.updateInspector?.();
 		_editor.setSelection([]);
+	}
+	
+	get tool() {
+		return this._tool ?? Tools.Select;
+	}
+	set tool(v) {
+		if (Object.values(Tools).includes(v)) {
+			this._tool = v;
+		} else {
+			console.warn(`Invalid tool: ${tool}. Falling back to default.`);
+			this._tool = Tools.Select;
+		}
+		
+		if(window._events) // sometimes not ready yet
+			_events.invoke('editor-tool', this._tool);
 	}
 	
 	constructor() {
@@ -98,13 +117,7 @@ export default class D3DEditorState {
 		this.mode = mode;
 	}
 	setTool(tool) {
-		if (Object.values(Tools).includes(tool)) {
-			this.tool = tool;
-		} else {
-			console.warn(`Invalid tool: ${tool}. Falling back to default.`);
-			this.tool = Tools.Select;
-		}
-		_events.invoke('editor-tool', tool);
+		this.tool = tool;
 	}
 	
 	setTransformTool(tool) {

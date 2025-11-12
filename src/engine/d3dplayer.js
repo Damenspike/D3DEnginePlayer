@@ -156,8 +156,17 @@ function startAnimationLoop() {
 			'onEnterFrame'
 		], _root);
 		
-		if(_physics.ready)
-			_physics.step(_time.delta);
+		if(_physics.ready) {
+			const didSteps = _physics.step(_time.delta);
+			
+			if(didSteps > 0) {
+				updateObject([
+					'__onInternalPhysicsUpdate',
+					'__onPhysicsUpdate',
+					'onPhysicsUpdate'
+				], _root);
+			}
+		}
 		
 		if(!_player.camera) {
 			_root.traverse(d3dobject => {

@@ -55,7 +55,7 @@ export async function onAssetDroppedIntoGameView(path, screenPos) {
 			let d3dparent;
 		
 			for (const childPath of childFiles) {
-				const d3dobject = await spawnModelFromZip(childPath, zip, _root);
+				const d3dobject = await spawnModelFromZip(childPath, zip);
 				if(!d3dparent)
 					d3dparent = d3dobject;
 			}
@@ -89,7 +89,7 @@ export async function onAssetDroppedIntoGameView(path, screenPos) {
 			if(_editor.mode != '3D')
 				_editor.mode = '3D';
 			
-			const d3d = await spawnModelFromZip(path, zip, null);
+			const d3d = await spawnModelFromZip(path, zip);
 			_editor.moveObjectToCameraView(d3d);
 			_editor.setSelection([d3d]);
 			break;
@@ -183,10 +183,10 @@ function loadImage(url) {
    Shared model drop logic
 ------------------------------ */
 
-async function spawnModelFromZip(assetPath, zip, parent) {
+async function spawnModelFromZip(assetPath, zip) {
 	const trs = await readLocalTRSFromZip(zip, assetPath);
 
-	const d3dobject = await (parent || _editor.focus).createObject({
+	const d3dobject = await _editor.focus.createObject({
 		name: fileNameNoExt(assetPath),
 		position: trs?.position || { x:0, y:0, z:0 },
 		rotation: trs?.rotation || { x:0, y:0, z:0 },

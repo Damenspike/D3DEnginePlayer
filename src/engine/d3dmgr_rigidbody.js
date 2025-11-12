@@ -44,7 +44,6 @@ export default class RigidbodyManager {
 
 		const inEditor = !!window._editor && !window._player;
 		const inPlay   = !!window._player;
-		const next = this._readComponent();
 
 		if (inEditor) {
 			// No bodies in editor
@@ -58,13 +57,16 @@ export default class RigidbodyManager {
 					if (this.__rbHelper) this.__rbHelper.visible = false;
 					return;
 				}
-				this._updateGizmo(next.shape, this.shape, next.kind);
+				const cur = this._readComponent();
+				this._updateGizmo(cur.shape, cur.shapeType, cur.kind);
 			};
 
 			return;
 		}
 		
 		if (!_physics || !_physics.ready) return; // don't throw/spam; just wait
+		
+		const next = this._readComponent();
 		
 		// Helpers are strictly editor-only
 		this._clearHelperGroup();
@@ -480,7 +482,15 @@ export default class RigidbodyManager {
 			capsuleRadius: Number(props.capsuleRadius)
 		};
 
-		const shape = this._buildShapeFromProps(this.d3dobject, shapeType, dims);
+		let shape;
+		
+		try {
+			shape = this._buildShapeFromProps(this.d3dobject, shapeType, dims);
+		}catch(e) {
+			console.warn(e, 'reverting to box');
+			this.shape = 'box';
+			shape = this._buildShapeFromProps(this.d3dobject, 'box', dims);
+		}
 
 		return { kind, shapeType, shape, friction, restitution, density, drag, angularDrag };
 	}
@@ -875,24 +885,30 @@ export default class RigidbodyManager {
 	****/
 	/* Build a cheap signature so we only rebuild when needed */
 	_sigForHelper(shape, shapeType) {
+		const ws = this.d3dobject.worldScale;
+		const sx = Number(ws.x.toFixed(6));
+		const sy = Number(ws.y.toFixed(6));
+		const sz = Number(ws.z.toFixed(6));
+		const S  = `|${sx}|${sy}|${sz}`;
+	
 		switch (shapeType) {
 			case 'box': {
 				const o = shape.offset || {x:0,y:0,z:0};
-				return `box|${shape.hx}|${shape.hy}|${shape.hz}|${o.x}|${o.y}|${o.z}`;
+				return `box|${shape.hx}|${shape.hy}|${shape.hz}|${o.x}|${o.y}|${o.z}${S}`;
 			}
 			case 'sphere': {
 				const o = shape.offset || {x:0,y:0,z:0};
-				return `sphere|${shape.r}|${o.x}|${o.y}|${o.z}`;
+				return `sphere|${shape.r}|${o.x}|${o.y}|${o.z}${S}`;
 			}
 			case 'capsule': {
 				const o = shape.offset || {x:0,y:0,z:0};
-				return `capsule|${shape.radius}|${shape.halfHeight}|${o.x}|${o.y}|${o.z}`;
+				return `capsule|${shape.radius}|${shape.halfHeight}|${o.x}|${o.y}|${o.z}${S}`;
 			}
 			case 'convex': {
-				const v = shape.vertices;
-				const id = v ? `${v.buffer.byteLength}:${v.length}` : 'none';
+				const v   = shape.vertices;
+				const vid = v ? `${v.buffer.byteLength}:${v.length}` : 'none';
 				const ver = shape.version ?? 0;
-				return `convex|${id}|v${ver}`;
+				return `convex|${vid}|v${ver}${S}`;
 			}
 			default: return 'unknown';
 		}
@@ -905,6 +921,12 @@ export default class RigidbodyManager {
 			(kind === 'kinematicPosition') ? 0xffa500 : 0x38a0ff;
 	
 		this._ensureHelperGroup();
+		
+		const _s = new THREE.Vector3();
+		this.d3dobject.object3d.updateWorldMatrix(true, true);
+		this.d3dobject.object3d.getWorldScale(_s);
+		this.__rbHelper.scale.set(1 / _s.x, 1 / _s.y, 1 / _s.z);
+		
 		this.__rbHelper.visible = this._isSelected();
 	
 		// diff

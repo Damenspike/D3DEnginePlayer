@@ -66,18 +66,9 @@ export default class D3DPhysics {
 				obj.object3d.quaternion.set(q.x, q.y, q.z, q.w);
 				obj.object3d.updateMatrixWorld(true);
 			});
-			
-			// Fire physics callbacks ONCE (because at least one substep ran)
-			if (window._player) {
-				updateObject([
-					'__onInternalPhysicsUpdate',
-					'__onPhysicsUpdate',
-					'onPhysicsUpdate'
-				], _root);
-			}
 		}
 		
-		return didSteps; // optional: useful for stats
+		return didSteps;
 	}
 
 	dispose() {

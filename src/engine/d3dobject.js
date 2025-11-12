@@ -55,9 +55,10 @@ export default class D3DObject {
 		this._enabled = !!v;
 		
 		if(this.parent) {
-			if(this._enabled && !this.parent.object3d.children.includes(this.object3d))
+			if(this._enabled && !this.parent.object3d.children.includes(this.object3d)) {
 				this.parent.object3d.add(this.object3d);
-			else
+				this.updateComponents();
+			}else
 			if(!this._enabled && this.parent.object3d.children.includes(this.object3d))
 				this.parent.object3d.remove(this.object3d);
 		}
@@ -319,6 +320,27 @@ export default class D3DObject {
 		this.object3d.scale.set(x, y, z);
 	}
 	
+	get worldScale() {
+		const ws = new THREE.Vector3();
+		this.object3d.updateWorldMatrix(true, true);
+		this.object3d.getWorldScale(ws);
+		return ws;
+	}
+	set worldScale({x, y, z}) {
+		if (Number.isNaN(x) || Number.isNaN(y) || Number.isNaN(z))
+			return;
+		// convert to local scale relative to parent world scale
+		const parentScale = new THREE.Vector3(1, 1, 1);
+		if (this.object3d.parent)
+			this.object3d.parent.getWorldScale(parentScale);
+	
+		this.object3d.scale.set(
+			x / parentScale.x,
+			y / parentScale.y,
+			z / parentScale.z
+		);
+	}
+	
 	get visible() {
 		return this._visible ?? true;
 	}
@@ -484,7 +506,7 @@ export default class D3DObject {
 					if(window._editor)
 						window._editor.updateInspector?.();
 					
-					_events.invoke('matrix-changed', this, changed);
+					this.invokeEvent('matrixChanged', changed);
 				}
 				
 				this.lastMatrixLocal = new THREE.Matrix4().copy(this.object3d.matrix);
@@ -1017,6 +1039,9 @@ export default class D3DObject {
 		this.toggleComponent(type, false);
 	}
 	async updateComponents() {
+		if(!this.enabled)
+			return;
+		
 		const zip = this.root.zip;
 		const components = this.components;
 		
@@ -1786,7 +1811,7 @@ export default class D3DObject {
 		
 		listeners.splice(listeners.indexOf(listener), 1);
 	}
-	invokeEvent(name) {
+	invokeEvent(name, ...params) {
 		const events = this.__events;
 		
 		if(!events[name])
@@ -1796,7 +1821,7 @@ export default class D3DObject {
 		
 		listeners.forEach(l => {
 			if(l && typeof l === 'function')
-				l();
+				l(...params);
 		});
 	}
 	updateSuperIndex() {
