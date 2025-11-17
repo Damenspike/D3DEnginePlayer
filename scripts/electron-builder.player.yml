@@ -1,0 +1,49 @@
+appId: com.damen3d.player
+productName: "Damen3D Player"
+
+asar: true
+
+directories:
+  output: dist-player-build     # build output folder (optional)
+
+files:
+  - public/**
+  - dist/player/**              # Vite-built player frontend
+  - electron/player/**          # main.js, preload.js, ipc handlers
+  - package.json                # required by electron-builder (stripped)
+  - "!node_modules"             # exclude massive dev deps
+  - "!scripts"                  # exclude your build scripts
+  - "!dist/editor"              # ensure only the player build is included
+  - "!artwork"
+  - "!misc"
+  - "!public/engine/templates"
+  - "!public/engine/projectors"
+  
+extraMetadata:
+    main: "electron/player/player.js"
+
+mac:
+  icon: "AppIcons/iconplayer.icns"
+  target:
+    - dir
+  identity: null # skip codesigning
+
+win:
+  icon: "AppIcons/iconplayer.ico"
+  target:
+    - dir
+    - nsis
+    - zip
+
+linux:
+  icon: "AppIcons/iconplayer.png"
+  target:
+    - AppImage
+    - zip
+    
+fileAssociations:
+    - ext: d3d
+      name: Damen3D
+      description: Damen3D game file
+      role: Viewer         # macOS document role
+      icon: "AppIcons/iconplayer.png" 

@@ -647,11 +647,10 @@ body.dark {
 			svg {
 				margin: 0px;
 			}
-			
-			&--lock {
-				svg {
-					font-size: 10px;
-				}
+		}
+		.option-button--lock {
+			svg {
+				font-size: 10px;
 			}
 		}
 		.option-button:hover {
@@ -1202,4 +1201,15 @@ body.dark {
 }
 .small-logo:hover {
 	cursor: pointer;
+}
+.new-project {
+	padding: 30px;
+	flex: 1;
+	
+	.tf {
+		width: 100%;
+	}
+	.tf--num {
+		margin-right: 5px;
+	}
 }

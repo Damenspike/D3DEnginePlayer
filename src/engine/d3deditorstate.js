@@ -7,6 +7,13 @@ import {
 import {
 	mergeGraphic2Ds
 } from './d2ddraw.js';
+import { 
+	obfuscateDamenScript 
+} from './damenscript-obfuscate.js';
+import {
+	getExtension,
+	cloneZip
+} from './d3dutility.js';
 
 // Tool enum
 export const Tools = Object.freeze({
@@ -111,6 +118,7 @@ export default class D3DEditorState {
 			subtract: false,
 			closePolygon: true
 		}
+		this.obfuscateDamenScript = obfuscateDamenScript;
 	}
 
 	setMode(mode) {
@@ -323,7 +331,7 @@ export default class D3DEditorState {
 	async __save(projectURI) {
 		const zip = _root?.zip;
 		
-		this.__doBuild(true);
+		this.__doBuild(zip, true);
 		
 		///////////////////////////////////
 		// -- Save zip itself --
@@ -334,9 +342,9 @@ export default class D3DEditorState {
 		console.log('Project saved!');
 	}
 	async __build(buildURI, openInFinder = true) {
-		const zip = _root?.zip;
+		const zip = await cloneZip(_root?.zip);
 		
-		this.__doBuild();
+		this.__doBuild(zip);
 		
 		///////////////////////////////////
 		// -- Save zip itself --
@@ -346,9 +354,21 @@ export default class D3DEditorState {
 		
 		console.log('Project built!');
 	}
-	__doBuild(isEditorBuild = false) {
-		const zip = _root?.zip;
+	async __publish(publishURI, buildURI, opts) {
+		const zip = await cloneZip(_root?.zip);
 		
+		this.__doBuild(zip);
+		
+		///////////////////////////////////
+		// -- Save zip itself --
+		const zipData = await zip.generateAsync({ type: 'uint8array' });
+		
+		opts.manifest = _root.manifest;
+		
+		await D3D.saveProjectFile(zipData, buildURI);
+		await D3D.publishProject(publishURI, buildURI, opts);
+	}
+	__doBuild(zip, isEditorBuild = false) {
 		if(!zip)
 			throw new Error('No project to build');
 		
@@ -374,6 +394,7 @@ export default class D3DEditorState {
 		
 		// Save manifest
 		this.writeFile({
+			zip,
 			path: 'manifest.json',
 			data: JSON.stringify(manifest)
 		});
@@ -392,8 +413,32 @@ export default class D3DEditorState {
 			_root.scene.objects.push(child.getSerializableObject());
 		});
 		
-		const scenesData = JSON.stringify(_root.scenes);
+		let scenes = _root.scenes;
+		
+		if(!isEditorBuild) {
+			// Player build only. Must be undone afterwards by doing a project editor build.
+			scenes = structuredClone(_root.scenes);
+			scenes.forEach(scene => {
+				const obfs = (obj, doSelf) => {
+					if(doSelf && obj.script)
+						obj.script = obfuscateDamenScript(obj.script);
+					
+					obj.children.forEach(child => {
+						if(child.script)
+							child.script = obfuscateDamenScript(child.script);
+						
+						obfs(child, false);
+					});
+				}
+				scene.objects.forEach(obj => {
+					obfs(obj, true);
+				});
+			});
+		}
+		
+		const scenesData = JSON.stringify(scenes);
 		this.writeFile({
+			zip,
 			path: 'scenes.json',
 			data: scenesData
 		});
@@ -401,6 +446,7 @@ export default class D3DEditorState {
 		// Save asset index
 		const assetIndexData = JSON.stringify(_root.assetIndex);
 		this.writeFile({
+			zip,
 			path: 'asset-index.json',
 			data: assetIndexData
 		});
@@ -408,6 +454,7 @@ export default class D3DEditorState {
 		// Save symbols
 		Object.values(_root.__symbols).forEach(symbol => {
 			this.writeFile({
+				zip,
 				path: symbol.file.name,
 				data: JSON.stringify(symbol.objData)
 			});
@@ -416,9 +463,15 @@ export default class D3DEditorState {
 		// Save scripts
 		_editor.clearDirectory('scripts');
 		if(_root.__script) {
-			_editor.writeFile({
+			let rootScript = _root.__script;
+			
+			if(!isEditorBuild)
+				rootScript = obfuscateDamenScript(rootScript);
+			
+			this.writeFile({
+				zip,
 				path: 'scripts/_root.js', 
-				data: _root.__script
+				data: rootScript
 			});
 		}
 	}

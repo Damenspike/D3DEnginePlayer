@@ -5,10 +5,10 @@ import { loadD3D } from '../../engine/d3dplayer.js';
 import '../../assets/style/main.css';
 import '../../assets/style/player.css';
 
-export default function App() {
+export default function App({srcAttr}) {
 	const game3dRef = useRef(null);
 	const game2dRef = useRef(null);
-	const theme = useSystemTheme();
+	const theme = _isStandalone && useSystemTheme();
 	
 	useEffect(() => {
 		const element3d = game3dRef.current;
@@ -20,9 +20,45 @@ export default function App() {
 		window._container3d = element3d;
 		window._container2d = element2d;
 		
-		D3D.getCurrentGameURI().then(uri => {
+		if(_isStandalone) {
+			// Standalone
+			D3D.getCurrentGameURI().then(uri => {
+				loadD3D(uri);
+			});
+		}else{
+			// Web
+			window.D3D = {
+				showError: ({message}) => alert(message),
+				confirm: ({message, onConfirm, onDeny = null}) => {
+					if(confirm(message))
+						onConfirm?.();
+					else
+						onDeny?.();
+				},
+				closePlayer: () => null,
+				updateWindow: () => null,
+				onConsoleMessage: ({level, message}) => {
+					switch(level) {
+						case 'log':
+							console.log(message);
+						break;
+						case 'warn':
+							console.warn(message);
+						break;
+						case 'error':
+							console.error(message);
+						break;
+					}
+				}
+			}
+			
+			// URI is the src attribute passed from main.jsx
+			const uri = srcAttr;
+			
+			console.log('D3D Source:', uri);
+			
 			loadD3D(uri);
-		});
+		}
 		
 		return () => observer.disconnect();
 	}, []);

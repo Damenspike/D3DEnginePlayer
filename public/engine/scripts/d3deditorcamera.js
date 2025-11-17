@@ -284,8 +284,8 @@ function updatePan() {
 	}
 
 	// move camera so content follows the hand (drag right -> move right; drag up -> move up)
-	const moveX = -dxPx * worldPerPxX; // negative so dragging right moves content right
-	const moveY =  dyPx * worldPerPxY; // dragging up moves content up
+	const moveX = -dxPx * worldPerPxX * (_input.zoomMult || 1); // negative so dragging right moves content right
+	const moveY =  dyPx * worldPerPxY * (_input.zoomMult || 1); // dragging up moves content up
 
 	const delta = Vector3()
 		.addScaledVector(right, moveX)

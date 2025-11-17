@@ -1,0 +1,47 @@
+appId: com.damen3d.editor
+productName: "Damen3D Editor"
+
+asar: true
+
+directories:
+  output: dist-editor-build     # build output folder (optional)
+
+files:
+  - dist/editor/**              # Vite-built player frontend
+  - electron/editor/**          # main.js, preload.js, ipc handlers
+  - package.json                # required by electron-builder (stripped)
+  - "!node_modules"             # exclude massive dev deps
+  - "!scripts"                  # exclude your build scripts
+  - "!dist/player"              # ensure only the editor build is included
+  - "!artwork"
+  - "!misc"
+  
+extraMetadata:
+    main: "electron/editor/editor.js"
+
+mac:
+  icon: "AppIcons/iconeditor.icns"
+  target:
+    - dir
+    - dmg
+  #identity: null # skip codesigning
+
+win:
+  icon: "AppIcons/iconeditor.ico"
+  target:
+    - dir
+    - nsis
+    - zip
+
+linux:
+  icon: "AppIcons/iconeditor.png"
+  target:
+    - AppImage
+    - zip
+    
+fileAssociations:
+    - ext: d3dproj
+      name: Damen3D Project
+      description: Damen3D project file
+      role: Viewer         # macOS document role
+      icon: "AppIcons/iconeditor.png"

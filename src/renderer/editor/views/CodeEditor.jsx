@@ -62,8 +62,6 @@ export default function CodeEditor({isOpen, theme}) {
 	useEffect(() => {
 		if(editorRef.current)
 			editorRef.current.setValue(objectOpen?.__script ?? '');
-		else
-			console.warn('Editor is not mounted');
 	}, [objectOpen]);
 	
 	useEffect(() => {
@@ -202,6 +200,19 @@ export default function CodeEditor({isOpen, theme}) {
 									if (e.code === 'KeyS' && (e.ctrlKey || e.metaKey)) {
 										e.preventDefault();
 										D3D.echoSave();
+									}else
+									if (e.code === 'KeyB' && (e.ctrlKey || e.metaKey)) {
+										e.preventDefault();
+										D3D.echoBuild({prompt: false, play: false});
+										console.log('???');
+									}else
+									if (e.code === 'KeyB' && (e.ctrlKey || e.metaKey) && e.shiftKey) {
+										e.preventDefault();
+										D3D.echoBuild({prompt: true});
+									}else
+									if (e.code === 'Enter' && (e.ctrlKey || e.metaKey)) {
+										e.preventDefault();
+										D3D.echoBuild({play: true});
 									}
 								});
 								

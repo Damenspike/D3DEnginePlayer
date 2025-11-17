@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 
-const ELECTRON_MAIN = path.resolve('electron/player.js');
+const ELECTRON_MAIN = path.resolve('electron/player/player.js');
 const VITE_CONFIG   = path.resolve('vite.player.config.js');
 const URL           = 'http://localhost:5174';
 

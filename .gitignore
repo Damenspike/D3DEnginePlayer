@@ -1,3 +1,8 @@
+dist/
+dist-editor-build/
+dist-player-build/
+public/engine/projectors/
+
 # Logs
 logs
 *.log

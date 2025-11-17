@@ -1,21 +1,29 @@
 {
   "name": "Damen3DPlayer",
   "productName": "Damen3D Player",
-  "playerVersion": "1.0.0 Beta",
-  "editorVersion": "1.0.0 Beta",
-  "main": "index.js",
+  "playerVersion": "1.0.0-beta.15",
+  "editorVersion": "1.0.0-beta.6",
+  "version": "1.0.0-beta.15",
   "license": "MIT",
   "scripts": {
     "editor": "node scripts/dev-editor.mjs",
     "player": "node scripts/dev-player.mjs",
-    "build:editor": "vite build --config vite.editor.config.js",
-    "build:player": "vite build --config vite.player.config.js",
-    "build": "yarn build:editor && yarn build:player"
+    "bump:player": "node scripts/bump-version.mjs player",
+    "bump:editor": "node scripts/bump-version.mjs editor",
+    "build:editor": "yarn bump:editor && vite build --config vite.editor.config.js",
+    "build:player": "yarn bump:player && vite build --config vite.player.config.js",
+    "build": "yarn build:editor && yarn build:player",
+    "pkg": "yarn pkg:player && yarn pkg:editor",
+    "pkg:player": "sh scripts/player-build.sh",
+    "pkg:editor": "sh scripts/editor-build.sh",
+    "pkg:player:mac": "sh scripts/player-build-mac.sh",
+    "pkg:editor:mac": "sh scripts/editor-build-mac.sh"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^5.0.1",
     "electron": "^37.3.1",
-    "vite": "^7.1.3"
+    "vite": "^7.1.3",
+    "vite-plugin-css-injected-by-js": "^3.5.2"
   },
   "dependencies": {
     "@codemirror/commands": "^6.8.1",

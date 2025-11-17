@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 
-const ELECTRON_MAIN = path.resolve('electron/editor.js');
+const ELECTRON_MAIN = path.resolve('electron/editor/editor.js');
 const VITE_CONFIG   = path.resolve('vite.editor.config.js');
 const URL           = 'http://localhost:5173';
 

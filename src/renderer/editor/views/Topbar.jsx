@@ -185,7 +185,7 @@ export default function Topbar() {
 			</div>
 			
 			<div className="small-logo no-select" onClick={openDamen3DWebsite}>
-				<img src={_host.theme == 'dark' ? smallLogoLight : smallLogoDark} />
+				<img src={_host.theme == 'dark' ? smallLogoLight : smallLogoDark} className='no-select' />
 			</div>
 		</div>
 	);

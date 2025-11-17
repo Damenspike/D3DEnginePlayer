@@ -51,6 +51,27 @@ async function showConfirm({title = '', message = '', onDeny = null, onConfirm})
 function closePlayer() {
 	D3D.closePlayer();
 }
+function resizeRenderers() {
+	const camera     = _player.camera?.object3d;
+	const renderer3d = _player.renderer3d;
+	const renderer2d = _player.renderer2d;
+
+	if (!renderer3d || !_container3d) return;
+	if (!renderer2d || !_container2d) return;
+
+	const width3d  = _container3d.clientWidth;
+	const height3d = _container3d.clientHeight;
+	const width2d  = _container2d.clientWidth;
+	const height2d = _container2d.clientHeight;
+
+	renderer3d.setSize(width3d, height3d);
+	renderer2d.setSize(width2d, height2d);
+
+	if (camera && height3d > 0) {
+		camera.aspect = width3d / height3d;
+		camera.updateProjectionMatrix();
+	}
+}
 
 // Main loader
 export async function loadD3D(uri) {
@@ -73,28 +94,14 @@ export async function loadD3D(uri) {
 		height: _root.manifest.height
 	});
 	
-	// Listen to window size changes
-	window.addEventListener('resize', () => {
-		const camera = _player.camera?.object3d;
-		const renderer3d = _player.renderer3d;
-		const renderer2d = _player.renderer2d;
-		
-		const width3d = _container3d.clientWidth;
-		const height3d = _container3d.clientHeight;
-		const width2d = _container2d.clientWidth;
-		const height2d = _container2d.clientHeight;
-		
-		if (renderer3d)
-			renderer3d.setSize(width3d, height3d);
-		
-		if (renderer2d)
-			renderer2d.setSize(width2d, height2d);
-		
-		if (camera) {
-			camera.aspect = width3d / height3d;
-			camera.updateProjectionMatrix();
-		}
+	// Ensure renderers are scaled immediately (browser)
+	resizeRenderers();
+	requestAnimationFrame(() => {
+		resizeRenderers();
 	});
+	
+	// Listen to window size changes
+	window.addEventListener('resize', resizeRenderers);
 }
 
 /* ---------------- Helper Functions ---------------- */

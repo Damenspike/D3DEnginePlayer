@@ -12,7 +12,6 @@ import {
 	getExtension,
 	applyOpacity
 } from './d3dutility.js';
-const { path } = D3D;
 
 const protectedNames = [
 	'_root', 'Input', 'position', 'rotation', 'scale', 'name', 'parent', 'children', 'threeObj', 'scenes', 'zip', 'forward', 'right', 'up', 'quaternion', 'onEnterFrame', 'onAddedToScene', 'manifest', 'scenes', '__origin', '__componentInstances', '__onInternalEnterFrame', '__onEditorEnterFrame', '__deleted', '__animatedTransformChange', '_mesh', '_animation', '__self__', '_camera', '_directionallight', '_ambientlight', '_pointlight', 'isClicked', 'isMouseOver', '__runInSandbox'
@@ -726,13 +725,13 @@ export default class D3DObject {
 		this.__origin = uri;
 		this.__symbols = {};
 		
-		if (uri.startsWith('http://') || uri.startsWith('https://')) {
+		if (uri.startsWith('http://') || uri.startsWith('https://') || !_isStandalone) {
 			// Remote URL
 			console.log('Fetching remote .d3d from URL...');
 			const response = await axios.get(uri, { responseType: 'arraybuffer' });
-			buffer = Buffer.from(response.data);
+			buffer = new Uint8Array(response.data);
 		} else {
-			// Local file
+			// Local file (Electron only)
 			console.log('Reading local .d3d file...');
 			buffer = await D3D.readFile(uri);
 		}
@@ -758,7 +757,6 @@ export default class D3DObject {
 			throw new Error('manifest.json not found in .d3d file');
 		}
 		this.manifest = JSON.parse(manifestStr);
-		console.log('Manifest loaded:', this.manifest);
 		
 		// Parse asset-index.json for asset metadata
 		const assetIndexStr = await zip.file('asset-index.json')?.async('string');
@@ -766,7 +764,7 @@ export default class D3DObject {
 			throw new Error('asset-index.json not found in .d3d file');
 		}
 		this.assetIndex = JSON.parse(assetIndexStr);
-		console.log('Asset index loaded:', this.assetIndex);
+		
 		this.updateAssetIndex();
 		
 		// Find all the symbols and store them
@@ -809,37 +807,48 @@ export default class D3DObject {
 	}
 	
 	async executeScripts() {
-		if(!this.enabled) 
+		if (!this.enabled) 
 			return;
+	
+		let script = null;
+		let scriptName = this.engineScript || `__script[${this.name}]`;
 		
-		const zip = this.root.zip;
-		
-		let script;
-		let scriptName = `__script[${this.name}]`;
-		
-		if(this.engineScript) {
-			const url = new URL(`/engine/scripts/${this.engineScript}`, window.location.origin);
-			const res = await fetch(url.toString());
-			if (!res.ok) 
-				throw new Error(`Failed to fetch engine script ${filename}: ${res.status}`);
-			script = await res.text();
-			scriptName = this.engineScript;
-		}else
-		if(this.root == this) {
-			script = await zip.file('scripts/_root.js')?.async('string');
-		}else{
-			script = this.__script;
+		try {
+			if(this.engineScript) {
+				const engineScriptPath = await D3D.resolveEngineScriptPath(this.engineScript);
+				
+				const res = await fetch(engineScriptPath);
+				if (!res.ok) {
+					console.error(`Failed to fetch engine script ${this.engineScript}:`, res.status, res.statusText);
+					return;
+				}
+				script = await res.text();
+			
+			}else 
+			if(this.root == this) {
+				const zip = this.root?.zip;
+				if (zip) {
+					const file = zip.file('scripts/_root.js');
+					if (file) {
+						script = await file.async('string');
+					}
+				}
+			}else{
+				script = this.__script;
+			}
+		} catch (err) {
+			console.error('Error loading script for', this.name, err);
+			return;
 		}
-		
+	
 		this.__script = script;
 		
-		if (script && (!window._editor || this.editorOnly)) {
+		if(script && (!window._editor || this.editorOnly)) {
 			this.__runInSandbox(script);
 			console.log(`${scriptName} executed in DamenScript sandbox`);
 		}
-		
-		if (this.children && this.children.length > 0) {
-			for (const child of this.children) {
+		if(this.children && this.children.length > 0) {
+			for(const child of this.children) {
 				await child.executeScripts();
 			}
 		}

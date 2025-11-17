@@ -64,7 +64,10 @@ export default class D2DDraw {
 		const t = _editor?.tool;
 		return new Set(['brush','pencil','line','square','text','circle','polygon']).has(t);
 	}
-	_request() { _editor?.requestRender?.() || this.d2drenderer?.render?.(); }
+	_request() { 
+		this.d2drenderer.render(); 
+		_editor.updateInspector();
+	}
 
 	/* =============== snapping =============== */
 	_rebuildSnapCache() {
@@ -331,6 +334,9 @@ export default class D2DDraw {
 		if (this.tool === 'circle')  name = 'ellipse';
 		if (this.tool === 'polygon') name = 'polygon';
 		if (this.tool === 'text')  	 name = 'text';
+		
+		if(this.tool == 'text')
+			_editor.draw2d.subtract = false;
 
 		if(_editor.draw2d.subtract) name += ' erase';
 
@@ -406,6 +412,39 @@ export default class D2DDraw {
 		this.drawing = false;
 		const obj = this.tempObj; this.tempObj = null;
 		if (!obj) return;
+		
+		// ---------- degenerate guard for drag-based tools ----------
+		// If the user didn't actually drag (start and end the same),
+		// don't create a shape.
+		const a = this.localPoints[0];
+		const b = this.localPoints[1];
+		// if we somehow didn't get two points, just bail quietly
+		if (!a || !b) {
+			obj.delete?.();
+			this._request();
+			_editor.updateInspector();
+			return;
+		}
+		
+		const dx = b.x - a.x;
+		const dy = b.y - a.y;
+		
+		// convert a small pixel threshold into local space
+		const minLocal = U.pxToLocalScalar
+			? U.pxToLocalScalar(this.d2drenderer, 2)   // ~2px drag
+			: 0.5;                                     // fallback
+		
+		const minSq = minLocal * minLocal;
+		
+		if ((dx * dx + dy * dy) < minSq) {
+			// effectively a click → no size → nuke it
+			obj.delete?.();
+			this._request();
+			_editor.updateInspector();
+			return;
+		}
+		// ---------- end degenerate guard ----------
+		
 		obj.visible = true;
 
 		// style snapshot

@@ -842,47 +842,47 @@ function newAsset(extension, data) {
 		data
 	})
 }
-function addNewFile({name, dir, data}) {
-	const zip = _root.zip;
+function addNewFile({zip, name, dir, data}) {
+	const z = zip ?? _root.zip;
 	const base = dir || 'assets';
-	const path = uniqueFilePath(zip, base, name);
-	zip.file(path, data || new Uint8Array());
+	const path = uniqueFilePath(z, base, name);
+	z.file(path, data || new Uint8Array());
 	
 	_editor.onAssetsUpdated();
 	
 	return path;
 }
-function writeFileByName({ name, dir, data }) {
-	const zip = _root.zip;
+function writeFileByName({ zip, name, dir, data }) {
+	const z = zip ?? _root.zip;
 	const base = dir || 'assets';
 	const path = `${base.replace(/\/$/, '')}/${name}`;
 	
 	// Always overwrite (or create) this file
-	zip.file(path, data || new Uint8Array());
+	z.file(path, data || new Uint8Array());
 
 	_editor.onAssetsUpdated();
 
 	return path;
 }
-function writeFile({ path, data }) {
-	const zip = _root.zip;
-	zip.file(path, data ?? new Uint8Array());
+function writeFile({ zip, path, data }) {
+	const z = zip ?? _root.zip;
+	z.file(path, data ?? new Uint8Array());
 
 	_editor.onAssetsUpdated();
 
 	return path;
 }
-async function readFile(path) {
-	const zip = _root.zip;
-	const file = zip.file(path);
+async function readFile(path, zip) {
+	const z = zip ?? _root.zip;
+	const file = z.file(path);
 	if (!file) 
 		return null;
 
 	return await file.async("string");
 }
-function clearDirectory(path) {
-	const zip = _root.zip;
-	return clearDir(zip, path);
+function clearDirectory(path, zip) {
+	const z = zip ?? _root.zip;
+	return clearDir(z, path);
 }
 function symboliseSelectedObject() {
 	if(_editor.selectedObjects.length < 1)
@@ -1053,6 +1053,7 @@ async function saveProject(projectURI) {
 	try {
 		await _editor.__save(projectURI);
 	}catch(e) {
+		console.error(e);
 		_editor.showError({
 			message: `Error saving project. ${e}`
 		});
@@ -1070,6 +1071,7 @@ async function buildProject(buildURI, play = false) {
 	try {
 		await _editor.__build(buildURI, !play);
 	}catch(e) {
+		console.error(e);
 		_editor.showError({
 			message: `Error building project. ${e}`
 		});
@@ -1078,6 +1080,17 @@ async function buildProject(buildURI, play = false) {
 	if(play) {
 		D3D.openPlayer(buildURI);
 		_events.invoke('clear-console');
+	}
+}
+async function publishProject(publishURI, buildURI, opts) {
+	console.log('Publish URI', publishURI, 'Build URI', buildURI);
+	try {
+		await _editor.__publish(publishURI, buildURI, opts);
+	}catch(e) {
+		console.error(e);
+		_editor.showError({
+			message: `Error publishing project. ${e}`
+		});
 	}
 }
 
@@ -1390,6 +1403,7 @@ D3D.setEventListener('edit-code', () => _editor.editCode());
 D3D.setEventListener('save-project', (uri) => saveProject(uri));
 D3D.setEventListener('request-save-and-close', (uri) => saveProjectAndClose(uri));
 D3D.setEventListener('build', (buildURI, play) => buildProject(buildURI, play));
+D3D.setEventListener('publish', (publishURI, buildURI, opts) => publishProject(publishURI, buildURI, opts));
 
 D3D.setEventListener('add-object', (type) => addD3DObjectEditor(type));
 D3D.setEventListener('symbolise-object', () => symboliseSelectedObject());
