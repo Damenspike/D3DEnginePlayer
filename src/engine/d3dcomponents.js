@@ -962,6 +962,41 @@ const D3DComponents = {
 				def: true
 			},
 			
+			'padding': {
+				label: 'Padding',
+				type: 'boolean',
+				def: false,
+				section: 'padding'
+			},
+			'paddingLeft': {
+				label: 'Left',
+				type: 'number',
+				def: 0,
+				section: 'padding',
+				condition: c => c.properties.padding == true
+			},
+			'paddingRight': {
+				label: 'Right',
+				type: 'number',
+				def: 0,
+				section: 'padding',
+				condition: c => c.properties.padding == true
+			},
+			'paddingTop': {
+				label: 'Top',
+				type: 'number',
+				def: 0,
+				section: 'padding',
+				condition: c => c.properties.padding == true
+			},
+			'paddingBottom': {
+				label: 'Bottom',
+				type: 'number',
+				def: 0,
+				section: 'padding',
+				condition: c => c.properties.padding == true
+			},
+			
 			
 			'fill': {
 				label: 'Color',
@@ -1010,7 +1045,7 @@ const D3DComponents = {
 				def: '#0080ff',
 				section: 'input',
 				condition: c => c.properties.isInput == true
-			},
+			}
 		},
 		manager: D2DTextManager
 	},

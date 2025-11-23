@@ -150,6 +150,9 @@ export function installDamenScript(monaco) {
 				[/"/, 'string', '@string'],
 				[/'([^'\\]|\\.)*$/, 'string.invalid'],
 				[/'/, 'string', '@stringSingle'],
+				// template literals: `str ${x} str`
+				[/`([^`\\]|\\.)*$/, 'string.invalid'],       // unterminated template
+				[/`/, 'string', '@templateString'],
 			],
 	
 			// multiline comments that span lines
@@ -177,6 +180,29 @@ export function installDamenScript(monaco) {
 				[/\\./, 'string.escape.invalid'],
 				[/'/, 'string', '@pop']
 			],
+			
+			templateString: [
+				// plain text inside `
+				[/[^\\`$]+/, 'string'],
+			
+				// escape sequences like \n, \t, \`
+				[/@escapes/, 'string.escape'],
+				[/\\./, 'string.escape.invalid'],
+			
+				// ${ ... } interpolation
+				[/\$\{/, { token: 'delimiter.bracket', next: '@templateExpression' }],
+			
+				// closing backtick
+				[/`/, 'string', '@pop'],
+			],
+			
+			templateExpression: [
+				// end of ${ ... }
+				[/\}/, { token: 'delimiter.bracket', next: '@pop' }],
+			
+				// inside ${ } we just treat everything like normal code
+				{ include: 'root' },
+			],
 		}
 	});
 
@@ -187,7 +213,8 @@ export function installDamenScript(monaco) {
 			{ open: '[', close: ']' },
 			{ open: '(', close: ')' },
 			{ open: '"', close: '"', notIn: ['string'] },
-			{ open: "'", close: "'", notIn: ['string'] }
+			{ open: "'", close: "'", notIn: ['string'] },
+			{ open: '`', close: '`', notIn: ['string', 'stringSingle'] },
 		],
 		comments: { lineComment: '//', blockComment: ['/*', '*/'] },
 		brackets: [['{','}'],['[',']'],['(',')']]

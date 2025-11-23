@@ -1,3 +1,9 @@
+import {
+	timestr,
+	justTime,
+	clockStr
+} from './d3dutility.js';
+
 export default class D3DTime {
 	get fps() {
 		return this.delta > 0 ? 1 / this.delta : 0;
@@ -22,5 +28,14 @@ export default class D3DTime {
 		const d = (nowMs - last) / 1000;
 		// cap pathological hitches (tab switch, breakpoint, etc.)
 		this.delta = d > 0.1 ? 0.1 : (d >= 0 ? d : 0);
+	}
+	just(seconds, ...args) {
+		return justTime(seconds ?? this.now, ...args);
+	}
+	str(seconds) {
+		return timestr(seconds ?? 0);
+	}
+	clock(seconds) {
+		return clockStr(seconds);
 	}
 }

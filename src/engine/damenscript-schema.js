@@ -1,7 +1,7 @@
 export const KEYWORDS = [
 	'var', 'let','const','function','return','if','else','for','while','break','continue', 'async', 'await',
 	'true','false','null','undefined','import','from','export','struct','enum','match',
-	'case','default','try','catch','finally','throw', 'this', 'root', '_root', 'parent'
+	'case','default','try','catch','finally','throw', 'this', 'root', '_root', 'parent', '_time', '_physics', '_input', '_dimensions', '_graphics'
 ]
 export const TYPE_KEYWORDS = [
 	'number','string','bool','Vector2','Vector3','Vector4','MathUtils','Box3','Quaternion','crypto','Math','JSON','Promise','WebSocket','console','Raycaster','Color','Euler','Box4','Sphere','Plane', 'Infinity','fileMeta',
@@ -155,6 +155,18 @@ export const D3D_OBJECT_SCHEMA = {
 	onExitFrame: {
 		type: 'Function():void',
 		doc: 'Called after the frame is rendered.'
+	},
+	onPhysicsUpdate: {
+		type: 'Function():void',
+		doc: 'Called on a physics engine update.'
+	},
+	onGraphicsReady: {
+		type: 'Function():void',
+		doc: 'Called when the graphics are ready.'
+	},
+	onLoad: {
+		type: 'Function():void',
+		doc: 'Called when the D3D object is loaded.'
 	},
 	getComponent: {
 		type: 'Function():ComponentManager',

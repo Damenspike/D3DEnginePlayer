@@ -41,6 +41,230 @@ const TWO_CHAR_OPS = new Set([
 
 const ONE_CHAR_OPS = new Set(['=','+','-','*','/','%','<','>','!']);
 
+// ---------- Template literal lexer (integrated into DamenScript lexer) ----------
+
+function lexTemplateLiteral(input, startIndex, startLine, startCol) {
+	// Assumes input[startIndex] === '`'
+	const len = input.length;
+	let idx   = startIndex + 1;
+	let line  = startLine;
+	let col   = startCol + 1;
+
+	const pieces = [];
+	let textBuf  = '';
+
+	const MODE_NORMAL = 0;
+	const MODE_SQ     = 1; // '
+	const MODE_DQ     = 2; // "
+	const MODE_LINE   = 3; // //
+	const MODE_BLOCK  = 4; // /* */
+	let mode = MODE_NORMAL;
+
+	const adv = () => {
+		const ch = input[idx++];
+		if (ch === '\n') {
+			line++;
+			col = 1;
+		} else {
+			col++;
+		}
+		return ch;
+	};
+
+	const peek = (k = 0) => input[idx + k] ?? '';
+
+	function flushText() {
+		if (textBuf.length > 0) {
+			pieces.push({ kind: 'text', value: textBuf });
+			textBuf = '';
+		}
+	}
+
+	// Read ${ ... } expression, preserving full JS inside
+	function readExpr() {
+		// we've already consumed '${'
+		let depth = 1;
+		let expr  = '';
+		let mode  = MODE_NORMAL;
+
+		while (idx < len && depth > 0) {
+			const ch = adv();
+
+			if (mode === MODE_NORMAL) {
+				if (ch === "'") { mode = MODE_SQ;  expr += ch; continue; }
+				if (ch === '"') { mode = MODE_DQ;  expr += ch; continue; }
+
+				if (ch === '/' && peek() === '/') {
+					mode = MODE_LINE; expr += ch; expr += adv(); continue;
+				}
+				if (ch === '/' && peek() === '*') {
+					mode = MODE_BLOCK; expr += ch; expr += adv(); continue;
+				}
+
+				if (ch === '{') { depth++; expr += ch; continue; }
+				if (ch === '}') {
+					depth--;
+					if (depth === 0) {
+						// closing } of ${...}, don't include it
+						break;
+					}
+					expr += ch;
+					continue;
+				}
+
+				// Backticks inside ${ } are treated as normal characters here.
+				expr += ch;
+				continue;
+			}
+
+			if (mode === MODE_SQ) {
+				expr += ch;
+				if (ch === '\\' && idx < len) {
+					expr += adv();
+				} else if (ch === "'") {
+					mode = MODE_NORMAL;
+				}
+				continue;
+			}
+
+			if (mode === MODE_DQ) {
+				expr += ch;
+				if (ch === '\\' && idx < len) {
+					expr += adv();
+				} else if (ch === '"') {
+					mode = MODE_NORMAL;
+				}
+				continue;
+			}
+
+			if (mode === MODE_LINE) {
+				expr += ch;
+				if (ch === '\n') mode = MODE_NORMAL;
+				continue;
+			}
+
+			if (mode === MODE_BLOCK) {
+				expr += ch;
+				if (ch === '*' && peek() === '/') {
+					expr += adv();
+					mode = MODE_NORMAL;
+				}
+				continue;
+			}
+		}
+
+		if (depth !== 0) {
+			throw new Error('DamenScript lex: Unterminated ${...} in template literal');
+		}
+
+		return expr.trim();
+	}
+
+	// Main template scan
+	while (idx < len) {
+		const ch = peek();
+
+		// end of template
+		if (ch === '`') {
+			adv(); // consume `
+			flushText();
+			break;
+		}
+
+		// start of ${ expr }
+		if (ch === '$' && peek(1) === '{') {
+			adv(); adv(); // consume '${'
+			flushText();
+			const exprCode = readExpr();
+			pieces.push({ kind: 'expr', value: exprCode });
+			continue;
+		}
+
+		// ordinary character in template
+		const c = adv();
+		textBuf += c;
+	}
+
+	if (idx > len) {
+		throw new Error('DamenScript lex: Unterminated template literal');
+	}
+
+	// Build tokens representing ("text" + (expr) + "text2" ...)
+	const tokens = [];
+
+	const pushStr = (s) => {
+		if (!s) return;
+		tokens.push({
+			type:  'str',
+			value: s,
+			line:  startLine,
+			col:   startCol
+		});
+	};
+
+	const pushPunc = (v) => {
+		tokens.push({
+			type:  'punc',
+			value: v,
+			line:  startLine,
+			col:   startCol
+		});
+	};
+
+	const pushOp = (v) => {
+		tokens.push({
+			type:  'op',
+			value: v,
+			line:  startLine,
+			col:   startCol
+		});
+	};
+
+	const pushExprTokens = (code) => {
+		if (!code.trim()) return;
+		// wrap in (...) so precedence is sane
+		pushPunc('(');
+		const inner = lexDamenScript(code); // recursive lex on expression string
+		for (const t of inner) {
+			if (t.type === 'eof') continue;
+			tokens.push(t);
+		}
+		pushPunc(')');
+	};
+
+	// Build: ( piece0 + piece1 + piece2 ... )
+	pushPunc('(');
+	let first = true;
+
+	for (const p of pieces) {
+		if (p.kind === 'text') {
+			if (!p.value) continue;
+			if (!first) pushOp('+');
+			pushStr(p.value);
+			first = false;
+		} else {
+			// expr
+			if (!first) pushOp('+');
+			pushExprTokens(p.value);
+			first = false;
+		}
+	}
+
+	if (first) {
+		// empty template: ``
+		pushStr('');
+	}
+
+	pushPunc(')');
+
+	return {
+		tokens,
+		newIndex: idx,
+		newLine:  line,
+		newCol:   col
+	};
+}
+
 // ---------- DamenScript lexer (same behaviour as interpreter) ----------
 
 function lexDamenScript(input) {
@@ -89,6 +313,16 @@ function lexDamenScript(input) {
 		skipWSandComments();
 		const ch = peek();
 		if (!ch) break;
+
+		// template literal `...`
+		if (ch === '`') {
+			const tpl = lexTemplateLiteral(input, i, line, col);
+			tokens.push(...tpl.tokens);
+			i    = tpl.newIndex;
+			line = tpl.newLine;
+			col  = tpl.newCol;
+			continue;
+		}
 
 		// spread ...
 		if (ch === '.' && peek(1) === '.' && peek(2) === '.') {

@@ -332,7 +332,7 @@ body.dark {
 	}
 }
 .tool-option--disabled:hover {
-	cursor: not-allowed !important;
+	
 }
 .inspector-cell {
 	margin: 10px;

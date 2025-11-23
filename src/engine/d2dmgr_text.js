@@ -124,6 +124,34 @@ export default class TextManager {
 		this.textProperties.caretColor = v;
 	}
 	
+	get paddingLeft() {
+		return this.textProperties.paddingLeft;
+	}
+	set paddingLeft(v) {
+		this.textProperties.paddingLeft = v;
+	}
+	
+	get paddingTop() {
+		return this.textProperties.paddingTop;
+	}
+	set paddingTop(v) {
+		this.textProperties.paddingTop = v;
+	}
+	
+	get paddingRight() {
+		return this.textProperties.paddingRight;
+	}
+	set paddingRight(v) {
+		this.textProperties.paddingRight = v;
+	}
+	
+	get paddingBottom() {
+		return this.textProperties.paddingBottom;
+	}
+	set paddingBottom(v) {
+		this.textProperties.paddingBottom = v;
+	}
+	
 	updateComponent() {
 		if(!this.__setup)
 			this.setup();

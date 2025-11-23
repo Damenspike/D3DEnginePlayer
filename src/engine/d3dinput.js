@@ -98,13 +98,13 @@ export default class D3DInput {
 
 		// record state only when not editing (or when using app shortcuts like Ctrl/⌘)
 		this._keys[e.code] = true;
+		
+		this._listenersDown.forEach(listener => listener(e));
 
 		// prevent page scroll only outside inputs
 		if (!editing && (e.code === 'Space' || e.code.startsWith('Arrow'))) {
 			e.preventDefault();
 		}
-
-		this._listenersDown.forEach(listener => listener(e));
 	}
 
 	_onKeyUp(e) {

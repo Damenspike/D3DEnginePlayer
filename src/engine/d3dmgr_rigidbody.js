@@ -183,8 +183,7 @@ export default class RigidbodyManager {
 		if (!rb) {
 			obj.position.set(x, y, z);
 			obj.updateMatrixWorld(true);
-	
-			if (this._takeSnapshot) this._lastSnapshot = this._takeSnapshot();
+			
 			this.d3dobject.invokeEvent('reset');
 			return;
 		}
@@ -209,8 +208,6 @@ export default class RigidbodyManager {
 		// Three.js side
 		obj.position.set(x, y, z);
 		obj.updateMatrixWorld(true);
-	
-		if (this._takeSnapshot) this._lastSnapshot = this._takeSnapshot();
 		
 		if(reset)
 			this.d3dobject.invokeEvent('reset');
@@ -225,8 +222,7 @@ export default class RigidbodyManager {
 		if (!rb) {
 			obj.quaternion.set(x, y, z, w);
 			obj.updateMatrixWorld(true);
-	
-			if (this._takeSnapshot) this._lastSnapshot = this._takeSnapshot();
+			
 			this.d3dobject.invokeEvent('reset');
 			return;
 		}
@@ -250,8 +246,6 @@ export default class RigidbodyManager {
 		// Three.js side
 		obj.quaternion.set(x, y, z, w);
 		obj.updateMatrixWorld(true);
-	
-		if (this._takeSnapshot) this._lastSnapshot = this._takeSnapshot();
 		
 		if(reset)
 			this.d3dobject.invokeEvent('reset');
@@ -270,7 +264,6 @@ export default class RigidbodyManager {
 			obj.quaternion.set(q.x, q.y, q.z, q.w);
 			obj.updateMatrixWorld(true);
 	
-			if (this._takeSnapshot) this._lastSnapshot = this._takeSnapshot();
 			this.d3dobject.invokeEvent('reset');
 			return;
 		}
@@ -301,8 +294,6 @@ export default class RigidbodyManager {
 		obj.position.set(p.x, p.y, p.z);
 		obj.quaternion.set(q.x, q.y, q.z, q.w);
 		obj.updateMatrixWorld(true);
-	
-		if (this._takeSnapshot) this._lastSnapshot = this._takeSnapshot();
 		
 		if(reset)
 			this.d3dobject.invokeEvent('reset');

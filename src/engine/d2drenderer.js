@@ -467,10 +467,10 @@ export default class D2DRenderer {
 		const breakWords    = (t2d.breakWords ?? false);
 		const letterSpacing = Number(t2d.letterSpacing ?? 0);
 	
-		const padL = Number(t2d.paddingLeft ?? 0);
-		const padR = Number(t2d.paddingRight ?? 0);
-		const padT = Number(t2d.paddingTop ?? 0);
-		const padB = Number(t2d.paddingBottom ?? 0);
+		const padL = t2d.padding ? Number(t2d.paddingLeft ?? 0) : 0;
+		const padR = t2d.padding ? Number(t2d.paddingRight ?? 0) : 0;
+		const padT = t2d.padding ? Number(t2d.paddingTop ?? 0) : 0;
+		const padB = t2d.padding ? Number(t2d.paddingBottom ?? 0) : 0;
 	
 		// ---------- scrolling (on component) ----------
 		const scrollX = Number.isFinite(text2d.scrollX) ? text2d.scrollX : 0;

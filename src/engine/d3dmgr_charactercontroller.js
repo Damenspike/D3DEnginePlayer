@@ -15,6 +15,8 @@ export default class CharacterControllerManager {
 			collider: null,
 		};
 		
+		this.d3dobject.addEventListener('reset', () => this.reset());
+		
 		this._drive = () => {
 			if (!_physics?.ready) 
 				return;
@@ -100,7 +102,7 @@ export default class CharacterControllerManager {
 				state.vy = 0;
 			}
 			
-			rbMgr.setTransform(nextPos, this._quatFromYaw(state.yaw));
+			rbMgr.setTransform(nextPos, this._quatFromYaw(state.yaw), false);
 			
 			this.d3dobject.position = nextPos;
 			this.d3dobject.rotation = { x: 0, y: state.yaw, z: 0 };
@@ -160,6 +162,26 @@ export default class CharacterControllerManager {
 	setup() {
 		this.__onInternalEnterFrame = this._drive;
 		this.inited = true;
+	}
+	
+	reset() {
+		const state = this.component._state;
+		if (!state) return;
+	
+		// Kill vertical motion and mark grounded
+		state.vy  = 0;
+		state.air = false;
+	
+		// Re-sync yaw from current object rotation (state-only change)
+		const rotY = this.d3dobject.rotation?.y || 0;
+		state.yaw = rotY;
+	
+		// Optionally re-sync KCC to current body position (still pure controller state)
+		const rb = _physics.getBody?.(this.d3dobject);
+		if (state.kcc && rb && typeof state.kcc.setPosition === 'function') {
+			const p = rb.translation();
+			state.kcc.setPosition({ x: p.x, y: p.y, z: p.z });
+		}
 	}
 
 	_ensureController(state) {

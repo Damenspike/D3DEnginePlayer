@@ -43,6 +43,7 @@ import D3DEventSystem from './d3devents.js';
 import D3DPhysics from './d3dphysics.js';
 import D3DDimensions from './d3ddimensions.js';
 import D3DGraphics from './d3dgraphics.js';
+import D3DConsole from './d3dconsole.js';
 
 window.THREE = THREE;
 window._editor = new D3DEditorState();
@@ -1087,10 +1088,11 @@ async function saveProject(projectURI) {
 		
 		return true;
 	}catch(e) {
-		console.error(e);
 		_editor.showError({
 			message: `Error saving project. ${e}`
 		});
+		D3DConsole.error(e);
+		_events.invoke('editor-building', false);
 	}
 }
 async function saveProjectAndClose(projectURI) {
@@ -1113,10 +1115,11 @@ async function buildProject(buildURI, play = false) {
 			_events.invoke('clear-console');
 		}
 	}catch(e) {
-		console.error(e);
 		_editor.showError({
 			message: `Error building project. ${e}`
 		});
+		D3DConsole.error(e);
+		_events.invoke('editor-building', false);
 	}
 }
 async function publishProject(publishURI, buildURI, opts) {
@@ -1124,10 +1127,11 @@ async function publishProject(publishURI, buildURI, opts) {
 	try {
 		await _editor.__publish(publishURI, buildURI, opts);
 	}catch(e) {
-		console.error(e);
 		_editor.showError({
 			message: `Error publishing project. ${e}`
 		});
+		D3DConsole.error(e);
+		_events.invoke('editor-building', false);
 	}
 }
 

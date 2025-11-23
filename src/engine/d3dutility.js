@@ -774,3 +774,116 @@ export async function applyTextureToSceneBackground(root, zip, scene, assetId) {
 		);
 	});
 }
+export function formatUtc(seconds, format) {
+	const d = new Date(seconds * 1000);
+
+	const day = d.getUTCDate();
+	const month = d.getUTCMonth();     // 0–11
+	const year = d.getUTCFullYear();
+	let hour = d.getUTCHours();
+	const minute = d.getUTCMinutes();
+
+	const monthsLong = [
+		"January","February","March","April","May","June",
+		"July","August","September","October","November","December"
+	];
+
+	const monthsShort = [
+		"Jan","Feb","Mar","Apr","May","Jun",
+		"Jul","Aug","Sep","Oct","Nov","Dec"
+	];
+
+	// Suffixes: 1st, 2nd, 3rd, 4th…
+	const suffix = (n) => {
+		if (n % 10 === 1 && n % 100 !== 11) return n + "st";
+		if (n % 10 === 2 && n % 100 !== 12) return n + "nd";
+		if (n % 10 === 3 && n % 100 !== 13) return n + "rd";
+		return n + "th";
+	};
+
+	// 12-hour format
+	const ampm = hour >= 12 ? "PM" : "AM";
+	let hour12 = hour % 12;
+	if (hour12 === 0) hour12 = 12;
+
+	const two = (n) => (n < 10 ? "0" + n : n);
+
+	// Replace tokens
+	return format
+		.replace("jS", suffix(day))
+		.replace("j", day)
+		.replace("F", monthsLong[month])
+		.replace("M", monthsShort[month])
+		.replace("Y", year)
+		.replace("h", two(hour12))
+		.replace("i", two(minute))
+		.replace("A", ampm);
+}
+export function justTime(time, hours = false, giveFuture = false) {
+	if (!time) {
+		return "Never";
+	}
+
+	// Convert to seconds if someone passed milliseconds
+	if (time > 1e12) {
+		time = Math.floor(time / 1000);
+	}
+
+	const now = Math.floor(Date.now() / 1000);
+	let diff = now - time;
+
+	// If we should show full date (future or forced)
+	if (giveFuture || diff < 0) {
+		return formatUtc(time, hours ? "jS F Y, h:i A" : "jS F Y");
+	}
+
+	if (diff < 60) {
+		return "Just now";
+	}
+	if (diff < 3600) {
+		return Math.floor(diff / 60) + "m";
+	}
+	if (diff < 86400) {
+		return Math.floor(diff / 3600) + "h";
+	}
+	if (diff < 604800) {
+		return Math.floor(diff / 86400) + "d";
+	}
+	if (diff < 2592000) {
+		return Math.floor(diff / 604800) + "w";
+	}
+
+	// less than a year
+	if (diff < 31536000) {
+		return formatUtc(time, hours ? "j M, h:i A" : "j M");
+	}
+
+	// Over a year
+	return formatUtc(time, "j M Y");
+}
+export function timestr(totalSeconds) {
+	totalSeconds = Math.floor(totalSeconds);
+	
+	const h = Math.floor(totalSeconds / 3600);
+	const m = Math.floor((totalSeconds % 3600) / 60);
+	const s = totalSeconds % 60;
+	
+	const parts = [];
+	
+	if (h > 0) parts.push(`${h}h`);
+	if (m > 0) parts.push(`${m}m`);
+	if (s > 0 || parts.length === 0) parts.push(`${s}s`);
+	
+	return parts.join(' ');
+}
+export function clockStr(totalSeconds) {
+	totalSeconds = Math.floor(totalSeconds);
+
+	const h = Math.floor(totalSeconds / 3600);
+	const m = Math.floor((totalSeconds % 3600) / 60);
+	const s = totalSeconds % 60;
+
+	const pad = n => String(n).padStart(2, '0');
+
+	return `${pad(h)}:${pad(m)}:${pad(s)}`;
+}
