@@ -1,9 +1,8 @@
 {
-  "name": "Damen3DPlayer",
-  "productName": "Damen3D Player",
-  "playerVersion": "1.0.0-beta.15",
-  "editorVersion": "1.0.0-beta.6",
-  "version": "1.0.0-beta.15",
+  "name": "Damen3D",
+  "playerVersion": "1.0.0-beta.61",
+  "editorVersion": "1.0.0-beta.22",
+  "version": "1.0.0-beta.22",
   "license": "MIT",
   "scripts": {
     "editor": "node scripts/dev-editor.mjs",

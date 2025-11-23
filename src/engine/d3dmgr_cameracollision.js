@@ -36,11 +36,28 @@ export default class CameraCollisionManager {
 
 	updateComponent() {
 		if (!this.__setup) this.setup();
+		this.updateObjects();
 	}
 	
 	setup() {
 		this.__onInternalBeforeRender = this.updateCollision;
 		this.__setup = true;
+		
+		_events.on('super-index-update', () => this.updateObjects());
+	}
+	
+	updateObjects() {
+		const target = this.target ?? this.d3dobject.root.find(this.targetName);
+		
+		this.physObjects = _root.superObjects.filter(d3dobj => (
+			d3dobj != target && 
+			d3dobj != this.d3dobject && 
+			d3dobj.rootParent != target &&
+			(
+				d3dobj.rootParent.hasComponent('Rigidbody') || 
+				d3dobj.hasComponent('Rigidbody')
+			)
+		));
 	}
 	
 	updateCollision() {
@@ -67,29 +84,33 @@ export default class CameraCollisionManager {
 			return;
 		}
 		
+		this.target = target;
+		
 		const hits = _physics.linecast(
-			target.position.clone().add(targetOffset), 
-			this.d3dobject.position,
-			{ all: true}
-		)
-		?.filter(
-			h => h.object != target && 
-				 h.object != this.d3dobject && 
-				 h.object.rootParent != target
+			target.localToWorld(targetOffset), 
+			this.d3dobject.worldPosition,
+			{ 
+				all: true,
+				objects: this.physObjects
+			}
 		);
 		
 		if(hits?.length > 0) {
 			const point = hits[0].point;
-			const coffset = new THREE.Vector3(
-				this.offset?.x || 0,
-				this.offset?.y || 0,
-				this.offset?.z || 0
+			const coffset = this.d3dobject.localDirToWorld(
+				new THREE.Vector3(
+					this.offset?.x || 0,
+					this.offset?.y || 0,
+					this.offset?.z || 0
+				)
 			);
-			const hitPointDir = new THREE.Vector3().subVectors(
-				point, this.d3dobject.position
+			
+			const hitPointDir = new THREE.Vector3()
+			.subVectors(
+				point, this.d3dobject.worldPosition
 			).normalize();
 			
-			this.d3dobject.position = point.add(hitPointDir.multiplyScalar(radius)).add(coffset);
+			this.d3dobject.worldPosition = point.add(hitPointDir.multiplyScalar(radius)).add(coffset);
 		}
 	}
 }

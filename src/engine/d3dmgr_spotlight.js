@@ -62,7 +62,7 @@ export default class SpotLightManager {
 		}
 
 		// Create internal target and add to scene root
-		const scene = _root.object3d;
+		const scene = this.d3dobject.root.object3d;
 		const target = new THREE.Object3D();
 		target.name = '__spotLightTarget';
 		target.visible = false;

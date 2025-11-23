@@ -116,7 +116,7 @@ export default function MaterialEditor({ uri, date, onSave, openAsset }) {
 			}
 		})();
 		return () => { cancelled = true; };
-	}, [uri, date]);
+	}, [uri]);
 
 	// commit single source of truth: updates baseline then calls parent onSave(prev,next)
 	const commit = (next) => {

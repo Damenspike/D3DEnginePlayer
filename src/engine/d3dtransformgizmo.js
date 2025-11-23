@@ -101,6 +101,13 @@ export default class D3DTransformGizmo {
 			}
 		});
 		
+		this.dom.addEventListener('mouseleave', () => {
+			this._setHover(null);
+		});
+		this.dom.addEventListener('pointerleave', () => {
+			this._setHover(null);
+		});
+		
 		if (_editor.composer) {
 			const gizmoPass = new RenderPass(this._gizmoScene, this.camera);
 			gizmoPass.clear = false;			// don't clear color/depth; draw over previous passes
@@ -133,6 +140,7 @@ export default class D3DTransformGizmo {
 		this.d3dobject = null;
 		this._group.visible = false;
 		this._endDrag();
+		this._setHover(null);
 	}
 
 	setMode(mode) {
@@ -163,13 +171,15 @@ export default class D3DTransformGizmo {
 		const changed =
 			(Array.isArray(sel) ? sel.length : (sel ? 1 : 0)) !== this._targets.length ||
 			curFirst !== inFirst;
-	
+		
 		if (changed) {
 			if (!sel) this.detach();
 			else this.attach(sel);
 		}
-	
-		if (!this.object && this._targets.length === 0) return;
+		if (!this.object && this._targets.length === 0) {
+			this._setHover(null);
+			return;
+		}
 	
 		this._syncPose();
 		this._scaleToCamera();
@@ -685,12 +695,11 @@ export default class D3DTransformGizmo {
 	}
 
 	_setHover(id) {
+		this.mouseOver = !!id;
 		if (id === this._hover) return;
 		if (this._hover && this._handles[this._hover]) this._setHandleHot(this._handles[this._hover], false);
 		this._hover = id;
 		if (id && this._handles[id]) this._setHandleHot(this._handles[id], true);
-		this.mouseOver = !!id;
-		this._setActiveVisibility(); // <--- keep view ring updated
 	}
 
 	_shouldBeginDrag() {

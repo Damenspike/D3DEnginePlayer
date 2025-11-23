@@ -173,36 +173,69 @@ export default class MeshManager {
 
 	async _buildMaterialFromMatUUID(uuid) {
 		if (!uuid) return null;
+	
 		const txt = await this._readTextByUUID(uuid);
 		if (!txt) return null;
-
+	
 		let params;
 		try { params = JSON.parse(txt); } catch { return null; }
-
+	
 		const type = params.type || 'MeshStandardMaterial';
 		const Ctor = THREE[type];
 		if (!Ctor) return null;
-
+	
 		if ('color' in params) params.color = this._fixColor(params.color);
 		if ('emissive' in params) params.emissive = this._fixColor(params.emissive);
+	
+		// make sure transparent is correct for non-1 opacity
 		if (params.opacity !== undefined && params.opacity < 1 && params.transparent !== true)
 			params.transparent = true;
+	
 		if (typeof params.side === 'string' && THREE[params.side] !== undefined)
 			params.side = THREE[params.side];
-
+	
 		const { ctorParams, pulled } = this._stripIncompatible({ ...params }, type);
+	
 		const m = new Ctor(ctorParams);
+	
+		// store authoring opacity once; applyOpacity will use this
+		if (!m.userData) m.userData = {};
+		if (m.userData._baseOpacity == null) {
+			m.userData._baseOpacity =
+				typeof ctorParams.opacity === 'number' ? ctorParams.opacity : 1;
+		}
+	
 		if ('toneMapped' in m) m.toneMapped = false;
-
+	
 		const maps = pulled.maps || {};
-		await this._setMapRel(m, 'map', maps.map, true);
-		await this._setMapRel(m, 'normalMap', maps.normalMap);
-		await this._setMapRel(m, 'roughnessMap', maps.roughnessMap);
-		await this._setMapRel(m, 'metalnessMap', maps.metalnessMap);
+		const mapOffset        = pulled.mapOffset;
+		const mapRepeat        = pulled.mapRepeat;
+		const normalMapOffset  = pulled.normalMapOffset;
+		const normalMapRepeat  = pulled.normalMapRepeat;
+	
+		// Load textures
+		await this._setMapRel(m, 'map',         maps.map,         true);
+		await this._setMapRel(m, 'normalMap',   maps.normalMap);
+		await this._setMapRel(m, 'roughnessMap',maps.roughnessMap);
+		await this._setMapRel(m, 'metalnessMap',maps.metalnessMap);
 		await this._setMapRel(m, 'emissiveMap', maps.emissiveMap, true);
-		await this._setMapRel(m, 'aoMap', maps.aoMap);
-		await this._setMapRel(m, 'alphaMap', maps.alphaMap);
-
+		await this._setMapRel(m, 'aoMap',       maps.aoMap);
+		await this._setMapRel(m, 'alphaMap',    maps.alphaMap);
+	
+		// Apply UV offset / scale for color map
+		if (m.map) {
+			if (Array.isArray(mapOffset)) m.map.offset.set(mapOffset[0] || 0, mapOffset[1] || 0);
+			if (Array.isArray(mapRepeat)) m.map.repeat.set(mapRepeat[0] || 1, mapRepeat[1] || 1);
+			m.map.needsUpdate = true;
+		}
+	
+		// Apply UV offset / scale for normal map
+		if (m.normalMap) {
+			if (Array.isArray(normalMapOffset)) m.normalMap.offset.set(normalMapOffset[0] || 0, normalMapOffset[1] || 0);
+			if (Array.isArray(normalMapRepeat)) m.normalMap.repeat.set(normalMapRepeat[0] || 1, normalMapRepeat[1] || 1);
+			m.normalMap.needsUpdate = true;
+		}
+	
 		m.needsUpdate = true;
 		return m;
 	}
@@ -247,7 +280,7 @@ export default class MeshManager {
 				if (json?.byName) {
 					for (const k of Object.keys(json.byName)) {
 						const rel = this._norm(json.byName[k]);
-						const uuid = _root.resolveAssetId(rel);
+						const uuid = this.d3dobject.root.resolveAssetId(rel);
 						if (uuid) map.set(k, uuid);
 					}
 				}

@@ -18,6 +18,8 @@ import D3DAudioListenerManager from './d3dmgr_audiolistener.js';
 import D3DAudioSourceManager from './d3dmgr_audiosource.js';
 import D3DParticleSystemManager from './d3dmgr_particlesystem.js';
 import D3DCameraCollisionManager from './d3dmgr_cameracollision.js';
+import D3DFirstPersonCameraManager from './d3dmgr_firstpersoncamera.js';
+import D3DFirstPersonCharacterController from './d3dmgr_firstpersoncharactercontroller.js';
 
 import { WebSafeFonts } from './d3dfonts.js';
 
@@ -91,7 +93,7 @@ const D3DComponents = {
 				type: 'number',
 				min: 0.0001,
 				max: 100,
-				def: 0.1
+				def: 0.01
 			},
 			'clipFar': { 
 				label: 'Maximum distance', 
@@ -222,7 +224,29 @@ const D3DComponents = {
 				step: 0.1,
 				def: 1.0,
 				section: 'shadow',
-				condition: (c) => c.properties.castShadow
+				condition: c => c.properties.castShadow
+			},
+			lensFlareEnabled: {
+				label: 'Lens flare',
+				type: 'boolean',
+				section: 'lensflare',
+				def: false
+			},
+			lensFlareTexture: {
+				label: 'Flare texture',
+				type: 'file',
+				section: 'lensflare',
+				format: 'img',
+				condition: c => c.properties.lensFlareEnabled
+			},
+			lensFlareSize: {
+				label: 'Flare size',
+				type: 'number',
+				section: 'lensflare',
+				min: 50,
+				max: 1000,
+				def: 400,
+				condition: c => c.properties.lensFlareEnabled
 			}
 		},
 		gizmo3d: {
@@ -628,7 +652,7 @@ const D3DComponents = {
 		manager: D3DRigidbodyManager
 	},
 	CharacterController: {
-		name: 'Character Controller',
+		name: 'Third Person Character Controller',
 		fields: {
 			'cameraName': {
 				label: 'Camera name',
@@ -1466,6 +1490,127 @@ const D3DComponents = {
 			}
 		},
 		manager: D3DCameraCollisionManager
+	},
+	FirstPersonCamera: {
+		name: 'First Person Camera',
+		sectionsLast: true,
+		fields: {
+			'rotateSpeed': {
+				label: 'Rotate speed',
+				description: 'Mouse look sensitivity',
+				section: 'rotation',
+				type: 'number',
+				def: 1,
+				min: 0.1,
+				max: 10,
+				step: 0.1
+			},
+			'invertX': {
+				label: 'Invert X-axis',
+				section: 'rotation',
+				type: 'boolean',
+				def: false,
+				condition: c => c.properties.advancedControls == true
+			},
+			'invertY': {
+				label: 'Invert Y-axis',
+				section: 'rotation',
+				type: 'boolean',
+				def: false,
+				condition: c => c.properties.advancedControls == true
+			},
+			'mouseLock': {
+				label: 'Lock mouse (pointer lock)',
+				section: 'rotation',
+				type: 'boolean',
+				def: true,
+				condition: c => c.properties.advancedControls == true
+			},
+			'minPitchDeg': {
+				label: 'Minimum pitch',
+				section: 'rotation',
+				description: 'Look-down limit (negative angle in degrees)',
+				type: 'number',
+				def: -80,
+				min: -90,
+				max: 0,
+				step: 1,
+				condition: c => c.properties.advancedControls == true
+			},
+			'maxPitchDeg': {
+				label: 'Maximum pitch',
+				section: 'rotation',
+				description: 'Look-up limit (positive angle in degrees)',
+				type: 'number',
+				def: 80,
+				min: 0,
+				max: 90,
+				step: 1,
+				condition: c => c.properties.advancedControls == true
+			},
+			'advancedControls': {
+				label: 'Advanced controls',
+				type: 'boolean',
+				def: false
+			},
+		},
+		manager: D3DFirstPersonCameraManager
+	},
+	FirstPersonCharacterController: {
+		name: 'First Person Character Controller',
+		sectionsLast: true,
+		fields: {
+			'cameraName': {
+				label: 'Camera name',
+				description: 'Path to the camera object instance that determines the direction of the character (.camera property pointing to an object instance overrides this value)',
+				type: 'string',
+				def: ''
+			},
+			'moveSpeed': {
+				label: 'Move speed',
+				section: 'movement',
+				type: 'number',
+				def: 1,
+				min: 0,
+				step: 0.1
+			},
+			'jumpHeight': {
+				label: 'Jump height',
+				section: 'movement',
+				type: 'number',
+				def: 2,
+				min: 0,
+				step: 0.1
+			},
+			'gravityStrength': {
+				label: 'Gravity strength',
+				section: 'movement',
+				type: 'number',
+				def: 1,
+				min: 0,
+				condition: c => false // just hide this
+			},
+			'invertFwd': {
+				label: 'Invert forward',
+				section: 'movement',
+				type: 'boolean',
+				def: false,
+				condition: c => c.properties.advancedControls == true
+			},
+			'invertHoriz': {
+				label: 'Invert horizontal',
+				section: 'movement',
+				type: 'boolean',
+				def: false,
+				condition: c => c.properties.advancedControls == true
+			},
+			'advancedControls': {
+				label: 'Advanced controls',
+				type: 'boolean',
+				def: false
+			}
+		},
+		manager: D3DFirstPersonCharacterController
 	}
 }
 

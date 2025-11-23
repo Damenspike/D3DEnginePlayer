@@ -195,27 +195,6 @@ export default function CodeEditor({isOpen, theme}) {
 							onMount={(editor, monaco) => {
 								editorRef.current = editor;
 								
-								// Save (keep your KeyS handler if you like)
-								editorRef.current.onKeyDown((e) => {
-									if (e.code === 'KeyS' && (e.ctrlKey || e.metaKey)) {
-										e.preventDefault();
-										D3D.echoSave();
-									}else
-									if (e.code === 'KeyB' && (e.ctrlKey || e.metaKey)) {
-										e.preventDefault();
-										D3D.echoBuild({prompt: false, play: false});
-										console.log('???');
-									}else
-									if (e.code === 'KeyB' && (e.ctrlKey || e.metaKey) && e.shiftKey) {
-										e.preventDefault();
-										D3D.echoBuild({prompt: true});
-									}else
-									if (e.code === 'Enter' && (e.ctrlKey || e.metaKey)) {
-										e.preventDefault();
-										D3D.echoBuild({play: true});
-									}
-								});
-								
 								const KB = monaco.KeyMod;
 								const K  = monaco.KeyCode;
 							
@@ -226,6 +205,11 @@ export default function CodeEditor({isOpen, theme}) {
 								// Support numpad Enter too
 								editor.addCommand(KB.CtrlCmd | K.NumpadEnter, () => {
 									D3D.echoBuild({prompt: false, play: true});
+								});
+								
+								// Save project
+								editor.addCommand(KB.CtrlCmd | K.KeyS, () => {
+									D3D.echoSave();
 								});
 								
 								// Ctrl/Cmd + B  -> Build

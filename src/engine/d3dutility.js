@@ -321,7 +321,7 @@ export function pickWorldPointAtScreen(sx, sy, camera, scene) {
 		.add(new THREE.Vector3(0, 0, -1).applyQuaternion(camera.getWorldQuaternion(new THREE.Quaternion())).multiplyScalar(5));
 }
 export function dropToGroundIfPossible(d3dobject) {
-	const hit = _physics.raycast(d3dobject.position, new THREE.Vector3(0, -1, 0), Infinity, {
+	const hit = _physics.raycast(d3dobject.position, new THREE.Vector3(0, -1, 0), {
 		filter: o => o.rootParent != d3dobject.rootParent
 	});
 	
@@ -548,7 +548,7 @@ export function parseColor(v) {
 	// fallback
 	return { r:1, g:1, b:1, a:1 };
 }
-export function applyOpacity(o, opacity) {
+/*export function applyOpacity(o, opacity) {
 	if (o.material) {
 		if (Array.isArray(o.material)) {
 			o.material.forEach(m => {
@@ -561,6 +561,36 @@ export function applyOpacity(o, opacity) {
 			o.material.opacity = opacity;
 			o.material.needsUpdate = true;
 		}
+	}
+}*/
+export function applyOpacity(o, opacity) {
+	if (o.material) {
+		const applyMat = (m) => {
+			if (!m) return;
+
+			const ud = m.userData || (m.userData = {});
+
+			// Base (authoring) opacity coming from the material itself
+			if (ud._baseOpacity == null) {
+				ud._baseOpacity = (typeof m.opacity === 'number' ? m.opacity : 1);
+			}
+
+			const eff = ud._baseOpacity * opacity;
+
+			m.transparent = eff < 1;
+			m.opacity = eff;
+			m.needsUpdate = true;
+		};
+
+		if (Array.isArray(o.material)) {
+			o.material.forEach(applyMat);
+		} else {
+			applyMat(o.material);
+		}
+	}
+
+	if (o.children && o.children.length) {
+		for (const c of o.children) applyOpacity(c, opacity);
 	}
 }
 
@@ -695,4 +725,52 @@ export function getHitNormalRotation(face, d3dobject) {
 	}
 
 	return quat;
+}
+export async function applyTextureToSceneBackground(root, zip, scene, assetId) {
+	if(!zip || !assetId) 
+		return;
+	
+	const path = root.resolvePath(assetId);
+	
+	if(!path) {
+		console.warn(assetId, 'not found asset for bg texture');
+		return;
+	}
+	
+	const file = zip.file(path);
+	if (!file) {
+		console.warn('Background texture not found in zip:', path);
+		return;
+	}
+	
+	// Load as base64 -> data URL (no need for Blob/ObjectURL bookkeeping)
+	const base64 = await file.async('base64');
+	const src = `data:image/png;base64,${base64}`;
+	
+	const loader = new THREE.TextureLoader();
+	
+	await new Promise((resolve, reject) => {
+		loader.load(
+			src,
+			(tex) => {
+				// assume sRGB image
+				if ('colorSpace' in tex) {
+					tex.colorSpace = THREE.SRGBColorSpace;
+				} else {
+					tex.encoding = THREE.sRGBEncoding; // older three
+				}
+				
+				// If user uses equirectangular panoramas, this gives proper mapping
+				tex.mapping = THREE.EquirectangularReflectionMapping;
+				
+				scene.background = tex;
+				resolve();
+			},
+			undefined,
+			(err) => {
+				console.error('Failed to load background texture:', err);
+				resolve(); // don’t blow up the UI
+			}
+		);
+	});
 }

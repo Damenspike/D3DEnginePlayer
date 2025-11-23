@@ -1,8 +1,17 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain, nativeTheme } = require('electron');
+const { 
+	app, 
+	BrowserWindow, 
+	Menu, 
+	dialog, 
+	ipcMain, 
+	nativeTheme,
+	shell 
+} = require('electron');
 const path = require('path');
 const fs = require('fs');
 const pkg = require('../../package.json');
 const isDev = !app.isPackaged;
+const isMac = process.platform === 'darwin';
 
 let startWindow;
 let gameWindow;
@@ -14,6 +23,9 @@ function resolvePath(...segments) {
 	// In prod, app.getAppPath() points inside app.asar
 	const base = app.getAppPath();
 	return path.join(base, ...segments);
+}
+function getFileFromArgv(argv) {
+	return argv.find(arg => /\.d3d$/i.test(arg));
 }
 
 async function start() {
@@ -70,14 +82,16 @@ async function createSplashScreen({origin, title, width, height, resizable}) {
 		splashWindow = null;
 	});
 	
+	if(!isMac)
+		splashWindow.setMenu(null);
+	
 	setupTheme(splashWindow);
 }
 async function createStartWindow() {
 	startWindow = new BrowserWindow({
-		width: 480,
-		height: 300,
+		width: isMac ? 480 : 490,
+		height: isMac ? 170 : 180,
 		resizable: false,
-		titleBarStyle: 'hidden',
 		webPreferences: {
 			preload: path.join(__dirname, 'preload-player.cjs'),
 			contextIsolation: true,
@@ -96,6 +110,9 @@ async function createStartWindow() {
 	startWindow.on('closed', () => {
 		startWindow = null;
 	});
+	
+	if(!isMac)
+		startWindow.setMenu(null);
 
 	// Send initial theme
 	startWindow.webContents.on('did-finish-load', () => {
@@ -104,9 +121,14 @@ async function createStartWindow() {
 
 	// React to theme changes
 	nativeTheme.on('updated', () => {
-		if (startWindow) {
-			startWindow.webContents.send('theme-changed', nativeTheme.shouldUseDarkColors ? 'dark' : 'light');
-		}
+		[ startWindow, gameWindow ].forEach(win => {
+			if (win && !win.isDestroyed()) {
+				win.webContents.send(
+					'theme-changed',
+					nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
+				);
+			}
+		});
 	});
 }
 
@@ -178,8 +200,6 @@ function closeGameWindow() {
 }
 
 // --- Menu ---
-const isMac = process.platform === 'darwin';
-
 const menuTemplate = [
 	...(isMac ? [{
 		label: app.productName,
@@ -257,7 +277,7 @@ const menuTemplate = [
 				id: 'closeWindow',
 				label: 'Close',
 				accelerator: 'CmdOrCtrl+W',
-				click: () => gameWindow.close()
+				click: () => BrowserWindow.getFocusedWindow().close()
 			}
 		]
 	},
@@ -280,6 +300,32 @@ const menuTemplate = [
 Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate));
 
 // --- App events ---
+if (!isMac) {
+	const gotLock = app.requestSingleInstanceLock();
+	
+	if (!gotLock) {
+		app.quit();
+	} else {
+		// second instance (already running)
+		app.on('second-instance', (event, argv, workingDirectory) => {
+			const filePath = getFileFromArgv(argv);
+			if (!filePath) return;
+			
+			if (app.isReady()) {
+				openGameURI(filePath);
+			} else {
+				pendingFile = filePath;
+			}
+		});
+
+		// first instance (cold start)
+		const firstFile = getFileFromArgv(process.argv);
+		if (firstFile) {
+			pendingFile = firstFile;
+		}
+	}
+}
+
 app.whenReady().then(() => start());
 
 app.on('open-file', (event, filePath) => {

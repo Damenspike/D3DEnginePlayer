@@ -12,6 +12,7 @@ const path = require('path');
 const fs = require('fs');
 const pkg = require('../../package.json');
 const isDev = !app.isPackaged;
+const isMac = process.platform === 'darwin';
 
 let editorDirty = false;
 let startWindow;
@@ -35,6 +36,10 @@ function resolvePath(...segments) {
 	const base = app.getAppPath();
 	return path.join(base, ...segments);
 }
+function getFileFromArgv(argv) {
+	return argv.find(arg => /\.d3dproj$/i.test(arg));
+}
+
 async function start() {
 	setupAbout();
 	if(pendingFile) {
@@ -82,6 +87,9 @@ async function createSplashScreen({origin, title, width, height, resizable}) {
 		splashWindow = null;
 	});
 	
+	if(!isMac)
+		splashWindow.setMenu(null);
+	
 	setupTheme(splashWindow);
 }
 async function createStartWindow() {
@@ -124,7 +132,7 @@ async function createNewProjectWindow() {
 	newProjectWindow = new BrowserWindow({
 		title: 'New Project',
 		width: 380,
-		height: 430,
+		height: isMac ? 430 : 450,
 		resizable: false,
 		webPreferences: {
 			preload: path.join(__dirname, 'preload-editor.cjs'),
@@ -147,7 +155,11 @@ async function createNewProjectWindow() {
 	});
 	
 	setupTheme(newProjectWindow);
-	Menu.setApplicationMenu(appMenuBase);
+	
+	if(!isMac)
+		newProjectWindow.setMenu(null);
+	else
+		Menu.setApplicationMenu(appMenuBase);
 
 	// Send initial theme
 	newProjectWindow.webContents.on('did-finish-load', () => {
@@ -171,6 +183,9 @@ async function createGameWindow() {
 			spellcheck: false
 		}
 	});
+	
+	if(!isMac)
+		gameWindow.setMenu(null);
 	
 	if (isDev) {
 		await gameWindow.loadURL('http://localhost:5173/player.html');
@@ -407,6 +422,7 @@ function sendSaveProjectAs() {
 		properties: ['showOverwriteConfirmation']
 	}).then(result => {
 		if (!result.canceled && result.filePath) {
+			lastOpenedProjectUri = result.filePath;
 			editorWindow.webContents.send('save-project', result.filePath);
 		}
 	}).catch(err => {
@@ -420,6 +436,10 @@ function sendSetTool(type) {
 function sendSetTransformTool(type) {
 	if (!editorWindow?.isFocused()) return;
 	editorWindow.webContents.send('set-transform-tool', type);
+}
+function sendNewFolder() {
+	if (!editorWindow?.isFocused()) return;
+	editorWindow.webContents.send('new-folder');
 }
 function sendNewFile(extension) {
 	if (!editorWindow?.isFocused()) return;
@@ -557,12 +577,15 @@ function sendPublish(opts = {}) {
 }
 
 // --- Menu ---
-const isMac = process.platform === 'darwin';
-
 const standardMenu = [
-	{
-		role: 'appMenu', // macOS only (adds About, Quit)
-	},
+	...(isMac ? [{
+		label: app.productName,
+		submenu: [
+			{ role: 'about', id: 'about' },
+			{ type: 'separator' },
+			{ role: 'quit', id: 'quit' }
+		]
+	}] : []),
 	{
 		role: 'editMenu', // adds Cut/Copy/Paste/Select All automatically
 	},
@@ -668,19 +691,38 @@ const menuTemplate = [
 						accelerator: 'CmdOrCtrl+P',
 						click: () => sendPublish({html: true})
 					},
+					/*
 					{ type: 'separator' },
 					{
-						label: 'Standalone Mac',
-						click: () => sendPublish({mac: true})
-					},
-					{
-						label: 'Standalone Windows',
-						click: () => sendPublish({windows: true})
-					},
-					{
-						label: 'Standalone Linux',
-						click: () => sendPublish({linux: true})
+						label: 'Standalone',
+						submenu: [
+							{
+								label: 'Windows (Intel)',
+								click: () => sendPublish({windows: true, x64: true})
+							},
+							{
+								label: 'Windows (ARM)',
+								click: () => sendPublish({windows: true, arm64: true})
+							},
+							{
+								label: 'Mac (Apple Silicon)',
+								click: () => sendPublish({mac: true, arm64: true})
+							},
+							{
+								label: 'Mac (Intel)',
+								click: () => sendPublish({mac: true, x64: true})
+							},
+							{
+								label: 'Linux (Intel)',
+								click: () => sendPublish({linux: true, x64: true})
+							},
+							{
+								label: 'Linux (ARM)',
+								click: () => sendPublish({linux: true, arm64: true})
+							}
+						]
 					}
+					*/
 				]
 			},
 		]
@@ -734,7 +776,7 @@ const menuTemplate = [
 			{
 				id: 'delete',
 				label: 'Delete',
-				accelerator: process.platform === 'darwin' ? 'Backspace' : 'Delete',
+				accelerator: isMac ? 'Backspace' : 'Delete',
 				click: () => sendDelete()
 			},
 			{
@@ -834,8 +876,16 @@ const menuTemplate = [
 						click: () => sendAddComponent('Rigidbody')
 					},
 					{
-						label: 'Character Controller',
+						label: 'First Person Character Controller',
+						click: () => sendAddComponent('FirstPersonCharacterController')
+					},
+					{
+						label: 'Third Person Character Controller',
 						click: () => sendAddComponent('CharacterController')
+					},
+					{
+						label: 'First Person Camera',
+						click: () => sendAddComponent('FirstPersonCamera')
 					},
 					{
 						label: 'Third Person Camera',
@@ -923,6 +973,11 @@ const menuTemplate = [
 		label: 'Assets',
 		id: 'assets',
 		submenu: [
+			{
+				label: 'New Folder',
+				accelerator: 'CmdOrCtrl+Shift+N',
+				click: () => sendNewFolder()
+			},
 			{
 				id: 'newAsset',
 				label: 'New Asset',
@@ -1103,11 +1158,11 @@ function updateEditorMenusEnabled() {
 	}
 	
 	toggleForSwitch(
-		['save', 'assets', 'objects'],
+		['save', 'assets', 'object'],
 		projectOpen
 	);
 	
-	if (process.platform === 'darwin') {
+	if (isMac) {
 		Menu.setApplicationMenu(appMenu);
 	}
 }
@@ -1125,6 +1180,30 @@ nativeTheme.on('updated', () => {
 });
 
 // --- App events ---
+if (!isMac) {
+	const gotLock = app.requestSingleInstanceLock();
+	
+	if (!gotLock) {
+		app.quit();
+	} else {
+		app.on('second-instance', (event, argv, workingDirectory) => {
+			const filePath = getFileFromArgv(argv);
+			if (!filePath) return;
+			
+			if (app.isReady()) {
+				openProject(filePath);
+			} else {
+				pendingFile = filePath;
+			}
+		});
+		
+		const firstFile = getFileFromArgv(process.argv);
+		if (firstFile) {
+			pendingFile = firstFile;
+		}
+	}
+}
+
 app.whenReady().then(() => start());
 
 app.on('open-file', (event, filePath) => {
@@ -1170,7 +1249,7 @@ ipcMain.on('editor-status', (_, { inputFocussed, codeEditorOpen, activeElement }
 		if (wc && !wc.isDestroyed()) {
 			const shouldIgnore = (
 				activeElement?.tag === 'TEXTAREA' ||
-				(activeElement?.tag === 'INPUT' && activeElement?.type === 'text')
+				(activeElement?.tag === 'INPUT' && (activeElement?.type === 'text' || activeElement?.type === 'search'))
 			);
 			wc.setIgnoreMenuShortcuts(shouldIgnore);
 		}

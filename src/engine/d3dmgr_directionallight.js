@@ -66,7 +66,7 @@ export default class DirectionalLightManager {
 		} catch {}
 
 		// --- hidden target that we keep in front of the light
-		const scene = _root.object3d;
+		const scene = this.d3dobject.root.object3d;
 		const target = new THREE.Object3D();
 		target.name = '__dirLightTarget';
 		target.visible = false;
@@ -78,14 +78,34 @@ export default class DirectionalLightManager {
 		const _dir = new THREE.Vector3();
 		const DIST = 100;
 
+		const _camPos = new THREE.Vector3();
+		
 		const updateTarget = () => {
 			if (!this.component.enabled) return;
-			light.updateMatrixWorld(true);
-			light.getWorldPosition(_pos);
-			light.getWorldDirection(_dir);
-			_dir.multiplyScalar(DIST);
-			target.position.copy(_pos).add(_dir);
+		
+			const cam = _host?.camera?.object3d;   // editor/player camera
+			if (!cam) return;
+		
+			// Where do we want best shadows? Around the camera:
+			cam.getWorldPosition(_camPos);
+		
+			// Light direction (world)
+			light.getWorldDirection(_dir).normalize();
+		
+			// Center of shadow box = camera position (or offset)
+			const center = _camPos;
+		
+			// Place the light some distance back along its direction
+			// so the shadow box encloses the area around the camera.
+			const distBack = this.shadowOrthoSize * 0.5; // tweak
+			_pos.copy(center).addScaledVector(_dir, -distBack);
+			light.position.copy(_pos);
+		
+			// Target = “look at” the center
+			target.position.copy(center);
 			target.updateMatrixWorld(true);
+		
+			light.updateMatrixWorld(true);
 		};
 
 		this.__onInternalEnterFrame = updateTarget;

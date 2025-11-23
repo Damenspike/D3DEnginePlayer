@@ -1,3 +1,5 @@
+import D3DConsole from './d3dconsole.js';
+
 import {
 	handleImportFile
 } from './d3deditorimporter.js';
@@ -8,7 +10,7 @@ import {
 	mergeGraphic2Ds
 } from './d2ddraw.js';
 import { 
-	obfuscateDamenScript 
+	obfuscate 
 } from './damenscript-obfuscate.js';
 import {
 	getExtension,
@@ -118,7 +120,6 @@ export default class D3DEditorState {
 			subtract: false,
 			closePolygon: true
 		}
-		this.obfuscateDamenScript = obfuscateDamenScript;
 	}
 
 	setMode(mode) {
@@ -321,58 +322,113 @@ export default class D3DEditorState {
 		this.selectedObjects.forEach(d3dobject => {
 			clipboard.push(d3dobject.getSerializableObject());
 		});
-		return await this.pasteFrom({clip: clipboard, action: 'Duplicate'});
+		
+		await this.pasteFrom({clip: clipboard, action: 'Duplicate'});
+		
+		// dont return anything for some reason the event listener in d3deditor.js freezes the whole app for 3 secs if something gets returned here?!
 	}
 	
 	setDirty(dirty) {
 		D3D.setDirty(dirty);
 	}
 	
+	// .d3dproj
 	async __save(projectURI) {
+		if(this.__saving) {
+			console.warn('Project is already saving');
+			return;
+		}
+		
 		const zip = _root?.zip;
 		
-		this.__doBuild(zip, true);
+		this.__saving = true;
+		_events.invoke('editor-building', true);
+		D3DConsole.clear();
+		D3DConsole.log('Saving...');
 		
+		D3DConsole.log('[1/3] Making...');
+		this.__doBuild(zip, {isEditorBuild: true});
+		
+		D3DConsole.log('[2/3] Storing...');
 		///////////////////////////////////
 		// -- Save zip itself --
-		const zipData = await zip.generateAsync({ type: 'uint8array' });
+		const t = _time.now;
+		const zipData = await zip.generateAsync({ 
+			type: 'arraybuffer',
+			compression: 'STORE' // d3dproj no compression
+		});
+		
+		D3DConsole.log('[3/3] Writing...');
 		
 		await D3D.saveProjectFile(zipData, projectURI);
 		
-		console.log('Project saved!');
+		this.__saving = false;
+		_events.invoke('editor-building', false);
+		
+		D3DConsole.log(`Project saved. Time elapsed ${Number(_time.now - t).toFixed(2)}s.`);
 	}
-	async __build(buildURI, openInFinder = true) {
+	
+	// .d3d
+	async __build(buildURI, opts = {}) {
+		if(this.__saving) {
+			console.warn('Project is already saving');
+			return;
+		}
+		
+		this.__saving = true;
+		_events.invoke('editor-building', true);
+		
+		D3DConsole.clear();
+		D3DConsole.log('Building...');
+		
+		D3DConsole.log('[1/4] Cloning...');
 		const zip = await cloneZip(_root?.zip);
 		
-		this.__doBuild(zip);
+		D3DConsole.log('[2/4] Making...');
+		this.__doBuild(zip, {
+			obfuscateCode: opts?.obfuscateCode !== false
+		});
 		
+		D3DConsole.log('[3/4] Compressing...');
 		///////////////////////////////////
 		// -- Save zip itself --
-		const zipData = await zip.generateAsync({ type: 'uint8array' });
+		const t = _time.now;
+		const zipData = await zip.generateAsync({ 
+			type: 'arraybuffer',
+			compression: 'DEFLATE', // d3d file compression enabled
+			compressionOptions: {
+				level: opts?.compressionLevel || 6
+			}
+		});
 		
-		await D3D.saveProjectFile(zipData, buildURI, openInFinder);
+		D3DConsole.log('[4/4] Writing...');
+		await D3D.saveProjectFile(zipData, buildURI, opts?.openInFinder === true);
 		
-		console.log('Project built!');
+		this.__saving = false;
+		_events.invoke('editor-building', false);
+		
+		D3DConsole.log(`Project built. Time elapsed ${Number(_time.now - t).toFixed(2)}s.`);
 	}
+	// .d3d
 	async __publish(publishURI, buildURI, opts) {
-		const zip = await cloneZip(_root?.zip);
+		D3DConsole.clear();
 		
-		this.__doBuild(zip);
-		
-		///////////////////////////////////
-		// -- Save zip itself --
-		const zipData = await zip.generateAsync({ type: 'uint8array' });
+		const t = _time.now;
+		await this.__build(buildURI, opts);
 		
 		opts.manifest = _root.manifest;
 		
-		await D3D.saveProjectFile(zipData, buildURI);
 		await D3D.publishProject(publishURI, buildURI, opts);
+		
+		D3DConsole.log(`Project published. Time elapsed ${Number(_time.now - t).toFixed(2)}s`);
 	}
-	__doBuild(zip, isEditorBuild = false) {
+	__doBuild(zip, opts = {}) {
 		if(!zip)
 			throw new Error('No project to build');
 		
+		const isEditorBuild = !!opts?.isEditorBuild;
 		const manifest = { ...(_root.manifest || {}) };
+		
 		if(isEditorBuild) {
 			manifest.editorConfig.lastCameraPosition = {
 				x: _editor.camera.position.x,
@@ -400,10 +456,6 @@ export default class D3DEditorState {
 		});
 		
 		// Save scene graph
-		_root.scene.background = {
-			isColor: _root.object3d.background?.isColor == true,
-			color: _root.object3d.background?.isColor ? (`#${_root.object3d.background.getHexString()}`) : null
-		}
 		_root.scene.objects = [];
 		
 		_root.children.forEach(child => {
@@ -415,17 +467,17 @@ export default class D3DEditorState {
 		
 		let scenes = _root.scenes;
 		
-		if(!isEditorBuild) {
+		if(opts.obfuscateCode) {
 			// Player build only. Must be undone afterwards by doing a project editor build.
 			scenes = structuredClone(_root.scenes);
 			scenes.forEach(scene => {
 				const obfs = (obj, doSelf) => {
 					if(doSelf && obj.script)
-						obj.script = obfuscateDamenScript(obj.script);
+						obj.script = obfuscate(obj.script);
 					
 					obj.children.forEach(child => {
 						if(child.script)
-							child.script = obfuscateDamenScript(child.script);
+							child.script = obfuscate(child.script);
 						
 						obfs(child, false);
 					});
@@ -466,7 +518,7 @@ export default class D3DEditorState {
 			let rootScript = _root.__script;
 			
 			if(!isEditorBuild)
-				rootScript = obfuscateDamenScript(rootScript);
+				rootScript = obfuscate(rootScript);
 			
 			this.writeFile({
 				zip,
@@ -560,7 +612,9 @@ export default class D3DEditorState {
 		let pastedObjects = [];
 		
 		for(let objData of clip) {
-			const d3dobject = await _editor.focus.createObject(objData);
+			const d3dobject = await _editor.focus.createObject(objData, {
+				updateComponents: false
+			});
 			pastedObjects.push(d3dobject);
 		}
 		addStep && this.addStep({
@@ -571,6 +625,10 @@ export default class D3DEditorState {
 			}
 		});
 		selectResult && this.setSelection(pastedObjects, false);
+		
+		for(let o of pastedObjects) {
+			await o.updateComponents();
+		}
 		
 		return pastedObjects;
 	}
@@ -670,6 +728,8 @@ export default class D3DEditorState {
 			this.showError('Just select one object to open the code editor');
 			return;
 		}
+		if(!_root?.__loaded)
+			return;
 		
 		this.openCodeEditor(this.selectedObjects[0] ?? _editor.focus);
 	}

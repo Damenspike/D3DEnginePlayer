@@ -16,7 +16,8 @@
 
 import {
 	FORBIDDEN_KEYWORDS,
-	FORBIDDEN_PROPS
+	FORBIDDEN_PROPS,
+	NO_OBFUSCATE
 } from './damenscript-schema.js';
 
 // ---------- Low-level helpers (copied from DamenScript) ----------
@@ -254,29 +255,53 @@ function buildRenameMap(tokens, externals = []) {
 
 		let isDecl = false;
 
-		// let foo / const foo / var foo / function foo
+		// ---- direct declarations: let foo / const foo / var foo / function foo ----
 		if (prev && prev.type === 'kw' && (
 			prev.value === 'let' ||
 			prev.value === 'const' ||
 			prev.value === 'var' ||
 			prev.value === 'function'
 		)) {
-			// but skip destructuring: let { foo } = ...
+			// skip destructuring like: let { foo } = ...
 			const next = tokens[i + 1] || null;
-			if (!(prev.value !== 'function' && next && next.type === 'punc' && (next.value === '{' || next.value === '['))) {
+			if (!(prev.value !== 'function' &&
+				  next && next.type === 'punc' &&
+				  (next.value === '{' || next.value === '['))) {
 				isDecl = true;
 			}
 		}
-		// let foo, bar
+
+		// ---- declarations after commas: let foo, bar ----
 		else if (prev && prev.type === 'punc' && prev.value === ',') {
+			let sawDestructureBrace = false;
+
 			for (let j = i - 1; j >= 0; j--) {
 				const tj = tokens[j];
-				if (tj.type === 'kw' && (tj.value === 'let' || tj.value === 'const' || tj.value === 'var')) {
-					isDecl = true;
+
+				// if we see '{' or '[' before hitting the keyword, this is
+				// a destructuring pattern: let { a, b } = obj;
+				if (tj.type === 'punc' && (tj.value === '{' || tj.value === '[')) {
+					sawDestructureBrace = true;
+				}
+
+				// reached the declaration keyword
+				if (tj.type === 'kw' && (
+					tj.value === 'let' ||
+					tj.value === 'const' ||
+					tj.value === 'var'
+				)) {
+					// only treat as a simple var-list if there was NO '{' or '[' between
+					// the keyword and this identifier
+					if (!sawDestructureBrace) {
+						isDecl = true;
+					}
 					break;
 				}
-				// bail if we hit a semicolon or '=' first (different context)
-				if (tj.type === 'punc' && (tj.value === ';' || tj.value === '=')) break;
+
+				// bail out if we hit a statement / init boundary first
+				if (tj.type === 'punc' && (tj.value === ';' || tj.value === '=' || tj.value === ')')) {
+					break;
+				}
 			}
 		}
 
@@ -371,6 +396,12 @@ function needsSpace(prev, cur) {
 
 // ---------- Main API ----------
 
+export function obfuscate(source, options = {}) {
+	return obfuscateDamenScript(source, {
+		...options,
+		externals: [...NO_OBFUSCATE]
+	})
+}
 export function obfuscateDamenScript(source, options = {}) {
 	const {
 		rename = true,

@@ -82,8 +82,8 @@ contextBridge.exposeInMainWorld('D3D', {
 	},
 	echoSave: () => ipcRenderer.send('echo-save'),
 	echoBuild: ({prompt, play}) => ipcRenderer.send('echo-build', {prompt, play}),
-	saveProjectFile: async (uint8array, projectURI, showInFinder = false) => {
-		if(!projectURI)
+	saveProjectFile: async (data, projectURI, showInFinder = false) => {
+		if (!projectURI)
 			throw new Error('Unknown project URI');
 		
 		const ext = getExtension(projectURI);
@@ -91,24 +91,35 @@ contextBridge.exposeInMainWorld('D3D', {
 		if(ext != 'd3dproj' && ext != 'd3d')
 			throw new Error(`Could not write project file of type ${ext}`);
 		
-		const buildMB = uint8array.length / 1024 / 1024;
-		if(ext == 'd3d' && buildMB > MAX_D3D_MB) {
+		// Normalize to Uint8Array
+		let uint8array;
+		if(data instanceof Uint8Array) {
+			uint8array = data;
+		}else
+		if(data instanceof ArrayBuffer) {
+			uint8array = new Uint8Array(data);
+		}else{
+			throw new Error('saveProjectFile expects Uint8Array or ArrayBuffer');
+		}
+		
+		const buildMB = uint8array.byteLength / 1024 / 1024;
+		if(ext === 'd3d' && buildMB > MAX_D3D_MB) {
 			const ok = await showConfirm({
 				title: 'Build Size',
 				message: `Your d3d file size of ${buildMB} MB exceeds the recommended maximum build size of ${MAX_D3D_MB} MB. It is recommended to split your d3d files into chunks and stream them in. Are you sure you want to continue?`
 			});
-			if(!ok)
+			if (!ok)
 				return;
 		}
 		
 		const dir = path.dirname(projectURI);
 		
-		if (!existsSync(dir))
+		if(!existsSync(dir))
 			throw new Error(`Save failed: directory does not exist: ${dir}`);
 		
 		await fs.writeFile(projectURI, uint8array);
 		
-		if (showInFinder) {
+		if(showInFinder) {
 			// This works on macOS, Windows and Linux
 			ipcRenderer.send('show-in-finder', projectURI);
 		}
@@ -162,10 +173,8 @@ contextBridge.exposeInMainWorld('D3D', {
 			switch (template) {
 				case 'aviation':
 				case 'waddle':
+				case 'snail':
 				case 'car':
-				case 'jetpack':
-				case 'space':
-				case 'snail': // you have "Snail Demo" in the select
 					templateName = template;
 					break;
 			}
@@ -227,10 +236,6 @@ contextBridge.exposeInMainWorld('D3D', {
 	
 			await fs.writeFile(saveTo.filePath, outBuf);
 	
-			if (closeNewWindow) {
-				ipcRenderer.send('close-new-proj-window');
-			}
-	
 			if (typeof onComplete === 'function') {
 				onComplete({
 					path: saveTo.filePath,
@@ -240,6 +245,10 @@ contextBridge.exposeInMainWorld('D3D', {
 					height: h
 				});
 			}
+			
+			if (closeNewWindow) {
+				ipcRenderer.send('close-new-proj-window');
+			}
 		} catch (err) {
 			console.error(err);
 			showError({ title: 'New Project', message: 'Failed to create project. ' + err.toString() });
@@ -248,6 +257,7 @@ contextBridge.exposeInMainWorld('D3D', {
 	publishProject: (...args) => publishProject(resolveProjectorPath, onPublishDone, ...args),
 	resolveEngineScriptPath: resolveEngineScriptPath,
 	resolveProjectorPath: resolveProjectorPath,
+	getEditorInFocus: () => document.hasFocus(),
 	
 	theme: {
 		get: () => ipcRenderer.invoke('get-theme'),
@@ -269,7 +279,7 @@ function getExtension(path) {
 	return path.slice(lastDot + 1).toLowerCase();
 }
 
-async function resolveProjectorPath(platform) {
+async function resolveProjectorPath(platform, arch) {
 	let playerName;
 	
 	if(platform == 'linux')
@@ -285,7 +295,7 @@ async function resolveProjectorPath(platform) {
 	
 	// Try production first
 	const p = await ipcRenderer.invoke('resolve-path', 
-	'dist', 'editor', 'projectors', platform, playerName);
+	'dist', 'editor', 'projectors', platform, arch, playerName);
 	
 	if (p) 
 		return p;
@@ -332,6 +342,7 @@ addIPCListener('desymbolise-object');
 addIPCListener('focus-object');
 addIPCListener('set-tool');
 addIPCListener('set-transform-tool');
+addIPCListener('new-folder');
 addIPCListener('new-asset');
 addIPCListener('request-save-and-close');
 addIPCListener('menu-import-assets');

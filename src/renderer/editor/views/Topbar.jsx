@@ -21,6 +21,7 @@ export default function Topbar() {
 	const [_transformTool, setTransformTool] = useState(_editor.transformTool);
 	const [_mode, setMode] = useState(_editor.mode);
 	const [_lightsEnabled, setLightsEnabled] = useState(_editor.lightsEnabled);
+	const [projectBuilding, setProjectBuilding] = useState(false);
 	
 	useEffect(() => {
 		function onKey(e) {
@@ -39,6 +40,7 @@ export default function Topbar() {
 		_events.on('editor-tool', tool => setTool(tool));
 		_events.on('editor-transform-tool', tool => setTransformTool(tool));
 		_events.on('editor-mode', mode => setMode(mode));
+		_events.on('editor-building', s => setProjectBuilding(!!s));
 	}, []);
 	
 	useEffect(() => {
@@ -61,16 +63,19 @@ export default function Topbar() {
 		D3D.openWebsite();
 	}
 	
-	const drawToolButton = (content, activeCondition, onClick, title = '') => {
+	const drawToolButton = (content, activeCondition, onClick, title = '', disabled = false) => {
 		const classes = ['tool-option', 'no-select'];
 		
+		if(disabled)
+			classes.push('tool-option--disabled');
+		else
 		if(activeCondition() == true)
 			classes.push('tool-option--active');
 		
 		return (
 			<div 
 				className={classes.join(' ')}
-				onClick={onClick} 
+				onClick={!disabled ? (onClick) : (() => null)} 
 				title={title}
 				tabIndex={0}
 			>
@@ -168,7 +173,8 @@ export default function Topbar() {
 						(<MdPlayArrow />),
 						() => false,
 						() => D3D.echoBuild({prompt: false, play: true}),
-						'Build and play'
+						'Build and play',
+						projectBuilding
 					)
 				}
 			</div>

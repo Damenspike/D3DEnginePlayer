@@ -49,7 +49,7 @@ export default function AppNew() {
 		// Return Uint8Array so preload can turn it into a Buffer
 		const outArr = await zip.generateAsync({
 			type: 'uint8array',
-			compression: 'DEFLATE'
+			compression: 'STORE'
 		});
 		
 		return outArr;
@@ -131,7 +131,6 @@ export default function AppNew() {
 					<option value="waddle">Waddle Demo</option>
 					<option value="snail">Snail Demo</option>
 					<option value="car">Car Demo</option>
-					<option value="space">Space Demo</option>
 				</select>
 			</div>
 

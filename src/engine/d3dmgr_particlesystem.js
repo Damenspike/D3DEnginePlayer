@@ -127,7 +127,7 @@ export default class D3DParticleSystemManager {
 
 		this._points = new THREE.Points(this._geom, this._mat);
 		this._points.frustumCulled = false; // let particles show even if small
-		// IMPORTANT: no renderOrder override here (we want proper depth integration)
+		this._points.renderOrder = 9999;
 
 		this._sceneRoot = this._findSceneRoot(this.d3dobject.object3d);
 		this._attachPointsForSpace(this.props.simulationSpace);

@@ -41,7 +41,7 @@ export default class CameraManager {
 	setup() {
 		const camera = new THREE.PerspectiveCamera(
 			this.component.properties.fieldOfView || 75, 
-			_root.manifest.width / _root.manifest.height,
+			this.d3dobject.root.manifest.width / this.d3dobject.root.manifest.height,
 			this.component.properties.clipNear || 0.1, 
 			this.component.properties.clipFar || 1000
 		);

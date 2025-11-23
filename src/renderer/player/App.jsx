@@ -55,7 +55,7 @@ export default function App({srcAttr}) {
 			// URI is the src attribute passed from main.jsx
 			const uri = srcAttr;
 			
-			console.log('D3D Source:', uri);
+			//console.log('D3D Source:', uri);
 			
 			loadD3D(uri);
 		}

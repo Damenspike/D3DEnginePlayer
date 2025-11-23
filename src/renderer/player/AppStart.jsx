@@ -57,19 +57,13 @@ export default function AppStart() {
 		<div className="player-start" style={{ 
 			display: 'flex',
 			flexDirection: 'column',
-			alignItems: 'center',
-			textAlign: 'center',
-			width: '100vw'
+			alignItems: 'flex-start',
+			textAlign: 'flex-start',
+			width: '100vw',
+			height: '100vw',
+			margin: '15px',
+			marginTop: '3px'
 		 }}>
-			<div
-				className="logo no-select"
-				style={{ 
-					backgroundImage: `url(${logoSrc})`,
-					marginTop: 20,
-					marginBottom: 20
-				}}
-			/>
-			
 			<p>Open a local or remote d3d file</p>
 
 			<div style={{display: 'block'}}>
@@ -77,7 +71,7 @@ export default function AppStart() {
 					<input
 						type="text"
 						className="tf"
-						style={{ width: 250 }}
+						style={{ width: '320px' }}
 						placeholder="Enter URL or browse local file"
 						value={url}
 						onChange={(e) => setURL(e.target.value)}
@@ -91,7 +85,7 @@ export default function AppStart() {
 			</div>
 
 			<div style={{
-				marginTop: 30
+				marginTop: 20
 			}}>
 				<button onClick={onLoad}>Load</button>
 			</div>

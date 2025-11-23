@@ -337,47 +337,39 @@ const DamenScript = (() => {
 		return { type:'ForStatement', init, test, update, body };
 	}
 
-	// ---- Param list with defaults: returns [{name, default:null|expr}, ...]
-	function parseParamList() {
-	  const params=[];
-	  if (!(peek().type==='punc' && peek().value===')')) {
-		do {
-		  const idTok = expect('ident');
-		  let def = null;
-		  if (match('op','=')) {
-			def = Expression(); // default expression
-		  }
-		  params.push({ type:'Param', name:idTok.value, default:def });
-		} while (match('punc',','));
-	  }
-	  expect('punc',')');
-	  return params;
-	}
-
-	// ---- Functions ----
-	function parseFunction(isDeclaration){
-	  let isAsync = false;
-	  // we arrive here after seeing 'function' (existing callers), but we also need an entry point for 'async function'
-	  // So we’ll let callers pass after consuming 'async' if present.
+	// ---- Single parameter (pattern or identifier) with optional default
+	function parseParam() {
+	  let pattern;
 	
-	  expect('kw','function');
-	  let id=null;
-	  if (isDeclaration) {
-		const nameTok = expect('ident');
-		id = { type:'Identifier', name:nameTok.value };
+	  // destructuring object/array param: ({ a, b }) or ([x, y])
+	  if (peek().type === 'punc' && (peek().value === '{' || peek().value === '[')) {
+		pattern = BindingPattern();
+	  } else if (peek().type === 'ident') {
+		// simple identifier param
+		pattern = BindingPattern(); // this will consume the ident as BindingIdentifier()
 	  } else {
-		if (peek().type==='ident') { const nameTok=next(); id={type:'Identifier', name:nameTok.value}; }
+		const t = peek();
+		throw DSyntax(`Unexpected token in parameter list: ${t.value}`, t.line, t.col);
 	  }
-	  expect('punc','(');
-	  const params = parseParamList();
-	  expect('punc','{');
-	  const body=[];
-	  while (!(peek().type==='punc' && peek().value==='}')) body.push(Statement());
-	  expect('punc','}');
-	  const node = (isDeclaration)
-		? { type:'FunctionDeclaration', id, params, body:{type:'BlockStatement', body}, async:isAsync }
-		: { type:'FunctionExpression', id, params, body:{type:'BlockStatement', body}, async:isAsync };
-	  return node;
+	
+	  let def = null;
+	  if (match('op', '=')) {
+		def = Expression(); // param-level default:  ({a,b} = getDefault())
+	  }
+	
+	  return { type: 'Param', pattern, default: def };
+	}
+	
+	// ---- Param list with defaults: returns [{ type:'Param', pattern, default }, ...]
+	function parseParamList() {
+	  const params = [];
+	  if (!(peek().type === 'punc' && peek().value === ')')) {
+		do {
+		  params.push(parseParam());
+		} while (match('punc', ','));
+	  }
+	  expect('punc', ')');
+	  return params;
 	}
 	
 	function parsePossiblyAsyncFunction(isDeclaration){
@@ -630,7 +622,8 @@ const DamenScript = (() => {
 		 tokens[pos+2]?.type==='op' && tokens[pos+2]?.value==='=>') {
 	   next(); // async
 	   const id = next(); // ident
-	   return ArrowFromParams([{type:'Param', name:id.value, default:null}], true);
+	   const pattern = { type:'Identifier', name:id.value };
+	   return ArrowFromParams([{ type:'Param', pattern, default:null }], true);
 	 }
 	 
 	 // async () => ...   /   async (a=1,b) => ...
@@ -648,12 +641,15 @@ const DamenScript = (() => {
 	 }
 	  
 	  // function expression
-	  if (t.type==='kw' && t.value==='function') return parseFunction(false);
+	  if (t.type==='kw' && t.value==='function') return parsePossiblyAsyncFunction(false);
 
 	  // single-ident arrow: x => ...   (no defaults in single-ident form)
 	  if (t.type==='ident' && tokens[pos+1] && tokens[pos+1].type==='op' && tokens[pos+1].value==='=>') {
-		const id = next(); return ArrowFromParams([{type:'Param', name:id.value, default:null}]);
+		const id = next();
+		const pattern = { type:'Identifier', name:id.value };
+		return ArrowFromParams([{ type:'Param', pattern, default:null }]);
 	  }
+	  
 	  // identifier
 	  if (t.type==='ident') { next(); return {type:'Identifier', name:t.value}; }
 
@@ -664,22 +660,22 @@ const DamenScript = (() => {
 		  expect('punc',')'); return ArrowFromParams([]); // zero params
 		}
 		// (a=1,b=2) => ...
-		const save = pos;
-		if (peek().type==='ident') {
-		  const tmpParams=[]; let ok=true; const save2=pos;
-		  try {
+		const save = pos;  // position *after* '('
+		try {
+		  const tmpParams = [];
+		  if (!(peek().type === 'punc' && peek().value === ')')) {
 			do {
-			  const p = expect('ident');
-			  let def = null;
-			  if (match('op','=')) def = Expression();
-			  tmpParams.push({ type:'Param', name:p.value, default:def });
-			} while (match('punc',','));
-			if (match('punc',')') && peek().type==='op' && peek().value==='=>') {
-			  return ArrowFromParams(tmpParams);
-			}
-		  } catch(_){ ok=false; }
-		  pos = save2; // not an arrow; reset
+			  tmpParams.push(parseParam());
+			} while (match('punc', ','));
+		  }
+		  if (match('punc', ')') && peek().type === 'op' && peek().value === '=>') {
+			return ArrowFromParams(tmpParams);
+		  }
+		} catch (_) {
+		  // fall through
 		}
+		pos = save; // not an arrow; rewind to after '('
+		
 		// normal (expr)
 		const e = Expression(); expect('punc',')'); return e;
 	  }
@@ -1032,17 +1028,27 @@ const DamenScript = (() => {
 
 	function bindParams(params, args, parentScope) {
 	  const fnScope = new Scope(parentScope);
+	
 	  for (let i = 0; i < params.length; i++) {
 		const p = params[i];
-		let val;
-		if (i < args.length && args[i] !== undefined) val = args[i];
-		else if (p.default != null) val = evalNode(p.default, fnScope);
-		else val = undefined;
+		// Support both new (pattern) and old (name) shapes
+		const pattern = p.pattern || (p.name ? { type:'Identifier', name:p.name } : null);
+		if (!pattern) continue; // nothing to bind
 	
-		fnScope.declare('let', p.name, val);   // <- changed to 'let'
+		let val;
+		if (i < args.length && args[i] !== undefined) {
+		  val = args[i];
+		} else if (p.default != null) {
+		  val = evalNode(p.default, fnScope); // param-level default
+		} else {
+		  val = undefined;
+		}
+	
+		// Use binding patterns for everything (ident/object/array)
+		bindPatternDeclare('let', pattern, val, fnScope);
 	  }
 	
-	  // Optional: JS-like 'arguments'
+	  // JS-like 'arguments'
 	  fnScope.declare('let', 'arguments', args);
 	
 	  return fnScope;
@@ -1586,43 +1592,53 @@ const DamenScript = (() => {
 		  throw DRuntime('Unsupported destructuring assignment');
 	  }
   
-	  function bindParams(params, args, parentScope) {
-		  const fnScope = new Scope(parentScope);
-		  for (let i = 0; i < params.length; i++) {
-			  const p = params[i];
-			  let val = (i < args.length && args[i] !== undefined) ? args[i]
-					  : (p.default != null ? undefined : undefined);
-			  fnScope.declare('let', p.name, val);
+	  async function bindParams(params, args, parentScope) {
+		const fnScope = new Scope(parentScope);
+	  
+		for (let i = 0; i < params.length; i++) {
+		  const p = params[i];
+		  const pattern = p.pattern || (p.name ? { type:'Identifier', name:p.name } : null);
+		  if (!pattern) continue;
+	  
+		  let val;
+		  if (i < args.length && args[i] !== undefined) {
+			val = args[i];
+		  } else if (p.default != null) {
+			val = await evalNode(p.default, fnScope); // param-level default
+		  } else {
+			val = undefined;
 		  }
-		  fnScope.declare('let', 'arguments', args);
-		  return fnScope;
+	  
+		  await bindPatternDeclare('let', pattern, val, fnScope);
+		}
+	  
+		fnScope.declare('let', 'arguments', args);
+		return fnScope;
 	  }
   
 	  function createCallable(params, bodyBlock, parentScope, isAsync = false) {
-		  const runner = async (...args) => {
-			  resetBudget();
-			  const fnScope = bindParams(params, args, parentScope);
-			  // apply defaults
-			  for (let i = 0; i < params.length; i++) {
-				  if (fnScope.map[params[i].name] === undefined && params[i].default != null) {
-					  fnScope.map[params[i].name] = await evalNode(params[i].default, fnScope);
-				  }
+		const runner = async (...args) => {
+		  resetBudget();
+		  const fnScope = await bindParams(params, args, parentScope);
+	  
+		  try {
+			let result;
+			if (bodyBlock.type === 'BlockStatement') {
+			  for (const stmt of bodyBlock.body) {
+				result = await evalNode(stmt, fnScope);
 			  }
-			  try {
-				  let result;
-				  if (bodyBlock.type === 'BlockStatement') {
-					  for (const stmt of bodyBlock.body) result = await evalNode(stmt, fnScope);
-					  return result;
-				  } else {
-					  return await evalNode(bodyBlock, fnScope);
-				  }
-			  } catch (e) {
-				  if (e && e.__kind === RETURN) return e.value;
-				  throw e;
-			  }
-		  };
-		  // Even non-async functions return a function; only awaited if caller does await
-		  return isAsync ? runner : function (...args) { return runner(...args); };
+			  return result;
+			} else {
+			  // expression-bodied function (used if we ever pass an expression here)
+			  return await evalNode(bodyBlock, fnScope);
+			}
+		  } catch (e) {
+			if (e && e.__kind === RETURN) return e.value;
+			throw e;
+		  }
+		};
+	  
+		return isAsync ? runner : function (...args) { return runner(...args); };
 	  }
   
 	  async function evalNode(node, scope = top) {
@@ -1656,22 +1672,19 @@ const DamenScript = (() => {
 				  return createCallable(node.params, node.body, scope, !!node.async);
   
 			  case 'ArrowFunctionExpression': {
-				  const isAsync = !!node.async;
-				  if (node.expression) {
-					  const parentScope = scope;
-					  const runner = async (...args) => {
-						  resetBudget();
-						  const fnScope = bindParams(node.params, args, parentScope);
-						  for (let i = 0; i < node.params.length; i++) {
-							  if (fnScope.map[node.params[i].name] === undefined && node.params[i].default != null) {
-								  fnScope.map[node.params[i].name] = await evalNode(node.params[i].default, fnScope);
-							  }
-						  }
-						  return await evalNode(node.body, fnScope);
-					  };
-					  return isAsync ? runner : function (...args) { return runner(...args); };
-				  }
-				  return createCallable(node.params, node.body, scope, isAsync);
+				const isAsync = !!node.async;
+			  
+				if (node.expression) {
+				  const parentScope = scope;
+				  const runner = async (...args) => {
+					resetBudget();
+					const fnScope = await bindParams(node.params, args, parentScope);
+					return await evalNode(node.body, fnScope);
+				  };
+				  return isAsync ? runner : function (...args) { return runner(...args); };
+				}
+			  
+				return createCallable(node.params, node.body, scope, isAsync);
 			  }
   
 			  case 'AwaitExpression': {

@@ -3,7 +3,8 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { OutlinePass } from 'three/examples/jsm/postprocessing/OutlinePass.js';
-import { GammaCorrectionShader } from 'three/examples/jsm/shaders/GammaCorrectionShader.js';
+import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { GrayscaleShader } from './d3dshaders.js';
 import { v4 as uuidv4 } from 'uuid';
@@ -41,6 +42,7 @@ import D3DComponents from './d3dcomponents.js';
 import D3DEventSystem from './d3devents.js';
 import D3DPhysics from './d3dphysics.js';
 import D3DDimensions from './d3ddimensions.js';
+import D3DGraphics from './d3dgraphics.js';
 
 window.THREE = THREE;
 window._editor = new D3DEditorState();
@@ -49,6 +51,7 @@ window._input = new D3DInput();
 window._time = new D3DTime();
 window._dimensions = new D3DDimensions();
 window._physics = new D3DPhysics();
+window._graphics = new D3DGraphics();
 
 // Host
 window._host = window._editor;
@@ -150,15 +153,12 @@ function initRenderers() {
 	
 	renderer3d.setPixelRatio(window.devicePixelRatio);
 	renderer3d.setSize(_container3d.clientWidth, _container3d.clientHeight);
-	renderer3d.outputEncoding = THREE.sRGBEncoding;
-	renderer3d.toneMapping = THREE.ACESFilmicToneMapping;
-	renderer3d.toneMappingExposure = 1.0;
+	renderer3d.toneMapping = THREE.NoToneMapping;
+	renderer3d.outputColorSpace = THREE.SRGBColorSpace;
 	
 	renderer3d.shadowMap.enabled = true;
 	renderer3d.shadowMap.type = THREE.PCFSoftShadowMap;
 	renderer3d.physicallyCorrectLights = true;
-	renderer3d.toneMapping = THREE.ACESFilmicToneMapping;
-	renderer3d.outputColorSpace = THREE.SRGBColorSpace;
 	
 	renderer2d.setPixelRatio(window.devicePixelRatio);
 	renderer2d.setSize(_container2d.clientWidth, _container2d.clientHeight);
@@ -218,30 +218,43 @@ function initComposer() {
 	const renderer = _editor.renderer3d;
 	const camera = _editor.camera;
 	const scene = _root.object3d;
+	const width = _container3d.clientWidth;
+	const height = _container3d.clientHeight;
 	const composer = new EffectComposer(renderer);
 	
 	_editor.composer = composer;
 
+	// Render Pass
 	const renderPass = new RenderPass(scene, camera);
 	composer.addPass(renderPass);
 	
 	// Setup transform gizmo
 	setupTransformGizmo();
-
-	const gammaCorrectionPass = new ShaderPass(GammaCorrectionShader);
-	composer.addPass(gammaCorrectionPass);
 	
+	// GTAO Pass
+	const gtaoPass = new GTAOPass(scene, camera, width, height);
+	gtaoPass.kernelRadius = 0.3;
+	gtaoPass.minDistance  = 0;
+	gtaoPass.maxDistance  = 0.3;
+	composer.addPass(gtaoPass);
+	
+	// Gray Pass
 	const grayPass = new ShaderPass(GrayscaleShader);
 	grayPass.enabled = false;
 	composer.addPass(grayPass);
 	
+	// Outline Pass
 	const outlinePass = new OutlinePass(
 		new THREE.Vector2(_container3d.clientWidth, _container3d.clientHeight),
 		scene,
 		camera
 	);
 	composer.addPass(outlinePass);
-
+	
+	// Output Pass
+	const outputPass = new OutputPass();
+	composer.addPass(outputPass);
+	
 	// Outline styling
 	outlinePass.edgeStrength = 12.0;
 	outlinePass.edgeGlow = 0.0;
@@ -253,8 +266,9 @@ function initComposer() {
 	// Assign values if needed
 	_editor.grayPass = grayPass;
 	_editor.outlinePass = outlinePass;
-	_editor.gammaCorrectionPass = gammaCorrectionPass;
 	_editor.renderPass = renderPass;
+	_editor.gtaoPass = gtaoPass;
+	_editor.outputPass = outputPass;
 }
 
 function initEditorConfig() {
@@ -338,6 +352,15 @@ function startAnimationLoop() {
 		requestAnimationFrame(animate);
 	}
 	function render() {
+		if(_editor.__saving) {
+			// Don't render while saving to free up main thread for compression/storing
+			return; 
+		}
+		if(!D3D.getEditorInFocus()) {
+			// Don't render while the editor window is out of focus
+			return;
+		}
+		
 		outlinePass.selectedObjects = _editor.selectedObjects
 		.filter(d => !!d.object3d)
 		.map(d => d.object3d);
@@ -414,6 +437,10 @@ function setupResize() {
 		if (camera) {
 			camera.aspect = width3d / height3d;
 			camera.updateProjectionMatrix();
+		}
+		if (_editor.composer) {
+			_editor.composer.setSize(width3d, height3d);
+			_editor.gtaoPass.setSize(width3d, height3d);
 		}
 		
 		_editor.render();
@@ -822,6 +849,9 @@ async function addD3DObjectEditor(type) {
 		_editor.setSelection([newd3dobj]);
 	}, 100);
 }
+function newFolder() {
+	_editor.onNewFolderInspector?.('New folder');
+}
 function newAsset(extension, data) {
 	const ext = !!extension ? `.${extension}` : '';
 	let name = 'File';
@@ -1052,34 +1082,41 @@ async function saveProject(projectURI) {
 	}
 	try {
 		await _editor.__save(projectURI);
+		
+		_editor.setDirty(false);
+		
+		return true;
 	}catch(e) {
 		console.error(e);
 		_editor.showError({
 			message: `Error saving project. ${e}`
 		});
 	}
-	
-	_editor.setDirty(false);
 }
 async function saveProjectAndClose(projectURI) {
-	await saveProject(projectURI);
-	_editor.setDirty(false);
-	_editor.closeEditor();
+	const res = await saveProject(projectURI);
+	if(res) {
+		_editor.setDirty(false);
+		_editor.closeEditor();
+	}
 }
 async function buildProject(buildURI, play = false) {
 	console.log('Build URI', buildURI);
 	try {
-		await _editor.__build(buildURI, !play);
+		await _editor.__build(buildURI, {
+			openInFinder: !play,
+			compressionLevel: !play ? 6 : 3
+		});
+		
+		if(play) {
+			D3D.openPlayer(buildURI);
+			_events.invoke('clear-console');
+		}
 	}catch(e) {
 		console.error(e);
 		_editor.showError({
 			message: `Error building project. ${e}`
 		});
-	}
-	
-	if(play) {
-		D3D.openPlayer(buildURI);
-		_events.invoke('clear-console');
 	}
 }
 async function publishProject(publishURI, buildURI, opts) {
@@ -1135,6 +1172,7 @@ async function onImportAssets(paths) {
 		await _editor.importFile(f, 'assets');
 	}
 	onAssetsUpdated();
+	_editor.setDirty(true);
 }
 function addComponent(type) {
 	const schema = D3DComponents[type];
@@ -1355,10 +1393,10 @@ function zoomStep(step) {
 }
 function focusOnSelected() {
 	if(_editor.selectedObjects.length < 1) {
-		_editor.showError({
+		/*_editor.showError({
 			title: 'Focus',
 			message: 'Select object(s) to focus on'
-		});
+		});*/
 		return;
 	}
 	if(_editor.mode == '3D')
@@ -1393,6 +1431,7 @@ _editor.zoomOut2D = zoomOut2D;
 _editor.zoomStep = zoomStep;
 _editor.resetView = resetView;
 _editor.resetView2D = resetView2D;
+_editor.newFolder = newFolder;
 
 D3D.setEventListener('select-all', () => _editor.selectAll());
 D3D.setEventListener('delete', () => _editor.delete());
@@ -1411,6 +1450,7 @@ D3D.setEventListener('desymbolise-object', () => desymboliseSelectedObject());
 D3D.setEventListener('focus-object', () => focusOnSelected());
 D3D.setEventListener('set-tool', (type) => _editor.setTool(type));
 D3D.setEventListener('set-transform-tool', (type) => _editor.setTransformTool(type));
+D3D.setEventListener('new-folder', () => _editor.newFolder());
 D3D.setEventListener('new-asset', (extension) => _editor.newAsset(extension));
 D3D.setEventListener('add-component', (type) => addComponent(type));
 D3D.setEventListener('menu-import-assets', onImportAssets);

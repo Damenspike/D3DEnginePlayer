@@ -86,11 +86,13 @@ export default function Inspector() {
 	const [objectInspectorExpanded, setObjectInspectorExpanded] = useState(false);
 	const [assetsInspectorExpanded, setAssetsInspectorExpanded] = useState(false);
 	const [mediaInspectorExpanded, setMediaInspectorExpanded] = useState(false);
+	const [sceneFilter, setSceneFilter] = useState('');
+	const [assetFilter, setAssetFilter] = useState('');
 	
 	// Scene config states
 	const [bgType, setBgType] = useState('none');
 	const [bgColor, setBgColor] = useState('#000000');
-	const [bgTexturePath, setBgTexturePath] = useState('');
+	const [bgTextureAsset, setBgTextureAsset] = useState('');
 	
 	// Asset Tree
 	const assetFileInputRef = useRef(null);
@@ -154,9 +156,10 @@ export default function Inspector() {
 	useEffect(() => {
 		if(!_root)
 			return;
-		setBgType(_root.object3d.background?.isColor ? 'color' : 'none');
-		setBgColor(_root.object3d.background?.isColor ? `#${_root.object3d.background.getHexString()}` : '#000000');
-	}, [_root?.object3d?.background?.isColor]);
+		setBgType(_root.scene.background.type);
+		setBgColor(_root.scene.background.color);
+		setBgTextureAsset(_root.scene.background.textureAsset);
+	}, [_root?.scene?.background?.type]);
 	
 	const update = () => {
 		setDummyObject({...dummyObject});
@@ -1544,11 +1547,17 @@ export default function Inspector() {
 				(
 					(_editor.mode == '3D' && c.is3D) || 
 					(_editor.mode == '2D' && c.is2D)
-				)
+				) &&
+				(c.name.toLowerCase().includes(sceneFilter.toLowerCase()) || !sceneFilter)
 			);
 			
-			if(objects.length < 1)
-				return <div className='no-label'>No {_editor.mode} objects in scene</div>
+			if(objects.length < 1) {
+				if(!sceneFilter) {
+					return <div className='no-label'>No {_editor.mode} objects in scene</div>
+				}else {
+					return <div className='no-label'>No objects match your search</div>
+				}
+			}
 			
 			objects.forEach(object => {
 				const selected = _editor.selectedObjects.includes(object);
@@ -1679,153 +1688,103 @@ export default function Inspector() {
 			return rows;
 		}
 		const drawBackgroundSettings = () => {
-			// helpers
-			const applyNone = () => {
-				scene.background = null;
-			};
-		
-			const applyColor = (hex) => {
-				try {
-					scene.background = new THREE.Color(hex || '#000000');
-				} catch {
-					// ignore invalid hex
-				}
-			};
-		
-			const applyTextureFromZip = async (path) => {
-				try {
-					const f = _root?.zip?.file(path);
-					if (!f) return;
-					const blob = await f.async('blob');
-					const url = URL.createObjectURL(blob);
-		
-					new THREE.TextureLoader().load(
-						url,
-						(tex) => {
-							URL.revokeObjectURL(url);
-							tex.mapping = THREE.EquirectangularReflectionMapping; // good default for sky panoramas
-							tex.colorSpace = THREE.SRGBColorSpace;
-							tex.needsUpdate = true;
-							scene.background = tex;
-						},
-						undefined,
-						() => URL.revokeObjectURL(url)
-					);
-				} catch (e) {
-					console.warn('Failed to load background texture:', e);
-				}
-			};
+			const drawBgInput = () => {
+				const bgTexturePath = _root.resolvePathNoAssets(bgTextureAsset);
+				
+				const openBrowseTexture = () => openAssetExplorer({
+					format: 'img',
+					selectedAsset: bgTexturePath,
+					onSelect: (assetPath) => {
+						const assetId = _root.resolveAssetId(assetPath);
+						setBgTextureAsset(assetId);
+						_root.scene.background.textureAsset = assetId;
+						_root.applyScene(_root.scene);
+					}
+				});
+				
+				return (
+					<>
+						<input
+							className="tf"
+							type="text"
+							readOnly
+							value={bgTexturePath}
+							placeholder="No texture selected"
+							onClick={openBrowseTexture}
+						/>
+						<button
+							onClick={openBrowseTexture}
+						>
+							Browse…
+						</button>
+						
+						{bgTexturePath && (
+							<div className='small gray'>
+								Use a 2:1 panorama for best results
+							</div>
+						)}
+					</>
+				)
+			}
 		
 			// UI
 			return (
 				<div className="scene-insp-background-settings">
-					{/* Type */}
-					<div className="field">
-						<label>Background</label>
-						<select
-							className="tf"
-							value={bgType}
-							onChange={async (e) => {
-								const t = e.target.value;
-								setBgType(t);
-		
-								if (t === 'none') {
-									applyNone();
-								} else if (t === 'color') {
-									applyColor(bgColor);
-								} else if (t === 'texture') {
-									if (bgTexturePath) await applyTextureFromZip(bgTexturePath);
-								}
-							}}
-						>
-							<option value="none">None</option>
-							<option value="color">Color</option>
-							<option value="texture">Texture (equirect)</option>
-						</select>
+					<div className='ib vt'>
+						{/* Type */}
+						<div className="field">
+							<label>Background</label>
+							<select
+								className="tf"
+								value={bgType}
+								style={{minWidth: 150}}
+								onChange={e => {
+									const t = e.target.value;
+									setBgType(t);
+									_root.scene.background.type = t;
+									_root.applyScene(_root.scene);
+								}}
+							>
+								<option value="none">None</option>
+								<option value="color">Color</option>
+								<option value="texture">Texture</option>
+							</select>
+						</div>
 					</div>
-		
-					{/* Color settings */}
-					{bgType === 'color' && (
-						<div className="field">
-							<label>Background Color</label>
-							<div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-								<input
-									type="color"
-									value={bgColor}
-									onChange={(e) => {
-										const val = e.target.value || '#000000';
-										setBgColor(val);
-										applyColor(val);
-									}}
-								/>
-								<input
-									type="text"
-									className="tf"
-									value={bgColor}
-									onChange={(e) => {
-										const v = e.target.value.trim();
-										setBgColor(v);
-										// apply only if valid 6-digit hex (#RRGGBB)
-										if (/^#[0-9a-fA-F]{6}$/.test(v)) applyColor(v);
-									}}
-									onBlur={(e) => {
-										const v = e.target.value.trim();
-										if (!/^#[0-9a-fA-F]{6}$/.test(v)) {
-											setBgColor('#000000');
-											applyColor('#000000');
-										}
-									}}
-									placeholder="#000000"
-									style={{ width: 96, textAlign: 'center' }}
-								/>
-							</div>
-						</div>
-					)}
-		
-					{/* Texture settings */}
-					{bgType === 'texture' && (
-						<div className="field">
-							<label>Background Texture</label>
-							<div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8 }}>
-								<input
-									className="tf"
-									type="text"
-									readOnly
-									value={bgTexturePath}
-									placeholder="No texture selected"
-									onClick={() => {
-										openAssetExplorer({
-											format: 'img',
-											selectedAsset: bgTexturePath,
-											onSelect: async (assetPath) => {
-												setBgTexturePath(assetPath);
-												await applyTextureFromZip(assetPath);
-											}
-										});
-									}}
-								/>
-								<button
-									onClick={() => {
-										openAssetExplorer({
-											format: 'img',
-											selectedAsset: bgTexturePath,
-											onSelect: async (assetPath) => {
-												setBgTexturePath(assetPath);
-												await applyTextureFromZip(assetPath);
-											}
-										});
-									}}
-								>
-									Browse…
-								</button>
-							</div>
-							{bgTexturePath && (
-								<div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
-									Hint: use an equirectangular panorama for best results.
+					<div className='ib vt ml2'>
+						{/* Color settings */}
+						{bgType === 'color' && (
+							<div className="field">
+								<label>Color</label>
+								<div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+									<input
+										type="color"
+										value={bgColor}
+										onChange={(e) => {
+											const val = e.target.value || '#000000';
+											setBgColor(val);
+											
+											_root.scene.background.color = val;
+											_root.applyScene(_root.scene);
+										}}
+									/>
 								</div>
-							)}
-						</div>
-					)}
+							</div>
+						)}
+					</div>
+					
+					
+					<div className='mt2'>
+						{/* Texture settings */}
+						{bgType === 'texture' && (
+							<div className="field">
+								<label>Texture</label>
+								<div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8 }}>
+									{drawBgInput()}
+								</div>
+							</div>
+						)}
+					</div>
 				</div>
 			);
 		};
@@ -1838,7 +1797,7 @@ export default function Inspector() {
 				onExpand={() => setSceneInspectorExpanded(!sceneInspectorExpanded)}
 				alwaysOpen={tab != Tabs.All}
 			>
-				{sceneInspectorExpanded && (
+				{/*sceneInspectorExpanded && (
 					<div className="tools-section assets-insp-tools">
 						<button
 							className="btn-small btn-destructive"
@@ -1847,6 +1806,18 @@ export default function Inspector() {
 						>
 							<MdDeleteForever />
 						</button>
+					</div>
+				)*/}
+				{sceneInspectorExpanded && (
+					<div className="tools-section assets-insp-tools">
+						<input 
+							className="tf" 
+							type="search" 
+							style={{width: '100%'}}
+							placeholder="Search"
+							value={sceneFilter}
+							onChange={e => setSceneFilter(e.target.value)}
+						/>
 					</div>
 				)}
 				<div className="path-container">
@@ -1929,7 +1900,7 @@ export default function Inspector() {
 			return moved;
 		};
 	
-		if (!zip) return <div className="no-label">No project file mounted</div>;
+		if (!zip) return <div className="no-label mt">Waiting for project to load</div>;
 	
 		const updateIndex = (oldRel, newRel) => {
 			console.log(oldRel, newRel);
@@ -1946,7 +1917,7 @@ export default function Inspector() {
 			zip.forEach((rel, file) => {
 				if (!rel.startsWith('assets/')) return;
 				if (rel.startsWith('assets/Standard/')) return;
-		
+				
 				const stripped = rel.slice('assets/'.length);
 				if (!stripped) return;
 		
@@ -2193,14 +2164,17 @@ export default function Inspector() {
 			});
 		};
 		_editor.deleteSelectedAssets = deleteSelectedConfirm;
-	
+		_editor.onNewFolderInspector = onNewFolder;
 		// ------------------------------
 		// Node renderers
 		// ------------------------------
 		const renderNode = (node, depth = 0, siblings = []) => {
 			const selected = isSelected(node.path);
 			const ext = getExtension(node.name);
-			const displayName = fileNameNoExt(node.name);
+			const displayName = fileNameNoExt(node.name) || '';
+			
+			if(!node.name.toLowerCase().includes(assetFilter.toLowerCase()))
+				return;
 			
 			if (node.type === 'file') {
 				return (
@@ -2465,7 +2439,7 @@ export default function Inspector() {
 					_editor.onAssetsUpdated();
 				}}
 			>
-				{assetsInspectorExpanded && (
+				{/*assetsInspectorExpanded && (
 					<div className="tools-section assets-insp-tools">
 						<button
 							onClick={() => assetFileInputRef.current?.click()}
@@ -2527,6 +2501,19 @@ export default function Inspector() {
 								<button onClick={() => { setNewFolderOpen(false); setNewFolderName(''); }}>Cancel</button>
 							</div>
 						)}
+					</div>
+				)*/}
+				
+				{assetsInspectorExpanded && (
+					<div className="tools-section assets-insp-tools">
+						<input 
+							className="tf" 
+							type="search" 
+							style={{width: '100%'}}
+							placeholder="Search"
+							value={assetFilter}
+							onChange={e => setAssetFilter(e.target.value)}
+						/>
 					</div>
 				)}
 	

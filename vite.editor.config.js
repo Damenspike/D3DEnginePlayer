@@ -5,7 +5,7 @@ import { resolve } from 'path';
 
 export default defineConfig({
 	root: './src/renderer/editor',
-	base: '',
+	base: './',
 	publicDir: path.resolve(__dirname, 'public'),
 	plugins: [react()],
 	server: { port: 5173 },

@@ -297,6 +297,8 @@ export default function AnimationManager(d3dobject, component) {
 		clipState.wrapMode = options?.wrapMode ?? clipState.wrapMode;
 		clipState.tween = options?.tween ?? clipState.tween;
 		clipState.layer = Number(options?.layer) || clipState.layer;
+		clipState.smoothing = Number(options?.smoothing) || clipState.smoothing;
+		clipState.weight = Number(options?.weight) || clipState.weight;
 		clipState.listener = options?.listener;
 	}
 	this.pause = (clipName) => {
@@ -337,6 +339,8 @@ function AnimationState({d3dobject, clip}) {
 	this.clip = clip;
 	this.wrapMode = WRAP_MODE_ONCE;
 	this.tween = Tween.Linear;
+	this.smoothing = 0;
+	this.weight = 1;
 	this.listener = () => null;
 	this.d3dobject = d3dobject;
 	
@@ -374,10 +378,16 @@ function AnimationState({d3dobject, clip}) {
 				this.tween
 			);
 			
+			const _pos = !!trackPos ? new THREE.Vector3().copy(trackPos) : null;
+			const _qua = !!trackRot ? new THREE.Quaternion().copy(trackRot) : null;
+			const _scl = !!trackScl ? new THREE.Vector3().copy(trackScl) : null;
+			
 			d3dtarget.setAnimatedTransform({
-				position: trackPos,
-				quaternion: trackRot,
-				scale: trackScl
+				position: _pos,
+				quaternion: _qua,
+				scale: _scl,
+				smoothing: this.smoothing,
+				weight: this.weight
 			});
 		}
 	}

@@ -10,11 +10,12 @@ import Tween from './d3dtween.js';
 import { v4 as uuidv4 } from 'uuid';
 import {
 	getExtension,
-	applyOpacity
+	applyOpacity,
+	applyTextureToSceneBackground
 } from './d3dutility.js';
 
 const protectedNames = [
-	'_root', 'Input', 'position', 'rotation', 'scale', 'name', 'parent', 'children', 'threeObj', 'scenes', 'zip', 'forward', 'right', 'up', 'quaternion', 'onEnterFrame', 'onAddedToScene', 'manifest', 'scenes', '__origin', '__componentInstances', '__onInternalEnterFrame', '__onEditorEnterFrame', '__deleted', '__animatedTransformChange', '_mesh', '_animation', '__self__', '_camera', '_directionallight', '_ambientlight', '_pointlight', 'isClicked', 'isMouseOver', '__runInSandbox'
+	'_root', 'Input', 'position', 'rotation', 'scale', 'name', 'parent', 'children', 'threeObj', 'scenes', 'zip', 'forward', 'right', 'up', 'quaternion', 'onEnterFrame', 'onAddedToScene', 'manifest', 'scenes', '__origin', '__componentInstances', '__onInternalEnterFrame', '__onEditorEnterFrame', '__deleted', '__animatedTransformChange', '_mesh', '_animation', '__self__', '_camera', '_directionallight', '_ambientlight', '_pointlight', 'isClicked', 'isMouseOver', '__runInSandbox', '__loaded', 'fileMeta'
 ]
 
 export default class D3DObject {
@@ -72,9 +73,6 @@ export default class D3DObject {
 		
 		if(this == _root && this.name == '_root')
 			throw new Error('Can not rename root');
-			
-		if(!this.isValidName(value))
-			value = `object${(parent?.children?.length ?? Math.floor(Math.random() * 10000000000))}`;
 		
 		if(!this.isNameAllowed(value) && _root != this)
 			value += '_unsafe';
@@ -577,7 +575,9 @@ export default class D3DObject {
 		}
 	}
 	
-	async createObject(objData, executeScripts = true) {
+	async createObject(objData, opts = {}) {
+		const executeScripts = opts?.executeScripts ?? true;
+		
 		if(!objData) {
 			throw new Error('No object data provided to create object from!');
 		}
@@ -665,9 +665,9 @@ export default class D3DObject {
 		// Assign enabled toggle
 		child.enabled = objData.enabled !== undefined ? !!objData.enabled : true;
 		
-		////////////////////////
-		// ----- UUID ----- //
-		////////////////////////
+		///////////////////////////
+		// ----- END UUID ----- //
+		///////////////////////////
 		
 		// COMPONENT SETUP
 		for(let c of objData.components) {
@@ -704,7 +704,8 @@ export default class D3DObject {
 		}
 		
 		// Handle all child components
-		await child.updateComponents();
+		if(opts?.updateComponents !== true)
+			await child.updateComponents();
 		
 		child.__ready = true;
 			
@@ -722,13 +723,25 @@ export default class D3DObject {
 	async load(uri) {
 		let buffer;
 		
+		this.fileMeta = {
+			bytesTotal: 0,
+			bytesLoaded: 0
+		}
+		
 		this.__origin = uri;
 		this.__symbols = {};
 		
 		if (uri.startsWith('http://') || uri.startsWith('https://') || !_isStandalone) {
 			// Remote URL
 			console.log('Fetching remote .d3d from URL...');
-			const response = await axios.get(uri, { responseType: 'arraybuffer' });
+			const response = await axios.get(uri, { 
+				responseType: 'arraybuffer',
+				onDownloadProgress: progressEvent => {
+					this.fileMeta.bytesTotal = progressEvent.total;
+					this.fileMeta.bytesLoaded = progressEvent.loaded;
+					this.invokeEvent('loadProgress', {...this.fileMeta});
+				}
+			});
 			buffer = new Uint8Array(response.data);
 		} else {
 			// Local file (Electron only)
@@ -737,10 +750,17 @@ export default class D3DObject {
 		}
 		
 		if(buffer) {
+			this.fileMeta.bytesTotal = buffer.length;
+			this.fileMeta.bytesLoaded = buffer.length;
+			
 			// Pass buffer to your next step
 			await this.loadFromZip(buffer);
 			
-			console.log('File loaded, size:', buffer.length, 'bytes');
+			console.log('D3D file loaded, size:', buffer.length, 'bytes');
+			
+			this.__loaded = true;
+			this.onLoad?.();
+			this.invokeEvent('load');
 		}
 		
 		return buffer;
@@ -797,12 +817,39 @@ export default class D3DObject {
 	
 		const objects = [...scene.objects];
 		
-		if(this.object3d.isScene && scene.background?.isColor)
-			this.object3d.background = new THREE.Color(scene.background.color || '#000000');
+		await this.applyScene(scene);
 		
 		// Create all objects
 		for (const objData of objects) {
-			await this.createObject(objData, false);
+			await this.createObject(objData, {
+				executeScripts: false
+			});
+		}
+	}
+	
+	async applyScene(scene) {
+		if(!this.object3d.isScene)
+			return;
+		
+		try {
+			const bgType = scene.background?.type;
+			
+			if(bgType == 'none') {
+				this.object3d.background = new THREE.Color('#000000');
+			}
+			if(bgType == 'color') {
+				this.object3d.background = new THREE.Color(scene.background.color || '#000000');
+			}else
+			if(bgType == 'texture') {
+				await applyTextureToSceneBackground(
+					this.root,
+					this.zip,
+					this.object3d,
+					scene.background.textureAsset
+				)
+			}
+		}catch(e) {
+			console.error('Apply scene background error', e);
 		}
 	}
 	
@@ -861,6 +908,7 @@ export default class D3DObject {
 			_time,
 			_physics,
 			_dimensions,
+			_graphics,
 			
 			// JS Like
 			fetch,
@@ -1062,8 +1110,8 @@ export default class D3DObject {
 				
 				if(gizmo3d) {
 					this.addComponent('Mesh', {
-						mesh: _root.resolveAssetId(gizmo3d.mesh),
-						materials: gizmo3d.materials.map(path => _root.resolveAssetId(path)),
+						mesh: this.root.resolveAssetId(gizmo3d.mesh),
+						materials: gizmo3d.materials.map(path => this.root.resolveAssetId(path)),
 						__editorOnly: true,
 						castShadow: false,
 						receiveShadow: false
@@ -1200,7 +1248,7 @@ export default class D3DObject {
 	resolvePath(uuid) {
 		const a = this.findAssetById(uuid);
 		
-		if(!a)
+		if(!a && uuid)
 			console.warn(`Can't resolve asset path for UUID ${uuid}`);
 		
 		return a?.rel || '';
@@ -1295,7 +1343,7 @@ export default class D3DObject {
 					if(!childrenSynced.includes(child)) {
 						// Must no longer be needed
 						console.log(child.name + ' is no longer needed');
-						child.delete();
+						child.forceDelete();
 					}
 				})
 			}
@@ -1506,8 +1554,23 @@ export default class D3DObject {
 		};
 	}
 	
-	find(name) {
-		return this.children.find(child => child.name == name);
+	find(path) {
+		if(typeof path !== 'string' || !path)
+			return undefined;
+		
+		const parts = path.split('.').filter(p => p.length);
+		let node = this;
+		
+		for (const part of parts) {
+			if (!node.children || !node.children.length)
+				return undefined;
+			
+			node = node.children.find(child => child.name === part);
+			if (!node)
+				return undefined;
+		}
+		
+		return node;
 	}
 	findDeep(name) {
 		const res = [];
@@ -1562,11 +1625,14 @@ export default class D3DObject {
 		return dir.clone().applyQuaternion(this.quaternion);
 	}
 	
-	delete() {
+	forceDelete() {
+		this.delete(true);
+	}
+	delete(force = false) {
 		if(this.parent == null)
 			throw new Error("Can't delete _root");
 			
-		if(this.__auto_gltf) {
+		if(!force && this.parent != this.root && (this.__auto_gltf || this.hasComponent('SubMesh')) ) {
 			if(window._editor) {
 				_editor.showError({
 					title: 'Delete',
@@ -1618,7 +1684,7 @@ export default class D3DObject {
 		return !protectedNames.includes(str) && this.isValidName(str);
 	}
 	
-	setAnimatedTransform({position, quaternion, scale}) {
+	setAnimatedTransform({position, quaternion, scale, weight, smoothing}) {
 		if(!this.__preAnimationTransform) {
 			this.__preAnimationTransform = {
 				position: this.position.clone(),
@@ -1628,14 +1694,45 @@ export default class D3DObject {
 			}
 		}
 		
-		if(position)
-			this.position = position;
+		let _pos, _qua, _scl;
 		
-		if(quaternion)
-			this.quaternion = quaternion;
+		if(weight < 1) {
+			if(_pos)
+				_pos = this.position.clone().lerp(position, weight);
 			
-		if(scale)
-			this.scale = scale;
+			if(_qua)
+				_qua = this.quaternion.clone().slerp(quaternion, weight);
+			
+			if(_scl)
+				_scl = this.scale.clone().lerp(scale, weight);
+		}else{
+			_pos = position;
+			_qua = quaternion;
+			_scl = scale;
+		}
+		
+		if(smoothing > 0) {
+			const s = Math.max(30 * (1 - smoothing), 1);
+			const d = Math.min(_time.delta * s, 1);
+			
+			if(_pos)
+				_pos = this.position.clone().lerp(_pos, d);
+			
+			if(_qua)
+				_qua = this.quaternion.clone().slerp(_qua, d);
+			
+			if(_scl)
+				_scl = this.scale.clone().lerp(_scl, d);
+		}
+		
+		if(_pos)
+			this.position = _pos;
+		
+		if(_qua)
+			this.quaternion = _qua;
+			
+		if(_scl)
+			this.scale = _scl;
 	}
 	resetAnimationTransform() {
 		if(this.__preAnimationTransform) {
@@ -1794,6 +1891,71 @@ export default class D3DObject {
 			}
 		);
 	}
+	localToWorld(vec) {
+		const out = new THREE.Vector3();
+		return out.copy(vec).applyMatrix4(this.object3d.matrixWorld);
+	}
+	worldToLocal(vec) {
+		const out = new THREE.Vector3();
+		return out.copy(vec).applyMatrix4(this.object3d.matrixWorldInverse);
+	}
+	localToWorldQuaternion(q) {
+		const out = new THREE.Quaternion();
+		const parentQ = new THREE.Quaternion();
+		
+		this.object3d.getWorldQuaternion(out);      // world rotation of this object
+		this.object3d.getWorldQuaternion(parentQ);  // same thing; we need parent below
+		
+		// worldQ = parentWorldQ * localQ
+		if (this.object3d.parent) {
+			this.object3d.parent.getWorldQuaternion(parentQ);
+			return out.copy(parentQ).multiply(q);
+		} else {
+			// no parent → same
+			return out.copy(q);
+		}
+	}
+	worldQuaternionToLocal(qWorld) {
+		const out = new THREE.Quaternion();
+		const parentQ = new THREE.Quaternion();
+	
+		if (this.object3d.parent) {
+			this.object3d.parent.getWorldQuaternion(parentQ);
+			parentQ.invert();
+			return out.copy(parentQ).multiply(qWorld);
+		}
+	
+		// no parent → same
+		return out.copy(qWorld);
+	}
+	worldEulerToLocal(e) {
+		const qWorld = new THREE.Quaternion()
+			.setFromEuler(new THREE.Euler(e.x, e.y, e.z, 'XYZ'));
+		const qLocal = this.worldQuatToLocal(qWorld);
+		const out = new THREE.Euler().setFromQuaternion(qLocal, 'XYZ');
+		return { x: out.x, y: out.y, z: out.z };
+	}
+	localEulerToWorld(e) {
+		const qLocal = new THREE.Quaternion()
+			.setFromEuler(new THREE.Euler(e.x, e.y, e.z, 'XYZ'));
+		const qWorld = this.localQuatToWorld(qLocal);
+		const out = new THREE.Euler().setFromQuaternion(qWorld, 'XYZ');
+		return { x: out.x, y: out.y, z: out.z };
+	}
+	localDirToWorld(dirLocal) {
+		const out = dirLocal.clone();
+		// apply world rotation only (no translation!)
+		out.applyQuaternion(this.object3d.getWorldQuaternion(new THREE.Quaternion()));
+		return out;
+	}
+	worldDirToLocal(dirWorld) {
+		const out = dirWorld.clone();
+		// inverse world rotation converts to local space
+		const wq = this.object3d.getWorldQuaternion(new THREE.Quaternion()).invert();
+		out.applyQuaternion(wq);
+		return out;
+	}
+	
 	addEventListener(name, listener) {
 		const events = this.__events;
 		
@@ -1837,5 +1999,6 @@ export default class D3DObject {
 		if(this != _root) return;
 		this.superObjects = Object.values(this.superIndex);
 		this.superObjectsThree = this.superObjects.map(o => o.object3d);
+		_events.invoke('super-index-update');
 	}
 }

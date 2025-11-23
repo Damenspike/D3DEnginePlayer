@@ -53,7 +53,7 @@ export default class ThirdPersonCameraManager {
 			const fy = Math.sin(this._pitch);
 			const fz = Math.cos(-this._yaw) * Math.cos(this._pitch);
 
-			const focus = target.position.clone();
+			const focus = target?.position.clone() ?? new THREE.Vector3();
 			focus.y += height;
 
 			const offset = this.d3dobject.forward.clone();

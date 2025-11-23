@@ -4,8 +4,9 @@ export const KEYWORDS = [
 	'case','default','try','catch','finally','throw', 'this', 'root', '_root', 'parent'
 ]
 export const TYPE_KEYWORDS = [
-	'number','string','bool','Vector2','Vector3','Vector4','MathUtils','Box3','Quaternion','crypto','Math','JSON','Promise','WebSocket','console','Raycaster','Color','Euler','Box4','Sphere','Plane', 'Infinity',
+	'number','string','bool','Vector2','Vector3','Vector4','MathUtils','Box3','Quaternion','crypto','Math','JSON','Promise','WebSocket','console','Raycaster','Color','Euler','Box4','Sphere','Plane', 'Infinity','fileMeta',
 	
+	'onStart', 'onGraphicsReady', 'onLoad',
 	'onEnterFrame','onBeforeRender','onExitFrame', 'onPhysicsUpdate',
 	'onMouseOver', 'onMouseOut', 'onMouseMove',
 	'onMouseDown', 'onMouseUp', 'onMouseWheel',
@@ -38,6 +39,43 @@ export const FORBIDDEN_PROPS = [
 	'_animation','_mesh','_camera','_directionallight','_ambientlight',
 	'_pointlight','__runInSandbox'
 ];
+export const NO_OBFUSCATE = [
+	"_root",
+	"_input",
+	"_time",
+	"_physics",
+	"_dimensions",
+	"_graphics",
+	"fetch",
+	"setTimeout",
+	"setInterval",
+	"clearTimeout",
+	"clearInterval",
+	"performance",
+	"queueMicrotask",
+	"crypto",
+	"Math",
+	"JSON",
+	"Infinity",
+	"Promise",
+	"WebSocket",
+	"_editor",
+	"root",
+	"parent",
+	"self",
+	"console",
+	"MathUtils",
+	"Vector3",
+	"Vector2",
+	"Quaternion",
+	"Box3",
+	"Matrix4",
+	"Euler",
+	"Color",
+	"Raycaster",
+	"Sphere",
+	"Plane"
+]
 export const D3D_OBJECT_SCHEMA = {
 	name: {
 		type: 'string',
@@ -96,19 +134,6 @@ export const D3D_OBJECT_SCHEMA = {
 	children: {
 		type: 'D3DObject[]',
 		doc: 'Immediate children.'
-	},
-	
-	_animation: {
-		type: 'Manager',
-		doc: 'Animation manager (if exists)'
-	},
-	_camera: {
-		type: 'Manager',
-		doc: 'Camera manager (if exists)'
-	},
-	_mesh: {
-		type: 'Manager',
-		doc: 'Mesh manager (if exists)'
 	},
 
 	createObject: {

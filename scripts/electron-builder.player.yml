@@ -4,7 +4,11 @@ productName: "Damen3D Player"
 asar: true
 
 directories:
-  output: dist-player-build     # build output folder (optional)
+  output: dist-player-build
+
+# 🔧 Disable auto-update metadata + blockmaps
+publish: null
+generateUpdatesFilesForAllChannels: false
 
 files:
   - public/**
@@ -18,32 +22,44 @@ files:
   - "!misc"
   - "!public/engine/templates"
   - "!public/engine/projectors"
-  
+
 extraMetadata:
-    main: "electron/player/player.js"
+  name: "Damen3DPlayer"         # force internal app name distinct from editor
+  productName: "Damen3D Player"
+  main: "electron/player/player.js"
 
 mac:
   icon: "AppIcons/iconplayer.icns"
   target:
-    - dir
-  identity: null # skip codesigning
+    - dmg
+  identity: "VELO PRO RACER LTD (3JWXCFP9HB)"
+  hardenedRuntime: true
+  entitlements: "scripts/entitlements.mac.plist"
+  entitlementsInherit: "scripts/entitlements.mac.inherit.plist"
 
 win:
   icon: "AppIcons/iconplayer.ico"
+  artifactName: "Damen3D-Player-${version}-${arch}-setup.${ext}"
+  executableName: "Damen3DPlayer"
   target:
-    - dir
-    - nsis
-    - zip
+    - target: nsis
+      arch:
+        - x64
+        - arm64
+
+nsis:
+  differentialPackage: false
+  guid: "b2f9c1d4-1c3e-4a78-9f0f-0c7a6d2f8a91"   # NEW unique GUID for PLAYER
+  uninstallDisplayName: "Damen3D Player"
 
 linux:
   icon: "AppIcons/iconplayer.png"
   target:
     - AppImage
-    - zip
-    
+
 fileAssociations:
-    - ext: d3d
-      name: Damen3D
-      description: Damen3D game file
-      role: Viewer         # macOS document role
-      icon: "AppIcons/iconplayer.png" 
+  - ext: d3d
+    name: Damen3D
+    description: Damen3D game file
+    role: Viewer
+    icon: "AppIcons/iconplayer.png"

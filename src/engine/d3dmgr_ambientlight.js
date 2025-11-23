@@ -37,7 +37,7 @@ export default class HemisphereLightManager {
 		);
 		this.d3dobject.replaceObject3D(hemi);
 	
-		const scene = _root.object3d;
+		const scene = this.d3dobject.root.object3d;
 		const _pos = new THREE.Vector3();
 		const _dir = new THREE.Vector3(0, -1, 0); // Hemisphere lights "downward" by default
 		const DIST = 1;

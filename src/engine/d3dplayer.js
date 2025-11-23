@@ -1,5 +1,9 @@
 // d3dplayer.js
 import * as THREE from 'three';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
 import D2DRenderer from './d2drenderer.js';
 import D3DObject from './d3dobject.js';
@@ -9,6 +13,7 @@ import D3DEventSystem from './d3devents.js';
 import D3DConsole from './d3dconsole.js';
 import D3DPhysics from './d3dphysics.js';
 import D3DDimensions from './d3ddimensions.js';
+import D3DGraphics from './d3dgraphics.js';
 
 window.THREE = THREE;
 window._events = new D3DEventSystem();
@@ -16,6 +21,7 @@ window._input = new D3DInput();
 window._time = new D3DTime();
 window._physics = new D3DPhysics();
 window._dimensions = new D3DDimensions();
+window._graphics = new D3DGraphics();
 window._player = {};
 
 // Host
@@ -71,6 +77,10 @@ function resizeRenderers() {
 		camera.aspect = width3d / height3d;
 		camera.updateProjectionMatrix();
 	}
+	if (_player.composer) {
+		_player.composer.setSize(width3d, height3d);
+		_player.gtaoPass.setSize(width3d, height3d);
+	}
 }
 
 // Main loader
@@ -119,16 +129,13 @@ function initRenderer() {
 	
 	renderer3d.setPixelRatio(window.devicePixelRatio);
 	renderer3d.setSize(_container3d.clientWidth, _container3d.clientHeight);
-	renderer3d.outputEncoding = THREE.sRGBEncoding;
-	renderer3d.toneMapping = THREE.ACESFilmicToneMapping;
-	renderer3d.toneMappingExposure = 1.0;
+	renderer3d.toneMapping = THREE.NoToneMapping;
+	renderer3d.outputColorSpace = THREE.SRGBColorSpace;
 	
 	renderer3d.shadowMap.enabled = true;
 	renderer3d.shadowMap.type = THREE.PCFSoftShadowMap;
 	renderer3d.physicallyCorrectLights = true;
-	renderer3d.toneMapping = THREE.ACESFilmicToneMapping;
-	renderer3d.outputColorSpace = THREE.SRGBColorSpace;
-	
+		
 	renderer2d.setPixelRatio(window.devicePixelRatio);
 	renderer2d.setSize(_container2d.clientWidth, _container2d.clientHeight);
 	
@@ -137,6 +144,27 @@ function initRenderer() {
 	
 	_player.renderer3d = renderer3d;
 	_player.renderer2d = renderer2d;
+}
+
+function initComposer() {
+	const camera = _player.camera.object3d;
+	const scene = _root.object3d;
+	const width = _container3d.clientWidth;
+	const height = _container3d.clientHeight;
+	
+	const composer = new EffectComposer(_player.renderer3d);
+	const renderPass = new RenderPass(scene, camera);
+	const gtaoPass = new GTAOPass(scene, camera, width, height);
+	const outputPass = new OutputPass();
+	
+	// Add passes
+	composer.addPass(renderPass);
+	composer.addPass(gtaoPass);
+	composer.addPass(outputPass);
+	
+	_player.composer = composer;
+	_player.renderPass = renderPass;
+	_player.gtaoPass = gtaoPass;
 }
 
 function updateObject(methods, d3dobj) {
@@ -177,11 +205,21 @@ function startAnimationLoop() {
 		
 		if(!_player.camera) {
 			_root.traverse(d3dobject => {
-				if(d3dobject.hasComponent('Camera')) {
+				if(d3dobject.enabled && d3dobject.hasComponent('Camera')) {
 					_player.camera = d3dobject;
 					return false;
 				}
 			});
+			
+			if(_player.camera) {
+				initComposer();
+				
+				updateObject([
+					'__onInternalGraphicsReady',
+					'__onGraphicsReady',
+					'onGraphicsReady'
+				], _root);
+			}
 		}
 		
 		updateObject([
@@ -195,10 +233,8 @@ function startAnimationLoop() {
 		const renderer2d = _player.renderer2d;
 		
 		if(camera3d)
-			renderer3d.render(_root.object3d, camera3d);
-		//else
-		//	console.warn('No camera found for rendering');
-			
+			_player.composer.render();
+		
 		renderer2d.render(); // render 2d
 		
 		updateObject([

@@ -1,8 +1,15 @@
 import RAPIER from '@dimforge/rapier3d-compat';
+import * as THREE from 'three';
+
 import {
 	updateObject,
 	getHitNormalRotation
 } from './d3dutility.js';
+
+const _TMP_V1 = new THREE.Vector3();
+const _TMP_Q1 = new THREE.Quaternion();
+const _TMP_M1 = new THREE.Matrix4();
+const _TMP_M2 = new THREE.Matrix4();
 
 export default class D3DPhysics {
 	// -------------------- World Settings --------------------
@@ -30,6 +37,8 @@ export default class D3DPhysics {
 
 		this._bodies = new Map(); // d3dobj.uuid -> { rb, colliders:[] }
 		this._toObj  = new Map(); // rb.handle -> d3dobj
+		this._raycaster = new THREE.Raycaster();
+		this._raycastHits = [];
 	}
 
 	async init(gravity = { x: 0, y: -9.81, z: 0 }) {
@@ -56,15 +65,39 @@ export default class D3DPhysics {
 			didSteps++;
 		}
 		
-		if(didSteps > 0) {
+		if (didSteps > 0) {
 			// Sync RB -> Three/D3D *after* all substeps this render frame
 			this._bodies.forEach(({ rb }, uuid) => {
-				const obj = this._toObj.get(rb.handle);
+				const d3d = this._toObj.get(rb.handle);
+				if (!d3d) return;
+		
+				const obj3d = d3d.object3d;
+				if (!obj3d) return;
+		
 				const t = rb.translation();
 				const q = rb.rotation();
-				obj.object3d.position.set(t.x, t.y, t.z);
-				obj.object3d.quaternion.set(q.x, q.y, q.z, q.w);
-				obj.object3d.updateMatrixWorld(true);
+		
+				const parent = obj3d.parent;
+				if (parent) {
+					// World pose from Rapier
+					const worldPos  = _TMP_V1.set(t.x, t.y, t.z);
+					const worldQuat = _TMP_Q1.set(q.x, q.y, q.z, q.w);
+					const worldScl  = obj3d.scale; // keep local scale
+		
+					_TMP_M1.compose(worldPos, worldQuat, worldScl);
+		
+					// parent^-1 * world = local
+					parent.updateMatrixWorld(true, false);
+					_TMP_M2.copy(parent.matrixWorld).invert().multiply(_TMP_M1);
+		
+					_TMP_M2.decompose(obj3d.position, obj3d.quaternion, obj3d.scale);
+				} else {
+					// No parent: world == local
+					obj3d.position.set(t.x, t.y, t.z);
+					obj3d.quaternion.set(q.x, q.y, q.z, q.w);
+				}
+		
+				obj3d.updateMatrixWorld(true);
 			});
 		}
 		
@@ -187,38 +220,83 @@ export default class D3DPhysics {
 	
 	// -------------------- Raycasting --------------------
 	raycast(origin, direction, opts = {}) {
-		const filter = opts.filter;
-		const all = !!opts.all;
-		const maxDist = Number(opts.maxDistance) || Infinity;
+		const filter    = opts.filter;
+		const all       = !!opts.all;
+		const maxDist   = Number(opts.maxDistance) || Infinity;
+		const recursive = opts.recursive !== false;
 		
-		let objects = opts.objects?.filter(Boolean).map(d3d => d3d.object3d) || [];
-		if (!objects || objects.length === 0) {
-			objects = _root.superObjectsThree;
-		}
-		if(filter) {
+		let objects = opts.objects?.filter(Boolean) || _root.children;
+		
+		if (filter) {
+			// cheap filter: avoid allocations if possible
 			objects = objects.filter(filter);
 		}
 		
-		const raycaster = new THREE.Raycaster(origin, direction.clone().normalize(), 0, maxDist);
-		const intersects = raycaster.intersectObjects(objects, true); // recursive = true
+		// Break down to object3d's themselves
+		objects = objects.map(o => o.object3d).filter(Boolean);
+	
+		if (!objects || objects.length === 0) 
+			return null;
 		
-		if (intersects.length === 0) return null;
-		
-		const hits = intersects
-		.filter(hit => !!hit.object.userData.d3dobject)
-		.map(hit => (
-			{
+		// reuse raycaster
+		const rc = this._raycaster;
+		rc.ray.origin.copy(origin);
+		rc.ray.direction.copy(direction).normalize();
+		rc.near = 0;
+		rc.far  = maxDist;
+	
+		// optional: layer mask support
+		if (opts.layers !== undefined) {
+			rc.layers.mask = opts.layers;
+		} else {
+			// or rc.layers.set(0); if you want a default layer
+		}
+	
+		// reuse the hits array
+		this._raycastHits.length = 0;
+		const intersects = rc.intersectObjects(objects, recursive);
+	
+		if (intersects.length === 0) 
+			return null;
+	
+		if (!all) {
+			// just find the first hit that belongs to a d3dobject
+			for (let i = 0; i < intersects.length; i++) {
+				const hit = intersects[i];
+				const d3d = this._findD3DObjectFromHit(hit.object);
+				if (!d3d) continue;
+	
+				return {
+					hit: true,
+					point: hit.point.clone(),
+					distance: hit.distance,
+					face: hit.face,
+					object: d3d,
+					object3d: hit.object,
+					normal: hit.face?.normal || null
+				};
+			}
+			return null;
+		}
+	
+		// all hits
+		for (let i = 0; i < intersects.length; i++) {
+			const hit = intersects[i];
+			const d3d = hit.object.userData.d3dobject;
+			if (!d3d) continue;
+	
+			this._raycastHits.push({
 				hit: true,
 				point: hit.point.clone(),
 				distance: hit.distance,
 				face: hit.face,
-				object: hit.object.userData.d3dobject,
+				object: d3d,
 				object3d: hit.object,
-				normal: hit.face.normal
-			}
-		));
-		
-		return all ? hits : hits[0];
+				normal: hit.face?.normal || null
+			});
+		}
+	
+		return this._raycastHits;
 	}
 	raycastFromCamera(camera, mouseX, mouseY, maxDistance = 1000) {
 		if(!camera)
@@ -230,6 +308,15 @@ export default class D3DPhysics {
 		const raycaster = new THREE.Raycaster();
 		raycaster.setFromCamera({ x: mouseX, y: mouseY }, camera);
 		return this.raycast(raycaster.ray.origin, raycaster.ray.direction, { maxDistance });
+	}
+	
+	_findD3DObjectFromHit(obj) {
+		while (obj) {
+			const d3d = obj.userData?.d3dobject;
+			if (d3d) return d3d;
+			obj = obj.parent;
+		}
+		return null;
 	}
 	
 	/**

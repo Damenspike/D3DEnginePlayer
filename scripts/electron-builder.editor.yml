@@ -4,10 +4,15 @@ productName: "Damen3D Editor"
 asar: true
 
 directories:
-  output: dist-editor-build     # build output folder (optional)
+  output: dist-editor-build
+
+# 🔧 Disable auto-update metadata + blockmaps
+publish: null
+generateUpdatesFilesForAllChannels: false
 
 files:
-  - dist/editor/**              # Vite-built player frontend
+  - public/**
+  - dist/editor/**              # Vite-built editor frontend
   - electron/editor/**          # main.js, preload.js, ipc handlers
   - package.json                # required by electron-builder (stripped)
   - "!node_modules"             # exclude massive dev deps
@@ -15,33 +20,44 @@ files:
   - "!dist/player"              # ensure only the editor build is included
   - "!artwork"
   - "!misc"
-  
+
 extraMetadata:
-    main: "electron/editor/editor.js"
+  name: "Damen3DEditor"         # <- forced internal name (different from player)
+  productName: "Damen3D Editor" # <- belt-and-braces
+  main: "electron/editor/editor.js"
 
 mac:
   icon: "AppIcons/iconeditor.icns"
   target:
-    - dir
     - dmg
-  #identity: null # skip codesigning
+  identity: "VELO PRO RACER LTD (3JWXCFP9HB)"
+  hardenedRuntime: true
+  entitlements: "scripts/entitlements.mac.plist"
+  entitlementsInherit: "scripts/entitlements.mac.inherit.plist"
 
 win:
   icon: "AppIcons/iconeditor.ico"
+  artifactName: "Damen3D-Editor-${version}-${arch}-setup.${ext}"
+  executableName: "Damen3DEditor"
   target:
-    - dir
-    - nsis
-    - zip
+    - target: nsis
+      arch:
+        - x64
+        - arm64
+
+nsis:
+  differentialPackage: false
+  guid: "01b48305-4fe2-4327-b55c-967d83fa899f" # UNIQUE to EDITOR
+  uninstallDisplayName: "Damen3D Editor"
 
 linux:
   icon: "AppIcons/iconeditor.png"
   target:
     - AppImage
-    - zip
-    
+
 fileAssociations:
-    - ext: d3dproj
-      name: Damen3D Project
-      description: Damen3D project file
-      role: Viewer         # macOS document role
-      icon: "AppIcons/iconeditor.png"
+  - ext: d3dproj
+    name: Damen3D Project
+    description: Damen3D project file
+    role: Viewer
+    icon: "AppIcons/iconeditor.png"

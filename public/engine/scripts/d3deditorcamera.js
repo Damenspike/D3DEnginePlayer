@@ -1,6 +1,6 @@
-const moveSpeed = 2;
-const mouseSensitivity = 0.4;
-const zoomSpeed = 0.4;
+const moveSpeed = 3;
+const orbitSensitivity = 0.006;
+const zoomSpeed = 0.024;
 
 let wasForcingPan = false;
 let wasForcingLook = false;
@@ -10,29 +10,23 @@ function updateMotion() {
 	const delta = _time.delta;
 	const axis = _input.getControllerAxisArrowsOnly();
 	const mult = _input.getKeyDown('shift') ? 3 : 1;
-	const speed = moveSpeed * mult * delta;
-	
-	if(_input.getKeyDown('alt')) // keyboard rotate mode
+
+	// Keyboard movement SHOULD scale with delta
+	const speed = moveSpeed * mult * (_input.zoomMult || 1) * delta;
+
+	if (_input.getKeyDown('alt')) 
 		return;
-	
-	/*
-	if(_input.getKeyDown('shift')) {
-		this.object3d.translateY(-1 * speed);
-	}else
-	if(_input.getKeyDown('space')) {
-		this.object3d.translateY(1 * speed);
-	}
-	*/
-	
+
 	this.object3d.translateX(axis.x * speed);
 	moveForward(-axis.y * speed);
 }
 function updateZoom() {
-	const delta = _time.delta;
 	const wheelDelta = _input.getWheelDelta();
 	const mult = _input.getKeyDown('control') ? 3 : 1;
-	const speed = zoomSpeed * mult * delta * (_input.zoomMult || 1);
 	
+	// NO delta scaling!
+	const speed = zoomSpeed * mult * (_input.zoomMult || 1);
+
 	this.object3d.translateZ(wheelDelta.y * speed);
 }
 function moveForward(distance) {
@@ -200,8 +194,8 @@ function updateOrbit(usePivot) {
 	// Input → angles
 	const delta = _time.delta;
 	const md = _input.getMouseDelta();
-	const angleH = -md.x * mouseSensitivity * delta;
-	let angleV = -md.y * mouseSensitivity * delta;
+	const angleH = -md.x * orbitSensitivity;
+	let angleV = -md.y * orbitSensitivity;
 
 	// Horizontal around world up
 	offset.applyAxisAngle(up, angleH);

@@ -57,6 +57,20 @@ export default class RigidbodyManager {
 					if (this.__rbHelper) this.__rbHelper.visible = false;
 					return;
 				}
+			
+				// --- FAST PATH: fixed + trimesh → skip expensive gizmo work ---
+				const props     = this.component.properties || {};
+				const kind      = props.kind  ?? 'dynamic';
+				const shapeType = props.shape ?? 'trimesh';
+			
+				// "Fixed mesh" mode: use the full mesh as collider, no gizmo
+				if (kind === 'fixed' && shapeType === 'trimesh') {
+					// make sure helper is removed/hidden, but don't touch geometry
+					this._clearHelperGroup();
+					return;
+				}
+				// --------------------------------------------------------------
+			
 				const cur = this._readComponent();
 				this._updateGizmo(cur.shape, cur.shapeType, cur.kind);
 			};
@@ -161,84 +175,137 @@ export default class RigidbodyManager {
 	 *  TRANSFORMS
 	 * ======================================================= */
 
-	setPosition({ x, y, z }) {
+	setPosition({ x, y, z }, reset = true) {
 		const obj = this.d3dobject.object3d;
 		const rb  = this.component._rb;
-
+	
+		// No rigidbody yet → just move object3d
 		if (!rb) {
 			obj.position.set(x, y, z);
 			obj.updateMatrixWorld(true);
+	
+			if (this._takeSnapshot) this._lastSnapshot = this._takeSnapshot();
+			this.d3dobject.invokeEvent('reset');
 			return;
 		}
-
-		if (this.kind === 'kinematicPosition') {
-			const q = obj.quaternion;
+	
+		// HARD MOVE BODY NOW
+		if (typeof rb.setTranslation === 'function') {
+			rb.setTranslation({ x, y, z }, true);
+		} else if (_physics?.setTranslation) {
+			_physics.setTranslation(this.d3dobject, { x, y, z });
+		}
+	
+		// For kinematic bodies, also update "next" kinematic target
+		if (this.kind === 'kinematicPosition' && _physics?.setNextKinematicTransform) {
+			const q = obj.quaternion; // current rotation
 			_physics.setNextKinematicTransform(
 				this.d3dobject,
 				{ x, y, z },
 				{ x: q.x, y: q.y, z: q.z, w: q.w }
 			);
-		} else {
-			rb.setTranslation({ x, y, z }, true);
 		}
-
+	
+		// Three.js side
 		obj.position.set(x, y, z);
 		obj.updateMatrixWorld(true);
+	
+		if (this._takeSnapshot) this._lastSnapshot = this._takeSnapshot();
+		
+		if(reset)
+			this.d3dobject.invokeEvent('reset');
 	}
-
-	setRotation({ x, y, z, w }) {
+	
+	setRotation({ x, y, z, w }, reset = true) {
 		const obj = this.d3dobject.object3d;
 		const rb  = this.component._rb;
 		const p   = obj.position;
-
+	
+		// No rigidbody yet → just rotate object3d
 		if (!rb) {
 			obj.quaternion.set(x, y, z, w);
 			obj.updateMatrixWorld(true);
+	
+			if (this._takeSnapshot) this._lastSnapshot = this._takeSnapshot();
+			this.d3dobject.invokeEvent('reset');
 			return;
 		}
-
-		if (this.kind === 'kinematicPosition') {
+	
+		// HARD ROTATE BODY NOW
+		if (typeof rb.setRotation === 'function') {
+			rb.setRotation({ x, y, z, w }, true);
+		} else if (_physics?.setRotation) {
+			_physics.setRotation(this.d3dobject, { x, y, z, w });
+		}
+	
+		// For kinematic bodies, also update "next" kinematic target
+		if (this.kind === 'kinematicPosition' && _physics?.setNextKinematicTransform) {
 			_physics.setNextKinematicTransform(
 				this.d3dobject,
 				{ x: p.x, y: p.y, z: p.z },
 				{ x, y, z, w }
 			);
-		} else {
-			rb.setRotation({ x, y, z, w }, true);
 		}
-
+	
+		// Three.js side
 		obj.quaternion.set(x, y, z, w);
 		obj.updateMatrixWorld(true);
+	
+		if (this._takeSnapshot) this._lastSnapshot = this._takeSnapshot();
+		
+		if(reset)
+			this.d3dobject.invokeEvent('reset');
 	}
-
-	setTransform(pos, rot) {
+	
+	setTransform(pos, rot, reset = true) {
 		const obj = this.d3dobject.object3d;
 		const rb  = this.component._rb;
-
+	
 		const p = pos ?? obj.position;
 		const q = rot ?? obj.quaternion;
-
+	
+		// No rigidbody yet → just move object3d
 		if (!rb) {
 			obj.position.set(p.x, p.y, p.z);
 			obj.quaternion.set(q.x, q.y, q.z, q.w);
 			obj.updateMatrixWorld(true);
+	
+			if (this._takeSnapshot) this._lastSnapshot = this._takeSnapshot();
+			this.d3dobject.invokeEvent('reset');
 			return;
 		}
-
-		if (this.kind === 'kinematicPosition') {
+	
+		// HARD WARP BODY NOW (both pos + rot), regardless of kind
+		if (typeof rb.setTranslation === 'function') {
+			rb.setTranslation({ x: p.x, y: p.y, z: p.z }, true);
+		} else if (_physics?.setTranslation) {
+			_physics.setTranslation(this.d3dobject, { x: p.x, y: p.y, z: p.z });
+		}
+	
+		if (typeof rb.setRotation === 'function') {
+			rb.setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }, true);
+		} else if (_physics?.setRotation) {
+			_physics.setRotation(this.d3dobject, { x: q.x, y: q.y, z: q.z, w: q.w });
+		}
+	
+		// For kinematic bodies, also update "next" kinematic target
+		if (this.kind === 'kinematicPosition' && _physics?.setNextKinematicTransform) {
 			_physics.setNextKinematicTransform(
 				this.d3dobject,
 				{ x: p.x, y: p.y, z: p.z },
 				{ x: q.x, y: q.y, z: q.z, w: q.w }
 			);
-		} else {
-			rb.setTranslation({ x: p.x, y: p.y, z: p.z }, true);
-			rb.setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }, true);
 		}
-
+	
+		// Three.js side
 		obj.position.set(p.x, p.y, p.z);
 		obj.quaternion.set(q.x, q.y, q.z, q.w);
 		obj.updateMatrixWorld(true);
+	
+		if (this._takeSnapshot) this._lastSnapshot = this._takeSnapshot();
+		
+		if(reset)
+			this.d3dobject.invokeEvent('reset');
 	}
 
 	/* =========================================================
@@ -300,9 +367,6 @@ export default class RigidbodyManager {
 		else if (rb.setLinearVelocity) rb.setLinearVelocity(v);
 		else if (_physics?.setLinearVelocity) _physics.setLinearVelocity(this.d3dobject, v);
 		else throw new Error('[RigidbodyManager] No API to set linear velocity.');
-	
-		this._cachedVelocity.set(vx, vy, vz);
-		this._cachedSpeed = this._cachedVelocity.length();
 	}
 	
 	/** Add a velocity delta (world or local space) */
@@ -502,6 +566,8 @@ export default class RigidbodyManager {
 		switch (shapeType) {
 			case 'box': {
 				const bb   = this._resolveGeometry(o, { merge: true, type: 'box' });
+				if(!bb) break; // No geometry found
+				
 				const size = { x: (bb.max.x - bb.min.x), y: (bb.max.y - bb.min.y), z: (bb.max.z - bb.min.z) };
 				const ctr  = { x: (bb.min.x + bb.max.x)/2, y: (bb.min.y + bb.max.y)/2, z: (bb.min.z + bb.max.z)/2 };
 				props.boxSize     = size;
@@ -510,12 +576,16 @@ export default class RigidbodyManager {
 			}
 			case 'sphere': {
 				const sp = this._resolveGeometry(o, { merge: true, type: 'sphere' });
+				if(!sp) break; // no geometry found
+				
 				props.sphereRadius = sp.radius;
 				props.shapeOffset  = sp.center;
 				break;
 			}
 			case 'capsule': {
 				const bb    = this._resolveGeometry(o, { merge: true, type: 'box' });
+				if(!bb) break; // No geometry found
+				
 				const sx    = (bb.max.x - bb.min.x);
 				const sy    = (bb.max.y - bb.min.y);
 				const sz    = (bb.max.z - bb.min.z);
@@ -624,7 +694,12 @@ export default class RigidbodyManager {
 			if (obj3d.geometry && obj3d.isMesh !== false) return obj3d.geometry;
 			let geom = null;
 			obj3d.traverse(n => { if (!geom && n.isMesh && n.geometry) geom = n.geometry; });
-			if (!geom) throw new Error(`[RigidbodyManager] No geometry found for ${obj3d.name}`);
+			
+			if (!geom) {
+				console.error(`[RigidbodyManager] No geometry found for ${obj3d.name}`);
+				return;
+			}
+			
 			return geom;
 		}
 
@@ -633,7 +708,8 @@ export default class RigidbodyManager {
 			if (node.isMesh && node.geometry) meshes.push(node);
 		});
 		if (meshes.length === 0) {
-			throw new Error(`[RigidbodyManager] No geometries to merge for ${obj3d.name}`);
+			console.error(`[RigidbodyManager] No geometries to merge for ${obj3d.name}`);
+			return;
 		}
 
 		const parentInvMatrix = new THREE.Matrix4();
@@ -726,14 +802,16 @@ export default class RigidbodyManager {
 		}
 
 		if ((vertices.length % 3) !== 0) {
-			throw new Error(`[RigidbodyManager] Vertices length not multiple of 3 for ${geom.name}`);
+			console.error(`[RigidbodyManager] Vertices length not multiple of 3 for ${geom.name}`);
+			return;
 		}
 
 		const vcount = vertices.length / 3;
 		for (let i = 0; i < indices.length; i++) {
 			const ii = indices[i];
 			if (ii < 0 || ii >= vcount) {
-				throw new Error(`trimesh index out of range: ${ii}/${vcount}`);
+				console.error(`trimesh index out of range: ${ii}/${vcount}`);
+				return;
 			}
 		}
 
@@ -790,14 +868,25 @@ export default class RigidbodyManager {
 
 	_clearHelperGroup() {
 		if (!this.__rbHelper) return;
-
+	
+		// Dispose all child geometries/materials recursively
 		this.__rbHelper.traverse(n => {
 			if (n.geometry) n.geometry.dispose?.();
-			if (n.material) n.material.dispose?.();
+			if (n.material) {
+				if (Array.isArray(n.material)) {
+					n.material.forEach(m => m?.dispose?.());
+				} else {
+					n.material.dispose?.();
+				}
+			}
 		});
-
+	
 		this.__rbHelper.parent?.remove(this.__rbHelper);
 		this.__rbHelper = null;
+	
+		// Reset cached signature/color so next update *must* rebuild
+		this.__helperSig = null;
+		this.__helperColor = null;
 	}
 
 	_makeLine(geom, color) {
@@ -932,14 +1021,23 @@ export default class RigidbodyManager {
 		// diff
 		const sig = this._sigForHelper(shape, shapeType);
 		if (this.__helperSig === sig && this.__helperColor === color) return;
-	
-		// clear (only if changed)
-		for (let i = this.__rbHelper.children.length - 1; i >= 0; i--) {
-			const c = this.__rbHelper.children[i];
-			this.__rbHelper.remove(c);
-			c.geometry?.dispose?.();
-			c.material?.dispose?.();
-		}
+		
+		// Hard clear: dispose everything under __rbHelper
+		this.__rbHelper.traverse(n => {
+			if (n !== this.__rbHelper) {
+				if (n.geometry) n.geometry.dispose?.();
+				if (n.material) {
+					if (Array.isArray(n.material)) {
+						n.material.forEach(m => m?.dispose?.());
+					} else {
+						n.material.dispose?.();
+					}
+				}
+			}
+		});
+		
+		// Remove all children
+		this.__rbHelper.clear();
 	
 		let node = null;
 	
@@ -1010,7 +1108,8 @@ export default class RigidbodyManager {
 			case 'convex': {
 				const verts = shape.vertices;
 				if (!(verts instanceof Float32Array)) {
-					throw new Error('[RigidbodyManager] Convex helper expects shape.vertices: Float32Array');
+					console.error('[RigidbodyManager] Convex helper expects shape.vertices: Float32Array');
+					return;
 				}
 				const puff = this._convexBuff ?? 1.005;
 				const geom = buildConvexWireGeometry(verts, puff);
