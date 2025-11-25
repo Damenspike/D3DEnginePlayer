@@ -2,6 +2,7 @@ const moveSpeed = 3;
 const orbitSensitivity = 0.006;
 const zoomSpeed = 0.024;
 
+let wasGameInFocus = false;
 let wasForcingPan = false;
 let wasForcingLook = false;
 let initialTool = 'select';
@@ -302,8 +303,12 @@ this.onEditorEnterFrame = () => {
 	const isCursorOverGame = _input.getCursorOverGame3D();
 	const inputFieldInFocus = _input.getInputFieldInFocus();
 	
+	if(isGameInFocus && !wasGameInFocus) {
+		_input.clearKeyState();
+	}
+	
 	if(isGameInFocus) {
-		if(_input.getRightMouseButtonDown()) {
+		if(_input.getRightMouseButtonDown() && _editor.mode == '3D') {
 			if(!wasForcingLook)
 				initialTool = _editor.tool;
 			
@@ -337,6 +342,8 @@ this.onEditorEnterFrame = () => {
 		
 		updateMotion();
 	}
+	
+	wasGameInFocus = isGameInFocus;
 	
 	if(isCursorOverGame)
 		updateZoom();

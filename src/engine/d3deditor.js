@@ -21,8 +21,13 @@ import {
 	upperFirst,
 	toggleAllLights,
 	toggleLight,
-	updateObject
+	updateObject,
+	versionToNumber,
+	relNoAssets
 } from './d3dutility.js';
+import {
+	exportAsD3D
+} from './d3dexporter.js';
 import {
 	readLocalTRSFromZip
 } from './glb-instancer.js';
@@ -280,8 +285,37 @@ function initEditorConfig() {
 	_editor.setTransformTool('translate'); // default tool
 	_editor.onProjectLoaded?.();
 
-	if (!_editor.config) {
+	if(!_editor.config) {
 		throw new Error('Missing editor configuration');
+	}
+	
+	confirmProjectVersion();
+}
+async function confirmProjectVersion() {
+	const fileVersion = _editor.project.editorVersion || '1.0.0-beta.0';
+	const currentVersion = await D3D.getEditorVersion();
+	
+	if(
+		versionToNumber(fileVersion) <
+		versionToNumber(currentVersion)
+	) {
+		showConfirm({
+			title: 'Editor Version Mismatch',
+			message: `This project was saved in an older editor version: ${fileVersion}. Current editor version: ${currentVersion}. It should be okay, but we're letting you know just in case you want to play it safe. Do you want to continue?`,
+			onConfirm: () => null,
+			onDeny: () => closeEditor()
+		});
+	}else
+	if(
+		versionToNumber(fileVersion) >
+		versionToNumber(currentVersion)
+	) {
+		showConfirm({
+			title: 'Editor Version Mismatch',
+			message: `This project was saved in a newer editor version: ${fileVersion}. Current editor version: ${currentVersion}. It should be okay, but we're letting you know just in case you want to play it safe. Do you want to continue?`,
+			onConfirm: () => null,
+			onDeny: () => closeEditor()
+		});
 	}
 }
 
@@ -1409,6 +1443,64 @@ function focusOnSelected() {
 	if(_editor.mode == '2D')
 		_editor.renderer2d.gizmo.focusSelected2D();
 }
+async function exportAssets(paths) {
+	const zip = _root.zip;
+	if(!zip) return;
+
+	const allRelPaths = [];
+
+	for(const rel of paths) {
+		const folder = zip.folder(rel);
+		const isDir = folder && !zip.file(rel);
+		
+		if(isDir) {
+			folder.forEach((p, f)=>{
+				if(f.dir) return;
+				allRelPaths.push(f.name);
+			});
+		}else
+		if(zip.file(rel)) 
+			allRelPaths.push(rel);
+	}
+
+	if(allRelPaths.length < 1) return;
+
+	const fileDatas = [];
+
+	for(const rel of allRelPaths) {
+		const file = zip.file(rel);
+		if(!file) continue;
+		const data = await file.async('uint8array');
+		fileDatas.push({
+			name: relNoAssets(rel),
+			data
+		});
+	}
+
+	if(fileDatas.length < 1) return;
+
+	await D3D.exportMultipleFiles(fileDatas);
+}
+function groupSelectedObjects() {
+	_editor.groupObjects(_editor.selectedObjects);
+}
+function ungroupSelectedObjects() {
+	_editor.ungroupObjects(_editor.selectedObjects)
+}
+function mergeSelectedObjects() {
+	_editor.mergeObjects(_editor.selectedObjects)
+}
+function exportD3DSelectedObjects(opts = {}) {
+	if(_editor.selectedObjects.length < 1) {
+		_editor.showError({
+			title: 'D3D Export',
+			message: 'Select object(s) to export'
+		});
+		return;
+	}
+	
+	exportAsD3D([..._editor.selectedObjects], opts);
+}
 
 // INTERNAL
 
@@ -1436,6 +1528,12 @@ _editor.zoomStep = zoomStep;
 _editor.resetView = resetView;
 _editor.resetView2D = resetView2D;
 _editor.newFolder = newFolder;
+_editor.exportAssets = exportAssets;
+_editor.focusOnSelected = focusOnSelected;
+_editor.groupSelectedObjects = groupSelectedObjects;
+_editor.ungroupSelectedObjects = ungroupSelectedObjects;
+_editor.mergeSelectedObjects = mergeSelectedObjects;
+_editor.exportD3DSelectedObjects = exportD3DSelectedObjects;
 
 D3D.setEventListener('select-all', () => _editor.selectAll());
 D3D.setEventListener('delete', () => _editor.delete());
@@ -1461,12 +1559,16 @@ D3D.setEventListener('menu-import-assets', onImportAssets);
 D3D.setEventListener('csm', onConsoleMessage);
 D3D.setEventListener('copy-special', (type) => _editor.copySpecial(type));
 D3D.setEventListener('paste-special', (type) => _editor.pasteSpecial(type));
-D3D.setEventListener('group', () => _editor.groupObjects(_editor.selectedObjects));
-D3D.setEventListener('ungroup', () => _editor.ungroupObjects(_editor.selectedObjects));
-D3D.setEventListener('merge', () => _editor.mergeObjects(_editor.selectedObjects));
+D3D.setEventListener('group', () => _editor.groupSelectedObjects());
+D3D.setEventListener('ungroup', () => _editor.ungroupSelectedObjects());
+D3D.setEventListener('merge', () => _editor.mergeSelectedObjects());
 D3D.setEventListener('ctx-menu-action', (id) => _events.invoke('ctx-menu-action', id));
+D3D.setEventListener('ctx-menu-close', () => _events.invoke('ctx-menu-close'));
 D3D.setEventListener('move-sel-view', () => _editor.moveSelectionToView());
 D3D.setEventListener('align-sel-view', () => _editor.alignSelectionToView());
 D3D.setEventListener('drop-to-ground', () => _editor.dropSelectionToGround());
 D3D.setEventListener('zoom-step', (step) => _editor.zoomStep(step));
 D3D.setEventListener('reset-view', () => _editor.resetView());
+D3D.setEventListener('menu-export-assets', () => _editor.exportSelectedAssetsInspector?.());
+D3D.setEventListener('export-as-d3d', () => _editor.exportD3DSelectedObjects());
+D3D.setEventListener('export-as-d3dproj', () => _editor.exportD3DSelectedObjects({d3dproj: true}));

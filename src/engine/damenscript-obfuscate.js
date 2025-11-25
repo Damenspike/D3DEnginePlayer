@@ -424,29 +424,12 @@ function lexDamenScript(input) {
 // ---------- Name generator (a, b, c, ..., aa, ab, ...) ----------
 
 function makeNameGenerator() {
-	const firstChars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ$_';
-	const restChars = firstChars + '0123456789';
-	let index = 0;
+	let index = 1;
 
 	return (used) => {
 		while (true) {
-			let n = index++;
-			let s = '';
-			let chars = firstChars;
-			let first = true;
-
-			do {
-				const base = chars.length;
-				const c = chars[n % base];
-				s = c + s;
-				n = Math.floor(n / base);
-				if (first) {
-					first = false;
-					chars = restChars;
-				}
-			} while (n > 0);
-
-			if (!used.has(s)) return s;
+			const name = `_loc${index++}`;
+			if (!used.has(name)) return name;
 		}
 	};
 }

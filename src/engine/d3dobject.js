@@ -91,7 +91,9 @@ export default class D3DObject {
 		this._name = value;
 		
 		if(this.parent) {
-			delete this.parent[oldName];
+			if(this.parent[oldName] === this)
+				delete this.parent[oldName];
+			
 			this.parent[this._name] = this;
 		}
 		
@@ -674,7 +676,7 @@ export default class D3DObject {
 			if(c.properties)
 				c.properties.__componentEnabled = c.enabled;
 			
-			await child.addComponent(c.type, c.properties, false);
+			await child.addComponent(c.type, c.properties, {doUpdateAll: false});
 		}
 		
 		if(objData.engineScript)
@@ -983,7 +985,16 @@ export default class D3DObject {
 		this.updateComponents();
 		this.checkSymbols();
 	}
-	async addComponent(type, properties = {}, doUpdateAll = true, removeIfPresent = false, unshift = false) {
+	async addComponent(
+		type, 
+		properties = {}, 
+		{ 
+			doUpdateAll = true, 
+			removeIfPresent = false, 
+			unshift = false,
+			dontRecurseSymbols = false
+		} = {}
+	) {
 		if(this.components.find(c => c.type == type)) {
 			if(removeIfPresent) {
 				this.removeComponent(type);
@@ -1040,18 +1051,47 @@ export default class D3DObject {
 		}
 		
 		doUpdateAll && this.updateComponents();
+		
+		if(this.symbol && !dontRecurseSymbols) {
+			// Add instances of this component to symbols
+			this.root.traverse(d3dobject => {
+				if(this !== d3dobject && d3dobject.symbol == this.symbol) {
+					d3dobject.addComponent(type, properties, {
+						dontRecurseSymbols: true
+					});
+				}
+			});
+			this.checkSymbols();
+		}
 	}
-	async removeComponent(type) {
+	async removeComponent(
+		type, 
+		{
+			dontRecurseSymbols = false
+		} = {}
+	) {
 		const component = this.getComponent(type);
 		
 		if(!component)
 			return;
-		
+			
 		if(typeof component.dispose == 'function')
 			await component.dispose();
 		
 		this.components.splice(this.components.findIndex(c => c.type == type), 1);
 		delete this.__componentInstances[type];
+		
+		if(this.symbol && !dontRecurseSymbols) {
+			// Remove all instances of this component
+			this.root.traverse(d3dobject => {
+				if(this !== d3dobject && d3dobject.symbol == this.symbol) {
+					d3dobject.removeComponent(type, {
+						dontRecurseSymbols: true
+					});
+				}
+			});
+			this.checkSymbols();
+		}
 	}
 	getComponent(type) {
 		const component = this.components.find(c => c.type == type);
@@ -1071,15 +1111,6 @@ export default class D3DObject {
 		
 		return !!component && component?.properties.__editorOnly !== true;
 	}
-	enableComponent(type) {
-		const component = this.components.find(c => c.type == type);
-		
-		if(!component)
-			return;
-		
-		component.enabled = true;
-		this.updateComponents();
-	}
 	toggleComponent(type, enabled = true) {
 		const component = this.components.find(c => c.type == type);
 		
@@ -1088,6 +1119,7 @@ export default class D3DObject {
 		
 		component.enabled = enabled;
 		this.updateComponents();
+		this.checkSymbols();
 	}
 	enableComponent(type) {
 		this.toggleComponent(type, true);
@@ -1115,7 +1147,9 @@ export default class D3DObject {
 						__editorOnly: true,
 						castShadow: false,
 						receiveShadow: false
-					}, false);
+					}, {
+						doUpdateAll: false
+					});
 				}
 			})
 		}
@@ -1360,6 +1394,10 @@ export default class D3DObject {
 		}
 		
 		if(this.parent && this.parent.children.includes(this)) {
+			// Delete parent -> child reference
+			if(this.parent[this.name] === this)
+				delete this.parent[this.name];
+			
 			// Remove from current parent
 			this.parent.children.splice(this.parent.children.indexOf(this), 1);
 		}
@@ -1370,6 +1408,14 @@ export default class D3DObject {
 		}
 		
 		this.parent = d3dobject;
+		
+		// Assign parent -> child reference
+		if(this.parent[this.name] === undefined)
+			this.parent[this.name] = this;
+		else {
+			// Force re-referencing for duplication
+			this.name = this.name;
+		}
 		
 		if(!d3dobject.children.includes(this))
 			d3dobject.children.push(this);
@@ -1818,6 +1864,9 @@ export default class D3DObject {
 		throw new Error(`${this.name} can not be used for 2D hit testing`);
 	}
 	hitTestPoint({x, y}) {
+		if(!this.visible)
+			return false;
+		
 		if(this.hasComponent('Container2D')) {
 			let hit = false;
 			

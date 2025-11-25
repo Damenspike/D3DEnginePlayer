@@ -246,18 +246,12 @@ const menuTemplate = [
 	},
 
 	...(isDev ? [{
-		label: 'View',
-		submenu: [
-			{
-				id: 'toggleDevTools',
-				label: 'Toggle DevTools',
-				accelerator: 'Alt+Cmd+I',
-				click: (_, browserWindow) => {
-					if (browserWindow)
-						browserWindow.webContents.toggleDevTools();
-				}
-			}
-		]
+		label: 'Toggle DevTools',
+		accelerator: 'Alt+Cmd+I',
+		click: (_, browserWindow) => {
+			if (browserWindow)
+				browserWindow.webContents.toggleDevTools();
+		}
 	}] : []),
 	{
 		label: 'Window',

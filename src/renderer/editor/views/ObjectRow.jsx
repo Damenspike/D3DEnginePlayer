@@ -4,7 +4,7 @@ let renameTimer;
 
 export default function ObjectRow({
 	style, title, icon, name, selected,
-	onClick, onDoubleClick, onRename, isInstance, children,
+	onClick, onRightClick, onDoubleClick, onRename, isInstance, children,
 	
 	// Other
 	displayName = '',
@@ -25,6 +25,18 @@ export default function ObjectRow({
 	const [dragOver, setDragOver] = useState(false);
 	const inputRef = useRef(null);
 
+	useEffect(() => {
+		const onEdit = () => {
+			selected && setEditing(true);
+		}
+		
+		_events.on('edit-object-row', onEdit);
+		
+		return () => {
+			_events.un('edit-object-row', onEdit);
+		}
+	}, [selected]);
+	
 	useEffect(() => {
 		if (editing && inputRef.current) {
 			inputRef.current.focus();
@@ -164,6 +176,10 @@ export default function ObjectRow({
 				}
 
 				onDoubleClick?.(e);
+			}}
+			
+			onContextMenu={e => {
+				onRightClick?.(e);
 			}}
 		>
 			{icon}

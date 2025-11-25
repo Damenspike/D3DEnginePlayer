@@ -441,7 +441,7 @@ export default class MeshManager {
 								const nm = m?.name || null;
 								return (nm && matNameToUUID.has(nm)) ? matNameToUUID.get(nm) : null;
 							});
-							d3dChild.addComponent('SubMesh', { materials: uuids }, false);
+							d3dChild.addComponent('SubMesh', { materials: uuids }, {doUpdateAll: false});
 						}
 					}
 					await bindChildrenDirect(child, d3dChild);

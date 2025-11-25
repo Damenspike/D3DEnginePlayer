@@ -453,6 +453,10 @@ function sendImportAssets(paths) {
 	if (!editorWindow?.isFocused()) return;
 	editorWindow.webContents.send('menu-import-assets', paths);
 }
+function sendExportSelectedAssets() {
+	if (!editorWindow?.isFocused()) return;
+	editorWindow.webContents.send('menu-export-assets');
+}
 function sendAddComponent(type) {
 	if (!editorWindow?.isFocused()) return;
 	editorWindow.webContents.send('add-component', type);
@@ -496,6 +500,14 @@ function sendZoomStep(step) {
 function sendResetView() {
 	if (!editorWindow?.isFocused()) return;
 	editorWindow.webContents.send('reset-view');
+}
+function sendExportAsD3D() {
+	if (!editorWindow?.isFocused()) return;
+	editorWindow.webContents.send('export-as-d3d');
+}
+function sendExportAsD3DProj() {
+	if (!editorWindow?.isFocused()) return;
+	editorWindow.webContents.send('export-as-d3dproj');
 }
 
 function sendBuild({prompt, play}) {
@@ -967,6 +979,15 @@ const menuTemplate = [
 				accelerator: 'CmdOrCtrl+Shift+C',
 				click: () => sendEditCode()
 			},
+			{
+				label: 'Export As D3D...',
+				accelerator: 'CmdOrCtrl+Shift+E',
+				click: () => sendExportAsD3D()
+			},
+			{
+				label: 'Export As Project...',
+				click: () => sendExportAsD3DProj()
+			}
 		]
 	},
 	{
@@ -979,16 +1000,15 @@ const menuTemplate = [
 				click: () => sendNewFolder()
 			},
 			{
-				id: 'newAsset',
 				label: 'New Asset',
 				submenu: [
 					{ id: 'newAssetMat', label: 'Material', click: () => sendNewFile('mat') },
 					{ id: 'newAssetAnim', label: 'Animation Clip', click: () => sendNewFile('anim') }
 				]
 			},
+			{ type: 'separator' },
 			{
-				id: 'importAsset',
-				label: 'Import Asset…',
+				label: 'Import Assets…',
 				accelerator: 'CmdOrCtrl+I',
 				click: async () => {
 					const { canceled, filePaths } = await dialog.showOpenDialog(editorWindow, {
@@ -998,6 +1018,11 @@ const menuTemplate = [
 						sendImportAssets(filePaths);
 					}
 				}
+			},
+			{
+				label: 'Export Assets…',
+				accelerator: 'CmdOrCtrl+E',
+				click: () => sendExportSelectedAssets()
 			}
 		]
 	},
@@ -1069,18 +1094,12 @@ const menuTemplate = [
 				click: () => sendResetView()
 			},
 			...(isDev ? [{
-				label: 'View',
-				submenu: [
-					{
-						id: 'toggleDevTools',
-						label: 'Toggle DevTools',
-						accelerator: 'Alt+Cmd+I',
-						click: (_, browserWindow) => {
-							if (browserWindow)
-								browserWindow.webContents.toggleDevTools();
-						}
-					}
-				]
+				label: 'Toggle DevTools',
+				accelerator: 'Alt+Cmd+I',
+				click: (_, browserWindow) => {
+					if (browserWindow)
+						browserWindow.webContents.toggleDevTools();
+				}
 			}] : [])
 		]
 	},
@@ -1236,6 +1255,9 @@ ipcMain.handle('open-project', () => openBrowse());
 // Get project URI
 ipcMain.handle('get-current-project-uri', () => lastOpenedProjectUri);
 
+// Get editor version
+ipcMain.handle('get-editor-version', () => pkg.editorVersion);
+
 // Set editor status
 ipcMain.on('editor-status', (_, { inputFocussed, codeEditorOpen, activeElement }) => {
 	if(typeof inputFocussed === 'boolean')
@@ -1306,6 +1328,29 @@ ipcMain.handle('resolve-path', (_e, ...args) => {
 ipcMain.handle('show-save-dialog', async (_e, opts) => {
 	return await dialog.showSaveDialog(opts || {});
 });
+ipcMain.handle('export-multiple-files', async (event, files) => {
+	const wc = event.sender;
+	const bw = BrowserWindow.fromWebContents(wc);
+	
+	const { canceled, filePaths } = await dialog.showOpenDialog(bw, {
+		title: "Choose output folder",
+		properties: ["openDirectory", "createDirectory"]
+	});
+
+	if(canceled || !filePaths || filePaths.length === 0)
+		return { canceled: true };
+
+	const outDir = filePaths[0];
+	
+	for(const f of files) {
+		const buf = Buffer.from(f.data.data || f.data);
+		const outPath = path.join(outDir, f.name);
+		await fs.promises.mkdir(path.dirname(outPath), { recursive: true });
+		await fs.promises.writeFile(outPath, buf);
+	}
+	
+	return { canceled: false, count: files.length };
+});
 
 // Get player URI
 ipcMain.handle('get-current-game-uri', () => playerURI);
@@ -1358,7 +1403,11 @@ ipcMain.on('ctx-menu', (event, {template, x, y}) => {
 	const menu = Menu.buildFromTemplate(template);
 	const bw = BrowserWindow.fromWebContents(event.sender);
 	
-	menu.popup({ window: bw, x, y });
+	menu.popup({ 
+		window: bw, 
+		x, y, 
+		callback: () => event.sender.send('ctx-menu-close')
+	});
 });
 ipcMain.on('open-project-uri', (_, uri) => {
 	openProject(uri);

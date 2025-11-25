@@ -509,7 +509,11 @@ export default class D2DDraw {
 		
 		if(this.tool === 'text') {
 			// apply text
-			obj.addComponent('Text2D', {}, true, false, true);
+			obj.addComponent('Text2D', {}, {
+				doUpdateAll: true, 
+				removeIfPresent: false, 
+				unshift: true
+			});
 			obj.graphic2d.line = false;
 			obj.graphic2d.fill = false;
 		}

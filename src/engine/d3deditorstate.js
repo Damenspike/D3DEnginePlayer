@@ -70,6 +70,8 @@ export default class D3DEditorState {
 		if(this._mode == '3D' && this.tool == 'transform')
 			this.tool = 'select';
 		
+		_input.clearKeyState();
+		
 		_events.invoke('editor-mode', value);
 		_editor.updateInspector?.();
 		_editor.setSelection([]);
@@ -347,7 +349,9 @@ export default class D3DEditorState {
 		D3DConsole.log('Saving...');
 		
 		D3DConsole.log('[1/3] Making...');
-		this.__doBuild(zip, {isEditorBuild: true});
+		await this.__doBuild(zip, {
+			isEditorBuild: true
+		});
 		
 		D3DConsole.log('[2/3] Storing...');
 		///////////////////////////////////
@@ -385,7 +389,7 @@ export default class D3DEditorState {
 		const zip = await cloneZip(_root?.zip);
 		
 		D3DConsole.log('[2/4] Making...');
-		this.__doBuild(zip, {
+		await this.__doBuild(zip, {
 			obfuscateCode: opts?.obfuscateCode !== false
 		});
 		
@@ -422,12 +426,27 @@ export default class D3DEditorState {
 		
 		D3DConsole.log(`Project published. Time elapsed ${Number(_time.now - t).toFixed(2)}s`);
 	}
-	__doBuild(zip, opts = {}) {
+	async __doBuild(zip, opts = {}) {
 		if(!zip)
 			throw new Error('No project to build');
 		
 		const isEditorBuild = !!opts?.isEditorBuild;
 		const manifest = { ...(_root.manifest || {}) };
+		
+		// Delete old values
+		{
+			if(manifest.engine !== undefined)
+				delete manifest.engine;
+				
+			if(manifest.description !== undefined)
+				delete manifest.description;
+				
+			if(manifest.version !== undefined)
+				delete manifest.version;
+		}
+		
+		// Always store editor version
+		manifest.editorVersion = await D3D.getEditorVersion();
 		
 		if(isEditorBuild) {
 			manifest.editorConfig.lastCameraPosition = {

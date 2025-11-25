@@ -238,6 +238,7 @@ export default function GameView({editorMode}) {
 					_editor.setSelection([objectHit]);
 			}
 			
+			_events.once('ctx-menu-action', onCtxMenuAction);
 			D3D.openContextMenu({template, x, y});
 		}
 		const onCtxMenuAction = async (id) => {
@@ -302,13 +303,11 @@ export default function GameView({editorMode}) {
 			}
 		}
 		
-		_events.on('ctx-menu-action', onCtxMenuAction);
 		canvas2d.addEventListener('contextmenu', onRightClick);
 		
 		return () => {
-			_events.un('ctx-menu-action', onCtxMenuAction);
 			canvas2d.removeEventListener('contextmenu', onRightClick);
-		};
+		}
 	}, [game2dRef]);
 	
 	const drawFocusPath = () => {

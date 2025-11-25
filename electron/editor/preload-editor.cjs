@@ -51,6 +51,7 @@ contextBridge.exposeInMainWorld('D3D', {
 	openProject: (uri) => ipcRenderer.send('open-project-uri', uri),
 	setDirty: (dirty) => ipcRenderer.send('set-dirty', !!dirty),
 	getCurrentProjectURI: () => ipcRenderer.invoke('get-current-project-uri'),
+	getEditorVersion: () => ipcRenderer.invoke('get-editor-version'),
 	updateEditorWindow: (options) => ipcRenderer.send('update-editor-window', options),
 	updateEditorStatus: (options) => ipcRenderer.send('editor-status', options),
 	openWebsite: () => shell.openExternal('https://damen3d.com/?origin=editor'),
@@ -136,7 +137,7 @@ contextBridge.exposeInMainWorld('D3D', {
 	openPlayer: (uri) => ipcRenderer.send('open-player', uri),
 	onConsoleMessage: ({level, message}) => 
 		ipcRenderer.send('console-message', {level, message}),
-	openContextMenu: ({template, x, y}) => 
+	openContextMenu: ({template, x, y, onClose}) => 
 		ipcRenderer.send('ctx-menu', {template, x, y}),
 	createNewProject: async ({ 
 		name, 
@@ -258,6 +259,7 @@ contextBridge.exposeInMainWorld('D3D', {
 	resolveEngineScriptPath: resolveEngineScriptPath,
 	resolveProjectorPath: resolveProjectorPath,
 	getEditorInFocus: () => document.hasFocus(),
+	exportMultipleFiles: (files) => ipcRenderer.invoke('export-multiple-files', files),
 	
 	theme: {
 		get: () => ipcRenderer.invoke('get-theme'),
@@ -356,8 +358,12 @@ addIPCListener('group');
 addIPCListener('ungroup');
 addIPCListener('merge');
 addIPCListener('ctx-menu-action');
+addIPCListener('ctx-menu-close');
 addIPCListener('move-sel-view');
 addIPCListener('align-sel-view');
 addIPCListener('drop-to-ground');
 addIPCListener('zoom-step');
 addIPCListener('reset-view');
+addIPCListener('menu-export-assets');
+addIPCListener('export-as-d3d');
+addIPCListener('export-as-d3dproj');

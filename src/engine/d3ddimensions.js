@@ -3,6 +3,10 @@ export default class D3DDimensions {
 		this.update();
 	}
 	
+	get isMobile() {
+		return navigator.userAgentData?.mobile === true || (/Mobi|Android|iPhone|iPad|iPod|Opera Mini|IEMobile|Mobile/i.test(navigator.userAgent));
+	}
+	
 	get width() {
 		return window._root?.manifest?.width;
 	}

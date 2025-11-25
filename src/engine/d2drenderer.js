@@ -102,6 +102,10 @@ export default class D2DRenderer {
 			_input.addEventListener('mousedown', onMouseDown);
 			_input.addEventListener('mousemove', onMouseMove);
 			_input.addEventListener('wheel', onMouseWheel);
+			
+			_input.addEventListener('touchend', onMouseUp);
+			_input.addEventListener('touchstart', onMouseDown);
+			_input.addEventListener('touchmove', onMouseMove);
 		}
 	}
 	

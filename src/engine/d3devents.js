@@ -74,6 +74,20 @@ export default class D3DEventSystem {
 	}
 	
 	/**
+	 * Removes a single event listener
+	 * 
+	 * @param {string} event    Event name
+	 * @param {Function} handler  Method to be removed
+	 */
+	unce(event, handler) {
+		let handlers = this.singleEvents.get(event) || [];
+		
+		handlers = handlers.filter(item => item !== handler);
+		
+		this.singleEvents.set(event, handlers);
+	}
+	
+	/**
 	 * Invokes an event listener
 	 *
 	 * @remarks

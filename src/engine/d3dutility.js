@@ -887,3 +887,52 @@ export function clockStr(totalSeconds) {
 
 	return `${pad(h)}:${pad(m)}:${pad(s)}`;
 }
+export function versionToNumber(version) {
+	// Split by '-' (prerelease)
+	version = String(version);
+	const parts = version.split('-');
+	const main = parts[0];
+	const pre  = parts[1] ?? null;
+
+	// Parse major.minor.patch
+	const [major, minor, patch] = main.split('.').map(n => parseInt(n, 10));
+
+	// Base number: e.g. 1.2.3 → 1002003
+	let number = major * 1_000_000 + minor * 1_000 + patch;
+
+	// No prerelease → highest rank of this version
+	if (!pre) {
+		return number + 0.999;
+	}
+
+	// Parse prerelease: alpha.5, beta.12, rc.1, etc.
+	let tag;
+	let tagNum;
+
+	const match = /^([a-zA-Z]+)\.(\d+)$/.exec(pre);
+	if (match) {
+		tag = match[1].toLowerCase();
+		tagNum = parseInt(match[2], 10);
+	} else {
+		tag = pre.toLowerCase();
+		tagNum = 0;
+	}
+
+	// Ordering for prerelease tags
+	const tagOrder = {
+		alpha: 1, a: 1,
+		beta:  2, b: 2,
+		rc:    3, pre: 3
+	};
+
+	const order = tagOrder[tag] ?? 0; // unknown → lowest
+
+	// Add prerelease as fractional component
+	return number + order * 0.001 + tagNum * 0.000001;
+}
+export function relNoAssets(rel) {
+	let outName = rel.startsWith('assets/') ? rel.slice(7) : rel;
+	outName = outName.replace(/^assets[\\/]/, '');
+	
+	return outName;
+}

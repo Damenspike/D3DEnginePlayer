@@ -58,13 +58,27 @@ export default class CharacterControllerManager {
 			const rz = -fx;
 			
 			const input = _input.getControllerAxis();
+			
+			// axis.y = forward/back, axis.x = strafe
 			let mx = fx * input.y + rx * input.x;
 			let mz = fz * input.y + rz * input.x;
-			const ml = Math.hypot(mx, mz);
-			if (ml > 1e-6) { mx /= ml; mz /= ml; }
 			
-			if (ml > 1e-6) {
-				const targetYaw = Math.atan2(mx, mz);
+			// raw length of stick input projected into world-space
+			const rawLen = Math.hypot(mx, mz);
+			
+			// direction + strength (0..1)
+			let dirX = 0, dirZ = 0;
+			let strength = 0;
+			
+			if (rawLen > 1e-6) {
+				dirX = mx / rawLen;
+				dirZ = mz / rawLen;
+				strength = Math.min(rawLen, 1);
+			}
+			
+			// rotate towards movement direction if any
+			if (strength > 1e-6) {
+				const targetYaw = Math.atan2(dirX, dirZ);
 				let delta = this._wrapAngle(targetYaw - state.yaw);
 				const maxTurn = turnSpeed * dt;
 				if (delta > maxTurn) delta = maxTurn;
@@ -83,8 +97,9 @@ export default class CharacterControllerManager {
 				state.vy += g * dt;
 			}
 			
-			const dx = (ml > 1e-6 ? mx * moveSpeed * dt : 0);
-			const dz = (ml > 1e-6 ? mz * moveSpeed * dt : 0);
+			const step = moveSpeed * dt * strength;
+			const dx = (strength > 1e-6 ? dirX * step : 0);
+			const dz = (strength > 1e-6 ? dirZ * step : 0);
 			const dy = state.vy * dt;
 			
 			const currentPos = rb.translation();

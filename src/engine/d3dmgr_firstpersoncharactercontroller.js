@@ -67,23 +67,34 @@ export default class FirstPersonCharacterControllerManager {
 			// axis.y = forward/back, axis.x = strafe
 			let mx = fx * axis.y + rx * axis.x;
 			let mz = fz * axis.y + rz * axis.x;
-
+			
 			// Invert controls if requested
 			if (this.invertFwd)
 				mx = -mx;
 			if (this.invertHoriz)
 				mz = -mz;
-
-			// Normalise to avoid faster diagonals
+			
+			// Movement magnitude (0..1 normally)
 			const ml = Math.hypot(mx, mz);
+			
+			// Default movement
+			let dxMove = 0;
+			let dzMove = 0;
+			
 			if (ml > 1e-6) {
-				mx /= ml;
-				mz /= ml;
+				// direction (normalised)
+				const dirX = mx / ml;
+				const dirZ = mz / ml;
+			
+				// stick strength
+				const strength = Math.min(ml, 1);
+			
+				// scaled speed
+				const step = moveSpeed * dt * strength;
+			
+				dxMove = dirX * step;
+				dzMove = dirZ * step;
 			}
-
-			const step   = moveSpeed * dt;
-			const dxMove = ml > 1e-6 ? mx * step : 0;
-			const dzMove = ml > 1e-6 ? mz * step : 0;
 
 			// ----- Gravity + Jump (same pattern as CharacterControllerManager) -----
 			const worldG = (_physics.world?.gravity?.y ?? -9.81); // usually negative

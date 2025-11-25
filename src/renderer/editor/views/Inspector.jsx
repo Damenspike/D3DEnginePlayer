@@ -47,6 +47,10 @@ import {
 } from '../../../engine/d3dutility.js';
 
 import {
+	hex8ToRgba
+} from '../../../engine/d2dutility.js';
+
+import {
 	drawIconForObject,
 	drawIconForExt
 } from '../utilities/d3dicons.jsx';
@@ -74,6 +78,9 @@ export default function Inspector() {
 	const _root = window._root;
 	const zip = _root?.zip;
 	const THREE = window.THREE;
+	
+	const assetsListRef = useRef();
+	const sceneListRef = useRef();
 	
 	const [tab, setTab] = useState(Tabs.All);
 	const [objects, setObjects] = useState([]);
@@ -140,6 +147,17 @@ export default function Inspector() {
 		
 		_events.on('delete-action', onDelete);
 		_editor.selectNoAssets = () => setSelectedAssetPaths(new Set());
+		_editor.exportSelectedAssetsInspector = () => {
+			if(selectedAssetPaths.size < 1) {
+				_editor.showError({
+					title: 'Export',
+					message: 'Select asset(s) to export'
+				})
+				return;
+			}
+			
+			_editor.exportAssets([...selectedAssetPaths]);
+		}
 		
 		return () => {
 			_events.un('delete-action', onDelete);
@@ -160,6 +178,239 @@ export default function Inspector() {
 		setBgColor(_root.scene.background.color);
 		setBgTextureAsset(_root.scene.background.textureAsset);
 	}, [_root?.scene?.background?.type]);
+	
+	// Right click menu on asset list
+	useEffect(() => {
+		if(!assetsListRef?.current)
+			return;
+			
+		const assetsList = assetsListRef.current;
+		
+		const onRightClick = (e) => {
+			if(selectedAssetPaths.size < 1)
+				return;
+			
+			const template = [
+				{
+					id: 'rename',
+					label: 'Rename',
+					enabled: selectedAssetPaths.size === 1
+				},
+				{
+					id: 'delete',
+					label: 'Delete'
+				},
+				{
+					id: 'export',
+					label: 'Export...'
+				},
+				{type: 'separator'},
+				{
+					id: 'import',
+					label: 'Import Asset...'
+				}
+			];
+			const x = e.clientX + 2;
+			const y = e.clientY + 2;
+			
+			_events.once('ctx-menu-action', onCtxMenuAction);
+			_events.once('ctx-menu-close', () => {
+				_events.unce('ctx-menu-action', onCtxMenuAction);
+			});
+			
+			D3D.openContextMenu({template, x, y});
+		}
+		const onCtxMenuAction = async (id) => {
+			switch(id) {
+				case 'rename':
+					_events.invoke('edit-object-row');
+				break;
+				case 'export':
+					_editor.exportAssets([...selectedAssetPaths]);
+				break;
+				case 'delete':
+					_editor.delete();
+				break;
+			}
+		}
+		
+		assetsList.addEventListener('contextmenu', onRightClick);
+		
+		_editor.invokeAssetRightClick = onRightClick;
+		
+		return () => {
+			assetsList.removeEventListener('contextmenu', onRightClick);
+		}
+	}, [assetsListRef, selectedAssetPaths]);
+	
+	// Right click menu on scene list
+	useEffect(() => {
+		if(!sceneListRef?.current)
+			return;
+			
+		const sceneList = sceneListRef.current;
+		
+		const onRightClick = (e) => {
+			if(_editor.selectedObjects.length < 1)
+				return;
+			
+			const template = [
+				{
+					id: 'cut',
+					label: 'Cut'
+				},
+				{
+					id: 'copy',
+					label: 'Copy'
+				},
+				{
+					id: 'paste',
+					label: 'Paste'
+				},
+				{
+					id: 'duplicate',
+					label: 'Duplicate'
+				},
+				{
+					id: 'rename',
+					label: 'Rename',
+					enabled: _editor.selectedObjects.length === 1
+				},
+				{
+					id: 'delete',
+					label: 'Delete'
+				},
+				{ type: 'separator' },
+				{
+					id: 'edit',
+					label: 'Edit in Place',
+					enabled: _editor.selectedObjects.length === 1
+				},
+				{
+					id: 'focus',
+					label: 'Focus'
+				},
+				{
+					id: 'movetoview',
+					label: 'Move to View'
+				},
+				{
+					id: 'aligntoview',
+					label: 'Align to View'
+				},
+				{
+					id: 'droptoground',
+					label: 'Drop to Ground'
+				},
+				{ type: 'separator' },
+				{
+					id: 'symbolise',
+					label: 'Symbolise'
+				},
+				{
+					id: 'desymbolise',
+					label: 'Desymbolise'
+				},
+				{ type: 'separator' },
+				{
+					id: 'group',
+					label: 'Group'
+				},
+				{
+					id: 'ungroup',
+					label: 'Ungroup'
+				},
+				{ type: 'separator' },
+				{
+					id: 'code',
+					label: 'Code'
+				},
+				{
+					id: 'exportd3d',
+					label: 'Export As D3D...'
+				},
+				{
+					id: 'exportd3dproj',
+					label: 'Export As Project...'
+				}
+			];
+			const x = e.clientX + 2;
+			const y = e.clientY + 2;
+			
+			_events.once('ctx-menu-action', onCtxMenuAction);
+			_events.once('ctx-menu-close', () => {
+				_events.unce('ctx-menu-action', onCtxMenuAction);
+			});
+			
+			D3D.openContextMenu({template, x, y});
+		}
+		const onCtxMenuAction = async (id) => {
+			switch(id) {
+				case 'cut':
+					_editor.cut();
+				break;
+				case 'copy':
+					_editor.copy();
+				break;
+				case 'paste':
+					_editor.paste();
+				break;
+				case 'duplicate':
+					_editor.dupe();
+				break;
+				case 'delete':
+					_editor.delete();
+				break;
+				case 'rename':
+					_events.invoke('edit-object-row');
+				break;
+				case 'focus':
+					_editor.focusOnSelected();
+				break;
+				case 'edit':
+					_editor.focus = _editor.selectedObjects[0];
+				break;
+				case 'movetoview':
+					_editor.moveSelectionToView()
+				break;
+				case 'aligntoview':
+					_editor.alignSelectionToView()
+				break;
+				case 'droptoground':
+					_editor.dropSelectionToGround()
+				break;
+				case 'symbolise':
+					_editor.symboliseSelectedObject()
+				break;
+				case 'desymbolise':
+					_editor.desymboliseSelectedObject()
+				break;
+				case 'group':
+					_editor.groupSelectedObjects()
+				break;
+				case 'ungroup':
+					_editor.ungroupSelectedObjects()
+				break;
+				case 'code':
+					_editor.editCode()
+				break;
+				case 'exportd3d':
+					_editor.exportD3DSelectedObjects();
+				break;
+				case 'exportd3dproj':
+					_editor.exportD3DSelectedObjects({d3dproj: true});
+				break;
+			}
+		}
+		
+		sceneList.addEventListener('contextmenu', onRightClick);
+		
+		_editor.invokeObjectRightClick = onRightClick;
+		
+		return () => {
+			sceneList.removeEventListener('contextmenu', onRightClick);
+		}
+	}, [sceneListRef, _editor.selectedObjects]);
 	
 	const update = () => {
 		setDummyObject({...dummyObject});
@@ -531,10 +782,7 @@ export default function Inspector() {
 						}
 					});
 					
-					// Remove from dummy first
-					dummyObject.components.splice(dummyObject.components.findIndex(c => c.type == component.type), 1);
 					object.removeComponent(component.type);
-					
 					_events.invoke('refresh-component', component.type);
 					
 					update();
@@ -902,7 +1150,7 @@ export default function Inspector() {
 					case 'colorbest': {
 						fieldContent = (
 							<ColorPickerBest
-								value={current}
+								value={hex8ToRgba(current)}
 								onClick={val => {
 									dummyComponent.__oldValue = val;
 								}}
@@ -1616,6 +1864,12 @@ export default function Inspector() {
 							//_editor.focusOnSelectedObjects();
 							_editor.setSelection([]);
 						}}
+						onRightClick={(e) => {
+							if(!selected) {
+								_editor.setSelection([object]);
+								setTimeout(() => _editor.invokeObjectRightClick?.(e), 100);
+							}
+						}}
 					>
 						<div className='option-buttons'>
 							{
@@ -1823,7 +2077,10 @@ export default function Inspector() {
 				<div className="path-container">
 					{drawPath()}
 				</div>
-				<div className="scene-objects-list shade">
+				<div 
+					ref={sceneListRef}
+					className="scene-objects-list shade"
+				>
 					{drawObjects()}
 				</div>
 				{sceneInspectorExpanded && _editor.focus == _root && _editor.mode == '3D' && (
@@ -2208,6 +2465,12 @@ export default function Inspector() {
 							else if (e.metaKey || e.ctrlKey) toggleSelection(node.path);
 							else setSingleSelection(node.path);
 						}}
+						onRightClick={(e) => {
+							if(!selected) {
+								setSingleSelection(node.path);
+								setTimeout(() => _editor.invokeAssetRightClick?.(e), 100);
+							}
+						}}
 						onDoubleClick={() => setSingleSelection(node.path)}
 					/>
 				);
@@ -2287,6 +2550,12 @@ export default function Inspector() {
 								if (e.shiftKey) selectRange(siblings, lastSelectedPath, node.path);
 								else if (e.metaKey || e.ctrlKey) toggleSelection(node.path);
 								else setSingleSelection(node.path);
+							}}
+							onRightClick={(e) => {
+								if(!selected) {
+									setSingleSelection(node.path);
+									setTimeout(() => _editor.invokeAssetRightClick?.(e), 100);
+								}
 							}}
 							onDoubleClick={() => toggleExpanded(node.path)}
 						/>
@@ -2439,71 +2708,6 @@ export default function Inspector() {
 					_editor.onAssetsUpdated();
 				}}
 			>
-				{/*assetsInspectorExpanded && (
-					<div className="tools-section assets-insp-tools">
-						<button
-							onClick={() => assetFileInputRef.current?.click()}
-							title={`Import into ${currentFolder}`}
-						>
-							<MdUpload /> Import
-						</button>
-	
-						{!newFolderOpen && (
-							<button
-								className="btn-small"
-								onClick={() => setNewFolderOpen(true)}
-								title={`Create folder in ${currentFolder}`}
-							>
-								<MdCreateNewFolder />
-							</button>
-						)}
-	
-						<button
-							className="btn-small"
-							onClick={deleteSelectedConfirm}
-							title={selectedAssetPaths.size > 0 ? 'Delete selected' : 'Delete'}
-							disabled={!canDelete}
-						>
-							<MdDeleteForever />
-						</button>
-	
-						<input
-							ref={assetFileInputRef}
-							type="file"
-							multiple
-							style={{ display: 'none' }}
-							onChange={async (e) => {
-								const files = Array.from(e.target.files || []);
-								e.target.value = '';
-								await onImportFiles(files);
-							}}
-						/>
-	
-						{newFolderOpen && (
-							<div className="assets-new-folder">
-								<input
-									className="tf"
-									type="text"
-									placeholder="New folder name"
-									autoFocus
-									value={newFolderName}
-									onChange={e => setNewFolderName(e.target.value)}
-									onKeyDown={(e) => {
-										if (e.key === 'Enter') onNewFolder(newFolderName);
-										else if (e.key === 'Escape') {
-											setNewFolderOpen(false);
-											setNewFolderName('');
-										}
-									}}
-									style={{ width: 160 }}
-								/>
-								<button onClick={() => onNewFolder(newFolderName)}>Okay</button>
-								<button onClick={() => { setNewFolderOpen(false); setNewFolderName(''); }}>Cancel</button>
-							</div>
-						)}
-					</div>
-				)*/}
-				
 				{assetsInspectorExpanded && (
 					<div className="tools-section assets-insp-tools">
 						<input 
@@ -2514,10 +2718,14 @@ export default function Inspector() {
 							value={assetFilter}
 							onChange={e => setAssetFilter(e.target.value)}
 						/>
+						<div style={{height: 4}}></div>
 					</div>
 				)}
 	
-				<div className="scene-objects-list shade">
+				<div
+					ref={assetsListRef}
+					className="scene-objects-list shade"
+				>
 					{tree.children && tree.children.length
 						? tree.children.map(n => (
 							<React.Fragment key={n.path}>
