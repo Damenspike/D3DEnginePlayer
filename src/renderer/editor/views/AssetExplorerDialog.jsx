@@ -21,6 +21,8 @@ const EXT_GROUPS = {
 	material: ['.mat'],
 	html: ['.html'],
 	anim: ['.anim'],
+	vertexShader: ['.glsl', '.vert'],
+	fragmentShader: ['.glsl', '.frag'],
 	all: []
 };
 
@@ -261,6 +263,8 @@ export default function AssetExplorerDialog({
 						<option value="html">HTML</option>
 						<option value="json">JSON</option>
 						<option value="txt">Text / CSV / MD</option>
+						<option value="vertexShader">GLSL / Vert</option>
+						<option value="fragmentShader">GLSL / Frag</option>
 						<option value="custom">Custom ext…</option>
 					</select>
 					{extFilter === 'custom' && allowChangeFormat && (
@@ -349,7 +353,7 @@ export default function AssetExplorerDialog({
 							);
 						})}
 						{filtered.length === 1 && isNone(filtered[0]) && (
-							<div className="asset-empty">No assets</div>
+							<div className="asset-empty mt mb ml gray small">No assets found</div>
 						)}
 					</div>
 

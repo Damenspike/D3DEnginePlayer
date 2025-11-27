@@ -213,7 +213,7 @@ export default function CodeEditor({isOpen, theme}) {
 								});
 								
 								// Ctrl/Cmd + B  -> Build
-								editor.addCommand(KB.CtrlCmd | KB.Shift | K.KeyB, () => {
+								editor.addCommand(KB.CtrlCmd | K.KeyB, () => {
 									D3D.echoBuild({prompt: false, play: false});
 								});
 								// Ctrl/Cmd + Shift + B  -> Build To

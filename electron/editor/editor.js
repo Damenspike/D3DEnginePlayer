@@ -1345,6 +1345,7 @@ ipcMain.handle('export-multiple-files', async (event, files) => {
 	for(const f of files) {
 		const buf = Buffer.from(f.data.data || f.data);
 		const outPath = path.join(outDir, f.name);
+		
 		await fs.promises.mkdir(path.dirname(outPath), { recursive: true });
 		await fs.promises.writeFile(outPath, buf);
 	}

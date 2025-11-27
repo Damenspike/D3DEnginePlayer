@@ -17,12 +17,12 @@ export async function moveZipEntry(zip, srcPath, destDir, { updateIndex }) {
 	const nd = p => (p.endsWith('/') ? p : p + '/');
 	const nf = p => p.replace(/\/+$/, '');
 	const base = p => nf(p).split('/').pop();
-
+console.log(destDir);
 	const entry = zip.files[srcPath] ?? zip.files[srcPath + '/'];
-
+	
 	if(!entry)
 		throw new Error(`${srcPath} not found for move`);
-
+	
 	if(entry.dir) {
 		const name = base(srcPath);
 		const trueDestDir = nd(destDir + name);
@@ -87,8 +87,12 @@ export async function moveZipEntry(zip, srcPath, destDir, { updateIndex }) {
 			}
 		}
 
-		zip.file(destPath, data, { date: entry.date, comment: entry.comment });
+		const newFile = zip.file(destPath, data, { date: entry.date, comment: entry.comment });
 		updateIndex?.(srcPath, destPath);
+		
+		const symbol = Object.values(_root.__symbols).find(s => s.file.name == srcPath);
+		if(symbol)
+			symbol.file = newFile;
 
 		zip.remove(srcPath);
 

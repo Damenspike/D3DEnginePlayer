@@ -1,7 +1,7 @@
 // MaterialEditor.jsx
 import React, { useEffect, useRef, useState } from 'react';
 import { fileName } from '../../../engine/d3dutility.js';
-import { MdFolderOpen, MdDelete } from 'react-icons/md';
+import { MdFolderOpen, MdDelete, MdAdd } from 'react-icons/md';
 
 const DEFAULTS = {
 	type: 'MeshStandardMaterial',
@@ -13,6 +13,7 @@ const DEFAULTS = {
 	opacity: 1,
 	transparent: false,
 	wireframe: false,
+	flatShading: false,
 	side: 'FrontSide',
 	map: '',
 	mapOffset: [0, 0],
@@ -24,7 +25,12 @@ const DEFAULTS = {
 	metalnessMap: '',
 	emissiveMap: '',
 	alphaMap: '',
-	envMapIntensity: 1
+	envMapIntensity: 1,
+	
+	// SHADERS
+	vertexShader: '',
+	fragmentShader: '',
+	shaderProps: [] 
 };
 
 const autoBlur = (e) => {
@@ -66,6 +72,7 @@ function ensureDefaults(val) {
 	v.opacity = Number.isFinite(+v.opacity) ? +v.opacity : DEFAULTS.opacity;
 	v.transparent = !!v.transparent;
 	v.wireframe = !!v.wireframe;
+	v.flatShading = !!v.flatShading;
 	v.side = v.side || DEFAULTS.side;
 	v.map = v.map || '';
 	v.normalMap = v.normalMap || '';
@@ -78,6 +85,12 @@ function ensureDefaults(val) {
 	v.mapRepeat = Array.isArray(v.mapRepeat) ? v.mapRepeat : [1, 1];
 	v.normalMapOffset = Array.isArray(v.normalMapOffset) ? v.normalMapOffset : [0, 0];
 	v.normalMapRepeat = Array.isArray(v.normalMapRepeat) ? v.normalMapRepeat : [1, 1];
+	
+	// SHADERS
+	v.vertexShader = v.vertexShader || '';
+	v.fragmentShader = v.fragmentShader || '';
+	v.shaderProps    = Array.isArray(v.shaderProps) ? v.shaderProps.map(p => ({ ...p })) : [];
+	
 	return v;
 }
 function clamp01(v) {
@@ -256,8 +269,90 @@ export default function MaterialEditor({ uri, date, onSave, openAsset }) {
 							<option value="MeshStandardMaterial">Mesh Standard Material</option>
 							<option value="MeshPhysicalMaterial">Mesh Physical Material</option>
 							<option value="MeshBasicMaterial">Mesh Basic Material</option>
+							<option value="ShaderMaterial">Shader Material</option>
 						</select>
 					</div>
+					
+					{mat.type === 'ShaderMaterial' && (
+						<>
+							{fileRow('Vertex Shader', 'vertexShader', 'vertexShader')}
+							{fileRow('Fragment Shader', 'fragmentShader', 'fragmentShader')}
+							
+							{/* Label row only */}
+							<div className="material-editor-row field" style={{marginBottom: 0}}>
+								<label className="material-editor-label">Properties</label>
+								{mat.shaderProps.length < 1 && (
+									<div className='small gray' style={{textAlign: 'right'}}>
+										Press + to add a property
+									</div>
+								)}
+							</div>
+							
+							{/* Shader prop rows: [key] [value] [bin] */}
+							{mat.shaderProps.map((p, i) => (
+								<div className="material-editor-row field shader-prop-row" key={i}>
+									<input
+										className="tf shader-prop-key"
+										type="text"
+										placeholder="Name"
+										style={{fontFamily: 'monospace', fontSize: 12}}
+										value={p.key || ''}
+										onChange={e => {
+											const next = mat.shaderProps.slice();
+											next[i] = { ...next[i], key: e.target.value };
+											patch({ shaderProps: next });
+										}}
+										onBlur={() => commit({ ...mat })}
+										onKeyDown={autoBlur}
+									/>
+									<input
+										className="tf shader-prop-value"
+										type="text"
+										placeholder="Value"
+										style={{fontFamily: 'monospace', fontSize: 12}}
+										value={p.value ?? ''}
+										onChange={e => {
+											const next = mat.shaderProps.slice();
+											next[i] = { ...next[i], value: e.target.value };
+											patch({ shaderProps: next });
+										}}
+										onBlur={() => commit({ ...mat })}
+										onKeyDown={autoBlur}
+									/>
+									<button
+										type="button"
+										className="icon-btn shader-prop-delete"
+										title="Remove"
+										onClick={() => {
+											const next = mat.shaderProps.slice();
+											next.splice(i, 1);
+											patch({ shaderProps: next }, true);
+										}}
+									>
+										<MdDelete />
+									</button>
+								</div>
+							))}
+							
+							{/* Compact add button row */}
+							<div className="material-editor-row field shader-props-add-row">
+								<div className="shader-props-add-spacer" />
+								<button
+									type="button"
+									className="icon-btn shader-props-add"
+									title="Add shader prop"
+									onClick={() => {
+										const next = [...mat.shaderProps, { key: '', value: '' }];
+										patch({ shaderProps: next }, true);
+									}}
+								>
+									<MdAdd />
+								</button>
+							</div>
+							
+							{spacer()}
+						</>
+					)}
 
 					<div className="material-editor-row field">
 						<label className="material-editor-label">Side</label>
@@ -269,6 +364,21 @@ export default function MaterialEditor({ uri, date, onSave, openAsset }) {
 							<option value="FrontSide">Front Side</option>
 							<option value="BackSide">Back Side</option>
 							<option value="DoubleSide">Double Side</option>
+						</select>
+					</div>
+					
+					<div className="material-editor-row field">
+						<label className="material-editor-label">Shading</label>
+						<select
+							className="tf"
+							value={mat.flatShading ? 'flat' : 'smooth'}
+							onChange={(e) => {
+								const flat = e.target.value === 'flat';
+								patch({ flatShading: flat }, true);
+							}}
+						>
+							<option value="smooth">Smooth</option>
+							<option value="flat">Flat</option>
 						</select>
 					</div>
 
@@ -333,94 +443,101 @@ export default function MaterialEditor({ uri, date, onSave, openAsset }) {
 					{spacer()}
 
 					{fileRow('Color Map', 'map')}
-					<div className="material-editor-row field subrow">
-						<label className="material-editor-label">Offset</label>
-						<input
-							className="tf"
-							type="number"
-							step="0.01"
-							value={mat.mapOffset[0]}
-							onChange={e => patch({ mapOffset: [parseFloat(e.target.value), mat.mapOffset[1]] })}
-							onBlur={() => commit({ ...mat, mapOffset: [...mat.mapOffset] })}
-							onKeyDown={autoBlur}
-						/>
-						<input
-							className="tf"
-							type="number"
-							step="0.01"
-							value={mat.mapOffset[1]}
-							onChange={e => patch({ mapOffset: [mat.mapOffset[0], parseFloat(e.target.value)] })}
-							onBlur={() => commit({ ...mat, mapOffset: [...mat.mapOffset] })}
-							onKeyDown={autoBlur}
-						/>
-					</div>
-					<div className="material-editor-row field subrow">
-						<label className="material-editor-label">Scale</label>
-						<input
-							className="tf"
-							type="number"
-							step="0.01"
-							value={mat.mapRepeat[0]}
-							onChange={e => patch({ mapRepeat: [parseFloat(e.target.value), mat.mapRepeat[1]] })}
-							onBlur={() => commit({ ...mat, mapRepeat: [...mat.mapRepeat] })}
-							onKeyDown={autoBlur}
-						/>
-						<input
-							className="tf"
-							type="number"
-							step="0.01"
-							value={mat.mapRepeat[1]}
-							onChange={e => patch({ mapRepeat: [mat.mapRepeat[0], parseFloat(e.target.value)] })}
-							onBlur={() => commit({ ...mat, mapRepeat: [...mat.mapRepeat] })}
-							onKeyDown={autoBlur}
-						/>
-					</div>
-
-					{spacer()}
+					{!!mat['map'] && (
+						<>
+							<div className="material-editor-row field subrow">
+								<label className="material-editor-label">Offset</label>
+								<input
+									className="tf"
+									type="number"
+									step="0.01"
+									value={mat.mapOffset[0]}
+									onChange={e => patch({ mapOffset: [parseFloat(e.target.value), mat.mapOffset[1]] })}
+									onBlur={() => commit({ ...mat, mapOffset: [...mat.mapOffset] })}
+									onKeyDown={autoBlur}
+								/>
+								<input
+									className="tf"
+									type="number"
+									step="0.01"
+									value={mat.mapOffset[1]}
+									onChange={e => patch({ mapOffset: [mat.mapOffset[0], parseFloat(e.target.value)] })}
+									onBlur={() => commit({ ...mat, mapOffset: [...mat.mapOffset] })}
+									onKeyDown={autoBlur}
+								/>
+							</div>
+							<div className="material-editor-row field subrow">
+								<label className="material-editor-label">Scale</label>
+								<input
+									className="tf"
+									type="number"
+									step="0.01"
+									value={mat.mapRepeat[0]}
+									onChange={e => patch({ mapRepeat: [parseFloat(e.target.value), mat.mapRepeat[1]] })}
+									onBlur={() => commit({ ...mat, mapRepeat: [...mat.mapRepeat] })}
+									onKeyDown={autoBlur}
+								/>
+								<input
+									className="tf"
+									type="number"
+									step="0.01"
+									value={mat.mapRepeat[1]}
+									onChange={e => patch({ mapRepeat: [mat.mapRepeat[0], parseFloat(e.target.value)] })}
+									onBlur={() => commit({ ...mat, mapRepeat: [...mat.mapRepeat] })}
+									onKeyDown={autoBlur}
+								/>
+							</div>
+							{spacer()}
+						</>
+					)}
 
 					{fileRow('Normal Map', 'normalMap')}
-					<div className="material-editor-row field subrow">
-						<label className="material-editor-label">Offset</label>
-						<input
-							className="tf"
-							type="number"
-							step="0.01"
-							value={mat.normalMapOffset[0]}
-							onChange={e => patch({ normalMapOffset: [parseFloat(e.target.value), mat.normalMapOffset[1]] })}
-							onBlur={() => commit({ ...mat, normalMapOffset: [...mat.normalMapOffset] })}
-							onKeyDown={autoBlur}
-						/>
-						<input
-							className="tf"
-							type="number"
-							step="0.01"
-							value={mat.normalMapOffset[1]}
-							onChange={e => patch({ normalMapOffset: [mat.normalMapOffset[0], parseFloat(e.target.value)] })}
-							onBlur={() => commit({ ...mat, normalMapOffset: [...mat.normalMapOffset] })}
-							onKeyDown={autoBlur}
-						/>
-					</div>
-					<div className="material-editor-row field subrow">
-						<label className="material-editor-label">Scale</label>
-						<input
-							className="tf"
-							type="number"
-							step="0.01"
-							value={mat.normalMapRepeat[0]}
-							onChange={e => patch({ normalMapRepeat: [parseFloat(e.target.value), mat.normalMapRepeat[1]] })}
-							onBlur={() => commit({ ...mat, normalMapRepeat: [...mat.normalMapRepeat] })}
-							onKeyDown={autoBlur}
-						/>
-						<input
-							className="tf"
-							type="number"
-							step="0.01"
-							value={mat.normalMapRepeat[1]}
-							onChange={e => patch({ normalMapRepeat: [mat.normalMapRepeat[0], parseFloat(e.target.value)] })}
-							onBlur={() => commit({ ...mat, normalMapRepeat: [...mat.normalMapRepeat] })}
-							onKeyDown={autoBlur}
-						/>
-					</div>
+					{!!mat['normalMap'] && (
+						<>
+							<div className="material-editor-row field subrow">
+								<label className="material-editor-label">Offset</label>
+								<input
+									className="tf"
+									type="number"
+									step="0.01"
+									value={mat.normalMapOffset[0]}
+									onChange={e => patch({ normalMapOffset: [parseFloat(e.target.value), mat.normalMapOffset[1]] })}
+									onBlur={() => commit({ ...mat, normalMapOffset: [...mat.normalMapOffset] })}
+									onKeyDown={autoBlur}
+								/>
+								<input
+									className="tf"
+									type="number"
+									step="0.01"
+									value={mat.normalMapOffset[1]}
+									onChange={e => patch({ normalMapOffset: [mat.normalMapOffset[0], parseFloat(e.target.value)] })}
+									onBlur={() => commit({ ...mat, normalMapOffset: [...mat.normalMapOffset] })}
+									onKeyDown={autoBlur}
+								/>
+							</div>
+							<div className="material-editor-row field subrow">
+								<label className="material-editor-label">Scale</label>
+								<input
+									className="tf"
+									type="number"
+									step="0.01"
+									value={mat.normalMapRepeat[0]}
+									onChange={e => patch({ normalMapRepeat: [parseFloat(e.target.value), mat.normalMapRepeat[1]] })}
+									onBlur={() => commit({ ...mat, normalMapRepeat: [...mat.normalMapRepeat] })}
+									onKeyDown={autoBlur}
+								/>
+								<input
+									className="tf"
+									type="number"
+									step="0.01"
+									value={mat.normalMapRepeat[1]}
+									onChange={e => patch({ normalMapRepeat: [mat.normalMapRepeat[0], parseFloat(e.target.value)] })}
+									onBlur={() => commit({ ...mat, normalMapRepeat: [...mat.normalMapRepeat] })}
+									onKeyDown={autoBlur}
+								/>
+							</div>
+						</>
+					)}
 				</>
 			)}
 		</div>

@@ -9,7 +9,7 @@ export const TYPE_KEYWORDS = [
 	'onStart', 'onGraphicsReady', 'onLoad',
 	'onEnterFrame','onBeforeRender','onExitFrame', 'onPhysicsUpdate',
 	'onMouseOver', 'onMouseOut', 'onMouseMove',
-	'onMouseDown', 'onMouseUp', 'onMouseWheel',
+	'onMouseDown', 'onMouseUp', 'onMouseWheel', 'onRelease',
 	'addEventListener','removeEventListener'
 ]
 export const FORBIDDEN_KEYWORDS = [

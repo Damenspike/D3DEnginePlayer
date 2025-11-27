@@ -1,4 +1,5 @@
 import { importModelFromZip } from './glb-instancer.js';
+import { fileName } from './d3dutility.js';
 
 export default class MeshManager {
 	constructor(d3dobject, component) {
@@ -181,10 +182,9 @@ export default class MeshManager {
 		try { params = JSON.parse(txt); } catch { return null; }
 	
 		const type = params.type || 'MeshStandardMaterial';
-		const Ctor = THREE[type];
-		if (!Ctor) return null;
 	
-		if ('color' in params) params.color = this._fixColor(params.color);
+		// ---- Common fixes (all material types, including ShaderMaterial) ----
+		if ('color' in params)    params.color    = this._fixColor(params.color);
 		if ('emissive' in params) params.emissive = this._fixColor(params.emissive);
 	
 		// make sure transparent is correct for non-1 opacity
@@ -193,6 +193,124 @@ export default class MeshManager {
 	
 		if (typeof params.side === 'string' && THREE[params.side] !== undefined)
 			params.side = THREE[params.side];
+	
+		// -------------------------------------------------
+		// ShaderMaterial path (with lights + standard props)
+		// -------------------------------------------------
+		if (type === 'ShaderMaterial') {
+			const vertexShaderUUID   = params.vertexShader || null;
+			const fragmentShaderUUID = params.fragmentShader || null;
+	
+			// remove UUIDs from ctor params
+			delete params.vertexShader;
+			delete params.fragmentShader;
+	
+			const vertSrc = vertexShaderUUID   ? await this._readTextByUUID(vertexShaderUUID)   : null;
+			const fragSrc = fragmentShaderUUID ? await this._readTextByUUID(fragmentShaderUUID) : null;
+			if (!vertSrc || !fragSrc) return null;
+	
+			const baseColor = params.color != null ? params.color : 0xffffff;
+			const baseOpacity = typeof params.opacity === 'number' ? params.opacity : 1;
+	
+			// Base uniforms: common + lights
+			const uniforms = THREE.UniformsUtils.merge([
+				THREE.UniformsLib.common,
+				THREE.UniformsLib.lights
+			]);
+	
+			// diffuse from material color
+			if (uniforms.diffuse && uniforms.diffuse.value && uniforms.diffuse.value.copy) {
+				uniforms.diffuse.value.copy(new THREE.Color(baseColor));
+			} else {
+				uniforms.diffuse = { value: new THREE.Color(baseColor) };
+			}
+	
+			// opacity uniform from material opacity
+			if (uniforms.opacity) {
+				uniforms.opacity.value = baseOpacity;
+			} else {
+				uniforms.opacity = { value: baseOpacity };
+			}
+	
+			// we drove diffuse from color → drop color param from ctor
+			delete params.color;
+	
+			// shaderProps → uniforms
+			const shaderProps = Array.isArray(params.shaderProps) ? params.shaderProps : [];
+			delete params.shaderProps;
+	
+			const parseVal = (v) => {
+				if (typeof v !== 'string') return v;
+				const t = v.trim();
+				if (t === '') return '';
+				if (t === 'true') return true;
+				if (t === 'false') return false;
+				const n = Number(t);
+				if (Number.isFinite(n)) return n;
+				return t;
+			};
+	
+			for (const prop of shaderProps) {
+				if (!prop || !prop.key) continue;
+				const k = prop.key.trim();
+				if (!k) continue;
+				uniforms[k] = { value: parseVal(prop.value) };
+			}
+	
+			const ctorParams = {
+				...params,
+				vertexShader: vertSrc,
+				fragmentShader: fragSrc,
+				uniforms,
+				lights: true
+			};
+	
+			const m = new THREE.ShaderMaterial(ctorParams);
+	
+			// store authoring opacity once; applyOpacity will use this
+			if (!m.userData) m.userData = {};
+			if (m.userData._baseOpacity == null) {
+				m.userData._baseOpacity = baseOpacity;
+			}
+	
+			if ('toneMapped' in m) m.toneMapped = false;
+	
+			// Load textures just like for standard materials
+			await this._setMapRel(m, 'map',          params.map,         true);
+			await this._setMapRel(m, 'normalMap',    params.normalMap);
+			await this._setMapRel(m, 'roughnessMap', params.roughnessMap);
+			await this._setMapRel(m, 'metalnessMap', params.metalnessMap);
+			await this._setMapRel(m, 'emissiveMap',  params.emissiveMap, true);
+			await this._setMapRel(m, 'aoMap',        params.aoMap);
+			await this._setMapRel(m, 'alphaMap',     params.alphaMap);
+	
+			// Apply UV offset / scale for color & normal maps
+			const mapOffset        = params.mapOffset;
+			const mapRepeat        = params.mapRepeat;
+			const normalMapOffset  = params.normalMapOffset;
+			const normalMapRepeat  = params.normalMapRepeat;
+	
+			if (m.map) {
+				if (Array.isArray(mapOffset)) m.map.offset.set(mapOffset[0] || 0, mapOffset[1] || 0);
+				if (Array.isArray(mapRepeat)) m.map.repeat.set(mapRepeat[0] || 1, mapRepeat[1] || 1);
+				m.map.needsUpdate = true;
+			}
+	
+			if (m.normalMap) {
+				if (Array.isArray(normalMapOffset)) m.normalMap.offset.set(normalMapOffset[0] || 0, normalMapOffset[1] || 0);
+				if (Array.isArray(normalMapRepeat)) m.normalMap.repeat.set(normalMapRepeat[0] || 1, normalMapRepeat[1] || 1);
+				m.normalMap.needsUpdate = true;
+			}
+	
+			m.needsUpdate = true;
+			return m;
+		}
+	
+		// -------------------------------------------------
+		// Original path for Standard/Physical/Basic/etc.
+		// -------------------------------------------------
+		const Ctor = THREE[type];
+		if (!Ctor) return null;
 	
 		const { ctorParams, pulled } = this._stripIncompatible({ ...params }, type);
 	
@@ -214,13 +332,13 @@ export default class MeshManager {
 		const normalMapRepeat  = pulled.normalMapRepeat;
 	
 		// Load textures
-		await this._setMapRel(m, 'map',         maps.map,         true);
-		await this._setMapRel(m, 'normalMap',   maps.normalMap);
-		await this._setMapRel(m, 'roughnessMap',maps.roughnessMap);
-		await this._setMapRel(m, 'metalnessMap',maps.metalnessMap);
-		await this._setMapRel(m, 'emissiveMap', maps.emissiveMap, true);
-		await this._setMapRel(m, 'aoMap',       maps.aoMap);
-		await this._setMapRel(m, 'alphaMap',    maps.alphaMap);
+		await this._setMapRel(m, 'map',          maps.map,         true);
+		await this._setMapRel(m, 'normalMap',    maps.normalMap);
+		await this._setMapRel(m, 'roughnessMap', maps.roughnessMap);
+		await this._setMapRel(m, 'metalnessMap', maps.metalnessMap);
+		await this._setMapRel(m, 'emissiveMap',  maps.emissiveMap, true);
+		await this._setMapRel(m, 'aoMap',        maps.aoMap);
+		await this._setMapRel(m, 'alphaMap',     maps.alphaMap);
 	
 		// Apply UV offset / scale for color map
 		if (m.map) {
@@ -280,7 +398,15 @@ export default class MeshManager {
 				if (json?.byName) {
 					for (const k of Object.keys(json.byName)) {
 						const rel = this._norm(json.byName[k]);
-						const uuid = this.d3dobject.root.resolveAssetId(rel);
+						let uuid = this.d3dobject.root.resolveAssetId(rel);
+						if(!uuid) {
+							const fallbackRel = `${matsDir}${fileName(rel)}`;
+							console.log('Trying with fallback URI', fallbackRel);
+							uuid = this.d3dobject.root.resolveAssetId(fallbackRel);
+							if(uuid)
+								console.log('Succeeded with fallback rel');
+						}
+							
 						if (uuid) map.set(k, uuid);
 					}
 				}

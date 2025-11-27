@@ -59,7 +59,11 @@ export default function AnimationManager(d3dobject, component) {
 			clipState.time += _time.delta * clipState.speed;
 			
 			// Clip has ended
-			if(Math.abs(clipState.time) >= clip.duration) {
+			const hasClipEnded = (
+				(clipState.time >= clip.duration && clipState.speed > 0) || 
+				(clipState.time <= 0 && clipState.speed < 0)
+			);
+			if(hasClipEnded) {
 				if(clipState.wrapMode == WRAP_MODE_ONCE) {
 					clipState.time = 0;
 					clipState.playing = false;

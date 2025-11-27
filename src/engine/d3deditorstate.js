@@ -244,6 +244,7 @@ export default class D3DEditorState {
 	probeSelection() {
 		_events.invoke('selected-objects', this.selectedObjects);
 		_events.invoke('deselect-animation-editor');
+		_events.invoke('deselect-2dpoints');
 	}
 	isSelected(object) {
 		return this.selectedObjects.includes(object);
@@ -463,6 +464,7 @@ export default class D3DEditorState {
 			manifest.editorConfig.objectStates = this.getCleanObjectStates(
 				manifest.editorConfig.objectStates
 			);
+			manifest.editorConfig.lastMode = _editor.mode;
 		}else{
 			delete manifest.editorConfig;
 		}
@@ -634,6 +636,7 @@ export default class D3DEditorState {
 			const d3dobject = await _editor.focus.createObject(objData, {
 				updateComponents: false
 			});
+			
 			pastedObjects.push(d3dobject);
 		}
 		addStep && this.addStep({

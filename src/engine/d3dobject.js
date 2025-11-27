@@ -62,6 +62,9 @@ export default class D3DObject {
 			if(!this._enabled && this.parent.object3d.children.includes(this.object3d))
 				this.parent.object3d.remove(this.object3d);
 		}
+		if(this._enabled && !this.__scriptRan) {
+			this.executeScripts();
+		}
 	}
 	
 	get name() {
@@ -418,7 +421,7 @@ export default class D3DObject {
 		if(!this.symbolId)
 			return;
 		
-		return _root.__symbols[this.symbolId];
+		return this.root.__symbols[this.symbolId];
 	}
 	get forward() {
 		const fwd = THREE.Vector3.forward.clone();
@@ -585,7 +588,7 @@ export default class D3DObject {
 		}
 		if(objData.symbolId) {
 			// Load objData from symbol instead
-			const symbol = _root.__symbols[objData.symbolId];
+			const symbol = this.root.__symbols[objData.symbolId];
 			
 			if(!symbol) {
 				throw new Error(`Symbol doesn't exist ${objData.symbolId}`)
@@ -670,6 +673,17 @@ export default class D3DObject {
 		///////////////////////////
 		// ----- END UUID ----- //
 		///////////////////////////
+		
+		////////////////////////////
+		// ---- EDITOR STATE ---- //
+		////////////////////////////
+		if(window._editor) {
+			// Copy editor state object from objData uuid
+			const states = _root.manifest.editorConfig.objectStates;
+			const state = states[objData.uuid];
+			if(state)
+				states[child.uuid] = structuredClone(state);
+		}
 		
 		// COMPONENT SETUP
 		for(let c of objData.components) {
@@ -829,7 +843,7 @@ export default class D3DObject {
 		}
 	}
 	
-	async applyScene(scene) {
+	async applyScene(scene, overrideRoot, overrideZip) {
 		if(!this.object3d.isScene)
 			return;
 		
@@ -844,8 +858,8 @@ export default class D3DObject {
 			}else
 			if(bgType == 'texture') {
 				await applyTextureToSceneBackground(
-					this.root,
-					this.zip,
+					overrideRoot ?? this.root,
+					overrideZip ?? this.zip,
 					this.object3d,
 					scene.background.textureAsset
 				)
@@ -853,6 +867,13 @@ export default class D3DObject {
 		}catch(e) {
 			console.error('Apply scene background error', e);
 		}
+	}
+	setSceneBackground(background, apply = true) {
+		if(!this.object3d.isScene)
+			return;
+		
+		this.scene.background = background;
+		apply && this.applyScene(this.scene);
 	}
 	
 	async executeScripts() {
@@ -894,6 +915,7 @@ export default class D3DObject {
 		
 		if(script && (!window._editor || this.editorOnly)) {
 			this.__runInSandbox(script);
+			this.__scriptRan = true;
 			console.log(`${scriptName} executed in DamenScript sandbox`);
 		}
 		if(this.children && this.children.length > 0) {
@@ -1213,14 +1235,14 @@ export default class D3DObject {
 						return;
 					}
 					
-					const symbol = { symbolId, file, objData: symbolData };
+					const symbol = { symbolId, file, objData: (symbolData.objData || symbolData) };
 					
-					if(!_root.__symbols[symbolId])
-						_root.__symbols[symbolId] = symbol;
+					if(!this.root.__symbols[symbolId])
+						this.root.__symbols[symbolId] = symbol;
 					else
-						Object.assign(_root.__symbols[symbolId], symbol);
+						Object.assign(this.root.__symbols[symbolId], symbol);
 				} catch(e) {
-					console.warn('Failed to parse', rel, e);
+					console.warn('Failed to parse', rel, `SD[$$'${serializedData}']`, e);
 				}
 			});
 			

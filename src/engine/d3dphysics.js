@@ -68,6 +68,9 @@ export default class D3DPhysics {
 		if (didSteps > 0) {
 			// Sync RB -> Three/D3D *after* all substeps this render frame
 			this._bodies.forEach(({ rb }, uuid) => {
+				if(window.__blockPhysTest === true)
+					return;
+				
 				const d3d = this._toObj.get(rb.handle);
 				if (!d3d) return;
 		
@@ -78,6 +81,7 @@ export default class D3DPhysics {
 				const q = rb.rotation();
 		
 				const parent = obj3d.parent;
+				
 				if (parent) {
 					// World pose from Rapier
 					const worldPos  = _TMP_V1.set(t.x, t.y, t.z);

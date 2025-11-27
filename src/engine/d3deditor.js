@@ -142,6 +142,9 @@ export async function loadD3DProj(uri) {
 	
 	// Enable object selection via raycasting
 	setupSelection();
+	
+	// Init editor mode
+	initEditorMode();
 }
 
 /* ---------------- Helper Functions ---------------- */
@@ -291,6 +294,14 @@ function initEditorConfig() {
 	
 	confirmProjectVersion();
 }
+
+function initEditorMode() {
+	const lastMode = _root.manifest.editorConfig.lastMode;
+	
+	if(lastMode == '2D' || lastMode == '3D')
+		_editor.mode = lastMode;
+}
+
 async function confirmProjectVersion() {
 	const fileVersion = _editor.project.editorVersion || '1.0.0-beta.0';
 	const currentVersion = await D3D.getEditorVersion();
@@ -628,7 +639,7 @@ function setupSelection() {
 			if(!d3dobj)
 				return;
 			
-			if(d3dobj.__editorState.locked || d3dobj.noSelect)
+			if(d3dobj.__editorState.locked || d3dobj.__editorState.hidden || d3dobj.noSelect)
 				return;
 		
 			const key = d3dobj.uuid || d3dobj;
@@ -721,7 +732,7 @@ function setupSelection() {
 				if(!d3dobj)
 					return;
 					
-				if(d3dobj.__editorState.locked || d3dobj.noSelect)
+				if(d3dobj.__editorState.locked || d3dobj.__editorState.hidden || d3dobj.noSelect)
 					return;
 				
 				if(!d3dobjects.includes(d3dobj))
@@ -1146,6 +1157,7 @@ async function buildProject(buildURI, play = false) {
 		
 		if(play) {
 			D3D.openPlayer(buildURI);
+			_events.invoke('play');
 			_events.invoke('clear-console');
 		}
 	}catch(e) {
@@ -1184,14 +1196,14 @@ function onAssetDeleted(path) {
 	
 	if(ext == 'd3dsymbol') {
 		const symbol = Object.values(_root.__symbols).find(s => s.file?.name == path);
-		
+		if(!symbol) return;
 		// Desymbolise all instances of this symbol file
 		let desymbolised = 0;
 		const objectsToDelete = [];
 		for(let uuid in _root.superIndex) {
 			const d3dobject = _root.superIndex[uuid];
 			
-			if(d3dobject.symbol == symbol) {
+			if(d3dobject.symbol == symbol && d3dobject.symbol.file.name == path) {
 				desymbolised++;
 				objectsToDelete.push(d3dobject);
 			}
@@ -1210,6 +1222,7 @@ async function onImportAssets(paths) {
 		await _editor.importFile(f, 'assets');
 	}
 	onAssetsUpdated();
+	_root.updateSymbolStore();
 	_editor.setDirty(true);
 }
 function addComponent(type) {
@@ -1449,20 +1462,23 @@ async function exportAssets(paths) {
 
 	const allRelPaths = [];
 
-	for(const rel of paths) {
-		const folder = zip.folder(rel);
-		const isDir = folder && !zip.file(rel);
+	for(const rawRel of paths) {
+		const rel = rawRel.replace(/\\/g, '/');
+		const entry = zip.files[rel] ?? zip.files[rel + '/'];
+		const isDir = !!entry && entry.dir === true;
 		
 		if(isDir) {
-			folder.forEach((p, f)=>{
-				if(f.dir) return;
-				allRelPaths.push(f.name);
+			const dirPrefix = entry.name;
+			zip.forEach((p, f) => {
+				if (f.dir) return;
+				if (!p.startsWith(dirPrefix)) return;
+				allRelPaths.push(p);
 			});
 		}else
 		if(zip.file(rel)) 
 			allRelPaths.push(rel);
 	}
-
+	
 	if(allRelPaths.length < 1) return;
 
 	const fileDatas = [];
@@ -1476,7 +1492,7 @@ async function exportAssets(paths) {
 			data
 		});
 	}
-
+	
 	if(fileDatas.length < 1) return;
 
 	await D3D.exportMultipleFiles(fileDatas);

@@ -67,10 +67,13 @@ export default class D3DEventSystem {
 	 */
 	unall(event) {
 		let handlers = this.events.get(event) || [];
+		let handlersSingle = this.singleEvents.get(event) || [];
 		
 		handlers = [];
+		handlersSingle = [];
 		
 		this.events.set(event, handlers);
+		this.singleEvents.set(event, handlersSingle);
 	}
 	
 	/**

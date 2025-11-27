@@ -97,7 +97,7 @@ export default function GameView({editorMode}) {
 		});
 		
 		_events.on('select-all', () => {
-			if(!game2dref.current.contains(document.activeElement) && !game3dref.current.contains(document.activeElement))
+			if(!game2dRef.current.contains(document.activeElement) && !game3dRef.current.contains(document.activeElement))
 				return;
 			
 			// select all in game view
@@ -105,6 +105,7 @@ export default function GameView({editorMode}) {
 				(o.is2D && _editor.mode == '2D') || 
 				(o.is3D && _editor.mode == '3D')
 			);
+			
 			_editor.setSelection(allObjects);
 		});
 		_events.on('editor-focus', (focus) => {
@@ -220,6 +221,14 @@ export default function GameView({editorMode}) {
 				{
 					id: 'code',
 					label: 'Code'
+				},
+				{
+					id: 'exportd3d',
+					label: 'Export As D3D...'
+				},
+				{
+					id: 'exportd3dproj',
+					label: 'Export As Project...'
 				}
 			];
 			
@@ -300,6 +309,12 @@ export default function GameView({editorMode}) {
 			}else
 			if(id == 'reset-view') {
 				_editor.resetView2D();
+			}else
+			if(id == 'exportd3d') {
+				_editor.exportD3DSelectedObjects();
+			}else
+			if(id == 'exportd3dproj') {
+				_editor.exportD3DSelectedObjects({d3dproj: true});
 			}
 		}
 		

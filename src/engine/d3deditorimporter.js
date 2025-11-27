@@ -1,4 +1,5 @@
 // importer.js
+import JSZip from 'jszip';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
@@ -187,6 +188,132 @@ export async function handleImportFile(file, destDir) {
 			
 			zip.file(mainGlbTarget, buf);
 			wrote.push(mainGlbTarget);
+			
+			return { wrote };
+		}
+		
+		case 'd3d': {
+			// ============================
+			// Import assets from .d3d file
+			// ============================
+			
+			// Load the dropped .d3d as its own JSZip
+			const srcZip = await new JSZip().loadAsync(buf);
+			
+			// Read the source asset-index.json
+			const assetIndexFile = srcZip.file('asset-index.json');
+			if (!assetIndexFile) {
+				console.warn('[D3D Import] asset-index.json not found in .d3d');
+				return { wrote: [] };
+			}
+		
+			let srcIndexRaw;
+			try {
+				srcIndexRaw = JSON.parse(await assetIndexFile.async('string'));
+			} catch (err) {
+				console.warn('[D3D Import] Failed to parse asset-index.json', err);
+				return { wrote: [] };
+			}
+			
+			if(!Array.isArray(srcIndexRaw)) {
+				console.warn('Source index array is invalid');
+				return;
+			}
+		
+			// Make an isolated folder under destDir:  <destDir>/<base>.d3dcontainer/
+			const dot = name.lastIndexOf('.');
+			const base = dot >= 0 ? name.slice(0, dot) : name;
+			const folderLabel = `${base}.d3dcontainer`;
+			const folderNoSlash = uniqueFilePath(zip, destDir, folderLabel);
+			const virtualDir = folderNoSlash.endsWith('/') ? folderNoSlash : (folderNoSlash + '/');
+			zip.folder(virtualDir);
+		
+			const wrote = [virtualDir];
+		
+			const stripAssetsRoot = rel => rel.replace(/^assets\//, '');
+		
+			// Ensure target asset index exists
+			const importedAssetIndex = {};
+		
+			for (const { rel, uuid } of srcIndexRaw) {
+				if (!rel || typeof rel !== 'string') continue;
+				
+				// -------------------------------------------------
+				// Special case: shared Standard library assets
+				// -------------------------------------------------
+				if (rel.startsWith('assets/Standard/')) {
+					// Ignore directory rels entirely
+					if (rel.endsWith('/')) {
+						continue;
+					}
+					
+					const existing = _root.assetIndex.find(a => a.rel == rel);
+					
+					if (existing) {
+						importedAssetIndex[uuid] = existing;
+						continue;
+					} else {
+						console.warn('[D3D Import] Standard asset not found in host project for rel:', rel, 'uuid:', uuid);
+						// ignore if it doesn’t exist
+						continue;
+					}
+				}
+		
+				// -------------------------------------------------
+				// Non-standard assets: import into isolated folder
+				// -------------------------------------------------
+		
+				// Directory entries (end with /)
+				if (rel.endsWith('/')) {
+					const dirRel = `${virtualDir}${stripAssetsRoot(rel)}`;
+					const dirClean = dirRel.endsWith('/') ? dirRel : (dirRel + '/');
+					zip.folder(dirClean);
+					wrote.push(dirClean);
+		
+					const newEntry = { uuid, rel: dirClean };
+					_root.assetIndex.push(newEntry);
+					importedAssetIndex[uuid] = newEntry;
+					continue;
+				}
+		
+				// File entries
+				const srcFile = srcZip.file(rel);
+				if (!srcFile) {
+					console.warn('[D3D Import] Missing asset file in .d3d zip for rel:', rel);
+					continue;
+				}
+		
+				const data = await srcFile.async('arraybuffer');
+		
+				// New rel inside this project, under our isolated folder
+				const newRel = `${virtualDir}${stripAssetsRoot(rel)}`;
+		
+				zip.file(newRel, data, { binary: true });
+				wrote.push(newRel);
+				
+				const newEntry = { uuid, rel: newRel };
+				_root.assetIndex.push(newEntry);
+				importedAssetIndex[uuid] = newEntry;
+			}
+		
+			// ------------------------------------
+			// Copy scenes.json + manifest.json in
+			// ------------------------------------
+			const scenesFile = srcZip.file('scenes.json');
+			if (scenesFile) {
+				const scenesStr = await scenesFile.async('string');
+				const outRel = `${virtualDir}scenes.json`;
+				zip.file(outRel, scenesStr);
+				wrote.push(outRel);
+			}
+		
+			const manifestFile2 = srcZip.file('manifest.json');
+			if (manifestFile2) {
+				const manifestStr = await manifestFile2.async('string');
+				const outRel = `${virtualDir}manifest.json`;
+				zip.file(outRel, manifestStr);
+				wrote.push(outRel);
+			}
 			
 			return { wrote };
 		}

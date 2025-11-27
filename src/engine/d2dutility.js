@@ -1066,6 +1066,19 @@ export function passesAncestorMasks(node, wx, wy) {
 	return true;
 }
 
+export function worldOpacity(d3dobject) {
+	let a = 1;
+	for (let n = d3dobject; n; n = n.parent) {
+		let v = n.opacity;
+		if (!Number.isFinite(v)) continue; // no opacity on this node = 1
+		// clamp 0..1
+		if (v <= 0) return 0;
+		if (v >= 1) v = 1;
+		a *= v;
+	}
+	return a;
+}
+
 /* ==================== color helpers ==================== */
 
 function clamp01(x){ return Math.max(0, Math.min(1, x)); }
@@ -1493,6 +1506,8 @@ const D2DUtil = {
 	hitObject, hitObjectDeep,
 	// pivot
 	repositionPivotTo,
+	// alpha
+	worldOpacity
 };
 
 export default D2DUtil;

@@ -63,6 +63,9 @@ export default function AnimationInspector() {
 	
 	useEffect(() => {
 		
+		_events.on('play', () => {
+			setRecording(false);
+		});
 		_events.on('deselect-animation-editor', () => {
 			setSelectedTracks([]);
 			setSelectedKeys([]);

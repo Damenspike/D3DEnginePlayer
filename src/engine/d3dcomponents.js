@@ -81,26 +81,60 @@ const D3DComponents = {
 	},
 	Camera: {
 		fields: {
-			'fieldOfView': {
+			projection: {
+				label: 'Projection',
+				type: 'select',
+				options: [
+					{
+						name: 'perspective', 
+						label: 'Perspective'
+					},
+					{
+						name: 'orthographic', 
+						label: 'Orthographic'
+					}
+				],
+				def: 'Perspective'
+			},
+			fieldOfView: {
 				label: 'Field of view',
 				type: 'slider',
 				min: 1,
 				max: 179,
 				def: 75
 			},
-			'clipNear': { 
+			orthographicSize: {
+				label: 'Orthographic size',
+				type: 'number',
+				min: 0.01,
+				max: 100000,
+				def: 10,
+				condition: c => c.properties.projection == 'orthographic'
+			},
+			clipNear: { 
 				label: 'Minimum distance', 
 				type: 'number',
 				min: 0.0001,
 				max: 100,
 				def: 0.01
 			},
-			'clipFar': { 
+			clipFar: { 
 				label: 'Maximum distance', 
 				type: 'number',
 				min: 1,
 				max: 10000000,
 				def: 2000
+			},
+			autoAspect: {
+				label: 'Auto aspect',
+				type: 'boolean',
+				def: true
+			},
+			aspect: { 
+				label: 'Aspect', 
+				type: 'number',
+				def: 1,
+				condition: c => !c.properties.autoAspect
 			}
 		},
 		gizmo3d: {
@@ -226,6 +260,7 @@ const D3DComponents = {
 				section: 'shadow',
 				condition: c => c.properties.castShadow
 			},
+			/*
 			lensFlareEnabled: {
 				label: 'Lens flare',
 				type: 'boolean',
@@ -248,6 +283,7 @@ const D3DComponents = {
 				def: 400,
 				condition: c => c.properties.lensFlareEnabled
 			}
+			*/
 		},
 		gizmo3d: {
 			hidden: true,
@@ -700,6 +736,11 @@ const D3DComponents = {
 				type: 'string',
 				def: ''
 			},
+			'targetOffset': {
+				label: 'Target offset',
+				type: 'vector3',
+				def: {x: 0, y: 0, z: 0}
+			},
 			'distance': {
 				label: 'Distance',
 				description: 'Distance from target',
@@ -710,7 +751,6 @@ const D3DComponents = {
 			},
 			'height': {
 				label: 'Height',
-				description: 'Y offset from target position',
 				type: 'number',
 				min: 0,
 				max: Infinity,

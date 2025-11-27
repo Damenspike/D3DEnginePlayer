@@ -364,16 +364,33 @@ export default class D2DGizmo {
 							_time.now - this.lastPivotClick.time < 0.4 &&
 							obj === this.lastPivotClick.object
 						) {
-							const { cx, cy } = U.localBoundsCenter(obj);
-							const res = U.repositionPivotTo(obj, cx, cy, { commit: true });
-							if(res) {
-								_editor?.addStep?.({
-									name: 'Center 2D Pivot',
-									undo: () => { obj.graphic2d._paths = U.clonePaths(res.before.paths);
-												  obj.position.x = res.before.pos.x; obj.position.y = res.before.pos.y; obj.checkSymbols?.(); },
-									redo: () => { obj.graphic2d._paths = U.clonePaths(res.after.paths);
-												  obj.position.x = res.after.pos.x;  obj.position.y = res.after.pos.y;  obj.checkSymbols?.(); }
-								});
+							if(obj.graphic2d) {
+								// existing graphic case (unchanged)
+								const center = U.localBoundsCenter(obj);
+								if(!center) return;
+								const { cx, cy } = center;
+					
+								const res = U.repositionPivotTo(obj, cx, cy, { commit: true });
+								if(res) {
+									_editor?.addStep?.({
+										name: 'Center 2D Pivot',
+										undo: () => {
+											obj.graphic2d._paths = U.clonePaths(res.before.paths);
+											obj.position.x = res.before.pos.x;
+											obj.position.y = res.before.pos.y;
+											obj.checkSymbols?.();
+										},
+										redo: () => {
+											obj.graphic2d._paths = U.clonePaths(res.after.paths);
+											obj.position.x = res.after.pos.x;
+											obj.position.y = res.after.pos.y;
+											obj.checkSymbols?.();
+										}
+									});
+								}
+							} else {
+								// container case - let helper compute center in local space
+								this._centerContainerPivot(obj);
 							}
 							return;
 						}
@@ -386,16 +403,32 @@ export default class D2DGizmo {
 					const mW    = U.eventToWorld(e, this.canvas, this.d2drenderer);
 					const local = U.applyMat(inv0, mW.x, mW.y);
 		
-					const basePaths = U.clonePaths(obj?.graphic2d?._paths || []);
-					const basePos   = { x: obj.position?.x || 0, y: obj.position?.y || 0 };
+					const basePos = { x: obj.position?.x || 0, y: obj.position?.y || 0 };
+					const isGraphic = !!obj.graphic2d;
+		
+					let basePaths = null;
+					if(isGraphic) {
+						basePaths = U.clonePaths(obj.graphic2d?._paths || []);
+					}
+		
+					let containerData = null;
+					if(!isGraphic) {
+						containerData = this._setupContainerPivotData(obj);
+						if(!containerData) {
+							// nothing useful to pivot on (no children), bail out
+							return;
+						}
+					}
 		
 					this.state.pivotDrag = {
 						active: true,
 						obj,
+						kind: isGraphic ? 'graphic' : 'container',
 						startLocal: { x: local.x, y: local.y },
 						lastLocal:  { x: local.x, y: local.y },
 						basePos,
 						basePaths,
+						container: containerData,
 						inv0 // frozen inverse world->local
 					};
 		
@@ -463,18 +496,23 @@ export default class D2DGizmo {
 				const inv0 = pd.inv0; // frozen world->local
 				const mW   = U.eventToWorld(e, this.canvas, this.d2drenderer);
 				const curLocal = U.applyMat(inv0, mW.x, mW.y);
-			
+		
 				// local delta since drag began
 				const dx = curLocal.x - pd.startLocal.x;
 				const dy = curLocal.y - pd.startLocal.y;
-			
-				// preview the change from base each frame (no drift)
-				U.repositionPivotTo(pd.obj, dx, dy, {
-					basePaths: pd.basePaths,
-					basePos:   pd.basePos,
-					commit:    false
-				});
-			
+		
+				if(pd.kind === 'graphic') {
+					// existing behaviour
+					U.repositionPivotTo(pd.obj, dx, dy, {
+						basePaths: pd.basePaths,
+						basePos:   pd.basePos,
+						commit:    false
+					});
+				} else if(pd.kind === 'container') {
+					// new: move pivot by pushing children + container pos
+					this._previewContainerPivot(pd, dx, dy);
+				}
+		
 				pd.lastLocal = curLocal; // so mouseup can compute final Δ
 				this.canvas.style.cursor = 'grabbing';
 				e.preventDefault();
@@ -641,26 +679,84 @@ export default class D2DGizmo {
 			const px = (pd.lastLocal?.x ?? pd.startLocal.x);
 			const py = (pd.lastLocal?.y ?? pd.startLocal.y);
 		
-			const res = U.repositionPivotTo(pd.obj, px, py, {
-				basePaths: pd.basePaths,
-				basePos:   pd.basePos,
-				commit:    true
-			});
+			if(pd.kind === 'graphic') {
+				const res = U.repositionPivotTo(pd.obj, px, py, {
+					basePaths: pd.basePaths,
+					basePos:   pd.basePos,
+					commit:    true
+				});
 		
-			if(res) {
+				if(res) {
+					_editor.addStep?.({
+						name: 'Move 2D Pivot',
+						undo: () => {
+							pd.obj.graphic2d._paths = U.clonePaths(res.before.paths);
+							pd.obj.position.x = res.before.pos.x;
+							pd.obj.position.y = res.before.pos.y;
+							pd.obj.checkSymbols?.();
+						},
+						redo: () => {
+							pd.obj.graphic2d._paths = U.clonePaths(res.after.paths);
+							pd.obj.position.x = res.after.pos.x;
+							pd.obj.position.y = res.after.pos.y;
+							pd.obj.checkSymbols?.();
+						}
+					});
+				}
+			} else if(pd.kind === 'container') {
+				// commit container pivot move: snapshot before/after children + container pos
+				const before = {
+					obj: pd.obj,
+					pos: { x: pd.container.basePos.x, y: pd.container.basePos.y },
+					children: pd.container.baseChildren.map(c => ({
+						obj: c.obj,
+						pos: { x: c.pos.x, y: c.pos.y }
+					}))
+				};
+		
+				const after = {
+					obj: pd.obj,
+					pos: {
+						x: pd.obj.position?.x || 0,
+						y: pd.obj.position?.y || 0
+					},
+					children: pd.container.baseChildren.map(c => {
+						const ch = c.obj;
+						return {
+							obj: ch,
+							pos: {
+								x: ch?.position?.x || 0,
+								y: ch?.position?.y || 0
+							}
+						};
+					})
+				};
+		
 				_editor.addStep?.({
 					name: 'Move 2D Pivot',
 					undo: () => {
-						pd.obj.graphic2d._paths = U.clonePaths(res.before.paths);
-						pd.obj.position.x = res.before.pos.x;
-						pd.obj.position.y = res.before.pos.y;
-						pd.obj.checkSymbols?.();
+						const p = before.obj.position || (before.obj.position = { x:0, y:0, z:0 });
+						p.x = before.pos.x;
+						p.y = before.pos.y;
+						for(const c of before.children) {
+							if(!c.obj) continue;
+							const cp = c.obj.position || (c.obj.position = { x:0, y:0, z:0 });
+							cp.x = c.pos.x;
+							cp.y = c.pos.y;
+						}
+						before.obj.checkSymbols?.();
 					},
 					redo: () => {
-						pd.obj.graphic2d._paths = U.clonePaths(res.after.paths);
-						pd.obj.position.x = res.after.pos.x;
-						pd.obj.position.y = res.after.pos.y;
-						pd.obj.checkSymbols?.();
+						const p = after.obj.position || (after.obj.position = { x:0, y:0, z:0 });
+						p.x = after.pos.x;
+						p.y = after.pos.y;
+						for(const c of after.children) {
+							if(!c.obj) continue;
+							const cp = c.obj.position || (c.obj.position = { x:0, y:0, z:0 });
+							cp.x = c.pos.x;
+							cp.y = c.pos.y;
+						}
+						after.obj.checkSymbols?.();
 					}
 				});
 			}
@@ -681,7 +777,7 @@ export default class D2DGizmo {
 				const roots = this._marqueeRootsUnderFocus();
 				const newlyHit = [];
 				for (const r of roots) {
-					if(r.__editorState?.locked || r.noSelect) continue;
+					if(r.__editorState?.locked || r.__editorState?.hidden || r.noSelect) continue;
 					const bb = U.worldAABBDeep(r);
 					if(!bb) continue;
 					if(U.rectIntersectsAABB(rect, bb)) newlyHit.push(r);
@@ -775,9 +871,16 @@ export default class D2DGizmo {
 
 		// double-click to focus
 		if(this.lastClick) {
-			if(_time.now - this.lastClick.time < 0.4 && hit === this.lastClick.object) {
+			if(_time.now - this.lastClick.time < 0.28 && hit === this.lastClick.object) {
+				const oldFocus = _editor.focus;
+				
 				_editor.focus = hit ?? _editor.focus?.parent;
-				_editor.setSelection([]);
+				
+				if(hit) {
+					_editor.setSelection([]);
+				}else{
+					_editor.setSelection([oldFocus]);
+				}
 				this.lastClick = null;
 				return;
 			}
@@ -953,7 +1056,7 @@ export default class D2DGizmo {
 		
 		for (let i = roots.length - 1; i >= 0; --i) {
 			const r = roots[i];
-			if(r.__editorState?.locked || r.noSelect) continue;
+			if(r.__editorState?.locked || r.__editorState?.hidden || r.noSelect) continue;
 			if(this._hitObjectDeep(r, wx, wy)) return r;
 		}
 		return null;
@@ -1031,7 +1134,7 @@ export default class D2DGizmo {
 
 		for (const o of roots) {
 			if(excludeSet?.has(o)) continue;
-			if(o.__editorState?.locked || o.noSelect) continue;
+			if(o.__editorState?.locked || o.__editorState?.hidden || o.noSelect) continue;
 
 			const rc = this._objectRectCanvas(o);
 			if(!rc) continue;
@@ -1290,5 +1393,212 @@ export default class D2DGizmo {
 		const rW = U.pxToWorld(this.d2drenderer, this.pivotPointRadius);
 		const dx = pW.x - mW.x, dy = pW.y - mW.y;
 		return (dx*dx + dy*dy) <= (rW * rW);
+	}
+	
+	_setupContainerPivotData(obj) {
+		const children = (obj.children || []).filter(c => c?.is2D);
+		if(!children.length) return null;
+	
+		const baseChildren = children.map(c => ({
+			obj: c,
+			pos: {
+				x: c.position?.x || 0,
+				y: c.position?.y || 0
+			}
+		}));
+	
+		const pos = obj.position || (obj.position = { x:0, y:0, z:0 });
+		const basePos = { x: pos.x, y: pos.y };
+	
+		// derive linear map from obj-local -> parent-local (RS)
+		const parentWorld = U.worldMatrix(obj.parent || null);
+		const parentInv   = U.invert(parentWorld);
+		const objWorld    = U.worldMatrix(obj);
+	
+		const localToParent = (x, y) => {
+			const w = U.applyMat(objWorld, x, y);
+			return U.applyMat(parentInv, w.x, w.y);
+		};
+	
+		const p0 = localToParent(0, 0);
+		const p1 = localToParent(1, 0);
+		const p2 = localToParent(0, 1);
+	
+		const RS = {
+			a: p1.x - p0.x, b: p1.y - p0.y,
+			c: p2.x - p0.x, d: p2.y - p0.y
+		};
+	
+		return { basePos, baseChildren, RS };
+	}
+	
+	_previewContainerPivot(pd, dx, dy) {
+		const data = pd.container;
+		if(!data) return;
+	
+		const obj = pd.obj;
+		const RS  = data.RS;
+	
+		const dpx = dx;
+		const dpy = dy;
+	
+		// container position moves by RS * Δ in parent space
+		const dpParentX = RS.a * dpx + RS.c * dpy;
+		const dpParentY = RS.b * dpx + RS.d * dpy;
+	
+		const pos = obj.position || (obj.position = { x:0, y:0, z:0 });
+		pos.x = data.basePos.x + dpParentX;
+		pos.y = data.basePos.y + dpParentY;
+	
+		// children move opposite in local space so world stays put
+		for(const c of data.baseChildren) {
+			if(!c.obj) continue;
+			const cp = c.obj.position || (c.obj.position = { x:0, y:0, z:0 });
+			cp.x = c.pos.x - dpx;
+			cp.y = c.pos.y - dpy;
+		}
+	
+		obj.checkSymbols?.();
+	}
+	
+	_centerContainerPivot(obj) {
+		// 1) Collect 2D descendants as "contents" of the container
+		const children = [];
+		U.traverse2D(obj, (node) => {
+			if(node === obj) return;
+			if(!node?.is2D) return;
+			children.push(node);
+		});
+		if(!children.length) return;
+	
+		// 2) Compute bounds of all children in *container local* space
+		const Mw     = U.worldMatrix(obj);
+		const invMw  = U.invert(Mw);
+	
+		let minX = +Infinity, minY = +Infinity;
+		let maxX = -Infinity, maxY = -Infinity;
+	
+		for(const c of children) {
+			const bb = U.worldAABBDeep(c);
+			if(!bb) continue;
+	
+			const corners = [
+				{ x: bb.minX, y: bb.minY },
+				{ x: bb.maxX, y: bb.minY },
+				{ x: bb.maxX, y: bb.maxY },
+				{ x: bb.minX, y: bb.maxY }
+			];
+	
+			for(const k of corners) {
+				const pL = U.applyMat(invMw, k.x, k.y); // world -> container local
+				if(pL.x < minX) minX = pL.x;
+				if(pL.y < minY) minY = pL.y;
+				if(pL.x > maxX) maxX = pL.x;
+				if(pL.y > maxY) maxY = pL.y;
+			}
+		}
+	
+		if(!Number.isFinite(minX) || !Number.isFinite(minY) ||
+		   !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+			return;
+		}
+	
+		const cx = (minX + maxX) * 0.5;
+		const cy = (minY + maxY) * 0.5;
+	
+		// If center already at (0,0) there's nothing to do
+		if(Math.abs(cx) < 1e-6 && Math.abs(cy) < 1e-6) return;
+	
+		// 3) Derive local->parent linear map (RS) for the container
+		const parentWorld = U.worldMatrix(obj.parent || null);
+		const parentInv   = U.invert(parentWorld);
+		const objWorld    = Mw; // already computed
+	
+		const localToParent = (x, y) => {
+			const w = U.applyMat(objWorld, x, y);
+			return U.applyMat(parentInv, w.x, w.y);
+		};
+	
+		const p0 = localToParent(0, 0);
+		const p1 = localToParent(1, 0);
+		const p2 = localToParent(0, 1);
+	
+		const RS = {
+			a: p1.x - p0.x, b: p1.y - p0.y,
+			c: p2.x - p0.x, d: p2.y - p0.y
+		};
+	
+		// 4) Snapshot BEFORE
+		const pos = obj.position || (obj.position = { x:0, y:0, z:0 });
+		const before = {
+			obj,
+			pos: { x: pos.x, y: pos.y },
+			children: children.map(c => ({
+				obj: c,
+				pos: {
+					x: c.position?.x || 0,
+					y: c.position?.y || 0
+				}
+			}))
+		};
+	
+		// 5) Apply pivot move:
+		//    - move container in parent-space by RS * (cx,cy)
+		//    - shift all children local positions by -(cx,cy)
+		const dpParentX = RS.a * cx + RS.c * cy;
+		const dpParentY = RS.b * cx + RS.d * cy;
+	
+		pos.x += dpParentX;
+		pos.y += dpParentY;
+	
+		for(const c of children) {
+			const cp = c.position || (c.position = { x:0, y:0, z:0 });
+			cp.x -= cx;
+			cp.y -= cy;
+		}
+	
+		obj.checkSymbols?.();
+	
+		// 6) Snapshot AFTER
+		const after = {
+			obj,
+			pos: { x: pos.x, y: pos.y },
+			children: children.map(c => ({
+				obj: c,
+				pos: {
+					x: c.position?.x || 0,
+					y: c.position?.y || 0
+				}
+			}))
+		};
+	
+		// 7) Undo/redo
+		_editor.addStep?.({
+			name: 'Center 2D Pivot',
+			undo: () => {
+				const p = before.obj.position || (before.obj.position = { x:0, y:0, z:0 });
+				p.x = before.pos.x;
+				p.y = before.pos.y;
+				for(const c of before.children) {
+					if(!c.obj) continue;
+					const cp = c.obj.position || (c.obj.position = { x:0, y:0, z:0 });
+					cp.x = c.pos.x;
+					cp.y = c.pos.y;
+				}
+				before.obj.checkSymbols?.();
+			},
+			redo: () => {
+				const p = after.obj.position || (after.obj.position = { x:0, y:0, z:0 });
+				p.x = after.pos.x;
+				p.y = after.pos.y;
+				for(const c of after.children) {
+					if(!c.obj) continue;
+					const cp = c.obj.position || (c.obj.position = { x:0, y:0, z:0 });
+					cp.x = c.pos.x;
+					cp.y = c.pos.y;
+				}
+				after.obj.checkSymbols?.();
+			}
+		});
 	}
 }

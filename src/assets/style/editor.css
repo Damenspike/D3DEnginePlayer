@@ -763,6 +763,43 @@ body.dark {
 	.slider-value { min-width: 48px; text-align: right; opacity: 0.7; }
 	.file-field { display: flex; gap: 6px; align-items: center; }
 	.file-field .tf { flex: 1; }
+	
+	/* Shader prop row: [key][value][bin] inline */
+	.material-editor-row.field.shader-prop-row {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		margin-top: 4px;
+	}
+	
+	/* Key + value share the row width */
+	.shader-prop-key,
+	.shader-prop-value {
+		flex: 1 1 0;
+		min-width: 0; /* prevents overflow */
+	}
+	
+	/* Delete button stays tight to the right */
+	.shader-prop-delete {
+		flex: 0 0 auto;
+	}
+	
+	/* Add-row: put the + under the list, right-aligned */
+	.material-editor-row.field.shader-props-add-row {
+		display: flex;
+		align-items: center;
+		margin-top: 4px;
+	}
+	
+	/* Spacer pushes the + to the right */
+	.shader-props-add-spacer {
+		flex: 1 1 auto;
+	}
+	
+	/* + button sits on the right; no visual overrides */
+	.shader-props-add {
+		flex: 0 0 auto;
+	}
 }
 .asset-dialog__body{
 	display:grid;

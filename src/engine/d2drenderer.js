@@ -12,6 +12,7 @@ import {
 import {
 	buildCompoundPathForGraphic,
 	worldMatrix,
+	worldOpacity,
 	toCanvasPaint,
 	parseRadialGradient,
 	parseLinearGradient,
@@ -328,7 +329,7 @@ export default class D2DRenderer {
 		const gs = (this.pixelRatio || 1) * (this.viewScale || 1);
 		const isInFocus = window._player || (_editor.focus === d3dobject) || (_editor.focus.containsChild(d3dobject));
 		const masterAlpha = isInFocus ? 1 : 0.2;
-		const alpha = Math.max(0, Math.min(1, d3dobject.opacity ?? 1));
+		const alpha = worldOpacity(d3dobject);
 		if (alpha <= 0) return;
 	
 		// ---- image cache ----
@@ -445,7 +446,7 @@ export default class D2DRenderer {
 		// Only bail on empty text if NOT an input (inputs still need caret/selection)
 		if (!text && !inputEnabled) return;
 	
-		const alpha = Number.isFinite(d3dobject.opacity) ? Math.max(0, Math.min(1, d3dobject.opacity)) : 1;
+		const alpha = worldOpacity(d3dobject);
 		if (alpha <= 0) return;
 	
 		// ---------- font / paint ----------
@@ -792,8 +793,10 @@ export default class D2DRenderer {
 	}
 	drawVector(d3dobject) {
 		const ctx = this.ctx;
-	
-		const alpha   = Number.isFinite(d3dobject.opacity) ? Math.max(0, Math.min(1, d3dobject.opacity)) : 1;
+		
+		const alpha = worldOpacity(d3dobject);
+		if (alpha <= 0) return;
+		
 		const graphic = d3dobject.graphic2d || {};
 	
 		const gLineEnabled = graphic.line !== false;

@@ -4,6 +4,7 @@ import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js'
 import {
 	buildConvexWireGeometry
 } from './d3dutility.js';
+import D3DMath from './d3dmath.js';
 
 export default class RigidbodyManager {
 	constructor(d3dobject, component) {
@@ -21,6 +22,7 @@ export default class RigidbodyManager {
 		this._cachedVelocity        = new THREE.Vector3();
 		this._cachedAngularVelocity = new THREE.Vector3();
 		this._cachedSpeed           = 0;
+		this.smoothSpeed = 0;
 		
 		this._lastCoMPos = new THREE.Vector3();
 		this._lastRot    = new THREE.Quaternion();
@@ -169,7 +171,7 @@ export default class RigidbodyManager {
 	get angularVelocity()           { return Object.freeze(this.getAngularVelocity()); }
 	set angularVelocity(v)          { this.setAngularVelocity(v?.x || 0, v?.y || 0, v?.z || 0); }
 	
-	get speed()              { return this._cachedSpeed; }
+	get speed()              { return this.smoothSpeed; }
 
 	/* =========================================================
 	 *  TRANSFORMS
@@ -1155,6 +1157,8 @@ export default class RigidbodyManager {
 			
 			this._cachedVelocity.copy(velocity);
 			this._cachedSpeed = velocity.length();
+			this.instantSpeed = this._cachedSpeed;
+			this.smoothSpeed = Math.lerp(this.smoothSpeed, this._cachedSpeed, dt * 5);
 		}
 		// Rotation → angular velocity (world vector, rad/s)
 		{

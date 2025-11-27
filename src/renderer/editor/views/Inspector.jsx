@@ -206,6 +206,10 @@ export default function Inspector() {
 				},
 				{type: 'separator'},
 				{
+					id: 'newfolder',
+					label: 'New Folder'
+				},
+				{
 					id: 'import',
 					label: 'Import Asset...'
 				}
@@ -213,9 +217,10 @@ export default function Inspector() {
 			const x = e.clientX + 2;
 			const y = e.clientY + 2;
 			
+			_events.unall('ctx-menu-action');
 			_events.once('ctx-menu-action', onCtxMenuAction);
 			_events.once('ctx-menu-close', () => {
-				_events.unce('ctx-menu-action', onCtxMenuAction);
+				_events.unall('ctx-menu-action');
 			});
 			
 			D3D.openContextMenu({template, x, y});
@@ -230,6 +235,10 @@ export default function Inspector() {
 				break;
 				case 'delete':
 					_editor.delete();
+				break;
+				case 'newfolder':
+				console.log('new folder');
+					_editor.newFolder();
 				break;
 			}
 		}
@@ -337,9 +346,10 @@ export default function Inspector() {
 			const x = e.clientX + 2;
 			const y = e.clientY + 2;
 			
+			_events.unall('ctx-menu-action');
 			_events.once('ctx-menu-action', onCtxMenuAction);
 			_events.once('ctx-menu-close', () => {
-				_events.unce('ctx-menu-action', onCtxMenuAction);
+				_events.unall('ctx-menu-action');
 			});
 			
 			D3D.openContextMenu({template, x, y});
@@ -1911,6 +1921,10 @@ export default function Inspector() {
 								onClick={(e) => {
 									e.stopPropagation();
 									object.__editorState.hidden = !object.__editorState.hidden;
+									
+									if(_editor.selectedObjects.includes(object))
+										_editor.removeSelection([object]);
+									
 									update();
 								}}
 							>
@@ -2160,7 +2174,6 @@ export default function Inspector() {
 		if (!zip) return <div className="no-label mt">Waiting for project to load</div>;
 	
 		const updateIndex = (oldRel, newRel) => {
-			console.log(oldRel, newRel);
 			const a = _root.findAssetByPath(oldRel);
 			if (a) a.rel = newRel;
 		};
@@ -2384,23 +2397,32 @@ export default function Inspector() {
 			const targets = (explicitTargets || [...selectedAssetPaths])
 				.map(normPath)
 				.filter(p => !isRoot(p));
-	
+		
 			if (!targets.length) return;
-	
+		
 			for (const p of targets) {
-				if (!isDirLike(p)) {
-					zip.remove(p); // file
-					_editor.onAssetDeleted?.(p);
-					continue;
-				}
-				// folder: remove all under it
-				const dir = normPath(p); // ends with /
+				const dir = normPath(p);
+				const dirWithSlash = dir.endsWith('/') ? dir : dir + '/';
 				const toRemove = [];
-				zip.forEach((rel) => { if (normPath(rel).startsWith(dir)) toRemove.push(rel); });
-				toRemove.forEach(rel => zip.remove(rel));
-				if (zip.files[dir]) zip.remove(dir);
+		
+				zip.forEach((rel) => {
+					const n = normPath(rel);
+					// match either exact file, or children under folder
+					if (n === dir || n.startsWith(dirWithSlash)) {
+						toRemove.push(rel);
+					}
+				});
+		
+				toRemove.forEach(rel => {
+					zip.remove(rel);
+					_editor.onAssetDeleted?.(rel);
+				});
+		
+				if (zip.files[dir]) {
+					zip.remove(dir);
+				}
 			}
-	
+		
 			selectNone();
 			setAssetTree(buildTree());
 			_editor.onAssetsUpdated?.();
@@ -2432,7 +2454,7 @@ export default function Inspector() {
 			
 			if(!node.name.toLowerCase().includes(assetFilter.toLowerCase()))
 				return;
-			
+				
 			if (node.type === 'file') {
 				return (
 					<ObjectRow

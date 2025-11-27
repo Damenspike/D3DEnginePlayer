@@ -54,13 +54,22 @@ export default class ThirdPersonCameraManager {
 			const fz = Math.cos(-this._yaw) * Math.cos(this._pitch);
 
 			const focus = target?.position.clone() ?? new THREE.Vector3();
-			focus.y += height;
+			const targetOffset = new THREE.Vector3(
+				Number(this.targetOffset?.x) || 0, 
+				Number(this.targetOffset?.y) || 0, 
+				Number(this.targetOffset?.z) || 0
+			);
+			const offsetDir = target ? target.localDirToWorld(targetOffset) : targetOffset;
+			
+			focus.add(offsetDir);
 
 			const offset = this.d3dobject.forward.clone();
 			offset.set(fx, fy, fz).multiplyScalar(-this._distance * this.distanceMultiplier);
-
+			
 			const camPos = focus.clone().add(offset);
-
+			
+			camPos.y += height;
+			
 			this.d3dobject.position = camPos;
 			this.d3dobject.lookAt(focus);
 		};
@@ -83,6 +92,9 @@ export default class ThirdPersonCameraManager {
 
 	get height() { return this.component.properties.height; }
 	set height(v) { this.component.properties.height = v; }
+	
+	get targetOffset() { return this.component.properties.targetOffset; }
+	set targetOffset(v) { this.component.properties.targetOffset = v; }
 
 	get distance() { return this.component.properties.distance; }
 	set distance(v) {

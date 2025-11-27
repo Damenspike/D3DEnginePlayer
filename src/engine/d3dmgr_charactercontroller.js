@@ -18,7 +18,7 @@ export default class CharacterControllerManager {
 		this.d3dobject.addEventListener('reset', () => this.reset());
 		
 		this._drive = () => {
-			if (!_physics?.ready) 
+			if (!_physics?.ready || !this.component.enabled) 
 				return;
 				
 			const props = this.component.properties || {};

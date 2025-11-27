@@ -1,3 +1,4 @@
+import JSZip from 'jszip';
 import { readLocalTRSFromZip } from './glb-instancer.js';
 import { 
 	getExtension, 
@@ -11,11 +12,27 @@ export async function onAssetDroppedIntoGameView(path, screenPos) {
 
 	switch (ext) {
 		case 'd3dsymbol': {
-			const symbol = Object.values(_root.__symbols).find(s => s.file.name === path);
-			if (!symbol) {
-				console.warn('Could not find symbol by path', path);
+			const json = await _editor.readFile(path);
+			if(!json) {
+				console.warn('Invalid symbol data', json);
 				break;
 			}
+			
+			let symbolObj;
+			try {
+				symbolObj = JSON.parse(json);
+			}catch(e) {
+				console.error('Could not parse symbol data', json);
+				break;
+			}
+			
+			const suuid = symbolObj.symbolId;
+			const symbol = Object.values(_root.__symbols).find(s => s.symbolId === suuid);
+			if (!symbol) {
+				console.warn('Could not find symbol by symbolId', suuid);
+				break;
+			}
+			
 			const d3dobject = await _editor.focus.createObject({ symbolId: symbol.symbolId });
 			_editor.moveObjectToCameraView(d3dobject);
 			_editor.setSelection([d3dobject]);
@@ -92,6 +109,12 @@ export async function onAssetDroppedIntoGameView(path, screenPos) {
 			const d3d = await spawnModelFromZip(path, zip);
 			_editor.moveObjectToCameraView(d3d);
 			_editor.setSelection([d3d]);
+			break;
+		}
+		
+		case 'd3dcontainer': {
+			const spawned = await spawnD3DSceneFromContainer(path, zip);
+			_editor.setSelection(spawned);
 			break;
 		}
 		
@@ -198,4 +221,48 @@ async function spawnModelFromZip(assetPath, zip) {
 	});
 
 	return d3dobject;
+}
+
+async function spawnD3DSceneFromContainer(containerPath, zip) {
+	const dir = containerPath.endsWith('/') ? containerPath : (containerPath + '/');
+
+	const scenesFile = zip.file(`${dir}scenes.json`);
+	if (!scenesFile) {
+		console.warn('[D3D Spawn] scenes.json not found in container:', dir);
+		return [];
+	}
+
+	let scenes;
+	try {
+		const scenesStr = await scenesFile.async('string');
+		scenes = JSON.parse(scenesStr);
+	} catch (e) {
+		console.warn('[D3D Spawn] Failed to parse scenes.json in container:', dir, e);
+		return [];
+	}
+
+	let manifest = null;
+	const manifestFile = zip.file(`${dir}manifest.json`);
+	if (manifestFile) {
+		try {
+			const manifestStr = await manifestFile.async('string');
+			manifest = JSON.parse(manifestStr);
+		} catch (e) {
+			console.warn('[D3D Spawn] Failed to parse manifest.json in container:', dir, e);
+		}
+	}
+
+	const entryScene = scenes[manifest.startScene];
+	if (!entryScene) {
+		console.warn('[D3D Spawn] Could not determine entry scene for container:', dir);
+		return [];
+	}
+
+	const spawned = [];
+	for (const objData of entryScene.objects) {
+		const d3dobject = await _editor.focus.createObject(objData);
+		spawned.push(d3dobject);
+	}
+
+	return spawned;
 }

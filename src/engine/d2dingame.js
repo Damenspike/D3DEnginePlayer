@@ -42,6 +42,10 @@ export function onMouseUp(e) {
 	e.pointerId = pid;
 
 	r._renderObjects.forEach(d3dobject => {
+		if(d3dobject?.isMouseOver && typeof d3dobject.onRelease === 'function') {
+			d3dobject.onRelease(e);
+		}
+		
 		if (typeof d3dobject?.onMouseUp !== 'function')
 			return;
 		

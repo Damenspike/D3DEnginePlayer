@@ -49,6 +49,12 @@ export default class D2DEdit {
 		this._onBlur      = this._onBlur.bind(this);
 		this._onDelete    = this._onDelete.bind(this);
 		this._onKeyDown   = this._onKeyDown.bind(this);
+		this._onWindowMouseDown = this._onWindowMouseDown.bind(this);
+		
+		_events.unall('deselect-2dpoints');
+		_events.on('deselect-2dpoints', () => {
+			this.selectedPoints = [];
+		});
 
 		this._attach();
 	}
@@ -60,6 +66,7 @@ export default class D2DEdit {
 	_attach() {
 		if(!this.canvas) return;
 		this.canvas.addEventListener('mousedown', this._onMouseDown, { passive: false });
+		window.addEventListener('mousedown', this._onWindowMouseDown, { passive: false });
 		window.addEventListener('mousemove', this._onMouseMove, { passive: false });
 		window.addEventListener('mouseup',   this._onMouseUp,   { passive: false });
 		window.addEventListener('blur',      this._onBlur,      { passive: false });
@@ -70,6 +77,7 @@ export default class D2DEdit {
 	_detach() {
 		if(!this.canvas) return;
 		this.canvas.removeEventListener('mousedown', this._onMouseDown);
+		window.removeEventListener('mousedown', this._onWindowMouseDown);
 		window.removeEventListener('mousemove', this._onMouseMove);
 		window.removeEventListener('mouseup',   this._onMouseUp);
 		window.removeEventListener('blur',      this._onBlur);
@@ -153,6 +161,15 @@ export default class D2DEdit {
 
 	/* ============================== mouse (points editing) ============================== */
 
+	_onWindowMouseDown(e) {
+		if (
+			_editor.game2dRef.current && 
+			!_editor.game2dRef.current.contains(e.target)
+		) {
+			this.selectedPoints = [];
+		}
+	}
+	
 	_onMouseDown(e) {
 		if(_editor.mode != '2D') return;
 		if(_editor.tool != 'select') return;

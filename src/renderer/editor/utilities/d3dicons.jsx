@@ -15,6 +15,7 @@ import {
 	MdAudiotrack, MdOutlineVolumeUp
 } from 'react-icons/md';
 import { BsFonts } from "react-icons/bs";
+import { PiSphereFill } from "react-icons/pi";
 
 export function drawIconForObject(object) {
 	if(object.symbol)
@@ -51,7 +52,13 @@ export function drawIconForExt(ext, isDir = false) {
 		case 'glbcontainer': 
 		case 'gltfcontainer': 
 			return <MdFolderSpecial />;
-		case 'mat': return <MdTexture />;
+		case 'mat': return <PiSphereFill />;
+		
+		case 'vert':
+		case 'frag':
+		case 'glsl':
+			return <MdTexture />
+		
 		case 'html': return <MdHtml />;
 		case 'anim': return <MdDirectionsWalk />;
 		
