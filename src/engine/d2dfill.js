@@ -95,7 +95,7 @@ export default class D2DFill {
 				redo: () => { g.fill = after.fill;  g.fillColor = after.fillColor;  obj.invalidateGraphic2D?.(); }
 			});
 		}
-		_editor?.selectObjects?.([obj]);
+		_editor.setSelection([obj]);
 		return true;
 	}
 

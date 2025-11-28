@@ -83,7 +83,21 @@ export default class TextManager {
 		return this.textProperties.wrap;
 	}
 	set wrap(v) {
-		this.textProperties.wrap = v;
+		this.textProperties.wrap = !!v;
+	}
+	
+	get wordWrap() {
+		return this.textProperties.wrap;
+	}
+	set wordWrap(v) {
+		this.textProperties.wrap = !!v;
+	}
+	
+	get multiline() {
+		return this.textProperties.multiline;
+	}
+	set multiline(v) {
+		this.textProperties.multiline = !!v;
 	}
 	
 	/* ---------- fill ---------- */

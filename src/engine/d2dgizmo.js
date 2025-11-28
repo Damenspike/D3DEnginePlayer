@@ -563,7 +563,7 @@ export default class D2DGizmo {
 					}
 					// cache guide lines from all 2D objects under focus (excluding selection)
 					if(!this.state.guides) {
-						this.state.guides = this._collectGuidesCanvas(_editor?.focus, new Set(selObjs));
+						this.state.guides = U.buildAlignGuides(this.d2drenderer, this.canvas, _editor.focus, new Set(selObjs));
 					}
 				
 					const startRect = this.state.startSelRectCanvas;
@@ -582,8 +582,8 @@ export default class D2DGizmo {
 						};
 				
 						const snapPx = Math.max(4, Number(_editor?.draw2d?.snapPx || 10));
-						const snap = this._findSnapDeltaCanvas(proposed, this.state.guides, snapPx); // {dx, dy, vLine, hLine}
-				
+						const snap = U.findSnapDelta(proposed, this.state.guides, snapPx); // {dx, dy, vLine, hLine}
+						
 						// visuals
 						this.state.alignGuide = { v: snap.vLine, h: snap.hLine, ttl: 12 };
 				
@@ -904,7 +904,7 @@ export default class D2DGizmo {
 				// cache selection rect + guides for snapping baseline
 				const sel2 = _editor.selectedObjects.filter(o => o?.is2D);
 				this.state.startSelRectCanvas = this._selectionRectCanvas(sel2);
-				this.state.guides = this._collectGuidesCanvas(_editor?.focus, new Set(sel2));
+				this.state.guides = U.buildAlignGuides(this.d2drenderer, this.canvas, _editor.focus, new Set(sel2));
 			}
 		} else {
 			if(!e.shiftKey) _editor.setSelection([]);
@@ -1105,83 +1105,6 @@ export default class D2DGizmo {
 		}
 		if(!Number.isFinite(l) || !Number.isFinite(r) || !Number.isFinite(t) || !Number.isFinite(b)) return null;
 		return { l, r, t, b, cx:(l+r)/2, cy:(t+b)/2 };
-	}
-
-	_collectGuidesCanvas(focus, excludeSet) {
-		const xs = [];
-		const ys = [];
-
-		// canvas center lines
-		const Mv = U.viewMatrix(this.d2drenderer);
-		const W = _dimensions.width;
-		const H = _dimensions.height;
-		const centers = U.applyDOM(Mv, W * 0.5, H * 0.5);
-		
-		xs.push(centers.x);
-		ys.push(centers.y);
-
-		// gather all 2D descendants under focus (unique top-level roots like your existing helpers)
-		const roots = new Set();
-		const host = focus || this.d2drenderer.root;
-
-		U.traverse2D(host, (node) => {
-			if(!node?.is2D) return;
-			let r = node;
-			while (r.parent && r.parent !== host) r = r.parent;
-			if(r?.is2D) roots.add(r);
-		});
-
-		for (const o of roots) {
-			if(excludeSet?.has(o)) continue;
-			if(o.__editorState?.locked || o.__editorState?.hidden || o.noSelect) continue;
-
-			const rc = this._objectRectCanvas(o);
-			if(!rc) continue;
-
-			// vertical: left, center, right
-			xs.push(rc.l, rc.cx, rc.r);
-			// horizontal: top, center, bottom
-			ys.push(rc.t, rc.cy, rc.b);
-		}
-		return { xs, ys };
-	}
-
-	_findSnapDeltaCanvas(proposed, guides, snapPx) {
-		let bestVX = null, bestVDist = snapPx + 1, bestVLine = null;
-		let bestHY = null, bestHDist = snapPx + 1, bestHLine = null;
-
-		const candidatesX = [proposed.l, proposed.cx, proposed.r];
-		const candidatesY = [proposed.t, proposed.cy, proposed.b];
-
-		// vertical (x)
-		for (const gx of guides.xs) {
-			for (const cx of candidatesX) {
-				const d = Math.abs(gx - cx);
-				if(d < bestVDist && d <= snapPx) {
-					bestVDist = d;
-					bestVX = gx - cx;
-					bestVLine = gx;
-				}
-			}
-		}
-		// horizontal (y)
-		for (const gy of guides.ys) {
-			for (const cy of candidatesY) {
-				const d = Math.abs(gy - cy);
-				if(d < bestHDist && d <= snapPx) {
-					bestHDist = d;
-					bestHY = gy - cy;
-					bestHLine = gy;
-				}
-			}
-		}
-
-		return {
-			dx: bestVX || 0,
-			dy: bestHY || 0,
-			vLine: bestVLine,
-			hLine: bestHLine
-		};
 	}
 	
 	/* ============ cursor tracking for anchored zoom ============ */

@@ -233,6 +233,8 @@ export default class D2DRenderer {
 		this.gizmo?.render();
 		this.edit?.render();
 		this.drawer?.render();
+		
+		this.edit?.afterRender();
 	}
 	draw(d3dobject) {
 		const graphic = d3dobject.graphic2d;
@@ -471,8 +473,9 @@ export default class D2DRenderer {
 		const valign        = t2d.valign ?? 'top';    // top|middle|bottom
 		const lineHeightMul = Number(t2d.lineHeight ?? 1) || 1;
 		const lineHeight    = (fontSize * 1.25) * lineHeightMul;
-		const wrap          = (t2d.wrap ?? true);
-		const breakWords    = (t2d.breakWords ?? false);
+		const multiline		= !!(t2d.multiline ?? true);
+		const wrap          = !!(t2d.wrap ?? true) && multiline;
+		const breakWords    = !!(t2d.breakWords ?? false);
 		const letterSpacing = Number(t2d.letterSpacing ?? 0);
 	
 		const padL = t2d.padding ? Number(t2d.paddingLeft   ?? 0) : 0;
@@ -546,7 +549,8 @@ export default class D2DRenderer {
 		};
 	
 		const wrapLine = (raw, contentW) => {
-			if (!contentW || !wrap) return [raw];
+			if (!multiline || !contentW || !wrap) 
+				return [raw];
 	
 			const words = raw.split(/(\s+)/); // keep spaces
 			const out   = [];
@@ -640,7 +644,11 @@ export default class D2DRenderer {
 	
 		// ---- build visual lines + indexed ranges (absolute indices into `text`) ----
 		const rawLines = [];
-		{
+		if (!multiline) {
+			// Single-line mode: treat the entire text as one raw line
+			rawLines.push({ start: 0, end: text.length, str: text });
+			if (rawLines.length === 0) rawLines.push({ start: 0, end: 0, str: '' });
+		} else {
 			let i = 0, start = 0;
 			while (i <= text.length) {
 				if (i === text.length || text[i] === '\n') {

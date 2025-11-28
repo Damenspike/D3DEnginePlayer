@@ -576,55 +576,189 @@ export function selectionBoundsCanvas(d2drenderer, objs) {
 	return rect;
 }
 
-export function buildAlignGuides(d2drenderer, canvas, focusNode, selectedObjs) {
+export function buildAlignGuides(d2drenderer, canvas, focusNode, selectedObjsOrSet) {
 	const w = canvas.width, h = canvas.height;
-	const selectedSet = new Set(selectedObjs);
 
-	const pool = Array.isArray(focusNode?.children) ? focusNode.children
-		: (Array.isArray(_root?.children) ? _root.children : []);
+	// Normalise selection to a Set
+	const selectedSet =
+		selectedObjsOrSet instanceof Set
+			? selectedObjsOrSet
+			: new Set(selectedObjsOrSet || []);
 
-	const candidates = [];
-	for (const n of pool) {
-		if (selectedSet.has(n)) continue;
-		if (!n?.is2D || !Array.isArray(n.graphic2d?._paths)) continue;
-		const b = objBoundsCanvas(d2drenderer, n);
-		if (b) candidates.push(b);
+	// ===== 1) CANVAS GUIDES (high priority) =====
+	const vCanvas = [w * 0.5]; // vertical: canvas centre X
+	const hCanvas = [h * 0.5]; // horizontal: canvas centre Y
+	// If you ever want edges as well:
+	// vCanvas.push(0, w);
+	// hCanvas.push(0, h);
+
+	// ===== 2) OBJECT GUIDES (lower priority) =====
+	const vObj = [];
+	const hObj = [];
+
+	// Host = focus node or renderer root (mirrors gizmo behaviour)
+	const host = focusNode || d2drenderer.root || _root;
+
+	// Build the same "2D roots" set as _marqueeRootsUnderFocus
+	const rootsSet = new Set();
+	traverse2D(host, (node) => {
+		if (!node?.is2D) return;
+		let r = node;
+		while (r.parent && r.parent !== host) r = r.parent;
+		if (r?.is2D) rootsSet.add(r);
+	});
+
+	// One view matrix (canvas/device space) reused for all
+	const Mv = viewMatrix(d2drenderer);
+
+	for (const o of rootsSet) {
+		// skip selected objects themselves
+		if (selectedSet.has(o)) continue;
+
+		// skip non-interactive stuff
+		if (o.__editorState?.locked || o.__editorState?.hidden || o.noSelect) continue;
+
+		// deep world bounds for this root
+		const bb = worldAABBDeep(o);
+		if (!bb) continue;
+
+		// project world AABB corners into canvas space
+		const corners = [
+			{ x: bb.minX, y: bb.minY },
+			{ x: bb.maxX, y: bb.minY },
+			{ x: bb.maxX, y: bb.maxY },
+			{ x: bb.minX, y: bb.maxY }
+		];
+
+		let l = +Infinity, r = -Infinity, t = +Infinity, b = -Infinity;
+		for (const c of corners) {
+			const p = applyDOM(Mv, c.x, c.y);
+			if (p.x < l) l = p.x;
+			if (p.x > r) r = p.x;
+			if (p.y < t) t = p.y;
+			if (p.y > b) b = p.y;
+		}
+
+		if (!Number.isFinite(l) || !Number.isFinite(r) || !Number.isFinite(t) || !Number.isFinite(b)) {
+			continue;
+		}
+
+		const cx = (l + r) * 0.5;
+		const cy = (t + b) * 0.5;
+
+		// vertical: left, centre, right
+		vObj.push(l, cx, r);
+		// horizontal: top, centre, bottom
+		hObj.push(t, cy, b);
 	}
 
-	const v = new Set([w * 0.5]);   // vertical lines (x)
-	const hset = new Set([h * 0.5]); // horizontal lines (y)
-
-	for (const b of candidates) {
-		v.add(b.l); v.add(b.cx); v.add(b.r);
-		hset.add(b.t); hset.add(b.cy); hset.add(b.b);
-	}
-	return { v: Array.from(v.values()), h: Array.from(hset.values()) };
+	return { vCanvas, hCanvas, vObj, hObj };
 }
 
 export function findSnapDelta(rect, guides, snapPx) {
-	let bestDx = 0, bestDy = 0;
-	let vLine = null, hLine = null;
-
-	// X: compare left/center/right to each vertical guide
-	let best = Infinity;
-	const vx = [rect.l, rect.cx, rect.r];
-	for (const gx of guides.v) {
-		for (const x of vx) {
-			const d = gx - x; const ad = Math.abs(d);
-			if (ad <= snapPx && ad < best) { best = ad; bestDx = d; vLine = gx; }
-		}
+	if (!guides) {
+		return { dx: 0, dy: 0, vLine: null, hLine: null };
 	}
 
-	// Y: compare top/middle/bottom to each horizontal guide
-	best = Infinity;
-	const vy = [rect.t, rect.cy, rect.b];
-	for (const gy of guides.h) {
-		for (const y of vy) {
-			const d = gy - y; const ad = Math.abs(d);
-			if (ad <= snapPx && ad < best) { best = ad; bestDy = d; hLine = gy; }
+	const { vCanvas = [], hCanvas = [], vObj = [], hObj = [] } = guides;
+
+	// Try snapping against a set of vertical + horizontal guides.
+	// Returns null if no snap on either axis.
+	const testGuides = (rect, vList, hList, snapPx) => {
+		let bestDX = 0;
+		let bestDY = 0;
+		let bestVLine = null;
+		let bestHLine = null;
+
+		let bestVDist = snapPx + 1;
+		let bestHDist = snapPx + 1;
+
+		// vertical: snap rect.l / rect.cx / rect.r to each x guide
+		for (const gx of vList) {
+			// left
+			{
+				const dist = gx - rect.l;
+				const ad = Math.abs(dist);
+				if (ad <= snapPx && ad < bestVDist) {
+					bestVDist = ad;
+					bestDX = dist;
+					bestVLine = gx;
+				}
+			}
+			// center
+			{
+				const dist = gx - rect.cx;
+				const ad = Math.abs(dist);
+				if (ad <= snapPx && ad < bestVDist) {
+					bestVDist = ad;
+					bestDX = dist;
+					bestVLine = gx;
+				}
+			}
+			// right
+			{
+				const dist = gx - rect.r;
+				const ad = Math.abs(dist);
+				if (ad <= snapPx && ad < bestVDist) {
+					bestVDist = ad;
+					bestDX = dist;
+					bestVLine = gx;
+				}
+			}
 		}
+
+		// horizontal: snap rect.t / rect.cy / rect.b to each y guide
+		for (const gy of hList) {
+			// top
+			{
+				const dist = gy - rect.t;
+				const ad = Math.abs(dist);
+				if (ad <= snapPx && ad < bestHDist) {
+					bestHDist = ad;
+					bestDY = dist;
+					bestHLine = gy;
+				}
+			}
+			// center
+			{
+				const dist = gy - rect.cy;
+				const ad = Math.abs(dist);
+				if (ad <= snapPx && ad < bestHDist) {
+					bestHDist = ad;
+					bestDY = dist;
+					bestHLine = gy;
+				}
+			}
+			// bottom
+			{
+				const dist = gy - rect.b;
+				const ad = Math.abs(dist);
+				if (ad <= snapPx && ad < bestHDist) {
+					bestHDist = ad;
+					bestDY = dist;
+					bestHLine = gy;
+				}
+			}
+		}
+
+		if (bestVLine === null && bestHLine === null)
+			return null;
+
+		return { dx: bestDX, dy: bestDY, vLine: bestVLine, hLine: bestHLine };
+	};
+
+	// 1) CANVAS FIRST – if there's any hit within snapPx, stop and return that.
+	const canvasSnap = testGuides(rect, vCanvas, hCanvas, snapPx);
+	if (canvasSnap) {
+		return canvasSnap; // hard stop – objects never considered
 	}
-	return { dx: bestDx, dy: bestDy, vLine, hLine };
+
+	// 2) Otherwise, try objects.
+	const objSnap = testGuides(rect, vObj, hObj, snapPx);
+	if (objSnap) return objSnap;
+
+	// 3) No snap at all
+	return { dx: 0, dy: 0, vLine: null, hLine: null };
 }
 
 /* List 2D roots in painter's order (later = topmost) */
@@ -1507,7 +1641,9 @@ const D2DUtil = {
 	// pivot
 	repositionPivotTo,
 	// alpha
-	worldOpacity
+	worldOpacity,
+	// snapping
+	findSnapDelta, buildAlignGuides
 };
 
 export default D2DUtil;

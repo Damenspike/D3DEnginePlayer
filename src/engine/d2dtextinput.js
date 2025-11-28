@@ -138,6 +138,7 @@ export default class D2DTextInput {
 			this.selB = el.selectionEnd   ?? this.selA;
 			this.caret = this.selB;
 			this._blinkT0 = performance.now();                 // reset caret blink
+			this._ensureCaretVisible();
 			this.r._dirty = true;
 		};
 	
@@ -147,41 +148,80 @@ export default class D2DTextInput {
 		// 2) Some selection moves only fire on keyup
 		el.addEventListener('keyup', syncFromIME);
 	
-		// 3) On keydown, request a microtask sync so Enter updates this frame
+		// 3) Key handling: Enter, select-all, etc.
 		el.addEventListener('keydown', (ev) => {
 			if (!this.active) return;
-		
+	
+			const t2d = this.active.t2d || {};
+			const multiline = (t2d.multiline !== false); // default true
+	
+			// --- Select all: Ctrl/⌘ + A ---
+			if ((ev.key === 'a' || ev.key === 'A') && (ev.ctrlKey || ev.metaKey)) {
+				ev.preventDefault();
+				const len = el.value.length;
+				this.selA = 0;
+				this.selB = len;
+				this.caret = len;
+				this._focusIME(el.value, 0, len);
+				this._blinkT0 = performance.now();
+				this._ensureCaretVisible();
+				this.r._dirty = true;
+				return;
+			}
+	
+			// --- Let the browser handle copy/cut/paste natively ---
+			// Ctrl/⌘ + C / X / V should fall through with no preventDefault.
+			if ((ev.ctrlKey || ev.metaKey) && (ev.key === 'c' || ev.key === 'x' || ev.key === 'v' ||
+				ev.key === 'C' || ev.key === 'X' || ev.key === 'V')) {
+				// do nothing special; browser/Electron will handle clipboard
+				this.r._dirty = true;
+				return;
+			}
+	
 			// prevent page scrolling on vertical nav keys
-			if (ev.key === 'ArrowUp' || ev.key === 'ArrowDown' ||
-				ev.key === 'PageUp'  || ev.key === 'PageDown') {
+			if (
+				ev.key === 'ArrowUp' || ev.key === 'ArrowDown' ||
+				ev.key === 'PageUp'  || ev.key === 'PageDown'
+			) {
 				ev.preventDefault();
 			}
-		
+	
+			// --- Enter handling ---
 			if (ev.key === 'Enter') {
-				// Do newline ourselves so caret updates immediately this frame.
+				if (!multiline) {
+					// Single-line mode:
+					//   - do NOT insert '\n'
+					//   - simply blur/end editing
+					ev.preventDefault();
+					el.blur();           // will trigger blur handler below, clearing active
+					return;
+				}
+	
+				// Multiline mode: do newline ourselves so caret updates immediately this frame.
 				ev.preventDefault();
-		
+	
 				const a = el.selectionStart | 0;
 				const b = el.selectionEnd   | 0;
 				const v = el.value || '';
-		
+	
 				// Insert \n at selection, collapse after it
 				const nv = v.slice(0, a) + '\n' + v.slice(b);
 				const newCaret = a + 1;
-		
+	
 				el.value = nv;
 				try { el.setSelectionRange(newCaret, newCaret); } catch {}
-		
+	
 				// mirror to component + state
 				if (this.active) this.active.t2d.text = nv;
 				this.selA = this.selB = this.caret = newCaret;
-		
+	
 				this._blinkT0 = performance.now();
+				this._ensureCaretVisible();
 				this.r._dirty = true;
-				return; // done
+				return;
 			}
-		
-			// mark dirty for any other key
+	
+			// mark dirty for any other key so rendering updates
 			this.r._dirty = true;
 		});
 	
@@ -323,6 +363,7 @@ export default class D2DTextInput {
 			this.selB   = idx;
 
 			this._focusIME(String(t2d.text ?? ''), this.selA, this.selB);
+			this._ensureCaretVisible();
 
 			this.dragging = true;
 			e.preventDefault();
@@ -340,6 +381,7 @@ export default class D2DTextInput {
 			this.caret = idx;
 
 			this._focusIME(this.ime.value, this.selA, this.selB);
+			this._ensureCaretVisible();
 			this.r._dirty = true;
 		};
 
@@ -358,6 +400,7 @@ export default class D2DTextInput {
 
 			this.selA = a; this.selB = b; this.caret = b;
 			this._focusIME(str, a, b);
+			this._ensureCaretVisible();
 			this.r._dirty = true;
 		};
 
@@ -365,5 +408,130 @@ export default class D2DTextInput {
 		window.addEventListener('mousemove', onMove);
 		window.addEventListener('mouseup', onUp);
 		cvs.addEventListener('dblclick', onDbl);
+	}
+	
+	_ensureCaretVisible() {
+		if (!this.active) return;
+	
+		const { obj, text2d, t2d } = this.active;
+		if (!text2d) return;
+	
+		// Effective multiline flag (default true)
+		const multiline = (t2d && t2d.multiline !== false);
+	
+		// Find the field info registered this frame
+		const f = this.registry.find(r => r.obj === obj);
+		if (!f || !f.lines || !f.lines.length) return;
+	
+		let scrollX = Number.isFinite(text2d.scrollX) ? text2d.scrollX : 0;
+		let scrollY = Number.isFinite(text2d.scrollY) ? text2d.scrollY : 0;
+		const caret = this.caret | 0;
+	
+		// ---------- locate caret line ----------
+		let li = 0;
+		for (let i = 0; i < f.lines.length; i++) {
+			const L = f.lines[i];
+			if (caret >= L.start && caret <= L.end) { li = i; break; }
+			if (caret > L.end) li = i; // clamp to last line if beyond
+		}
+		const ln = f.lines[li];
+	
+		// ---------- VERTICAL SCROLL (scrollY) ----------
+		{
+			const lineGap = f.lineGap || 0;
+			const textH   = f.lines.length * lineGap;
+			const boxH    = f.box.h;
+	
+			// If everything fits, no scroll needed.
+			if (lineGap > 0 && textH > boxH) {
+				// drawText uses: y = box.y + padT (already includes vAlignOffset) - scrollY + li*lineGap
+				// Let baseTop = box.y + padT + li*lineGap (when scrollY = 0)
+				const baseTop    = f.box.y + f.padT + li * lineGap;
+				const viewTop    = f.box.y;
+				const viewBottom = f.box.y + boxH - lineGap; // keep whole line visible
+	
+				let minScrollY = baseTop - viewBottom; // line bottom hits bottom edge
+				let maxScrollY = baseTop - viewTop;    // line top hits top edge
+	
+				if (minScrollY < 0) minScrollY = 0;
+				if (maxScrollY < 0) maxScrollY = 0;
+	
+				if (scrollY < minScrollY) scrollY = minScrollY;
+				else if (scrollY > maxScrollY) scrollY = maxScrollY;
+			} else {
+				scrollY = 0;
+			}
+		}
+	
+		// ---------- HORIZONTAL SCROLL (scrollX) ----------
+		// We want horizontal scrolling when:
+		//  - single-line (multiline === false), OR
+		//  - multiline but wrap is false.
+		const wantsHorizontalScroll = (f.contentW > 0) && (!multiline || !f.wrap);
+	
+		if (wantsHorizontalScroll) {
+			const ctx = this.r.ctx;
+			ctx.save();
+			ctx.setTransform(1,0,0,1,0,0);
+			ctx.font = f.font;
+	
+			const text = ln.text || '';
+			const ls   = f.letterSpacing || 0;
+			const localIdx = Math.max(0, Math.min(text.length, caret - ln.start));
+	
+			// Distance from start-of-line to caret, in pixels
+			let caretOffset = 0;
+			if (!ls) {
+				caretOffset = ctx.measureText(text.slice(0, localIdx)).width;
+			} else {
+				for (let i = 0; i < localIdx; i++) {
+					caretOffset += ctx.measureText(text[i]).width;
+					if (i < localIdx - 1) caretOffset += ls;
+				}
+			}
+	
+			let lnW = ln.w;
+			if (!Number.isFinite(lnW)) lnW = ctx.measureText(text).width;
+			ctx.restore();
+	
+			// If line fits entirely within content width, reset scrollX.
+			if (lnW <= f.contentW) {
+				scrollX = 0;
+			} else {
+				// drawText uses: x = box.x + padL - scrollX + ax + caretOffset
+				// visible region: [viewL, viewR] = [box.x + padL, box.x + padL + contentW]
+				//
+				// Subtract (box.x + padL):
+				//   0 <= -scrollX + ax + caretOffset <= contentW
+				// => scrollX in [ax + caretOffset - contentW, ax + caretOffset]
+				let ax = 0;
+				if (f.contentW > 0) {
+					const d = Math.max(0, f.contentW - lnW);
+					ax = (f.align === 'center') ? (d * 0.5) : (f.align === 'right' ? d : 0);
+				}
+	
+				// Give some breathing room (padding)
+				const pad = 12;
+				
+				let minScrollX = ax + caretOffset - (f.contentW - pad);
+				let maxScrollX = ax + caretOffset - pad;
+				
+				if (minScrollX < 0) minScrollX = 0;
+				if (maxScrollX < 0) maxScrollX = 0;
+				
+				if (scrollX < minScrollX) 
+					scrollX = minScrollX;
+				else 
+				if (scrollX > maxScrollX) 
+					scrollX = maxScrollX;
+			}
+		} else {
+			// No horizontal scrolling in effect for this field.
+			scrollX = 0;
+		}
+	
+		text2d.scrollX = scrollX;
+		text2d.scrollY = scrollY;
+		this.r._dirty = true;
 	}
 }

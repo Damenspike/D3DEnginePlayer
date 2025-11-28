@@ -1059,12 +1059,12 @@ const menuTemplate = [
 			{
 				id: 'toolPan',
 				label: 'Pan',
-				accelerator: 'p',
+				accelerator: '[',
 				click: () => sendSetTool('pan')
 			},
 			{
 				label: 'Look',
-				accelerator: 'l',
+				accelerator: 'o',
 				click: () => sendSetTool('look')
 			},
 			{ type: 'separator' },
@@ -1094,9 +1094,44 @@ const menuTemplate = [
 				click: () => sendSetTool('transform') 
 			},
 			{
+				label: 'Pencil', 
+				accelerator: 'p', 
+				click: () => sendSetTool('pencil') 
+			},
+			{
+				label: 'Brush', 
+				accelerator: 'b', 
+				click: () => sendSetTool('brush') 
+			},
+			{
+				label: 'Line', 
+				accelerator: 'l', 
+				click: () => sendSetTool('line') 
+			},
+			{
 				label: 'Text', 
 				accelerator: 't', 
 				click: () => sendSetTool('text') 
+			},
+			{
+				label: 'Polygon', 
+				accelerator: 'g', 
+				click: () => sendSetTool('polygon') 
+			},
+			{
+				label: 'Rectangle', 
+				accelerator: 'Alt+R', 
+				click: () => sendSetTool('square') 
+			},
+			{
+				label: 'Circle', 
+				accelerator: 'Alt+C', 
+				click: () => sendSetTool('circle') 
+			},
+			{
+				label: 'Fill', 
+				accelerator: 'k', 
+				click: () => sendSetTool('fill') 
 			}
 		]
 	},

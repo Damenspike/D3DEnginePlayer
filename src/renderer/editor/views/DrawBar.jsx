@@ -213,6 +213,14 @@ export default function DrawBar() {
 			}
 			{
 				drawToolButton(
+					(<MdBrush />),
+					() => _tool == 'brush',
+					() => setTool('brush'),
+					'Brush'
+				)
+			}
+			{
+				drawToolButton(
 					(<div style={{transform: 'rotate(45deg) translateX(1px) translateY(4px)'}}><MdRemove /></div>),
 					() => _tool == 'line',
 					() => setTool('line'),

@@ -11,6 +11,7 @@ export default class D2DEdit {
 		this.hitRadius = 8;
 
 		// [{ obj, pidx, lindex }]
+		this.selectedObjects = []; // late frame mirror of _editor.selectedObjects (Why? because point selection shouldnt happen right as we click an unselected object)
 		this.selectedPoints = [];
 		this.hoverPoint = null;
 
@@ -87,14 +88,17 @@ export default class D2DEdit {
 
 	/* ============================== render (points + guides) ============================== */
 
+	afterRender() {
+		this.selectedObjects = [..._editor.selectedObjects];
+	}
 	render() {
 		if(_editor.mode != '2D') return;
 		if(_editor.tool != 'select') return;
 		
 		const ctx = this.ctx;
 		if(!ctx) return;
-
-		const objs = _editor.selectedObjects;
+		
+		const objs = this.selectedObjects;
 		if(objs.length === 0) return;
 
 		ctx.save();
@@ -427,13 +431,13 @@ export default class D2DEdit {
 		this._scaleMeta = null;
 	}
 
-	/* ============================== keyboard (objects only + alignment snapping) ============================== */
-
+	/* ============================== keyboard (objects only) ============================== */
+	
 	_onKeyDown(e) {
-		if(_editor.mode !== '2D') return;
-		if(!(_editor.tool === 'select' || _editor.tool === 'transform')) return;
-
-		// Arrow → delta
+		if (_editor.mode !== '2D') return;
+		if (!(_editor.tool === 'select' || _editor.tool === 'transform')) return;
+	
+		// Arrow → base delta in world units
 		let dx = 0, dy = 0;
 		switch (e.key) {
 			case 'ArrowLeft':  dx = -1; break;
@@ -442,73 +446,78 @@ export default class D2DEdit {
 			case 'ArrowDown':  dy =  1; break;
 			default: return;
 		}
+	
 		const step = e.shiftKey ? 25 : 1;
-		dx *= step; dy *= step;
+		dx *= step;
+		dy *= step;
+	
 		e.preventDefault();
-
-		const objsArr = Array.isArray(_editor.selectedObjects) ? _editor.selectedObjects : [];
-		if(objsArr.length === 0) return;
+	
+		const objsArr = this.selectedObjects;
+		if (!objsArr.length) return;
+	
+		// de-dupe selection
 		const objs = Array.from(new Set(objsArr));
-
-		// Proposed move in canvas pixels (convert world → canvas w/ scalar)
-		const gs = U.canvasScale(this.d2drenderer);
-		const moveCanvas = { x: dx * gs, y: dy * gs };
-
-		// selection rect BEFORE (canvas)
-		const selRect = U.selectionBoundsCanvas(this.d2drenderer, objs);
-		if(!selRect) return;
-
-		// AFTER-proposed
-		const proposed = {
-			l: selRect.l + moveCanvas.x,
-			r: selRect.r + moveCanvas.x,
-			t: selRect.t + moveCanvas.y,
-			b: selRect.b + moveCanvas.y,
-			cx: selRect.cx + moveCanvas.x,
-			cy: selRect.cy + moveCanvas.y
-		};
-
-		// guides (canvas center + other 2D objects in focus group)
-		const guides = U.buildAlignGuides(this.d2drenderer, this.canvas, _editor.focus, objs, { center: 'project' });
-		const snapPx = Math.max(4, Number(_editor.draw2d?.snapPx || 10));
-		const snap = U.findSnapDelta(proposed, guides, snapPx); // { dx, dy, vLine, hLine } in canvas px
-
-		// Convert snap delta back to world units
-		const extraWorld = { x: (snap.dx || 0) / gs, y: (snap.dy || 0) / gs };
-
-		// Mutate
+	
+		// record BEFORE positions
 		const before = objs.map(obj => ({
 			obj,
-			pos: { x: obj.position?.x || 0, y: obj.position?.y || 0, z: obj.position?.z || 0 }
+			pos: {
+				x: obj.position?.x || 0,
+				y: obj.position?.y || 0,
+				z: obj.position?.z || 0
+			}
 		}));
-
+	
+		// apply movement (no snapping)
 		for (const o of objs) {
-			if(!o.position) o.position = { x: 0, y: 0, z: 0 };
-			o.position.x = (o.position.x || 0) + dx + extraWorld.x;
-			o.position.y = (o.position.y || 0) + dy + extraWorld.y;
+			if (!o.position) o.position = { x: 0, y: 0, z: 0 };
+			o.position.x = (o.position.x || 0) + dx;
+			o.position.y = (o.position.y || 0) + dy;
 		}
-
+	
+		// record AFTER positions
 		const after = objs.map(obj => ({
 			obj,
-			pos: { x: obj.position?.x || 0, y: obj.position?.y || 0, z: obj.position?.z || 0 }
+			pos: {
+				x: obj.position?.x || 0,
+				y: obj.position?.y || 0,
+				z: obj.position?.z || 0
+			}
 		}));
-
-		// show guides briefly
-		this._activeAlign = { v: snap.vLine, h: snap.hLine, ttl: 12 };
+	
+		// no snap guides for keyboard nudges
+		this._activeAlign = null;
+	
+		// re-render
 		_editor.requestRender?.() || this.d2drenderer?.render?.();
-
+	
 		// history
 		_editor.addStep?.({
 			name: 'Nudge Object(s)',
-			undo: () => { for (const s of before) { s.obj.position.x = s.pos.x; s.obj.position.y = s.pos.y; s.obj.position.z = s.pos.z; } },
-			redo: () => { for (const s of after)  { s.obj.position.x = s.pos.x; s.obj.position.y = s.pos.y; s.obj.position.z = s.pos.z; } }
+			undo: () => {
+				for (const s of before) {
+					s.obj.position.x = s.pos.x;
+					s.obj.position.y = s.pos.y;
+					s.obj.position.z = s.pos.z;
+				}
+				_editor.requestRender?.() || this.d2drenderer?.render?.();
+			},
+			redo: () => {
+				for (const s of after) {
+					s.obj.position.x = s.pos.x;
+					s.obj.position.y = s.pos.y;
+					s.obj.position.z = s.pos.z;
+				}
+				_editor.requestRender?.() || this.d2drenderer?.render?.();
+			}
 		});
 	}
 
 	/* ============================== insert vertex (Alt+Click) ============================== */
 
 	_onAltInsert(e) {
-		const objs = Array.isArray(_editor.selectedObjects) ? _editor.selectedObjects : [];
+		const objs = this.selectedObjects;
 		if(objs.length === 0) return;
 
 		const mouse = U.mouseToCanvas(this.canvas, e);
@@ -663,7 +672,7 @@ export default class D2DEdit {
 
 	_pickPoint(e) {
 		const mouse = U.mouseToCanvas(this.canvas, e);
-		const objs = Array.isArray(_editor.selectedObjects) ? _editor.selectedObjects : [];
+		const objs = this.selectedObjects;
 		if(objs.length === 0) return null;
 
 		let best = null;
@@ -929,7 +938,7 @@ export default class D2DEdit {
 		}
 	}
 
-	/* ============================== keyboard alignment helpers ============================== */
+	/* ============================== keyboard movement helpers ============================== */
 	
 	_onKeyDown = this._onKeyDown.bind(this);
 }

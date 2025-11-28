@@ -413,35 +413,43 @@ export default class D2DDraw {
 		const obj = this.tempObj; this.tempObj = null;
 		if (!obj) return;
 		
-		// ---------- degenerate guard for drag-based tools ----------
-		// If the user didn't actually drag (start and end the same),
-		// don't create a shape.
-		const a = this.localPoints[0];
-		const b = this.localPoints[1];
-		// if we somehow didn't get two points, just bail quietly
-		if (!a || !b) {
-			obj.delete?.();
-			this._request();
-			_editor.updateInspector();
-			return;
-		}
+		const isStrokeTool  = (this.tool === 'brush' || this.tool === 'pencil');
+		const isDragTool    = (this.tool === 'line' || this.tool === 'square' || this.tool === 'text' || this.tool === 'circle');
 		
-		const dx = b.x - a.x;
-		const dy = b.y - a.y;
-		
-		// convert a small pixel threshold into local space
-		const minLocal = U.pxToLocalScalar
-			? U.pxToLocalScalar(this.d2drenderer, 2)   // ~2px drag
-			: 0.5;                                     // fallback
-		
-		const minSq = minLocal * minLocal;
-		
-		if ((dx * dx + dy * dy) < minSq) {
-			// effectively a click → no size → nuke it
-			obj.delete?.();
-			this._request();
-			_editor.updateInspector();
-			return;
+		// ---------- degenerate guard ----------
+		if (isStrokeTool) {
+			// for brush/pencil: only bail if we never really moved
+			if (this.localPoints.length < 2) {
+				obj.delete?.();
+				this._request();
+				_editor.updateInspector();
+				return;
+			}
+		} else if (isDragTool) {
+			// drag-based tools: use start/end distance
+			const a = this.localPoints[0];
+			const b = this.localPoints[1];
+			if (!a || !b) {
+				obj.delete?.();
+				this._request();
+				_editor.updateInspector();
+				return;
+			}
+			
+			const dx = b.x - a.x;
+			const dy = b.y - a.y;
+			
+			const minLocal = U.pxToLocalScalar
+				? U.pxToLocalScalar(this.d2drenderer, 2) // ~2px drag
+				: 0.5;
+			const minSq = minLocal * minLocal;
+			
+			if ((dx * dx + dy * dy) < minSq) {
+				obj.delete?.();
+				this._request();
+				_editor.updateInspector();
+				return;
+			}
 		}
 		// ---------- end degenerate guard ----------
 		
@@ -579,7 +587,7 @@ export default class D2DDraw {
 			});
 		  }
 
-		  _editor?.selectObjects?.([target]);
+		  _editor.setSelection([target]);
 		  this._request();
 		  return;
 		}
@@ -603,12 +611,12 @@ export default class D2DDraw {
 				keep = await host.createObject({ name, components });
 				keep.position = { x: obj.position.x, y: obj.position.y, z: obj.position.z || 0 };
 				keep.invalidateGraphic2D?.();
-				_editor?.selectObjects?.([keep]);
+				_editor.setSelection([keep]);
 			};
 			_editor.addStep({ label:'Draw 2D', undo, redo });
 		}
 
-		_editor?.selectObjects?.([obj]);
+		_editor.setSelection([obj]);
 		this._request();
 	}
 
@@ -628,7 +636,7 @@ export default class D2DDraw {
 		const vs = this.d2drenderer.viewScale  || 1;
 		const strokePx = lw * pr * vs;
 
-		const wantFill = _editor.draw2d?.fill !== false;
+		const wantFill = _editor.draw2d?.fill !== false && tool !== 'text';
 		const wantLine = _editor.draw2d?.line !== false;
 
 		// LOCAL-SPACE helpers
@@ -724,13 +732,30 @@ export default class D2DDraw {
 					ctx.strokeStyle = lc;
 					ctx.stroke();
 				}
-			} else if (tool === 'square' || tool === 'text') {
+			} else if (tool === 'square') {
 				if (this.localPoints.length >= 2) {
 					const polyLocal = U.makeRectPoints(this.localPoints[0], this.localPoints[1]);
 					const rawL = rawPathLocal(polyLocal);
 					const roundL = roundedPathLocal(polyLocal, br);
 					const pathC = toCanvasPath(roundL || rawL);
 					drawFillAndStroke(pathC);
+				}
+			} else if (tool === 'text') {
+				if (this.localPoints.length >= 2) {
+					const polyLocal = U.makeRectPoints(this.localPoints[0], this.localPoints[1]);
+					const rawL      = rawPathLocal(polyLocal);
+					const roundL    = roundedPathLocal(polyLocal, br);
+					const pathC     = toCanvasPath(roundL || rawL);
+			
+					// inverted outline for text box
+					ctx.save();
+					ctx.globalCompositeOperation = 'difference';
+					ctx.lineWidth = 1;           // or strokePx if you want it thicker
+					ctx.lineCap   = 'round';
+					ctx.lineJoin  = 'round';
+					ctx.strokeStyle = '#ffffff'; // white in 'difference' = invert
+					ctx.stroke(pathC);
+					ctx.restore();
 				}
 			} else if (tool === 'circle') {
 				if (this.localPoints.length >= 2) {
@@ -773,11 +798,38 @@ export default class D2DDraw {
 
 		// cursor gizmo
 		if (this.cursor) {
-			const r = tool === 'brush'
-				? radius * (pr*vs)
-				: Math.max(1, _editor.draw2d?.lineWidth ?? 1) * 0.5 * (pr*vs);
-			ctx.beginPath(); ctx.arc(this.cursor.x, this.cursor.y, r, 0, Math.PI*2);
-			ctx.lineWidth = 1; ctx.strokeStyle = tool==='brush' ? fc : lc; ctx.stroke();
+			const isCrosshairTool =
+				tool === 'text' ||
+				tool === 'square' ||
+				tool === 'polygon' ||
+				tool === 'circle';
+				
+			const m = isCrosshairTool ? 1 : 0.5;
+			const r = Math.max(1, _editor.draw2d?.lineWidth ?? 1) * m * (pr * vs);
+		
+			const x = this.cursor.x;
+			const y = this.cursor.y;
+		
+			ctx.save();
+			ctx.globalCompositeOperation = 'difference';
+			ctx.strokeStyle = 'white'; // XOR → invert
+			ctx.lineWidth = 2;
+		
+			ctx.beginPath();
+		
+			if (isCrosshairTool) {
+				// crosshair
+				ctx.moveTo(x - r, y);
+				ctx.lineTo(x + r, y);
+				ctx.moveTo(x, y - r);
+				ctx.lineTo(x, y + r);
+			} else {
+				// circle (brush etc)
+				ctx.arc(x, y, r, 0, Math.PI * 2);
+			}
+		
+			ctx.stroke();
+			ctx.restore();
 		}
 
 		// snap gizmo

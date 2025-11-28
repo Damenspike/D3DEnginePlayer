@@ -1001,10 +1001,16 @@ const D3DComponents = {
 				max: 100,
 				def: 0
 			},
+			'multiline': {
+				label: 'Multiline',
+				type: 'boolean',
+				def: true
+			},
 			'wrap': {
 				label: 'Word wrap',
 				type: 'boolean',
-				def: true
+				def: true,
+				condition: c => c.properties.multiline === true
 			},
 			
 			'padding': {
