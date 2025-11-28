@@ -1,8 +1,8 @@
 {
   "name": "Damen3D",
-  "playerVersion": "1.0.0-beta.71",
-  "editorVersion": "1.0.0-beta.26",
-  "version": "1.0.0-beta.26",
+  "playerVersion": "1.2.0-beta.0",
+  "editorVersion": "1.2.0-beta.0",
+  "version": "1.2.0-beta.0",
   "license": "MIT",
   "scripts": {
     "editor": "node scripts/dev-editor.mjs",

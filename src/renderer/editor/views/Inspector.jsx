@@ -26,8 +26,13 @@ import {
 	MdLock, MdLockOpen,
 	MdCheckBox, MdCheckBoxOutlineBlank
 } from 'react-icons/md';
-
 import { IoMdEye, IoMdEyeOff } from 'react-icons/io';
+import { 
+	AiOutlineVerticalAlignTop,
+	AiOutlineVerticalAlignMiddle,
+	AiOutlineVerticalAlignBottom
+	
+} from "react-icons/ai";
 
 import {
 	MIME_D3D_ROW,
@@ -1432,69 +1437,101 @@ export default function Inspector() {
 							)
 						}
 						fieldContent = (
-							<div className='text-style-editor'>
-								{
-									drawButton(
-										(<b>B</b>),
-										() => dummyComponent.properties.fontWeight == 'bold',
-										() => {
-											const val = dummyComponent.properties.fontWeight;
-											
-											dummyComponent.properties.fontWeight = val == 'bold' ? 'normal' : 'bold';
-											update();
+							<>
+								<div className='text-style-row'>
+									<div className='text-style-editor'>
+										{
+											drawButton(
+												(<b>B</b>),
+												() => dummyComponent.properties.fontWeight == 'bold',
+												() => {
+													const val = dummyComponent.properties.fontWeight;
+													
+													dummyComponent.properties.fontWeight = val == 'bold' ? 'normal' : 'bold';
+													update();
+												}
+											)
 										}
-									)
-								}
-								{
-									drawButton(
-										(<i>i</i>),
-										() => dummyComponent.properties.fontStyle == 'italic',
-										() => {
-											const val = dummyComponent.properties.fontStyle;
-											
-											dummyComponent.properties.fontStyle = val == 'italic' ? 'normal' : 'italic';
-											update();
+										{
+											drawButton(
+												(<i>i</i>),
+												() => dummyComponent.properties.fontStyle == 'italic',
+												() => {
+													const val = dummyComponent.properties.fontStyle;
+													
+													dummyComponent.properties.fontStyle = val == 'italic' ? 'normal' : 'italic';
+													update();
+												}
+											)
 										}
-									)
-								}
-								<div style={{width: 15}}></div>
-								{
-									drawButton(
-										(<MdFormatAlignLeft />),
-										() => dummyComponent.properties.align == 'left',
-										() => {
-											const val = dummyComponent.properties.align;
-											
-											dummyComponent.properties.align = val == 'left' ? 'normal' : 'left';
-											update();
+										<div style={{width: 15}}></div>
+										{
+											drawButton(
+												(<MdFormatAlignLeft />),
+												() => dummyComponent.properties.align == 'left',
+												() => {
+													dummyComponent.properties.align = 'left';
+													update();
+												}
+											)
 										}
-									)
-								}
-								{
-									drawButton(
-										(<MdFormatAlignCenter />),
-										() => dummyComponent.properties.align == 'center',
-										() => {
-											const val = dummyComponent.properties.align;
-											
-											dummyComponent.properties.align = val == 'center' ? 'normal' : 'center';
-											update();
+										{
+											drawButton(
+												(<MdFormatAlignCenter />),
+												() => dummyComponent.properties.align == 'center',
+												() => {
+													dummyComponent.properties.align = 'center';
+													update();
+												}
+											)
 										}
-									)
-								}
-								{
-									drawButton(
-										(<MdFormatAlignRight />),
-										() => dummyComponent.properties.align == 'right',
-										() => {
-											const val = dummyComponent.properties.align;
-											
-											dummyComponent.properties.align = val == 'right' ? 'normal' : 'right';
-											update();
+										{
+											drawButton(
+												(<MdFormatAlignRight />),
+												() => dummyComponent.properties.align == 'right',
+												() => {
+													dummyComponent.properties.align = 'right';
+													update();
+												}
+											)
 										}
-									)
-								}
-							</div>
+									</div>
+								</div>
+								<div className='text-style-row'>
+									<div className='text-style-editor'>
+										{
+											drawButton(
+												(<AiOutlineVerticalAlignTop />),
+												() => dummyComponent.properties.valign == 'top',
+												() => {
+													dummyComponent.properties.valign = 'top';
+													update();
+												}
+											)
+										}
+										{
+											drawButton(
+												(<AiOutlineVerticalAlignMiddle />),
+												() => dummyComponent.properties.valign == 'middle',
+												() => {
+													dummyComponent.properties.valign = 'middle';
+													update();
+												}
+											)
+										}
+										{
+											drawButton(
+												(<AiOutlineVerticalAlignBottom />),
+												() => dummyComponent.properties.valign == 'bottom',
+												() => {
+													dummyComponent.properties.valign = 'bottom';
+													update();
+												}
+											)
+										}
+									</div>
+								</div>
+							</>
 						);
 						break;
 					}
@@ -1521,7 +1558,7 @@ export default function Inspector() {
 				
 				if(sideBySide) {
 					rowContainer.push(
-						<div className='field' key={rowContainer.length}>
+						<div className={`field field-${fieldId}`} key={rowContainer.length}>
 							<div className='sidebyside'>
 								<div className='left-side'>
 									<label>{field.label}</label>

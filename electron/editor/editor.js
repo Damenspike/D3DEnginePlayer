@@ -888,22 +888,6 @@ const menuTemplate = [
 						click: () => sendAddComponent('Rigidbody')
 					},
 					{
-						label: 'First Person Character Controller',
-						click: () => sendAddComponent('FirstPersonCharacterController')
-					},
-					{
-						label: 'Third Person Character Controller',
-						click: () => sendAddComponent('CharacterController')
-					},
-					{
-						label: 'First Person Camera',
-						click: () => sendAddComponent('FirstPersonCamera')
-					},
-					{
-						label: 'Third Person Camera',
-						click: () => sendAddComponent('ThirdPersonCamera')
-					},
-					{
 						label: 'Camera Collision',
 						click: () => sendAddComponent('CameraCollision')
 					},
@@ -919,11 +903,44 @@ const menuTemplate = [
 						label: 'Audio Source',
 						click: () => sendAddComponent('AudioSource')
 					},
+					
 					{ type: 'separator' },
 					{
-						label: 'Layout 2D',
-						click: () => sendAddComponent('Layout2D')
-					}
+						label: 'First Person',
+						submenu: [
+							{
+								label: 'Character Controller',
+								click: () => sendAddComponent('FirstPersonCharacterController')
+							},
+							{
+								label: 'Camera Controller',
+								click: () => sendAddComponent('FirstPersonCamera')
+							},
+						]
+					},
+					{
+						label: 'Third Person',
+						submenu: [
+							{
+								label: 'Character Controller',
+								click: () => sendAddComponent('CharacterController')
+							},
+							{
+								label: 'Camera Controller',
+								click: () => sendAddComponent('ThirdPersonCamera')
+							}
+						]
+					},
+					
+					{
+						label: '2D',
+						submenu: [
+							{
+								label: 'Layout 2D',
+								click: () => sendAddComponent('Layout2D')
+							}
+						]
+					},
 				]
 			},
 			{ type: 'separator' },
@@ -1068,10 +1085,18 @@ const menuTemplate = [
 				accelerator: 's', 
 				click: () => sendSetTransformTool('scale') 
 			},
+			
+			{ type: 'separator' },
+			{ label: '2D Tools', type: 'header' },
 			{
-				label: 'Transform (2D)', 
+				label: 'Transform', 
 				accelerator: 'q', 
 				click: () => sendSetTool('transform') 
+			},
+			{
+				label: 'Text', 
+				accelerator: 't', 
+				click: () => sendSetTool('text') 
 			}
 		]
 	},
@@ -1258,6 +1283,9 @@ ipcMain.handle('get-current-project-uri', () => lastOpenedProjectUri);
 // Get editor version
 ipcMain.handle('get-editor-version', () => pkg.editorVersion);
 
+// Get player version
+ipcMain.handle('get-player-version', () => pkg.playerVersion);
+
 // Set editor status
 ipcMain.on('editor-status', (_, { inputFocussed, codeEditorOpen, activeElement }) => {
 	if(typeof inputFocussed === 'boolean')
@@ -1398,7 +1426,12 @@ ipcMain.on('echo-build', (_, {prompt, play}) => {
 });
 ipcMain.on('ctx-menu', (event, {template, x, y}) => {
 	template.forEach(t => {
-		t.click = () => editorWindow.webContents.send('ctx-menu-action', t.id);
+		t.click = () => {
+			editorWindow.webContents.send('ctx-menu-action', t.id);
+			
+			if(gameWindow?.webContents && !gameWindow.isDestroyed())
+				gameWindow.webContents.send('ctx-menu-action', t.id); // for player test
+		};
 	});
 	
 	const menu = Menu.buildFromTemplate(template);

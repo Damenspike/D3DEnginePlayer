@@ -1,7 +1,7 @@
 import fs from 'fs';
-
 const target = process.argv[2]; // "player" or "editor"
 
+process.exit();
 if (target !== 'player' && target !== 'editor') {
 	console.error('Usage: node scripts/bump-version.mjs [player|editor]');
 	process.exit(1);

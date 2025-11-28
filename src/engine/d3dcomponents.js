@@ -975,6 +975,11 @@ const D3DComponents = {
 				type: 'none',
 				def: 'left' 
 			},
+			'valign': { // handled in _textStyle inspector
+				label: '',
+				type: 'none',
+				def: 'top' 
+			},
 			'fontSize': {
 				label: 'Size',
 				type: 'number',

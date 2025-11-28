@@ -63,7 +63,7 @@ export default class D3DObject {
 				this.parent.object3d.remove(this.object3d);
 		}
 		if(this._enabled && !this.__scriptRan) {
-			this.executeScripts();
+			//this.executeScripts();
 		}
 	}
 	
@@ -351,6 +351,10 @@ export default class D3DObject {
 		this.onVisibilityChanged?.();
 		this._onVisibilityChanged?.();
 		this.checkSymbols();
+	}
+	
+	get rendered() {
+		return this.getIsRendered();
 	}
 	
 	get __editorState() {
@@ -668,7 +672,7 @@ export default class D3DObject {
 		child.suuid = suuid ?? child.suuid;
 		
 		// Assign enabled toggle
-		child.enabled = objData.enabled !== undefined ? !!objData.enabled : true;
+		child._enabled = objData.enabled !== undefined ? !!objData.enabled : true;
 		
 		///////////////////////////
 		// ----- END UUID ----- //
@@ -1150,9 +1154,6 @@ export default class D3DObject {
 		this.toggleComponent(type, false);
 	}
 	async updateComponents() {
-		if(!this.enabled)
-			return;
-		
 		const zip = this.root.zip;
 		const components = this.components;
 		
@@ -1765,13 +1766,13 @@ export default class D3DObject {
 		let _pos, _qua, _scl;
 		
 		if(weight < 1) {
-			if(_pos)
+			if(position)
 				_pos = this.position.clone().lerp(position, weight);
 			
-			if(_qua)
+			if(quaternion)
 				_qua = this.quaternion.clone().slerp(quaternion, weight);
 			
-			if(_scl)
+			if(scale)
 				_scl = this.scale.clone().lerp(scale, weight);
 		}else{
 			_pos = position;
@@ -1886,9 +1887,9 @@ export default class D3DObject {
 		throw new Error(`${this.name} can not be used for 2D hit testing`);
 	}
 	hitTestPoint({x, y}) {
-		if(!this.visible)
+		if(!this.rendered)
 			return false;
-		
+			
 		if(this.hasComponent('Container2D')) {
 			let hit = false;
 			
@@ -2071,5 +2072,16 @@ export default class D3DObject {
 		this.superObjects = Object.values(this.superIndex);
 		this.superObjectsThree = this.superObjects.map(o => o.object3d);
 		_events.invoke('super-index-update');
+	}
+	getIsRendered() {
+		if(!this.visible)
+			return false;
+		
+		for(let o = this.parent; !!o; o = o.parent) {
+			if(!o.visible)
+				return false;
+		}
+		
+		return true;
 	}
 }

@@ -206,6 +206,10 @@ export default function GameView({editorMode}) {
 					label: 'Symbolise'
 				},
 				{
+					id: 'desymbolise-object',
+					label: 'Desymbolise'
+				},
+				{
 					id: 'group',
 					label: 'Group'
 				},
@@ -290,6 +294,9 @@ export default function GameView({editorMode}) {
 			}else
 			if(id == 'symbolise-object') {
 				_editor.symboliseSelectedObject();
+			}else
+			if(id == 'desymbolise-object') {
+				_editor.desymboliseSelectedObject();
 			}else
 			if(id == 'group') {
 				_editor.group();

@@ -170,7 +170,8 @@ function initComposer() {
 function updateObject(methods, d3dobj) {
 	methods.forEach(method => {
 		try {
-			d3dobj[method]?.();
+			if(d3dobj.enabled)
+				d3dobj[method]?.();
 		}catch(e) {
 			D3DConsole.error(`[${d3dobj.name}][${method}]`, e.name, e.message);
 			console.error(`[${d3dobj.name}][${method}]`, e);
@@ -261,3 +262,6 @@ _player.showError = showError;
 _player.closePlayer = closePlayer;
 _player.showConfirm = showConfirm;
 _player.onConsoleMessage = onConsoleMessage;
+
+D3D.setEventListener('ctx-menu-action', (id) => _events.invoke('ctx-menu-action', id));
+D3D.setEventListener('ctx-menu-close', () => _events.invoke('ctx-menu-close'));

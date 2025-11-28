@@ -132,6 +132,8 @@ export async function renameZipFile(zip, oldPath, newBaseName, updateIndex) {
 	zip.remove(oldPath);
 	
 	updateIndex(oldPath, targetPath);
+	
+	_root.updateSymbolStore();
 
 	return targetPath;
 }

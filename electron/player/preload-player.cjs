@@ -1,5 +1,5 @@
 // preload.js
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, shell } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
 
@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld('D3D', {
 	
 	getCurrentGameURI: () => ipcRenderer.invoke('get-current-game-uri'),
 	closeGameWindow: () => ipcRenderer.send('close-game-window'),
+	getPlayerVersion: () => ipcRenderer.invoke('get-player-version'),
 	showError: ({title, message, closeEditorWhenDone}) => {
 		ipcRenderer.send('show-error', {
 			title: String(title) || 'Error',
@@ -63,6 +64,9 @@ contextBridge.exposeInMainWorld('D3D', {
 	closePlayer: () => ipcRenderer.send('close-game-window'),
 	onConsoleMessage: ({level, message}) => 
 		ipcRenderer.send('console-message', {level, message}),
+	openContextMenu: ({template, x, y, onClose}) => 
+		ipcRenderer.send('ctx-menu', {template, x, y}),
+	openWebsite: () => shell.openExternal('https://damen3d.com/?origin=player'),
 	
 	theme: {
 		get: () => ipcRenderer.invoke('get-theme'),
@@ -85,3 +89,5 @@ function getExtension(path) {
 }
 
 addIPCListener('theme-changed');
+addIPCListener('ctx-menu-action');
+addIPCListener('ctx-menu-close');

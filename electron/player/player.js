@@ -360,6 +360,9 @@ ipcMain.on('open-d3d', (_, uri) => openGameURI(uri));
 // Load D3D
 ipcMain.on('load-d3d', (_, uri) => loadGameURI(uri));
 
+// Get player version
+ipcMain.handle('get-player-version', () => pkg.playerVersion);
+
 // Update window size/title
 ipcMain.on('update-window', (_, { width, height, title }) => {
 	if (gameWindow && !gameWindow.isDestroyed()) {
@@ -387,6 +390,22 @@ ipcMain.on('show-error', async (_, { title, message, closeGameWhenDone }) => {
 	
 	if(closeGameWhenDone)
 		closeGameWindow();
+});
+
+// Right click menus
+ipcMain.on('ctx-menu', (event, {template, x, y}) => {
+	template.forEach(t => {
+		t.click = () => gameWindow.webContents.send('ctx-menu-action', t.id);
+	});
+	
+	const menu = Menu.buildFromTemplate(template);
+	const bw = BrowserWindow.fromWebContents(event.sender);
+	
+	menu.popup({ 
+		window: bw, 
+		x, y, 
+		callback: () => event.sender.send('ctx-menu-close')
+	});
 });
 
 // Show confirm dialog

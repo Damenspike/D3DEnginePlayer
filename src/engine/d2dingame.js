@@ -1,14 +1,4 @@
-function getPointerId(e, useChanged = false) {
-	// Touch events
-	if (useChanged && e && e.changedTouches && e.changedTouches.length) {
-		return e.changedTouches[0].identifier;
-	}
-	if (!useChanged && e && e.touches && e.touches.length) {
-		return e.touches[0].identifier;
-	}
-	// Mouse or anything else
-	return 'mouse';
-}
+import D3DConsole from './d3dconsole.js';
 
 export function onMouseDown(e) {
 	const r = _host.renderer2d;
@@ -31,7 +21,11 @@ export function onMouseDown(e) {
 		d3dobject.isClicked = true;
 		d3dobject.pointerId = pid;
 
-		d3dobject.onMouseDown(e);
+		try {
+			d3dobject.onMouseDown(e);
+		}catch(e) {
+			D3DConsole.error(e);
+		}
 	});
 }
 
@@ -43,7 +37,11 @@ export function onMouseUp(e) {
 
 	r._renderObjects.forEach(d3dobject => {
 		if(d3dobject?.isMouseOver && typeof d3dobject.onRelease === 'function') {
-			d3dobject.onRelease(e);
+			try {
+				d3dobject.onRelease(e);
+			}catch(e) {
+				D3DConsole.error(e);
+			}
 		}
 		
 		if (typeof d3dobject?.onMouseUp !== 'function')
@@ -58,7 +56,12 @@ export function onMouseUp(e) {
 		
 		d3dobject.isClicked = false;
 		d3dobject.pointerId = undefined;
-		d3dobject.onMouseUp(e);
+		
+		try {
+			d3dobject.onMouseUp(e);
+		}catch(e) {
+			D3DConsole.error(e);
+		}
 	});
 }
 
@@ -81,17 +84,33 @@ export function onMouseMove(e) {
 		if (d3dobject.pointerId !== undefined && d3dobject.pointerId !== pid)
 			return;
 			
-		if(d3dobject.isMouseOver)
-			d3dobject.onMouseMove?.(e);
+		if(d3dobject.isMouseOver) {
+			try {
+				d3dobject.onMouseMove?.(e);
+			}catch(e) {
+				D3DConsole.error(e);
+			}
+		}
 		
 		if (!d3dobject.hitTestPoint(_input.mouse)) {
 			d3dobject.isMouseOver = false;
-			d3dobject.onMouseOut?.(e);
+			
+			try {
+				d3dobject.onMouseOut?.(e);
+			}catch(e) {
+				D3DConsole.error(e);
+			}
+			
 			return;
 		}
 		if (!d3dobject.isMouseOver) {
 			d3dobject.isMouseOver = true;
-			d3dobject.onMouseOver?.(e);
+			
+			try {
+				d3dobject.onMouseOver?.(e);
+			}catch(e) {
+				D3DConsole.error(e);
+			}
 		}
 	});
 }
@@ -106,6 +125,22 @@ export function onMouseWheel(e) {
 		if (!d3dobject.hitTestPoint(_input.mouse))
 			return;
 		
-		d3dobject.onMouseWheel(e);
+		try {
+			d3dobject.onMouseWheel(e);
+		}catch(e) {
+			D3DConsole.error(e);
+		}
 	});
+}
+
+function getPointerId(e, useChanged = false) {
+	// Touch events
+	if (useChanged && e && e.changedTouches && e.changedTouches.length) {
+		return e.changedTouches[0].identifier;
+	}
+	if (!useChanged && e && e.touches && e.touches.length) {
+		return e.touches[0].identifier;
+	}
+	// Mouse or anything else
+	return 'mouse';
 }

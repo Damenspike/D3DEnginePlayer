@@ -43,6 +43,20 @@ export default class TextManager {
 		this.textProperties.align = v;
 	}
 	
+	get valign() {
+		return this.textProperties.valign;
+	}
+	set valign(v) {
+		this.textProperties.valign = v;
+	}
+	// same thing
+	get verticalAlign() {
+		return this.textProperties.valign;
+	}
+	set verticalAlign(v) {
+		this.textProperties.valign = v;
+	}
+	
 	/* ---------- sizing & spacing ---------- */
 	get fontSize() {
 		return this.textProperties.fontSize;

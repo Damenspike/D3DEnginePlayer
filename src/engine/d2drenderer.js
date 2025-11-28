@@ -25,6 +25,8 @@ import {
 	onMouseWheel
 } from './d2dingame.js';
 
+const masterUnfocusAlpha = 0.6;
+
 export default class D2DRenderer {
 	get pixelRatio() {
 		if(this.__pr === undefined)
@@ -328,7 +330,7 @@ export default class D2DRenderer {
 	
 		const gs = (this.pixelRatio || 1) * (this.viewScale || 1);
 		const isInFocus = window._player || (_editor.focus === d3dobject) || (_editor.focus.containsChild(d3dobject));
-		const masterAlpha = isInFocus ? 1 : 0.2;
+		const masterAlpha = isInFocus ? 1 : masterUnfocusAlpha;
 		const alpha = worldOpacity(d3dobject);
 		if (alpha <= 0) return;
 	
@@ -459,22 +461,23 @@ export default class D2DRenderer {
 		const fill        = t2d.fill !== false;
 		const fillStyle   = t2d.fillStyle ?? '#000';
 	
-		// Keep original stroke/outline semantics (DON'T change this logic)
+		// Keep original stroke/outline semantics
 		const strokeOn    = (t2d.stroke === true);
 		const strokeStyle = t2d.strokeStyle ?? '#000';
 		const strokeWidth = Math.max(0, Number(t2d.strokeWidth ?? 0));
 	
 		// ---------- layout ----------
-		const align         = t2d.align ?? 'left'; // left|center|right
+		const align         = t2d.align  ?? 'left';   // left|center|right
+		const valign        = t2d.valign ?? 'top';    // top|middle|bottom
 		const lineHeightMul = Number(t2d.lineHeight ?? 1) || 1;
 		const lineHeight    = (fontSize * 1.25) * lineHeightMul;
 		const wrap          = (t2d.wrap ?? true);
 		const breakWords    = (t2d.breakWords ?? false);
 		const letterSpacing = Number(t2d.letterSpacing ?? 0);
 	
-		const padL = t2d.padding ? Number(t2d.paddingLeft ?? 0) : 0;
-		const padR = t2d.padding ? Number(t2d.paddingRight ?? 0) : 0;
-		const padT = t2d.padding ? Number(t2d.paddingTop ?? 0) : 0;
+		const padL = t2d.padding ? Number(t2d.paddingLeft   ?? 0) : 0;
+		const padR = t2d.padding ? Number(t2d.paddingRight  ?? 0) : 0;
+		const padT = t2d.padding ? Number(t2d.paddingTop    ?? 0) : 0;
 		const padB = t2d.padding ? Number(t2d.paddingBottom ?? 0) : 0;
 	
 		// ---------- scrolling (on component) ----------
@@ -482,20 +485,26 @@ export default class D2DRenderer {
 		const scrollY = Number.isFinite(text2d.scrollY) ? text2d.scrollY : 0;
 	
 		// ---------- derive textbox from graphic2d rect ----------
-		const g2d = d3dobject.graphic2d || {};
-		const path0 = (Array.isArray(g2d._paths) && g2d._paths[0] && g2d._paths[0].length) ? g2d._paths[0] : null;
+		const g2d    = d3dobject.graphic2d || {};
+		const path0  = (Array.isArray(g2d._paths) && g2d._paths[0] && g2d._paths[0].length) ? g2d._paths[0] : null;
 	
 		const pathBounds = (pts) => {
 			if (!pts || !pts.length) return { x:0, y:0, w:0, h:0, ok:false };
 			let minX = pts[0].x, maxX = pts[0].x, minY = pts[0].y, maxY = pts[0].y;
-			for (let i=1;i<pts.length;i++) {
+			for (let i = 1; i < pts.length; i++) {
 				const p = pts[i]; if (!p) continue;
 				if (p.x < minX) minX = p.x;
 				if (p.x > maxX) maxX = p.x;
 				if (p.y < minY) minY = p.y;
 				if (p.y > maxY) maxY = p.y;
 			}
-			return { x:minX, y:minY, w:Math.max(0, maxX-minX), h:Math.max(0, maxY-minY), ok:true };
+			return {
+				x: minX,
+				y: minY,
+				w: Math.max(0, maxX - minX),
+				h: Math.max(0, maxY - minY),
+				ok: true
+			};
 		};
 	
 		const box = pathBounds(path0);
@@ -511,45 +520,51 @@ export default class D2DRenderer {
 				const tx = Number(o.position?.x) || 0;
 				const ty = Number(o.position?.y) || 0;
 				const rz = Number(o.rotation?.z) || 0;
-				const sx = Number(o.scale?.x) || 1;
-				const sy = Number(o.scale?.y) || 1;
+				const sx = Number(o.scale?.x)    || 1;
+				const sy = Number(o.scale?.y)    || 1;
 				m = m.translate(tx, ty).rotate(rz * 180 / Math.PI).scale(sx, sy);
 			}
 		}
 	
-		const gs = (this.pixelRatio || 1) * (this.viewScale || 1);
-		const isInFocus = window._player || (_editor?.focus === d3dobject) || (_editor?.focus?.containsChild?.(d3dobject));
-		const masterAlpha = isInFocus ? 1 : 0.2;
+		const gs = (this.pixelRatio || 1) * (this.viewScale || 1); // kept for parity, even if unused
+		const isInFocus = window._player ||
+			(_editor?.focus === d3dobject) ||
+			(_editor?.focus?.containsChild?.(d3dobject));
+		const masterAlpha = isInFocus ? 1 : masterUnfocusAlpha;
 	
 		// ---------- helpers ----------
 		const buildFont = () => `${fontStyle} ${fontVariant} ${fontWeight} ${fontSize}px ${fontFamily}`;
-		const measure = (s) => ctx.measureText(s);
+		const measure   = (s) => ctx.measureText(s);
 	
 		const lineWidthAdv = (s) => {
 			if (!s) return 0;
 			if (!letterSpacing) return measure(s).width;
 			let w = 0;
-			for (let i=0;i<s.length;i++) w += measure(s[i]).width;
+			for (let i = 0; i < s.length; i++) w += measure(s[i]).width;
 			if (s.length > 1) w += letterSpacing * (s.length - 1);
 			return w;
 		};
 	
 		const wrapLine = (raw, contentW) => {
 			if (!contentW || !wrap) return [raw];
+	
 			const words = raw.split(/(\s+)/); // keep spaces
-			const out = [];
-			let cur = '';
+			const out   = [];
+			let cur     = '';
+	
 			const pushCur = () => { out.push(cur); cur = ''; };
 	
-			for (let i=0;i<words.length;i++) {
+			for (let i = 0; i < words.length; i++) {
 				const w = words[i];
 				if (!w) continue;
+	
 				const fitsToken = lineWidthAdv(w) <= contentW;
 	
 				if (!breakWords && !fitsToken) {
 					if (cur) { out.push(cur); cur = ''; }
+	
 					let part = '';
-					for (let j=0;j<w.length;j++) {
+					for (let j = 0; j < w.length; j++) {
 						const next = part + w[j];
 						if (lineWidthAdv(next) > contentW) {
 							out.push(part);
@@ -567,7 +582,7 @@ export default class D2DRenderer {
 					if (!cur && w.trim() === '') cur = w; // preserve space-only token
 					if (lineWidthAdv(cur) > contentW) {
 						let part = '';
-						for (let j=0;j<cur.length;j++) {
+						for (let j = 0; j < cur.length; j++) {
 							const next = part + cur[j];
 							if (lineWidthAdv(next) > contentW) {
 								out.push(part);
@@ -585,14 +600,18 @@ export default class D2DRenderer {
 				if (lineWidthAdv(test) <= contentW) cur = test;
 				else { out.push(cur); cur = w.trimStart(); }
 			}
+	
 			pushCur(); // push even empty line segments
 			return out;
 		};
 	
 		const drawSpaced = (method, s, x, y) => {
-			if (!letterSpacing) { ctx[method](s, x, y); return; }
+			if (!letterSpacing) {
+				ctx[method](s, x, y);
+				return;
+			}
 			let acc = 0;
-			for (let i=0;i<s.length;i++) {
+			for (let i = 0; i < s.length; i++) {
 				const ch = s[i];
 				ctx[method](ch, x + acc, y);
 				acc += measure(ch).width + letterSpacing;
@@ -607,11 +626,11 @@ export default class D2DRenderer {
 		this.applyDeviceTransform();
 		ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
 	
-		ctx.font = buildFont();
-		ctx.textBaseline = 'top';
-		ctx.textAlign = 'left';
-		ctx.shadowBlur = Number(t2d.shadowBlur ?? 0);
-		ctx.shadowColor = t2d.shadowColor ?? 'rgba(0,0,0,0)';
+		ctx.font          = buildFont();
+		ctx.textBaseline  = 'top';
+		ctx.textAlign     = 'left';
+		ctx.shadowBlur    = Number(t2d.shadowBlur ?? 0);
+		ctx.shadowColor   = t2d.shadowColor ?? 'rgba(0,0,0,0)';
 		ctx.shadowOffsetX = Number(t2d.shadowOffsetX ?? 0);
 		ctx.shadowOffsetY = Number(t2d.shadowOffsetY ?? 0);
 	
@@ -626,7 +645,7 @@ export default class D2DRenderer {
 			while (i <= text.length) {
 				if (i === text.length || text[i] === '\n') {
 					rawLines.push({ start, end: i, str: text.slice(start, i) });
-					start = i + 1; // skip the newline; next raw line has a unique index
+					start = i + 1; // skip the newline
 				}
 				i++;
 			}
@@ -634,7 +653,7 @@ export default class D2DRenderer {
 		}
 	
 		const linesIdx = [];
-		const lines = []; // used by draw loop
+		const lines    = [];
 	
 		for (const rl of rawLines) {
 			const segs = wrapLine(rl.str, contentW || null);
@@ -645,7 +664,7 @@ export default class D2DRenderer {
 			}
 			let cursor = rl.start; // absolute index in `text` for this raw line
 			for (const seg of segs) {
-				const s = String(seg ?? '');
+				const s     = String(seg ?? '');
 				const start = cursor;
 				const end   = start + s.length;
 				linesIdx.push({ text: s, start, end, w: lineWidthAdv(s) });
@@ -654,14 +673,28 @@ export default class D2DRenderer {
 			}
 		}
 	
+		// ---------- vertical align ----------
+		const contentH = Math.max(0, boxH - padT - padB);
+		const textH    = lines.length * lineHeight;
+		let vAlignOffset = 0;
+	
+		if (contentH > textH) {
+			if (valign === 'middle') {
+				vAlignOffset = (contentH - textH) * 0.5;
+			} else if (valign === 'bottom') {
+				vAlignOffset = (contentH - textH);
+			}
+			// 'top' => 0
+		}
+	
 		// Clip to rect
 		ctx.beginPath();
 		ctx.rect(boxX, boxY, boxW, boxH);
 		ctx.clip();
 	
-		// Scroll + baseline
+		// Scroll + baseline (with vertical align)
 		const baseX = boxX + padL - (wrap ? 0 : scrollX);
-		let y = boxY + padT - scrollY;
+		let y       = boxY + padT + vAlignOffset - scrollY;
 	
 		// ---------- INPUT FIELD (register + selection) ----------
 		let inputState = null;
@@ -669,7 +702,8 @@ export default class D2DRenderer {
 			this.textInput.registerField(d3dobject, {
 				m,
 				box: { x: boxX, y: boxY, w: boxW, h: boxH },
-				padL, padT,
+				padL,
+				padT: padT + vAlignOffset,
 				contentW, align, wrap, scrollX, scrollY,
 				lineGap: lineHeight,
 				letterSpacing,
@@ -684,10 +718,10 @@ export default class D2DRenderer {
 				const selA = inputState.selA, selB = inputState.selB;
 				ctx.save();
 				ctx.fillStyle = 'rgba(64,128,255,0.35)';
-				for (let i=0;i<linesIdx.length;i++) {
+				for (let i = 0; i < linesIdx.length; i++) {
 					const ln = linesIdx[i];
-					const a = Math.max(selA, ln.start);
-					const b = Math.min(selB, ln.end);
+					const a  = Math.max(selA, ln.start);
+					const b  = Math.min(selB, ln.end);
 					if (a >= b) continue;
 	
 					let ax = 0;
@@ -701,20 +735,20 @@ export default class D2DRenderer {
 						xa += ctx.measureText(ln.text.slice(0, a - ln.start)).width;
 						xb += ctx.measureText(ln.text.slice(0, b - ln.start)).width;
 					} else {
-						for (let k=ln.start;k<a;k++) xa += ctx.measureText(text[k]).width + letterSpacing;
-						for (let k=ln.start;k<b;k++) xb += ctx.measureText(text[k]).width + letterSpacing;
+						for (let k = ln.start; k < a; k++) xa += ctx.measureText(text[k]).width + letterSpacing;
+						for (let k = ln.start; k < b; k++) xb += ctx.measureText(text[k]).width + letterSpacing;
 					}
-					const yy = (boxY + padT - scrollY) + i * lineHeight;
+					const yy = (boxY + padT + vAlignOffset - scrollY) + i * lineHeight;
 					ctx.fillRect(xa, yy, Math.max(1, xb - xa), lineHeight);
 				}
 				ctx.restore();
 			}
 		}
 	
-		// ---------- DRAW TEXT (preserve original stroke/outline behavior) ----------
-		for (let i=0;i<lines.length;i++) {
+		// ---------- DRAW TEXT ----------
+		for (let i = 0; i < lines.length; i++) {
 			const s = lines[i];
-			let x = baseX;
+			let x   = baseX;
 	
 			if (contentW) {
 				const w = lineWidthAdv(s);
@@ -741,7 +775,7 @@ export default class D2DRenderer {
 			// Find or clamp to the best visual line
 			let li = 0;
 			if (linesIdx.length) {
-				for (let i=0;i<linesIdx.length;i++) {
+				for (let i = 0; i < linesIdx.length; i++) {
 					const L = linesIdx[i];
 					if (caret >= L.start && caret <= L.end) { li = i; break; }
 					if (caret > L.end) li = i; // clamp forward
@@ -771,14 +805,14 @@ export default class D2DRenderer {
 				for (let j = 0; j < localIdx; j++) {
 					const ch = ln.text[j];
 					cx += ctx.measureText(ch).width;
-					if (j < ln.text.length - 1) cx += letterSpacing; // no trailing spacing
+					if (j < ln.text.length - 1) cx += letterSpacing;
 				}
 			}
 	
-			// Y for this line
-			const cy = (boxY + padT - scrollY) + (li * lineHeight);
+			// Y for this line (with vertical align)
+			const cy = (boxY + padT + vAlignOffset - scrollY) + (li * lineHeight);
 	
-			// Draw caret (thin line; keep on top)
+			// Draw caret
 			ctx.save();
 			ctx.strokeStyle = t2d.caretColor || '#0080ff';
 			ctx.lineWidth   = Math.max(1, Number(t2d.caretWidth ?? 1));
@@ -865,7 +899,7 @@ export default class D2DRenderer {
 		}
 	
 		const isInFocus = window._player || (_editor?.focus === d3dobject) || (_editor?.focus?.containsChild?.(d3dobject));
-		const masterAlpha = isInFocus ? 1 : 0.2;
+		const masterAlpha = isInFocus ? 1 : masterUnfocusAlpha;
 	
 		// Build combined closed path + collect bounds for gradient paints
 		const combo = new Path2D();

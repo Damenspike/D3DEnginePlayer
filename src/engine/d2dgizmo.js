@@ -108,14 +108,13 @@ export default class D2DGizmo {
 		}
 
 		// gizmo
-		if(sel.length > 0) {
+		if(sel.length > 0 && tool == 'transform') {
 			let frame = U.selectionFrame(sel);
 			
 			if(!frame) { 
 				ctx.restore(); 
 				
-				if(tool == 'transform')
-					this._drawPivotPoint();
+				this._drawPivotPoint();
 				
 				return; 
 			}
@@ -175,8 +174,8 @@ export default class D2DGizmo {
 	}
 
 	_drawGizmo(frame, obb, px, ttool) {
-		const showRotate = (ttool === 'rotate' || _editor.tool === 'transform');
-		const showScale  = (ttool === 'scale'  || _editor.tool === 'transform');
+		const showRotate = true;//(ttool === 'rotate');
+		const showScale  = true;//(ttool === 'scale');
 
 		const ctx = this.ctx;
 		const { cx, cy, theta } = frame;

@@ -1,14 +1,24 @@
 import React, { useEffect, useRef } from 'react';
 import useSystemTheme from './hooks/useSystemTheme.js';
 import { loadD3D } from '../../engine/d3dplayer.js';
+import { eventToWorld } from '../../engine/d2dutility.js';
 
 import '../../assets/style/main.css';
 import '../../assets/style/player.css';
 
+var playerVersion;
+
 export default function AppPlayer({srcAttr}) {
+	const gameMasterRef = useRef(null);
 	const game3dRef = useRef(null);
 	const game2dRef = useRef(null);
 	const theme = _isStandalone && useSystemTheme();
+	
+	useEffect(() => {
+		D3D.getPlayerVersion().then(v => {
+			playerVersion = v;
+		});
+	}, []);
 	
 	useEffect(() => {
 		const element3d = game3dRef.current;
@@ -63,11 +73,59 @@ export default function AppPlayer({srcAttr}) {
 		return () => observer.disconnect();
 	}, []);
 	
+	// Right click menu
+	useEffect(() => {
+		return;
+		if(!gameMasterRef?.current)
+			return;
+		
+		const gameMaster = gameMasterRef.current;
+		
+		const onRightClick = (e) => {
+			
+			const template = [
+				{
+					label: `Damen3D Player ${playerVersion}`,
+					enabled: false
+				},
+				{
+					id: 'about',
+					label: `About Damen3D Engine`
+				}
+			];
+			
+			const p = eventToWorld(e, _player.renderer2d.domElement, _player.renderer2d);
+			
+			const x = e.clientX + 2;
+			const y = e.clientY + 2;
+			
+			_events.unall('ctx-menu-action');
+			_events.on('ctx-menu-action', onCtxMenuAction);
+			D3D.openContextMenu({template, x, y});
+		}
+		const onCtxMenuAction = async (id) => {
+			if(id == 'about') {
+				if(_isStandalone) {
+					D3D.openWebsite();
+				}else{
+					window.open('https://damen3d.com/?origin=player', '_blank');
+				}
+			}
+		}
+		
+		gameMaster.addEventListener('contextmenu', onRightClick);
+		
+		return () => {
+			gameMaster.removeEventListener('contextmenu', onRightClick);
+		}
+	}, [gameMasterRef]);
+	
 	_player.theme = theme;
 	
 	return (
 		<div
 			className='game-master-container'
+			ref={gameMasterRef}
 		>
 			<div
 				id='game3d-container'

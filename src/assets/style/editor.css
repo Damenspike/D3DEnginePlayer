@@ -1232,9 +1232,18 @@ body.dark {
 		vertical-align: bottom;
 	}
 }
+.field-_textStyle {
+	.right-side {
+		display: block;
+	}
+}
 .text-style-editor {
 	display: flex;
 	flex-direction: row;
+}
+.text-style-row {
+	justify-items: right;
+	margin-bottom: 10px;
 }
 .small-logo {
 	position: absolute;

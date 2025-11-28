@@ -1,0 +1,28 @@
+RewriteEngine On
+Options +FollowSymLinks -MultiViews
+
+# ---------------------------------------
+# CORS: Allow any origin for all files
+# ---------------------------------------
+<IfModule mod_headers.c>
+	Header set Access-Control-Allow-Origin "*"
+	Header set Access-Control-Allow-Methods "GET, POST, OPTIONS"
+	Header set Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With"
+</IfModule>
+
+# Handle CORS preflight requests
+RewriteCond %{REQUEST_METHOD} OPTIONS
+RewriteRule ^(.*)$ $1 [R=200,L]
+
+# ---------------------------------------
+# Webpaging
+# ---------------------------------------
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^(.*)$ index.php?page=$1 [QSA,L]
+
+# ---------------------------------------
+# Error pages
+# ---------------------------------------
+ErrorDocument 403 /403
+ErrorDocument 404 /404
