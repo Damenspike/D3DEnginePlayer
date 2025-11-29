@@ -461,7 +461,7 @@ export default class D2DDraw {
 		const wantLine = s.line !== false;
 		const lw = Math.max(1, Number(s.lineWidth ?? 1));
 		const br = s.borderRadius;
-		const closePolygon = s.closePolygon;
+		const closePolygon = s.closePolygon && (this.tool == 'pencil' || this.tool == 'polygon');
 
 		// freehand simplify
 		if (['brush','pencil'].includes(this.tool) && this.localPoints.length > 2) {

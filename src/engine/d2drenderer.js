@@ -482,6 +482,10 @@ export default class D2DRenderer {
 		const padR = t2d.padding ? Number(t2d.paddingRight  ?? 0) : 0;
 		const padT = t2d.padding ? Number(t2d.paddingTop    ?? 0) : 0;
 		const padB = t2d.padding ? Number(t2d.paddingBottom ?? 0) : 0;
+		
+		const inputFormat = t2d.inputFormat || 'text';      // 'text' | 'password'
+		const isPassword  = (inputFormat === 'password');
+		const maskChar    = t2d.passwordMask || '•';
 	
 		// ---------- scrolling (on component) ----------
 		const scrollX = Number.isFinite(text2d.scrollX) ? text2d.scrollX : 0;
@@ -491,6 +495,12 @@ export default class D2DRenderer {
 		const g2d    = d3dobject.graphic2d || {};
 		const path0  = (Array.isArray(g2d._paths) && g2d._paths[0] && g2d._paths[0].length) ? g2d._paths[0] : null;
 	
+		const visualCharAt = (i) => {
+			if (!isPassword) 
+				return text[i] ?? '';
+			else
+				return maskChar;
+		};
 		const pathBounds = (pts) => {
 			if (!pts || !pts.length) return { x:0, y:0, w:0, h:0, ok:false };
 			let minX = pts[0].x, maxX = pts[0].x, minY = pts[0].y, maxY = pts[0].y;
@@ -644,9 +654,11 @@ export default class D2DRenderer {
 	
 		// ---- build visual lines + indexed ranges (absolute indices into `text`) ----
 		const rawLines = [];
-		if (!multiline) {
-			// Single-line mode: treat the entire text as one raw line
-			rawLines.push({ start: 0, end: text.length, str: text });
+		
+		if (isPassword) {
+			// Single visual line, but preserve true text length for indices.
+			const visible = maskChar.repeat(text.length);
+			rawLines.push({ start: 0, end: text.length, str: visible });
 			if (rawLines.length === 0) rawLines.push({ start: 0, end: 0, str: '' });
 		} else {
 			let i = 0, start = 0;
@@ -743,8 +755,12 @@ export default class D2DRenderer {
 						xa += ctx.measureText(ln.text.slice(0, a - ln.start)).width;
 						xb += ctx.measureText(ln.text.slice(0, b - ln.start)).width;
 					} else {
-						for (let k = ln.start; k < a; k++) xa += ctx.measureText(text[k]).width + letterSpacing;
-						for (let k = ln.start; k < b; k++) xb += ctx.measureText(text[k]).width + letterSpacing;
+						for (let k = ln.start; k < a; k++) {
+							xa += ctx.measureText(visualCharAt(k)).width + letterSpacing;
+						}
+						for (let k = ln.start; k < b; k++) {
+							xb += ctx.measureText(visualCharAt(k)).width + letterSpacing;
+						}
 					}
 					const yy = (boxY + padT + vAlignOffset - scrollY) + i * lineHeight;
 					ctx.fillRect(xa, yy, Math.max(1, xb - xa), lineHeight);

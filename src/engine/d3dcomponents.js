@@ -1090,6 +1090,24 @@ const D3DComponents = {
 				def: false,
 				section: 'input'
 			},
+			'inputFormat': {
+				label: 'Format',
+				type: 'select',
+				def: 'text',
+				options: [
+					{ name: 'text', label: 'Text' },
+					{ name: 'password', label: 'Password' }
+				],
+				section: 'input',
+				condition: c => c.properties.isInput == true
+			},
+			'inputTabIndex': {
+				label: 'Tab index',
+				type: 'number',
+				def: 0,
+				section: 'input',
+				condition: c => c.properties.isInput == true
+			},
 			'caretColor': {
 				label: 'Caret color',
 				type: 'color',

@@ -586,18 +586,19 @@ export function buildAlignGuides(d2drenderer, canvas, focusNode, selectedObjsOrS
 			: new Set(selectedObjsOrSet || []);
 
 	// ===== 1) CANVAS GUIDES (high priority) =====
-	const vCanvas = [w * 0.5]; // vertical: canvas centre X
-	const hCanvas = [h * 0.5]; // horizontal: canvas centre Y
-	// If you ever want edges as well:
-	// vCanvas.push(0, w);
-	// hCanvas.push(0, h);
+	// We'll fill these *after* we have the view matrix.
+	const vCanvas = [];
+	const hCanvas = [];
 
 	// ===== 2) OBJECT GUIDES (lower priority) =====
 	const vObj = [];
 	const hObj = [];
 
 	// Host = focus node or renderer root (mirrors gizmo behaviour)
-	const host = focusNode || d2drenderer.root || _root;
+	const host = focusNode;
+	
+	if(!host)
+		return;
 
 	// Build the same "2D roots" set as _marqueeRootsUnderFocus
 	const rootsSet = new Set();
@@ -610,6 +611,16 @@ export function buildAlignGuides(d2drenderer, canvas, focusNode, selectedObjsOrS
 
 	// One view matrix (canvas/device space) reused for all
 	const Mv = viewMatrix(d2drenderer);
+
+	// --- Canvas/stage centre in world space (usually 0,0) projected into canvas space ---
+	// This automatically respects viewOffset, viewScale, pixelRatio, etc.
+	const canvasCenter = applyDOM(Mv, 0, 0);
+	vCanvas.push(canvasCenter.x);
+	hCanvas.push(canvasCenter.y);
+
+	// If you ALSO want the *visual viewport* centre as a guide, you could add:
+	// vCanvas.push(w * 0.5);
+	// hCanvas.push(h * 0.5);
 
 	for (const o of rootsSet) {
 		// skip selected objects themselves

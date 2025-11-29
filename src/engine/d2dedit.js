@@ -23,6 +23,7 @@ export default class D2DEdit {
 		this.grabLocal = null;
 		this.lastLocal = null;
 		this.hasMoved = false;
+		this.runAfterRender = null;
 
 		// snapshots for standard/uniform edits
 		this.undoSnapshot = null; // { obj, items:[{pidx,i,x,y}] }
@@ -54,6 +55,7 @@ export default class D2DEdit {
 		
 		_events.unall('deselect-2dpoints');
 		_events.on('deselect-2dpoints', () => {
+			console.log('A');
 			this.selectedPoints = [];
 		});
 
@@ -90,6 +92,8 @@ export default class D2DEdit {
 
 	afterRender() {
 		this.selectedObjects = [..._editor.selectedObjects];
+		this.runAfterRender?.();
+		this.runAfterRender = null;
 	}
 	render() {
 		if(_editor.mode != '2D') return;
@@ -170,6 +174,7 @@ export default class D2DEdit {
 			_editor.game2dRef.current && 
 			!_editor.game2dRef.current.contains(e.target)
 		) {
+			console.log('B');
 			this.selectedPoints = [];
 		}
 	}
@@ -190,7 +195,6 @@ export default class D2DEdit {
 
 		const hit = this._pickPoint(e);
 		if(!hit) {
-			this.selectedPoints = [];
 			this._endDrag(false);
 			return;
 		}
@@ -934,6 +938,92 @@ export default class D2DEdit {
 				if(!U.approx(a.x, b.x) || !U.approx(a.y, b.y)) {
 					path[path.length - 1] = { x: a.x, y: a.y };
 				}
+			}
+		}
+	}
+	
+	/* ============================== marquee from gizmo (point selection) ============================== */
+	
+	marqueeDropped({ worldRect, additive }) {
+		if (_editor.mode !== '2D') return;
+		if (_editor.tool !== 'select') return;
+	
+		const selectedObjects = _editor.selectedObjects;
+		if (!worldRect || selectedObjects.length < 1) return;
+	
+		const rect = worldRect;
+	
+		// ----- 1) normalise rect in WORLD space -----
+		let minWX = rect.x;
+		let maxWX = rect.x + rect.w;
+		let minWY = rect.y;
+		let maxWY = rect.y + rect.h;
+		if (maxWX < minWX) { const t = minWX; minWX = maxWX; maxWX = t; }
+		if (maxWY < minWY) { const t = minWY; minWY = maxWY; maxWY = t; }
+	
+		// ----- 2) project world rect → CANVAS space (same as points are drawn in) -----
+		const Mv = U.viewMatrix(this.d2drenderer); // world → canvas
+	
+		const c00 = U.applyDOM(Mv, minWX, minWY);
+		const c10 = U.applyDOM(Mv, maxWX, minWY);
+		const c11 = U.applyDOM(Mv, maxWX, maxWY);
+		const c01 = U.applyDOM(Mv, minWX, maxWY);
+	
+		let cMinX = Math.min(c00.x, c10.x, c11.x, c01.x);
+		let cMaxX = Math.max(c00.x, c10.x, c11.x, c01.x);
+		let cMinY = Math.min(c00.y, c10.y, c11.y, c01.y);
+		let cMaxY = Math.max(c00.y, c10.y, c11.y, c01.y);
+	
+		const newly = [];
+	
+		for (const obj of selectedObjects) {
+			const g2d = obj.graphic2d;
+			if (!g2d) continue;
+	
+			const paths = Array.isArray(g2d._paths) ? g2d._paths : [];
+			if (paths.length < 1) continue;
+	
+			// local → world → canvas (same as render()/ _pickPoint())
+			const world  = U.worldDOMMatrix(obj);
+			const screen = U.viewMatrix(this.d2drenderer).multiply(world);
+	
+			for (let pidx = 0; pidx < paths.length; pidx++) {
+				const path = paths[pidx] || [];
+				if (path.length === 0) continue;
+	
+				const logical = U.logicalPoints(path);
+				for (let li = 0; li < logical.length; li++) {
+					const pL = logical[li];
+					const sp = U.applyDOM(screen, pL.x, pL.y); // canvas coords
+	
+					if (
+						sp.x >= cMinX && sp.x <= cMaxX &&
+						sp.y >= cMinY && sp.y <= cMaxY
+					) {
+						let s = this._isSelected(obj, pidx, li);
+						
+						if (!s) {
+							newly.push({ obj, pidx, lindex: li });
+						}
+					}
+				}
+			}
+		}
+		
+		const pts = [...this.selectedPoints];
+		
+		this.runAfterRender = () => {
+			if (newly.length < 1) {
+				if (!additive)
+					this.selectedPoints = [];
+				return;
+			}
+			
+			if (!additive) {
+				this.selectedPoints = newly;
+			} else {
+				pts.push(...newly);
+				this.selectedPoints = pts;
 			}
 		}
 	}

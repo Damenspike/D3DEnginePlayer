@@ -28,6 +28,7 @@ export default function VectorInput({
 	values = [],
 	onChange, // (vectorLikeWithDash)
 	onSave,   // (vectorLikeWithDash)
+	type = 'Vector3'
 }) {
 	const sig = useMemo(() => Array.isArray(values) ? values.map(v => `${v?.x},${v?.y},${v?.z}`).join('|') : '', [values]);
 	const initial = useMemo(() => deriveDisplay(values), [sig]);
@@ -71,7 +72,7 @@ export default function VectorInput({
 	return (
 		<div className="vector-input">
 			{label ? <label>{label}</label> : null}
-			{(['x','y','z']).map(axis => (
+			{(type == 'Vector2' ? ['x', 'y'] : ['x', 'y', 'z']).map(axis => (
 				<input
 					key={axis}
 					className="tf"

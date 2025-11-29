@@ -31,6 +31,11 @@ export default class D2DTextInput {
 		const fullText = typeof payload.text === 'string'
 			? payload.text
 			: String(t2d.text ?? '');
+		
+		const inputTabIndex = Number.isFinite(t2d.inputTabIndex)
+			? t2d.inputTabIndex
+			: 0;
+		const isInput = (t2d.isInput === true);
 
 		const font          = payload.font || '16px sans-serif';
 		const letterSpacing = Number(payload.letterSpacing || 0);
@@ -93,6 +98,8 @@ export default class D2DTextInput {
 		this.registry.push({
 			obj: d3dobject,
 			text: fullText,
+			isInput,
+			inputTabIndex,
 			...payload,
 			letterSpacing,
 			font,
@@ -154,6 +161,38 @@ export default class D2DTextInput {
 	
 			const t2d = this.active.t2d || {};
 			const multiline = (t2d.multiline !== false); // default true
+			
+			// ---------- TAB NAVIGATION ----------
+			if (ev.key === 'Tab') {
+				ev.preventDefault(); // don’t let browser change DOM focus
+			
+				const forward = !ev.shiftKey;
+				const nextField = this._findNextTabField(forward);
+				if (!nextField) {
+					// No other input to tab to; do nothing.
+					return;
+				}
+			
+				// Activate the new field
+				const text2dNext = nextField.obj.getComponent('Text2D');
+				const t2dNext    = text2dNext?.textProperties || {};
+				this.active      = { obj: nextField.obj, text2d: text2dNext, t2d: t2dNext };
+			
+				const newText = String(t2dNext.text ?? '');
+				const len     = newText.length;
+			
+				// Decide selection behavior: here we select all, so Tab = easy overwrite.
+				this.anchor = 0;
+				this.selA   = 0;
+				this.selB   = len;
+				this.caret  = len;
+			
+				this._focusIME(newText, this.selA, this.selB);
+				this._ensureCaretVisible();
+				this._blinkT0 = performance.now();
+				this.r._dirty = true;
+				return;
+			}
 	
 			// --- Select all: Ctrl/⌘ + A ---
 			if ((ev.key === 'a' || ev.key === 'A') && (ev.ctrlKey || ev.metaKey)) {
@@ -511,7 +550,7 @@ export default class D2DTextInput {
 				}
 	
 				// Give some breathing room (padding)
-				const pad = 12;
+				const pad = 24;
 				
 				let minScrollX = ax + caretOffset - (f.contentW - pad);
 				let maxScrollX = ax + caretOffset - pad;
@@ -533,5 +572,53 @@ export default class D2DTextInput {
 		text2d.scrollX = scrollX;
 		text2d.scrollY = scrollY;
 		this.r._dirty = true;
+	}
+	
+	_findNextTabField(forward = true) {
+		if (!this.active) return null;
+		if (!this.registry.length) return null;
+	
+		const curObj = this.active.obj;
+	
+		// Collect all input fields with their tab indices
+		const entries = [];
+		for (let i = 0; i < this.registry.length; i++) {
+			const f = this.registry[i];
+			if (!f.isInput) continue;
+	
+			entries.push({
+				field: f,
+				obj: f.obj,
+				tabIndex: f.inputTabIndex ?? 0,
+				order: i // fallback tie-breaker: draw order / registration order
+			});
+		}
+	
+		if (!entries.length) return null;
+	
+		// Sort by tabIndex, then by registration order
+		entries.sort((a, b) => {
+			if (a.tabIndex !== b.tabIndex) return a.tabIndex - b.tabIndex;
+			return a.order - b.order;
+		});
+	
+		// Find current in sorted list
+		let curIdx = entries.findIndex(e => e.obj === curObj);
+		if (curIdx < 0) return null; // active not in registry? bail
+	
+		const n = entries.length;
+		if (n <= 1) return null; // nothing to tab to
+	
+		let nextIdx;
+		if (forward) {
+			nextIdx = (curIdx + 1) % n;
+		} else {
+			nextIdx = (curIdx - 1 + n) % n;
+		}
+	
+		// If the next is actually the same as current (only one input), ignore
+		if (entries[nextIdx].obj === curObj) return null;
+	
+		return entries[nextIdx].field;
 	}
 }

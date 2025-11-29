@@ -499,6 +499,8 @@ export default function Inspector() {
 			console.error('Fatal: Dummy object name undefined', dummyObject);
 			return;
 		}
+		const allGraphic2D = objects.filter(o => o.hasComponent('Graphic2D')).length === objects.length;
+		
 		return (
 			<InspectorCell 
 				id="insp-cell-object" 
@@ -573,13 +575,16 @@ export default function Inspector() {
 										values={objects.map(o => o.position)} 
 										onSave={vector => {
 											objects.forEach(object => {
-												object.__inspApplyPos = () => object.setPosition(
-													new THREE.Vector3(
-														vector.x == '-' ? object.position.x : vector.x, 
-														vector.y == '-' ? object.position.y : vector.y, 
-														vector.z == '-' ? object.position.z : vector.z
-													)
-												);
+												object.__inspApplyPos = () => {
+													object.setPosition(
+														new THREE.Vector3(
+															vector.x == '-' ? object.position.x : vector.x, 
+															vector.y == '-' ? object.position.y : vector.y, 
+															vector.z == '-' ? object.position.z : vector.z
+														)
+													);
+													update();
+												}
 												object.__inspApplyPos();
 											});
 											
@@ -609,13 +614,16 @@ export default function Inspector() {
 										))}
 										onSave={vector => {
 											objects.forEach(object => {
-												object.__inspApplyRot = () => object.setRotation(
-													new THREE.Euler(
-														vector.x == '-' ? object.rotation.x : THREE.MathUtils.degToRad(vector.x), 
-														vector.y == '-' ? object.rotation.y : THREE.MathUtils.degToRad(vector.y), 
-														vector.z == '-' ? object.rotation.z : THREE.MathUtils.degToRad(vector.z)
-													)
-												);
+												object.__inspApplyRot = () => {
+													object.setRotation(
+														new THREE.Euler(
+															vector.x == '-' ? object.rotation.x : THREE.MathUtils.degToRad(vector.x), 
+															vector.y == '-' ? object.rotation.y : THREE.MathUtils.degToRad(vector.y), 
+															vector.z == '-' ? object.rotation.z : THREE.MathUtils.degToRad(vector.z)
+														)
+													);
+													update();
+												}
 												object.__inspApplyRot();
 											});
 											
@@ -639,13 +647,16 @@ export default function Inspector() {
 										values={objects.map(o => o.scale)} 
 										onSave={vector => {
 											objects.forEach(object => {
-												object.__inspApplyScl = () => object.setScale(
-													new THREE.Vector3(
-														vector.x == '-' ? object.scale.x : vector.x, 
-														vector.y == '-' ? object.scale.y : vector.y, 
-														vector.z == '-' ? object.scale.z : vector.z
-													)
-												);
+												object.__inspApplyScl = () => {
+													object.setScale(
+														new THREE.Vector3(
+															vector.x == '-' ? object.scale.x : vector.x, 
+															vector.y == '-' ? object.scale.y : vector.y, 
+															vector.z == '-' ? object.scale.z : vector.z
+														)
+													);
+													update();
+												}
 												object.__inspApplyScl();
 											});
 											
@@ -663,6 +674,49 @@ export default function Inspector() {
 										}}
 									/>
 								</div>
+								
+								{
+									allGraphic2D && (
+										<div className="field vector-field">
+											<VectorInput 
+												label="Size"
+												type="Vector2"
+												values={objects.map( 
+													o => {
+														const g2d = o.getComponent('Graphic2D');
+														return new THREE.Vector2(g2d.width, g2d.height);
+													}
+												)}
+												onSave={vector => {
+													objects.forEach(o => {
+														const g2d = o.getComponent('Graphic2D');
+														o.__inspApplySize = () => {
+															o.__oldSize = {width: g2d.width, height: g2d.height};
+															g2d.width = vector.x;
+															g2d.height = vector.y;
+															update();
+														}
+														o.__inspApplySize();
+													});
+													
+													_editor.addStep({
+														name: 'Update size',
+														undo: () => {
+															objects.forEach(o => {
+																const g2d = o.getComponent('Graphic2D');
+																g2d.width = o.__oldSize.width;
+																g2d.height = o.__oldSize.height;
+															});
+														},
+														redo: () => {
+															objects.forEach(o => o.__inspApplySize());
+														}
+													});
+												}}
+											/>
+										</div>
+									)
+								}
 								<div style={{height: 20}}></div>
 								<div className="vector-input vector-input--top">
 									<div>

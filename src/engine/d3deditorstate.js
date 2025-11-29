@@ -198,6 +198,9 @@ export default class D3DEditorState {
 		const objects = [];
 		
 		selectObjects.forEach(object => {
+			if(objects.includes(object))
+				return;
+			
 			if(object.part || this.isPartOfFocus(object))
 				objects.push(object);
 		});
@@ -214,6 +217,8 @@ export default class D3DEditorState {
 	addSelection(selectObjects, addStep = true) {
 		if(!selectObjects || !Array.isArray(selectObjects))
 			selectObjects = [];
+			
+		selectObjects = selectObjects.filter(object => !this.selectedObjects.includes(object));
 			
 		const objects = [];
 		
@@ -235,6 +240,9 @@ export default class D3DEditorState {
 		const oldSelection = [...this.selectedObjects];
 		
 		objects.forEach(object => {
+			if(!this.selectedObjects.includes(object))
+				return;
+			
 			this.selectedObjects.splice(
 				this.selectedObjects.indexOf(object),
 				1

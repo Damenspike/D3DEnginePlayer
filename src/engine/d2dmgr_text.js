@@ -145,6 +145,20 @@ export default class TextManager {
 		this.textProperties.isInput = v;
 	}
 	
+	get inputFormat() {
+		return this.textProperties.inputFormat;
+	}
+	set inputFormat(v) {
+		this.textProperties.inputFormat = v;
+	}
+	
+	get inputTabIndex() {
+		return this.textProperties.inputTabIndex;
+	}
+	set inputTabIndex(v) {
+		this.textProperties.inputTabIndex = v;
+	}
+	
 	get caretColor() {
 		return this.textProperties.caretColor;
 	}

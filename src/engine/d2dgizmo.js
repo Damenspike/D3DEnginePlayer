@@ -771,6 +771,14 @@ export default class D2DGizmo {
 			const minPx = 6;
 			const minWorld = U.pxToWorld(this.d2drenderer, minPx);
 			const isRealMarquee = Math.max(rect.w, rect.h) >= minWorld;
+			
+			if (isRealMarquee) {
+				const edit = this.d2drenderer.edit;
+				edit.marqueeDropped({
+					worldRect: rect,
+					additive: !!event?.shiftKey
+				});
+			}
 
 			if(isRealMarquee) {
 				const roots = this._marqueeRootsUnderFocus();
