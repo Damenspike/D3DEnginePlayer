@@ -355,7 +355,7 @@ export default class D2DGizmo {
 			const objs = (_editor.selectedObjects || []).filter(o => o?.is2D);
 			if(objs.length === 1) {
 				const obj = objs[0];
-				if(this._hitPivotKnobWorld(e, obj)) {
+				if (U.hitPivotKnobWorld(e, this.canvas, this.d2drenderer, obj, this.pivotPointRadius)) {
 		
 					// double-click to center
 					if(this.lastPivotClick) {
@@ -363,32 +363,53 @@ export default class D2DGizmo {
 							_time.now - this.lastPivotClick.time < 0.4 &&
 							obj === this.lastPivotClick.object
 						) {
-							if(obj.graphic2d) {
-								// existing graphic case (unchanged)
+							if (obj.graphic2d) {
 								const center = U.localBoundsCenter(obj);
-								if(!center) return;
+								if (!center) return;
+							
+								const data = U.setupGraphicPivotData(obj);
+								if (!data) return;
+							
 								const { cx, cy } = center;
-					
-								const res = U.repositionPivotTo(obj, cx, cy, { commit: true });
-								if(res) {
-									_editor?.addStep?.({
-										name: 'Center 2D Pivot',
-										undo: () => {
-											obj.graphic2d._paths = U.clonePaths(res.before.paths);
-											obj.position.x = res.before.pos.x;
-											obj.position.y = res.before.pos.y;
-											obj.checkSymbols?.();
-										},
-										redo: () => {
-											obj.graphic2d._paths = U.clonePaths(res.after.paths);
-											obj.position.x = res.after.pos.x;
-											obj.position.y = res.after.pos.y;
-											obj.checkSymbols?.();
-										}
-									});
-								}
+							
+								// BEFORE snapshot
+								const before = {
+									obj,
+									paths: U.clonePaths(data.basePaths),
+									pos:   { x: data.basePos.x, y: data.basePos.y }
+								};
+							
+								// apply centre pivot (dx,dy = cx,cy)
+								U.applyGraphicPivot(obj, data, cx, cy);
+							
+								// AFTER snapshot
+								const after = {
+									obj,
+									paths: U.clonePaths(obj.graphic2d._paths || []),
+									pos:   {
+										x: obj.position?.x || 0,
+										y: obj.position?.y || 0
+									}
+								};
+							
+								_editor?.addStep?.({
+									name: 'Center 2D Pivot',
+									undo: () => {
+										obj.graphic2d._paths = U.clonePaths(before.paths);
+										const p = obj.position || (obj.position = { x:0, y:0, z:0 });
+										p.x = before.pos.x;
+										p.y = before.pos.y;
+										obj.checkSymbols?.();
+									},
+									redo: () => {
+										obj.graphic2d._paths = U.clonePaths(after.paths);
+										const p = obj.position || (obj.position = { x:0, y:0, z:0 });
+										p.x = after.pos.x;
+										p.y = after.pos.y;
+										obj.checkSymbols?.();
+									}
+								});
 							} else {
-								// container case - let helper compute center in local space
 								this._centerContainerPivot(obj);
 							}
 							return;
@@ -401,50 +422,52 @@ export default class D2DGizmo {
 					const inv0  = U.invert(Mw0);
 					const mW    = U.eventToWorld(e, this.canvas, this.d2drenderer);
 					const local = U.applyMat(inv0, mW.x, mW.y);
-		
-					const basePos = { x: obj.position?.x || 0, y: obj.position?.y || 0 };
+					
 					const isGraphic = !!obj.graphic2d;
-		
-					let basePaths = null;
-					if(isGraphic) {
-						basePaths = U.clonePaths(obj.graphic2d?._paths || []);
-					}
-		
+					
+					let graphicData   = null;
 					let containerData = null;
-					if(!isGraphic) {
+					
+					if (isGraphic) {
+						graphicData = U.setupGraphicPivotData(obj);
+						if (!graphicData) return;
+					} else {
 						containerData = this._setupContainerPivotData(obj);
-						if(!containerData) {
-							// nothing useful to pivot on (no children), bail out
+						if (!containerData) {
 							return;
 						}
 					}
-		
+					
 					this.state.pivotDrag = {
 						active: true,
 						obj,
 						kind: isGraphic ? 'graphic' : 'container',
 						startLocal: { x: local.x, y: local.y },
 						lastLocal:  { x: local.x, y: local.y },
-						basePos,
-						basePaths,
-						container: containerData,
-						inv0 // frozen inverse world->local
+						graphic:    graphicData,
+						container:  containerData,
+						inv0
 					};
-		
-					this.dragging = true; // ensure mouseup is seen
+					
+					this.dragging = true;
 					this.canvas.style.cursor = 'grabbing';
 					e.preventDefault();
 					return;
 				}
 			}
 		}
-		
-		if(this.d2drenderer.edit?.hoverPoint) return;
 
 		const tool  = _editor.tool;
 		const ttool = _editor.transformTool;
 		const canSelect = tool === 'select' || tool === 'transform';
 		if(!canSelect) return;
+		
+		const edit = this.d2drenderer.edit;
+		if (tool === 'select' && edit) {
+			if (edit.hoverPoint || edit.hoverEdge) {
+				return;
+			}
+		}
 		
 		this.clickTime = _time.now;
 		
@@ -500,15 +523,9 @@ export default class D2DGizmo {
 				const dx = curLocal.x - pd.startLocal.x;
 				const dy = curLocal.y - pd.startLocal.y;
 		
-				if(pd.kind === 'graphic') {
-					// existing behaviour
-					U.repositionPivotTo(pd.obj, dx, dy, {
-						basePaths: pd.basePaths,
-						basePos:   pd.basePos,
-						commit:    false
-					});
-				} else if(pd.kind === 'container') {
-					// new: move pivot by pushing children + container pos
+				if (pd.kind === 'graphic') {
+					U.applyGraphicPivot(pd.obj, pd.graphic, dx, dy);
+				} else if (pd.kind === 'container') {
 					this._previewContainerPivot(pd, dx, dy);
 				}
 		
@@ -558,8 +575,8 @@ export default class D2DGizmo {
 				if(_editor?.draw2d?.snapToObjects) {
 					// cache selection rect baseline in canvas at gesture start
 					const selObjs = _editor.selectedObjects.filter(o => o?.is2D);
-					if(!this.state.startSelRectCanvas) {
-						this.state.startSelRectCanvas = this._selectionRectCanvas(selObjs);
+					if (!this.state.startSelRectCanvas) {
+						this.state.startSelRectCanvas = U.selectionBoundsCanvas(this.d2drenderer, selObjs);
 					}
 					// cache guide lines from all 2D objects under focus (excluding selection)
 					if(!this.state.guides) {
@@ -678,30 +695,47 @@ export default class D2DGizmo {
 			const px = (pd.lastLocal?.x ?? pd.startLocal.x);
 			const py = (pd.lastLocal?.y ?? pd.startLocal.y);
 		
-			if(pd.kind === 'graphic') {
-				const res = U.repositionPivotTo(pd.obj, px, py, {
-					basePaths: pd.basePaths,
-					basePos:   pd.basePos,
-					commit:    true
-				});
-		
-				if(res) {
-					_editor.addStep?.({
-						name: 'Move 2D Pivot',
-						undo: () => {
-							pd.obj.graphic2d._paths = U.clonePaths(res.before.paths);
-							pd.obj.position.x = res.before.pos.x;
-							pd.obj.position.y = res.before.pos.y;
-							pd.obj.checkSymbols?.();
-						},
-						redo: () => {
-							pd.obj.graphic2d._paths = U.clonePaths(res.after.paths);
-							pd.obj.position.x = res.after.pos.x;
-							pd.obj.position.y = res.after.pos.y;
-							pd.obj.checkSymbols?.();
-						}
-					});
+			if (pd.kind === 'graphic') {
+				const g = pd.obj.graphic2d;
+				if (!g || !pd.graphic) {
+					this.state.pivotDrag = null;
+					this.dragging = false;
+					if (_editor.tool != 'pan') this.canvas.style.cursor = 'default';
+					return;
 				}
+				
+				const before = {
+					obj: pd.obj,
+					paths: U.clonePaths(pd.graphic.basePaths),
+					pos:   { x: pd.graphic.basePos.x, y: pd.graphic.basePos.y }
+				};
+				
+				const after = {
+					obj: pd.obj,
+					paths: U.clonePaths(g._paths || []),
+					pos:   {
+						x: pd.obj.position?.x || 0,
+						y: pd.obj.position?.y || 0
+					}
+				};
+				
+				_editor.addStep?.({
+					name: 'Move 2D Pivot',
+					undo: () => {
+						pd.obj.graphic2d._paths = U.clonePaths(before.paths);
+						const p = pd.obj.position || (pd.obj.position = { x:0, y:0, z:0 });
+						p.x = before.pos.x;
+						p.y = before.pos.y;
+						pd.obj.checkSymbols?.();
+					},
+					redo: () => {
+						pd.obj.graphic2d._paths = U.clonePaths(after.paths);
+						const p = pd.obj.position || (pd.obj.position = { x:0, y:0, z:0 });
+						p.x = after.pos.x;
+						p.y = after.pos.y;
+						pd.obj.checkSymbols?.();
+					}
+				});
 			} else if(pd.kind === 'container') {
 				// commit container pivot move: snapshot before/after children + container pos
 				const before = {
@@ -911,7 +945,7 @@ export default class D2DGizmo {
 
 				// cache selection rect + guides for snapping baseline
 				const sel2 = _editor.selectedObjects.filter(o => o?.is2D);
-				this.state.startSelRectCanvas = this._selectionRectCanvas(sel2);
+				this.state.startSelRectCanvas = U.selectionBoundsCanvas(this.d2drenderer, sel2);
 				this.state.guides = U.buildAlignGuides(this.d2drenderer, this.canvas, _editor.focus, new Set(sel2));
 			}
 		} else {
@@ -1067,52 +1101,6 @@ export default class D2DGizmo {
 			if(this._hitObjectDeep(r, wx, wy)) return r;
 		}
 		return null;
-	}
-
-	/* ========================= SNAP HELPERS (SCREEN/PIXEL SPACE) ========================= */
-
-	_selectionRectCanvas(objs) {
-		if(!objs || !objs.length) return null;
-		let l = +Infinity, r = -Infinity, t = +Infinity, b = -Infinity;
-		const Mv = U.viewMatrix(this.d2drenderer);
-
-		for (const o of objs) {
-			const bb = U.worldAABBDeep(o);
-			if(!bb) continue;
-			const corners = [
-				{ x: bb.minX, y: bb.minY },
-				{ x: bb.maxX, y: bb.minY },
-				{ x: bb.maxX, y: bb.maxY },
-				{ x: bb.minX, y: bb.maxY }
-			];
-			for (const c of corners) {
-				const p = U.applyDOM(Mv, c.x, c.y);
-				if(p.x < l) l = p.x; if(p.x > r) r = p.x;
-				if(p.y < t) t = p.y; if(p.y > b) b = p.y;
-			}
-		}
-		if(!Number.isFinite(l) || !Number.isFinite(r) || !Number.isFinite(t) || !Number.isFinite(b)) return null;
-		return { l, r, t, b, cx:(l+r)/2, cy:(t+b)/2 };
-	}
-
-	_objectRectCanvas(o) {
-		const bb = U.worldAABBDeep(o);
-		if(!bb) return null;
-		const Mv = U.viewMatrix(this.d2drenderer);
-		let l = +Infinity, r = -Infinity, t = +Infinity, b = -Infinity;
-		const corners = [
-			{ x: bb.minX, y: bb.minY },
-			{ x: bb.maxX, y: bb.minY },
-			{ x: bb.maxX, y: bb.maxY },
-			{ x: bb.minX, y: bb.maxY }
-		];
-		for (const c of corners) {
-			const p = U.applyDOM(Mv, c.x, c.y);
-			if(p.x < l) l = p.x; if(p.x > r) r = p.x;
-			if(p.y < t) t = p.y; if(p.y > b) b = p.y;
-		}
-		if(!Number.isFinite(l) || !Number.isFinite(r) || !Number.isFinite(t) || !Number.isFinite(b)) return null;
-		return { l, r, t, b, cx:(l+r)/2, cy:(t+b)/2 };
 	}
 	
 	/* ============ cursor tracking for anchored zoom ============ */
@@ -1309,20 +1297,6 @@ export default class D2DGizmo {
 	
 	_resetCursor() {
 		this.canvas.style.cursor = '';
-	}
-	
-	_hitPivotKnobWorld(e, obj) {
-		// mouse in world coords
-		const mW = U.eventToWorld(e, this.canvas, this.d2drenderer);
-	
-		// pivot (local 0,0) in world coords
-		const Mw = U.worldMatrix(obj);
-		const pW = U.applyMat(Mw, 0, 0);
-	
-		// compare in world units; knob radius is N pixels -> convert to world
-		const rW = U.pxToWorld(this.d2drenderer, this.pivotPointRadius);
-		const dx = pW.x - mW.x, dy = pW.y - mW.y;
-		return (dx*dx + dy*dy) <= (rW * rW);
 	}
 	
 	_setupContainerPivotData(obj) {

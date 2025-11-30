@@ -868,23 +868,65 @@ export default class D2DRenderer {
 		const fillPaintVal = graphic.fillColor ?? '#ffffffff';
 		const borderRadius = Math.max(0, Number(graphic.borderRadius ?? 0));
 	
-		const outlineOn    = graphic.outline === true;
-		const outlinePaintVal = graphic.outlineColor ?? gLineColor;
-		const outlineWidth = Number(graphic.outlineWidth ?? gLineWidth);
+		const outlineOn        = graphic.outline === true;
+		const outlinePaintVal  = graphic.outlineColor ?? gLineColor;
+		const outlineWidth     = Number(graphic.outlineWidth ?? gLineWidth);
 	
 		let paths = Array.isArray(graphic._paths) ? graphic._paths.filter(p => Array.isArray(p)) : [];
 		if (Array.isArray(graphic._points)) { paths.push([...graphic._points]); delete graphic._points; }
 		graphic._paths = paths;
 		if (paths.length === 0) return;
 	
-		const makeRawPath = (pts, closed) => {
+		// ---- helpers: curves + paths ----
+		const hasCurveSegments = (pts) => {
+			if (!Array.isArray(pts)) return false;
+			for (let i = 1; i < pts.length; i++) {
+				const p = pts[i];
+				if (p && Number.isFinite(p.cx) && Number.isFinite(p.cy))
+					return true;
+			}
+			return false;
+		};
+	
+		// Build a Path2D from points, supporting optional quadratic curves.
+		// Convention: each point AFTER the first may define cx/cy as a control
+		// point for the segment from the previous point -> this point.
+		const buildCurvedPath = (pts, closed) => {
 			const p = new Path2D();
-			p.moveTo(pts[0].x, pts[0].y);
-			for (let i = 1; i < pts.length; i++) p.lineTo(pts[i].x, pts[i].y);
-			if (closed) p.closePath();
+			const first = pts[0];
+			p.moveTo(first.x, first.y);
+	
+			for (let i = 1; i < pts.length; i++) {
+				const pt   = pts[i];
+				const useCurve = Number.isFinite(pt.cx) && Number.isFinite(pt.cy);
+				if (useCurve) {
+					p.quadraticCurveTo(pt.cx, pt.cy, pt.x, pt.y);
+				} else {
+					p.lineTo(pt.x, pt.y);
+				}
+			}
+	
+			if (closed) {
+				// Optional: handle a curved closing segment if the first point
+				// defines a control point (Flash-style "back to start" curve).
+				const firstCPValid = Number.isFinite(first.cx) && Number.isFinite(first.cy);
+				const last         = pts[pts.length - 1];
+				if (!approx(last.x, first.x) || !approx(last.y, first.y)) {
+					// Shape isn't explicitly closed by a duplicate final point.
+					if (firstCPValid) {
+						p.quadraticCurveTo(first.cx, first.cy, first.x, first.y);
+					} else {
+						p.lineTo(first.x, first.y);
+					}
+				}
+				p.closePath();
+			}
+	
 			return p;
 		};
 	
+		// Old rounded-corner approximation kept as-is, for the case where
+		// there are *no* authored curve segments.
 		const makeRoundedPath = (pts, radius) => {
 			const base = pts.slice(0, -1);
 			const count = base.length;
@@ -907,6 +949,7 @@ export default class D2DRenderer {
 			return p;
 		};
 	
+		// ---- world transform ----
 		let m = new DOMMatrix();
 		{
 			const chain = [];
@@ -926,7 +969,7 @@ export default class D2DRenderer {
 		const masterAlpha = isInFocus ? 1 : masterUnfocusAlpha;
 	
 		// Build combined closed path + collect bounds for gradient paints
-		const combo = new Path2D();
+		const combo       = new Path2D();
 		const closedPaths = [];
 		const openStrokes = [];
 		let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -936,17 +979,25 @@ export default class D2DRenderer {
 			const points = pts.filter(p => p && Number.isFinite(p.x) && Number.isFinite(p.y));
 			if (points.length === 0) continue;
 	
-			const first = points[0], last = points[points.length - 1];
+			const first = points[0];
+			const last  = points[points.length - 1];
 			const isClosed = points.length >= 3 && approx(first.x, last.x) && approx(first.y, last.y);
+			const hasCurves = hasCurveSegments(points);
 	
 			if (isClosed) {
-				const raw = makeRawPath(points, true);
-				const rounded = (borderRadius > 0 && points.length >= 3) ? makeRoundedPath(points, borderRadius) : null;
-				const path = rounded || raw;
+				// If user supplied curves, honour them and skip auto-rounded corners.
+				let path;
+				if (!hasCurves && borderRadius > 0 && points.length >= 3) {
+					const rounded = makeRoundedPath(points, borderRadius);
+					path = rounded || buildCurvedPath(points, true);
+				} else {
+					path = buildCurvedPath(points, true);
+				}
+	
 				combo.addPath(path);
 				closedPaths.push({ path, points });
 	
-				// local bounds for gradient mapping
+				// local bounds for gradient mapping (anchors only – OK approximation)
 				for (const p of points) {
 					if (p.x < minX) minX = p.x;
 					if (p.y < minY) minY = p.y;
@@ -954,11 +1005,15 @@ export default class D2DRenderer {
 					if (p.y > maxY) maxY = p.y;
 				}
 			} else {
+				// open strokes – we still want curve segments here
 				openStrokes.push(points);
 			}
 		}
+	
 		const haveBounds = isFinite(minX) && isFinite(minY) && isFinite(maxX) && isFinite(maxY);
-		const bounds = haveBounds ? { x:minX, y:minY, w:Math.max(0, maxX-minX), h:Math.max(0, maxY-minY) } : { x:0,y:0,w:1,h:1 };
+		const bounds = haveBounds
+			? { x:minX, y:minY, w:Math.max(0, maxX-minX), h:Math.max(0, maxY-minY) }
+			: { x:0, y:0, w:1, h:1 };
 	
 		const BIG = 1e6;
 	
@@ -1001,18 +1056,17 @@ export default class D2DRenderer {
 				ctx.miterLimit  = miterLimit;
 				ctx.stroke(path);
 			}
-			// open
+	
+			// open (curve-aware)
 			for (const points of openStrokes) {
 				if (points.length < 2) continue;
-				ctx.beginPath();
-				ctx.moveTo(points[0].x, points[0].y);
-				for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+				const path = buildCurvedPath(points, false);
 				ctx.lineWidth   = Math.max(0.001, gLineWidth);
 				ctx.strokeStyle = toCanvasPaint(ctx, gLineColor, bounds);
 				ctx.lineCap     = lineCap;
 				ctx.lineJoin    = lineJoin;
 				ctx.miterLimit  = miterLimit;
-				ctx.stroke();
+				ctx.stroke(path);
 			}
 		}
 	

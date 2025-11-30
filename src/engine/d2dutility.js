@@ -82,6 +82,21 @@ export function eventToWorld(e, canvas, renderer) {
 	 // invert: world = (canvas - off) / (pr*vs)
 	 return { x: (cx - off.x) / k, y: (cy - off.y) / k };
  }
+ 
+ export function hitPivotKnobWorld(e, canvas, renderer, obj, radiusPx) {
+	 // mouse in world coords
+	 const mW = eventToWorld(e, canvas, renderer);
+ 
+	 // pivot (local 0,0) in world coords
+	 const Mw = worldMatrix(obj);
+	 const pW = applyMat(Mw, 0, 0);
+ 
+	 // compare in world units; knob radius is N pixels -> convert to world
+	 const rW = pxToWorld(renderer, radiusPx);
+	 const dx = pW.x - mW.x;
+	 const dy = pW.y - mW.y;
+	 return (dx * dx + dy * dy) <= (rW * rW);
+ }
 
 /* ========================= GEOMETRY & PATHS ========================= */
 
@@ -130,17 +145,22 @@ export function pointNearPolyline(x, y, pts, tol) {
  * Aggregate local points out of a Graphic2D object.
  * Supports either { _paths: Point[][] } or { _points: Point[] }.
  */
-export function localPoints(o) {
-	const g = o?.graphic2d;
-	if (!g) return null;
-	if (Array.isArray(g._paths)) {
-		const out = [];
-		for (const path of g._paths) if (Array.isArray(path)) out.push(...path);
-		return out;
-	}
-	if (Array.isArray(g._points)) return g._points;
-	return null;
-}
+export function localPoints(o, stepsPerCurve = 12) {
+	 const g = o?.graphic2d;
+	 if (!g) return null;
+ 
+	 // Reuse the normalizer that already understands _paths vs {points, subtract}
+	 const entries = _collectGraphicEntries(g);
+	 if (!entries.length) return null;
+ 
+	 const out = [];
+	 for (const { points } of entries) {
+		 if (!Array.isArray(points) || points.length === 0) continue;
+		 const flat = _flattenPathQuadratic(points, stepsPerCurve);
+		 if (flat.length) out.push(...flat);
+	 }
+	 return out.length ? out : null;
+ }
 
 /* ========================= TRAVERSAL & BOUNDS ========================= */
 
@@ -295,55 +315,91 @@ export function quatFromZ(rad) {
  * @param {object} opts    { renderer, strokePadPx=6 }
  */
 export function hitObject(o, wx, wy, opts = {}) {
+	if (!o) return false;
+	
+	// Respect masks on this node and its ancestors
 	if (!passesAncestorMasks(o, wx, wy)) return false;
-	
-	const isBitmap = o.hasComponent('Bitmap2D')
-	
-	if (isBitmap) {
-		// same local rect the renderer uses
+
+	const renderer = opts.renderer;
+	const padPx    = Number(opts.strokePadPx ?? 6);
+
+	// -------------------------------------------------
+	// 1) FAST-PATH (same rect as renderer uses)
+	// -------------------------------------------------
+	const simpleSelect = o.hasComponent('Bitmap2D') || o.hasComponent('Text2D');
+	if (simpleSelect) {
 		const rect = localBitmapRectFromGraphic2D(o);
 		if (rect) {
+			// world → local
 			const Minv = worldMatrixInverse(o);
-			const lp = applyMat(Minv, wx, wy); // world → local (handles nesting, rotation, scale)
-			const x0 = rect.x, x1 = rect.x + rect.w;
-			const y0 = rect.y, y1 = rect.y + rect.h;
-			if (lp.x >= x0 && lp.x <= x1 && lp.y >= y0 && lp.y <= y1) return true;
+			const lp   = applyMat(Minv, wx, wy);
+
+			const x0 = rect.x,       x1 = rect.x + rect.w;
+			const y0 = rect.y,       y1 = rect.y + rect.h;
+			if (lp.x >= x0 && lp.x <= x1 && lp.y >= y0 && lp.y <= y1) {
+				return true;
+			}
 		} else {
-			// fallback: world AABB containment if rect is unavailable
+			// Fallback: deep world AABB
 			const bb = worldAABBDeep(o);
-			if (bb && wx >= bb.minX && wx <= bb.maxX && wy >= bb.minY && wy <= bb.maxY) return true;
+			if (
+				bb &&
+				wx >= bb.minX && wx <= bb.maxX &&
+				wy >= bb.minY && wy <= bb.maxY
+			) {
+				return true;
+			}
 		}
-		// If not inside, continue to generic path logic (in case there is any)
+		// If bitmap rect doesn't hit, we still fall through to generic
+		// path logic in case there are extra vector paths.
 	}
-	
-	const pts = localPoints(o);
-	if (!pts || pts.length < 2) return false;
-	
-	const Minv = worldMatrixInverse(o);
-	const lp = applyMat(Minv, wx, wy);
-	
+
+	// -------------------------------------------------
+	// 2) GENERIC GRAPHIC2D (paths, curves, subtracts)
+	// -------------------------------------------------
 	const g = o?.graphic2d || {};
+	const pts = localPoints(o); // MUST handle {points, subtract} etc.
+	if (!pts || pts.length < 2) return false;
+
+	// world → local
+	const Minv = worldMatrixInverse(o);
+	const lp   = applyMat(Minv, wx, wy);
+
 	const hasFill   = !!(g.fill || g.filled || g.hasFill || g.fillStyle);
 	const hasStroke = !!(g.line || g.stroke || g.stroked || g.hasStroke || g.strokeStyle || g.lineWidth);
 	const strokeW   = Number(g.lineWidth || g.strokeWidth || 0);
-	
-	const padPx = Number(opts.strokePadPx ?? 6);
-	const tol = Math.max(pxToWorld(opts.renderer, padPx), strokeW * 0.5);
-	
-	// Fill: treat as closed
-	if (hasFill && pointInPolygon(lp.x, lp.y, pts)) return true;
-	
-	// Stroke: near any segment
-	if (hasStroke && pointNearPolyline(lp.x, lp.y, pts, tol)) return true;
-	
+
+	// Convert pixel padding to world units and blend with stroke width
+	const tol = Math.max(pxToWorld(renderer, padPx), strokeW * 0.5);
+
+	// ---- FILL: use full mask (supports compound paths, subtract, etc.) ----
+	if (hasFill) {
+		// primary: mask-aware
+		if (pointInGraphicMaskLocal(g, lp.x, lp.y)) {
+			return true;
+		}
+		// soft fallback: union of all local points as a polygon (legacy cases)
+		if (pointInPolygon(lp.x, lp.y, pts)) {
+			return true;
+		}
+	}
+
+	// ---- STROKE: approximate with polyline distance test ----
+	if (hasStroke && pointNearPolyline(lp.x, lp.y, pts, tol)) {
+		return true;
+	}
+
 	// Optionally test closing segment for open-but-rendered shapes
 	if (hasStroke && pts.length > 1) {
-	const a = pts[pts.length - 1], b = pts[0];
-	if (distSqToSeg(lp.x, lp.y, a, b) <= tol * tol) return true;
+		const a = pts[pts.length - 1];
+		const b = pts[0];
+		if (distSqToSeg(lp.x, lp.y, a, b) <= tol * tol) {
+			return true;
+		}
 	}
-	
+
 	return false;
- }
+}
 
 /**
  * Deep hit test: a root node vs. world point (includes descendants).
@@ -454,7 +510,19 @@ export function logicalIndexMap(points, lindex, eps = 1e-6) {
 }
 
 export function clonePaths(paths) {
-	return paths.map(path => path.map(p => ({ x: p.x, y: p.y })));
+	if (!Array.isArray(paths)) return [];
+	return paths.map(path => {
+		if (!Array.isArray(path)) return [];
+		return path.map(p => {
+			const q = {};
+			if (p && typeof p === 'object') {
+				for (const k in p) {
+					q[k] = p[k];
+				}
+			}
+			return q;
+		});
+	});
 }
 
 export function snapshotPointsFor(obj, selectedByPath /* Map(pidx -> [lindex]) */) {
@@ -536,21 +604,59 @@ export function buildTextDragMeta(obj, pidx, lindex) {
 export function objBoundsCanvas(d2drenderer, obj) {
 	const g = obj?.graphic2d;
 	const paths = Array.isArray(g?._paths) ? g._paths : [];
-	if (paths.length === 0) return null;
+
+	// ---------- 1) normal case: object has its own paths ----------
+	if (paths.length > 0) {
+		let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
+		const M = childScreenMatrix(d2drenderer, obj);
+
+		for (const path of paths) {
+			for (const p of (path || [])) {
+				const q = new DOMPoint(p.x, p.y).matrixTransform(M);
+				if (q.x < minx) minx = q.x;
+				if (q.y < miny) miny = q.y;
+				if (q.x > maxx) maxx = q.x;
+				if (q.y > maxy) maxy = q.y;
+			}
+		}
+
+		if (!isFinite(minx) || !isFinite(miny) || !isFinite(maxx) || !isFinite(maxy))
+			return null;
+
+		return {
+			l: minx, r: maxx, t: miny, b: maxy,
+			cx: (minx + maxx) * 0.5,
+			cy: (miny + maxy) * 0.5
+		};
+	}
+
+	// ---------- 2) fallback: container2D / is2D with no graphic2d ----------
+	// e.g. Container2D: no own paths, but has 2D children (Text2D, Graphic2D, etc.)
+	const children = obj?.children || [];
+	if (!children.length) return null;
 
 	let minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
-	const M = childScreenMatrix(d2drenderer, obj);
+	let foundAny = false;
 
-	for (const path of paths) {
-		for (const p of (path || [])) {
-			const q = new DOMPoint(p.x, p.y).matrixTransform(M);
-			if (q.x < minx) minx = q.x;
-			if (q.y < miny) miny = q.y;
-			if (q.x > maxx) maxx = q.x;
-			if (q.y > maxy) maxy = q.y;
-		}
+	for (const child of children) {
+		if (!child) continue;
+
+		// Only bother with 2D-ish children
+		if (!child.graphic2d && !child.is2D) continue;
+
+		const cb = objBoundsCanvas(d2drenderer, child);
+		if (!cb) continue;
+
+		foundAny = true;
+		if (cb.l < minx) minx = cb.l;
+		if (cb.t < miny) miny = cb.t;
+		if (cb.r > maxx) maxx = cb.r;
+		if (cb.b > maxy) maxy = cb.b;
 	}
-	if (!isFinite(minx) || !isFinite(miny) || !isFinite(maxx) || !isFinite(maxy)) return null;
+
+	if (!foundAny || !isFinite(minx) || !isFinite(miny) || !isFinite(maxx) || !isFinite(maxy))
+		return null;
+
 	return {
 		l: minx, r: maxx, t: miny, b: maxy,
 		cx: (minx + maxx) * 0.5,
@@ -1564,6 +1670,83 @@ export function scaleGraphicPathsLocalFromEdge(obj, sx, sy, ax = 0, ay = 0) {
 		}
 	}
 }
+export function setupGraphicPivotData(obj) {
+	const g = obj?.graphic2d;
+	if (!g) return null;
+
+	const srcPaths  = Array.isArray(g._paths) ? g._paths : [];
+	const basePaths = clonePaths(srcPaths);
+
+	const pos = obj.position || (obj.position = { x:0, y:0, z:0 });
+	const basePos = { x: pos.x, y: pos.y };
+
+	// frozen transforms at pivot gesture start
+	const parentWorld = worldMatrix(obj.parent || null);
+	const parentInv   = invert(parentWorld);
+	const Mw0         = worldMatrix(obj);
+
+	return { basePos, basePaths, parentInv, Mw0 };
+}
+export function applyGraphicPivot(obj, data, dx, dy) {
+	if (!obj || !data) return;
+
+	const g = obj.graphic2d;
+	if (!g) return;
+
+	const basePaths = data.basePaths || [];
+	const paths     = g._paths || (g._paths = []);
+
+	// ----- 1) geometry shift in local space -----
+	for (let pidx = 0; pidx < basePaths.length; pidx++) {
+		const srcPath = basePaths[pidx] || [];
+		let dstPath   = paths[pidx];
+		if (!dstPath) {
+			dstPath = [];
+			paths[pidx] = dstPath;
+		}
+		dstPath.length = srcPath.length;
+
+		for (let i = 0; i < srcPath.length; i++) {
+			const s = srcPath[i] || {};
+			const t = dstPath[i] || (dstPath[i] = {});
+
+			// copy all props
+			for (const k in s) t[k] = s[k];
+
+			// move anchors
+			t.x = s.x - dx;
+			t.y = s.y - dy;
+
+			// move control points if present, otherwise drop them
+			if (Number.isFinite(s.cx)) t.cx = s.cx - dx; else delete t.cx;
+			if (Number.isFinite(s.cy)) t.cy = s.cy - dy; else delete t.cy;
+		}
+	}
+
+	// trim any extra paths
+	if (paths.length > basePaths.length) paths.length = basePaths.length;
+
+	// ----- 2) move object position in parent space -----
+	const { basePos, Mw0, parentInv } = data;
+	if (!Mw0 || !parentInv) return;
+
+	// original pivot (0,0) in parent space
+	const p0W = applyMat(Mw0, 0, 0);
+	const p0P = applyMat(parentInv, p0W.x, p0W.y);
+
+	// new pivot (dx,dy) in local -> world -> parent
+	const p1W = applyMat(Mw0, dx, dy);
+	const p1P = applyMat(parentInv, p1W.x, p1W.y);
+
+	const dpParentX = p1P.x - p0P.x;
+	const dpParentY = p1P.y - p0P.y;
+
+	const pos = obj.position || (obj.position = { x:0, y:0, z:0 });
+	pos.x = basePos.x + dpParentX;
+	pos.y = basePos.y + dpParentY;
+
+	obj.checkSymbols?.();
+}
 export function getGraphicPivotLocal(obj){
 	// Prefer explicit pivots if your system exposes them
 	const g = obj?.graphic2d;
@@ -1629,6 +1812,51 @@ export function repositionPivotTo(obj, dx, dy, opts = {}) {
 	}
 	return null;
 }
+function _flattenPathQuadratic(points, stepsPerCurve = 12) {
+	const out = [];
+	if (!Array.isArray(points) || points.length === 0) return out;
+
+	let prev = points[0];
+	const px0 = +prev.x || 0;
+	const py0 = +prev.y || 0;
+	out.push({ x: px0, y: py0 });
+
+	for (let i = 1; i < points.length; i++) {
+		const curr = points[i];
+		const x1   = +curr.x || 0;
+		const y1   = +curr.y || 0;
+
+		const hasCtrl =
+			curr != null &&
+			Number.isFinite(curr.cx) &&
+			Number.isFinite(curr.cy);
+
+		if (hasCtrl) {
+			const cx = +curr.cx || 0;
+			const cy = +curr.cy || 0;
+
+			// Quadratic Bezier with control at DEST:
+			// B(t) = (1-t)^2 * P0 + 2(1-t)t * C + t^2 * P1
+			const x0 = +prev.x || 0;
+			const y0 = +prev.y || 0;
+
+			for (let s = 1; s <= stepsPerCurve; s++) {
+				const t   = s / stepsPerCurve;
+				const omt = 1 - t;
+
+				const x = omt * omt * x0 + 2 * omt * t * cx + t * t * x1;
+				const y = omt * omt * y0 + 2 * omt * t * cy + t * t * y1;
+
+				out.push({ x, y });
+			}
+		} else {
+			// Straight segment: just add the endpoint
+			out.push({ x: x1, y: y1 });
+		}
+		prev = curr;
+	}
+	return out;
+}
 
 /* ========================= DEFAULT BUNDLE ========================= */
 
@@ -1654,7 +1882,9 @@ const D2DUtil = {
 	// alpha
 	worldOpacity,
 	// snapping
-	findSnapDelta, buildAlignGuides
+	findSnapDelta, buildAlignGuides,
+	// graphic
+	applyGraphicPivot, setupGraphicPivotData
 };
 
 export default D2DUtil;

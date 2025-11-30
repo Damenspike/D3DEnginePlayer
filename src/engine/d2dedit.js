@@ -42,7 +42,26 @@ export default class D2DEdit {
 
 		// scale meta (used for both iso + axis)
 		// mode: 'iso' | 'axis' ; axis: 'x' | 'y' (when mode === 'axis')
-		this._scaleMeta = null; // { active, mode, axis?, pivot:{x,y}, grab0:{x,y}, affected:Map(pidx->Set(li)), base:Map(pidx->items), undoSnapshot }
+		this._scaleMeta = null;
+		
+		// adding curves
+		this.pointRadius = 5;
+		this.hitRadius   = 8;
+		
+		// edge hit-test (in screen px)
+		this.edgeHitRadius    = 8;   // how close to an edge to grab curve
+		this.edgePointBuffer  = 12;  // keep this radius around endpoints point-only
+		
+		// [{ obj, pidx, lindex }]
+		this.selectedObjects = [];
+		this.selectedPoints  = [];
+		this.hoverPoint      = null;
+		this.hoverEdge  = null;
+		
+		// curve drag state
+		this._curveDrag            = null; // { active, obj, pidx, liA, liB, rawIdxsDest, base:{cx,cy} }
+		this._curveSnapshotBefore  = null;
+		this._curveSnapshotAfter   = null;
 
 		// bindings
 		this._onMouseDown = this._onMouseDown.bind(this);
@@ -55,7 +74,6 @@ export default class D2DEdit {
 		
 		_events.unall('deselect-2dpoints');
 		_events.on('deselect-2dpoints', () => {
-			console.log('A');
 			this.selectedPoints = [];
 		});
 
@@ -94,6 +112,16 @@ export default class D2DEdit {
 		this.selectedObjects = [..._editor.selectedObjects];
 		this.runAfterRender?.();
 		this.runAfterRender = null;
+		
+		// Gone off this edit tool
+		if(_editor.tool != 'select') {
+			if(this._isHoverPointCursor) {
+				this.canvas.style.cursor = 'default';
+				this._isHoverPointCursor = false;
+			}
+			if(this.selectedPoints.length > 0)
+				this.selectedPoints = [];
+		}
 	}
 	render() {
 		if(_editor.mode != '2D') return;
@@ -174,7 +202,6 @@ export default class D2DEdit {
 			_editor.game2dRef.current && 
 			!_editor.game2dRef.current.contains(e.target)
 		) {
-			console.log('B');
 			this.selectedPoints = [];
 		}
 	}
@@ -185,40 +212,198 @@ export default class D2DEdit {
 		
 		const drawer = this.d2drenderer?.drawer;
 		drawer._rebuildSnapCache();
-
+	
 		// Alt+click inserts
 		if(e.altKey && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
 			this._onAltInsert(e);
 			e.preventDefault();
 			return;
 		}
-
+	
 		const hit = this._pickPoint(e);
-		if(!hit) {
+		let curveHit = null;
+		
+		if (!hit) {
+			// No point hit → try edge for curve editing
+			curveHit = this._pickEdge(e);
+			if (!curveHit) {
+				this._endDrag(false);
+				return;
+			}
+		}
+		
+		// ----------------- CURVE EDGE DRAG -----------------
+		if (curveHit) {
+			const { obj, pidx, liA, liB } = curveHit;
+			const g = obj?.graphic2d;
+			const paths = Array.isArray(g?._paths) ? g._paths : [];
+			if (!paths.length) return;
+		
+			const path = paths[pidx] || [];
+			if (path.length < 2) return;
+		
+			// logical view + closed/open info
+			const logical = U.logicalPoints(path);
+			if (!logical || logical.length < 2) return;
+		
+			const closed      = U.isClosedPoints(path);
+			const logicalLen  = logical.length;
+		
+			// normalise logical indices
+			let ia = liA | 0;
+			let ib = liB | 0;
+		
+			if (ia < 0 || ia >= logicalLen) return;
+		
+			if (ib < 0 || ib >= logicalLen) {
+				if (closed) {
+					ib = (ia + 1) % logicalLen;
+				} else {
+					// open path: use next logical if it exists
+					if (ia + 1 < logicalLen) ib = ia + 1;
+					else return;
+				}
+			}
+		
+			const aL = logical[ia];
+			const bL = logical[ib];
+			if (!aL || !bL) return;
+		
+			// midpoint of the chord (used as default when creating a new curve)
+			const mid = {
+				x: (aL.x + bL.x) * 0.5,
+				y: (aL.y + bL.y) * 0.5
+			};
+		
+			// control point lives on destination logical (ib)
+			const rawIdxsDest = U.logicalIndexMap(path, ib);
+		
+			let baseCX = mid.x;
+			let baseCY = mid.y;
+			let hasCtrl = false;
+		
+			if (rawIdxsDest.length) {
+				const p0 = path[rawIdxsDest[0]];
+				if (Number.isFinite(p0.cx) && Number.isFinite(p0.cy)) {
+					baseCX = p0.cx;
+					baseCY = p0.cy;
+					hasCtrl = true; // editing existing curve
+				}
+			}
+		
+			// matrices + mouse in canvas space
+			const world  = U.worldDOMMatrix(obj);
+			const screen = U.viewMatrix(this.d2drenderer).multiply(world);
+			const inv    = screen.inverse();
+		
+			const m           = U.mouseToCanvas(this.canvas, e);
+			const cursorLocal = U.applyDOM(inv, m.x, m.y);
+		
+			// ----- find param t along this curve closest to the click -----
+			let hitT = 0.5;
+		
+			if (hasCtrl) {
+				// existing curve: search along quadratic using current control
+				const steps = 32;
+				let bestD2  = Infinity;
+				let bestT   = 0.5;
+		
+				for (let s = 0; s <= steps; s++) {
+					const t   = s / steps;
+					const omt = 1 - t;
+		
+					const lx = omt * omt * aL.x + 2 * omt * t * baseCX + t * t * bL.x;
+					const ly = omt * omt * aL.y + 2 * omt * t * baseCY + t * t * bL.y;
+		
+					const sp = U.applyDOM(screen, lx, ly); // curve point in canvas
+					const dx = sp.x - m.x;
+					const dy = sp.y - m.y;
+					const d2 = dx * dx + dy * dy;
+		
+					if (d2 < bestD2) {
+						bestD2 = d2;
+						bestT  = t;
+					}
+				}
+				hitT = bestT;
+			} else {
+				// no existing control: new curve, just pull from middle
+				hitT = 0.5;
+			}
+		
+			this.dragging   = true;
+			this.dragObj    = obj;
+			this.grabPath   = pidx;
+			this.grabLIndex = null;
+			this.grabLocal  = { x: cursorLocal.x, y: cursorLocal.y };
+			this.lastLocal  = { x: cursorLocal.x, y: cursorLocal.y };
+			this.hasMoved   = false;
+		
+			this._curveDrag = {
+				active: true,
+				obj,
+				pidx,
+				liA: ia,
+				liB: ib,
+				rawIdxsDest,
+				base:      { cx: baseCX, cy: baseCY }, // original control
+				baseMouse: { x: cursorLocal.x, y: cursorLocal.y },
+				hasCtrl,
+				t: hitT // param of picked point along curve
+			};
+		
+			this._curveSnapshotBefore = U.clonePaths(obj.graphic2d._paths);
+			this._curveSnapshotAfter  = null;
+		
+			// kill other drag meta for this interaction
+			this._textDrag     = null;
+			this._scaleMeta    = null;
+			this.undoSnapshot  = null;
+			this.redoSnapshot  = null;
+		
+			this.canvas.style.cursor = 'grabbing';
+			e.preventDefault();
+			return;
+		}
+		
+		// ----------------- NORMAL POINT DRAG -----------------
+		if (!hit) {
 			this._endDrag(false);
 			return;
 		}
-
+		
 		const mod = (e.metaKey || e.ctrlKey);
 		const add = e.shiftKey && !this.dragging; // still allows shift-add on mousedown
-
-		if(add) {
-			if(!this._isSelected(hit.obj, hit.pidx, hit.lindex)) this.selectedPoints.push(hit);
-		} else if(mod) {
-			if(this._isSelected(hit.obj, hit.pidx, hit.lindex)) this._removeSelected(hit.obj, hit.pidx, hit.lindex);
-			else this.selectedPoints.push(hit);
+		
+		if (add) {
+			// Shift: add to selection
+			if (!this._isSelected(hit.obj, hit.pidx, hit.lindex))
+				this.selectedPoints.push(hit);
+		
+		} else if (mod) {
+			// Ctrl/Cmd: toggle
+			if (this._isSelected(hit.obj, hit.pidx, hit.lindex))
+				this._removeSelected(hit.obj, hit.pidx, hit.lindex);
+			else
+				this.selectedPoints.push(hit);
+		
 		} else {
-			this.selectedPoints = [hit];
+			// Plain click:
+			// - if we clicked an already selected point, KEEP full selection
+			// - if not, replace selection with just this point
+			if (!this._isSelected(hit.obj, hit.pidx, hit.lindex)) {
+				this.selectedPoints = [hit];
+			}
 		}
-
+	
 		// local cursor in dragged object's space
 		const world = U.worldDOMMatrix(hit.obj);
 		const screen = U.viewMatrix(this.d2drenderer).multiply(world);
 		const inv = screen.inverse();
-
+	
 		const m = U.mouseToCanvas(this.canvas, e);
 		const cursorLocal = U.applyDOM(inv, m.x, m.y);
-
+	
 		this.dragging  = true;
 		this.dragObj   = hit.obj;
 		this.grabPath  = hit.pidx;
@@ -226,9 +411,9 @@ export default class D2DEdit {
 		this.grabLocal = { x: cursorLocal.x, y: cursorLocal.y };
 		this.lastLocal = { x: cursorLocal.x, y: cursorLocal.y };
 		this.hasMoved  = false;
-
+	
 		this._beginSnapSession(hit.obj?.parent);
-
+	
 		// Decide whether to use rect-edge mode (Text2D/Bitmap2D) or standard/scale point move
 		if(U.isRectLike2D(this.dragObj)) {
 			this._textDrag = U.buildTextDragMeta(this.dragObj, this.grabPath, this.grabLIndex);
@@ -244,7 +429,7 @@ export default class D2DEdit {
 			this._pathSnapshotBefore = null; this._pathSnapshotAfter = null;
 			this._scaleMeta = null; // lazy-init ifAlt/Shift held during drag
 		}
-
+	
 		this.canvas.style.cursor = 'grabbing';
 		e.preventDefault();
 	}
@@ -252,7 +437,7 @@ export default class D2DEdit {
 	_onMouseMove(e) {
 		if(_editor.mode != '2D') return;
 		if(_editor.tool != 'select') return;
-
+		
 		if(this.dragging && this.dragObj) {
 			const obj = this.dragObj;
 			const g = obj?.graphic2d;
@@ -302,6 +487,54 @@ export default class D2DEdit {
 					this.hasMoved = true;
 					this.lastLocal = targetLocal;
 				}
+				this.canvas.style.cursor = 'grabbing';
+				e.preventDefault();
+				return;
+			}
+			
+			// Curve drag (edge editing – move control point only)
+			if (this._curveDrag?.active) {
+				const cd   = this._curveDrag;
+				const obj  = cd.obj;
+				const g2d  = obj?.graphic2d;
+				const paths = Array.isArray(g2d?._paths) ? g2d._paths : [];
+				if (!paths.length) return;
+			
+				const path = paths[cd.pidx] || [];
+				if (!path.length) return;
+			
+				// logical anchors in *local* space
+				const logical = U.logicalPoints(path);
+				const aL = logical[cd.liA];
+				const bL = logical[cd.liB];
+				if (!aL || !bL) return;
+			
+				const t   = cd.t;          // fixed param along the curve we clicked
+				const omt = 1 - t;
+				const kA  = omt * omt;     // (1 - t)^2
+				const kB  = t * t;         // t^2
+				const denom = 2 * omt * t; // 2(1 - t)t
+			
+				if (denom <= 1e-6) return;
+			
+				const Cx = targetLocal.x;
+				const Cy = targetLocal.y;
+			
+				// Solve for control P so that B(t) == cursorLocal:
+				// C = (1-t)^2 A + 2(1-t)t P + t^2 B
+				// => P = (C - (1-t)^2 A - t^2 B) / (2(1-t)t)
+				const cx = (Cx - kA * aL.x - kB * bL.x) / denom;
+				const cy = (Cy - kA * aL.y - kB * bL.y) / denom;
+			
+				for (const ri of cd.rawIdxsDest) {
+					const p = path[ri];
+					if (!p) continue;
+					p.cx = cx;
+					p.cy = cy;
+				}
+			
+				this.hasMoved  = true;
+				this.lastLocal = targetLocal;
 				this.canvas.style.cursor = 'grabbing';
 				e.preventDefault();
 				return;
@@ -356,11 +589,24 @@ export default class D2DEdit {
 			return;
 		}
 
-		const hit = this._pickPoint(e);
-		this.hoverPoint = hit ? { obj: hit.obj, pidx: hit.pidx, lindex: hit.lindex } : null;
+		const hitPoint = this._pickPoint(e);
+		this.hoverPoint = hitPoint ? { obj: hitPoint.obj, pidx: hitPoint.pidx, lindex: hitPoint.lindex } : null;
 		
-		if(_editor.tool != 'pan')
-			this.canvas.style.cursor = 'default';
+		// Only try edges if we're NOT on a point
+		if (!this.hoverPoint) {
+			const hitEdge = this._pickEdge(e);
+			this.hoverEdge = hitEdge ? hitEdge : null;
+		} else {
+			this.hoverEdge = null;
+		}
+		
+		if (_editor.tool != 'pan') {
+			if (this.hoverPoint || this.hoverEdge) {
+				this.canvas.style.cursor = 'pointer';
+				this._isHoverPointCursor = true;
+			}else
+				this.canvas.style.cursor = 'default';
+		}
 	}
 
 	_onMouseUp() { this._endDrag(true); }
@@ -378,9 +624,22 @@ export default class D2DEdit {
 		if(_editor.tool != 'pan')
 			this.canvas.style.cursor = 'default';
 
-		if(commit && this.hasMoved && this.dragObj) {
+		if (commit && this.hasMoved && this.dragObj) {
 			const obj = this.dragObj;
-			if(this._textDrag?.active) {
+		
+			if (this._curveDrag?.active && this._curveSnapshotBefore) {
+				// if control is almost on the straight line, drop the curve
+				this._maybeStraightenCurve(this._curveDrag);
+			
+				const before = this._curveSnapshotBefore;
+				const after  = U.clonePaths(obj.graphic2d._paths);
+				_editor.addStep?.({
+					name: 'Edit 2D Curve',
+					undo: () => { obj.graphic2d._paths = U.clonePaths(before); obj.checkSymbols?.(); },
+					redo: () => { obj.graphic2d._paths = U.clonePaths(after);  obj.checkSymbols?.(); }
+				});
+				obj.checkSymbols?.();
+			} else if (this._textDrag?.active) {
 				this._pathSnapshotAfter = U.clonePaths(obj.graphic2d._paths);
 				const before = this._pathSnapshotBefore;
 				const after  = this._pathSnapshotAfter;
@@ -391,19 +650,19 @@ export default class D2DEdit {
 						redo: () => { obj.graphic2d._paths = U.clonePaths(after);  obj.checkSymbols?.(); }
 					});
 				}
-			} else if(this._scaleMeta?.active && this._scaleMeta?.undoSnapshot) {
+			} else if (this._scaleMeta?.active && this._scaleMeta?.undoSnapshot) {
 				const before = this._scaleMeta.undoSnapshot;
 				const after  = U.snapshotPointsFor(obj, this._scaleMeta.affected);
 				const name = (this._scaleMeta.mode === 'iso')
-				? 'Uniform Scale 2D Points'
-				: 'Free Scale 2D Points';
+					? 'Uniform Scale 2D Points'
+					: 'Free Scale 2D Points';
 				_editor.addStep?.({
 					name,
 					undo: () => U.applyPointsSnapshot(obj, before),
 					redo: () => U.applyPointsSnapshot(obj, after)
 				});
 				obj.checkSymbols?.();
-			} else if(this.undoSnapshot) {
+			} else if (this.undoSnapshot) {
 				this._maybeAutoCloseOnEnd(obj);
 				this.redoSnapshot = U.snapshotPointsFor(obj, this._selectedLogicalByPathFor(obj));
 				const before = this.undoSnapshot;
@@ -420,19 +679,22 @@ export default class D2DEdit {
 		this._endSnapSession();
 		drawer?._rebuildSnapCache?.();
 		
-		this.dragObj = null;
-		this.grabPath = null;
-		this.grabLIndex = null;
+		this.dragObj   = null;
+		this.grabPath  = null;
+		this.grabLIndex= null;
 		this.grabLocal = null;
 		this.lastLocal = null;
-		this.hasMoved = false;
-
-		this.undoSnapshot = null;
-		this.redoSnapshot = null;
-		this._pathSnapshotBefore = null;
-		this._pathSnapshotAfter  = null;
-		this._textDrag = null;
-		this._scaleMeta = null;
+		this.hasMoved  = false;
+		
+		this.undoSnapshot          = null;
+		this.redoSnapshot          = null;
+		this._pathSnapshotBefore   = null;
+		this._pathSnapshotAfter    = null;
+		this._textDrag             = null;
+		this._scaleMeta            = null;
+		this._curveDrag            = null;
+		this._curveSnapshotBefore  = null;
+		this._curveSnapshotAfter   = null;
 	}
 
 	/* ============================== keyboard (objects only) ============================== */
@@ -705,6 +967,134 @@ export default class D2DEdit {
 					if(d2 <= this.hitRadius * this.hitRadius && d2 < bestD2) {
 						bestD2 = d2;
 						best = { obj, pidx, lindex: li };
+					}
+				}
+			}
+		}
+		return best;
+	}
+	
+	_pickEdge(e) {
+		const mouse = U.mouseToCanvas(this.canvas, e);
+		const objs  = this.selectedObjects;
+		if (!objs.length) return null;
+	
+		const edgeHitRadius = this.edgeHitRadius ?? 8;          // px
+		const pointBuffer   = this.edgePointBuffer ?? (this.hitRadius + 2);
+		const edgeR2  = edgeHitRadius * edgeHitRadius;
+		const pointR2 = pointBuffer   * pointBuffer;
+	
+		let best   = null;
+		let bestD2 = Infinity;
+	
+		// distance from mouse to segment in SCREEN space
+		const segDist2Screen = (mx, my, ax, ay, bx, by) => {
+			const vx = bx - ax, vy = by - ay;
+			const wx = mx - ax, wy = my - ay;
+			const denom = vx * vx + vy * vy;
+			let t = denom > 0 ? (wx * vx + wy * vy) / denom : 0;
+			if (t < 0) t = 0;
+			if (t > 1) t = 1;
+			const px = ax + t * vx;
+			const py = ay + t * vy;
+			const dx = mx - px;
+			const dy = my - py;
+			return dx * dx + dy * dy;
+		};
+	
+		for (const obj of objs) {
+			if (U.isRectLike2D(obj)) continue;
+			
+			const g = obj?.graphic2d;
+			const paths = Array.isArray(g?._paths) ? g._paths : [];
+			if (!paths.length) continue;
+	
+			const world  = U.worldDOMMatrix(obj);
+			const screen = U.viewMatrix(this.d2drenderer).multiply(world);
+	
+			for (let pidx = 0; pidx < paths.length; pidx++) {
+				const path = paths[pidx] || [];
+				if (path.length < 2) continue;
+	
+				const logical = U.logicalPoints(path);
+				if (logical.length < 2) continue;
+	
+				const closed   = U.isClosedPoints(path);
+				const segCount = closed ? logical.length : (logical.length - 1);
+	
+				for (let li = 0; li < segCount; li++) {
+					const liA = li;
+					const liB = closed
+						? (li + 1) % logical.length
+						: (li + 1);
+	
+					if (liB >= logical.length) continue;
+	
+					const aL = logical[liA];
+					const bL = logical[liB];
+					if (!aL || !bL) continue;
+	
+					// screen endpoints (for endpoint buffer & straight fallback)
+					const sa = U.applyDOM(screen, aL.x, aL.y);
+					const sb = U.applyDOM(screen, bL.x, bL.y);
+	
+					// keep a "point only" buffer around endpoints so point picking wins there
+					const dax = mouse.x - sa.x;
+					const day = mouse.y - sa.y;
+					const dbx = mouse.x - sb.x;
+					const dby = mouse.y - sb.y;
+					const d2a = dax * dax + day * day;
+					const d2b = dbx * dbx + dby * dby;
+	
+					if (d2a < pointR2 || d2b < pointR2)
+						continue;
+	
+					// ----- detect if this segment is actually curved -----
+					const rawDestIdxs = U.logicalIndexMap(path, liB);
+	
+					let ctrl = null;
+					for (const ri of rawDestIdxs) {
+						const p = path[ri];
+						if (p && Number.isFinite(p.cx) && Number.isFinite(p.cy)) {
+							ctrl = p;
+							break;
+						}
+					}
+	
+					let segBestD2 = Infinity;
+	
+					if (ctrl) {
+						// CURVED: sample the quadratic in LOCAL space and measure in SCREEN space
+						const steps = 16;
+						const x0 = aL.x, y0 = aL.y;
+						const x1 = bL.x, y1 = bL.y;
+						const cx = +ctrl.cx || 0;
+						const cy = +ctrl.cy || 0;
+	
+						let prev = U.applyDOM(screen, x0, y0);
+	
+						for (let s = 1; s <= steps; s++) {
+							const t   = s / steps;
+							const omt = 1 - t;
+	
+							// quadratic point with control at DEST logical
+							const lx = omt * omt * x0 + 2 * omt * t * cx + t * t * x1;
+							const ly = omt * omt * y0 + 2 * omt * t * cy + t * t * y1;
+	
+							const cur = U.applyDOM(screen, lx, ly);
+							const d2  = segDist2Screen(mouse.x, mouse.y, prev.x, prev.y, cur.x, cur.y);
+							if (d2 < segBestD2) segBestD2 = d2;
+							prev = cur;
+						}
+					} else {
+						// STRAIGHT: distance to chord in SCREEN space
+						segBestD2 = segDist2Screen(mouse.x, mouse.y, sa.x, sa.y, sb.x, sb.y);
+					}
+	
+					if (segBestD2 <= edgeR2 && segBestD2 < bestD2) {
+						bestD2 = segBestD2;
+						// IMPORTANT: this matches what _onMouseDown expects
+						best = { obj, pidx, liA, liB };
 					}
 				}
 			}
@@ -1025,6 +1415,51 @@ export default class D2DEdit {
 				pts.push(...newly);
 				this.selectedPoints = pts;
 			}
+		}
+	}
+	
+	_maybeStraightenCurve(cd) {
+		if (!cd || !cd.obj?.graphic2d?._paths) return;
+	
+		const paths = cd.obj.graphic2d._paths;
+		const path  = paths[cd.pidx] || [];
+		if (!path.length) return;
+	
+		const logical = U.logicalPoints(path);
+		const aL = logical[cd.liA];
+		const bL = logical[cd.liB];
+		if (!aL || !bL) return;
+	
+		if (!cd.rawIdxsDest || !cd.rawIdxsDest.length) return;
+		const p0 = path[cd.rawIdxsDest[0]];
+		if (!p0 || !Number.isFinite(p0.cx) || !Number.isFinite(p0.cy)) return;
+	
+		const cx = p0.cx;
+		const cy = p0.cy;
+	
+		// distance from control to AB (in local space)
+		const vx = bL.x - aL.x;
+		const vy = bL.y - aL.y;
+		const denom = vx*vx + vy*vy;
+		if (denom <= 1e-6) return;
+	
+		const tLine = ((cx - aL.x) * vx + (cy - aL.y) * vy) / denom;
+		const projx = aL.x + tLine * vx;
+		const projy = aL.y + tLine * vy;
+	
+		const dx = cx - projx;
+		const dy = cy - projy;
+	
+		// tolerance in world/local units (based on ~4 px)
+		const tolWorld = U.pxToWorld(this.d2drenderer, 4);
+		if ((dx*dx + dy*dy) > tolWorld * tolWorld) return;
+	
+		// close enough: drop control and make it truly straight
+		for (const ri of cd.rawIdxsDest) {
+			const p = path[ri];
+			if (!p) continue;
+			delete p.cx;
+			delete p.cy;
 		}
 	}
 
