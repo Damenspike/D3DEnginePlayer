@@ -59,6 +59,10 @@ export default function Topbar() {
 		_editor.lightsEnabled = _lightsEnabled;
 	}, [_lightsEnabled]);
 	
+	useEffect(() => {
+		setLightsEnabled(_editor.lightsEnabled);
+	}, [_editor.lightsEnabled]);
+	
 	const openDamen3DWebsite = () => {
 		D3D.openWebsite();
 	}

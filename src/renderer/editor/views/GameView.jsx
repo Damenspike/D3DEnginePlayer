@@ -121,10 +121,18 @@ export default function GameView({editorMode}) {
 			return;
 		
 		const canvas2d = game2dRef.current;
-		let objectHit;
-		let p;
 		
 		const onRightClick = (e) => {
+			
+			const p = eventToWorld(e, _editor.renderer2d.domElement, _editor.renderer2d);
+			
+			const x = e.clientX + 2;
+			const y = e.clientY + 2;
+			
+			const objectHit = _editor.renderer2d.gizmo._pickTop(p.x, p.y);
+			
+			if(objectHit && !_editor.isSelected(objectHit))
+				_editor.setSelection([objectHit]);
 			
 			const defaultCtx = [
 				{
@@ -217,6 +225,14 @@ export default function GameView({editorMode}) {
 					id: 'ungroup',
 					label: 'Ungroup'
 				},
+				...(
+					_editor.selectedObjects.length === 1 && _editor.selectedObjects[0].hasComponent('Bitmap2D') ? [
+						{
+							id: 'trace-bitmap',
+							label: 'Trace Bitmap'
+						}
+					] : []
+				),
 				{ type: 'separator' },
 				{
 					id: 'edit',
@@ -237,18 +253,9 @@ export default function GameView({editorMode}) {
 			];
 			
 			let template = defaultCtx;
-			p = eventToWorld(e, _editor.renderer2d.domElement, _editor.renderer2d);
-			
-			const x = e.clientX + 2;
-			const y = e.clientY + 2;
-			
-			objectHit = _editor.renderer2d.gizmo._pickTop(p.x, p.y);
 			
 			if(objectHit) {
 				template = objectCtx;
-				
-				if(!_editor.isSelected(objectHit))
-					_editor.setSelection([objectHit]);
 			}
 			
 			_events.once('ctx-menu-action', onCtxMenuAction);
@@ -322,6 +329,9 @@ export default function GameView({editorMode}) {
 			}else
 			if(id == 'exportd3dproj') {
 				_editor.exportD3DSelectedObjects({d3dproj: true});
+			}else
+			if(id == 'trace-bitmap') {
+				D3D.openToolWindow('bitmapTrace');
 			}
 		}
 		

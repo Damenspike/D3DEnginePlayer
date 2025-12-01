@@ -32,6 +32,9 @@ contextBridge.exposeInMainWorld('D3D', {
 	invoke: (event, ...params) => {
 		events[event]?.(...params);
 	},
+	sendMessage: (name, ...params) => {
+		ipcRenderer.send('send-message', name, ...params);
+	},
 	path: {
 		join: (...parts) => path.join(...parts),
 		dirname: (p) => path.dirname(p),
@@ -260,6 +263,8 @@ contextBridge.exposeInMainWorld('D3D', {
 	resolveProjectorPath: resolveProjectorPath,
 	getEditorInFocus: () => document.hasFocus(),
 	exportMultipleFiles: (files) => ipcRenderer.invoke('export-multiple-files', files),
+	openToolWindow: (name) => ipcRenderer.send('open-tool-window', name),
+	closeToolWindow: (name) => ipcRenderer.send('close-tool-window', name),
 	
 	theme: {
 		get: () => ipcRenderer.invoke('get-theme'),
@@ -367,3 +372,4 @@ addIPCListener('reset-view');
 addIPCListener('menu-export-assets');
 addIPCListener('export-as-d3d');
 addIPCListener('export-as-d3dproj');
+addIPCListener('send-message');

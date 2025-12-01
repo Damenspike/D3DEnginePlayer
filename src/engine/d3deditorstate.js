@@ -99,6 +99,13 @@ export default class D3DEditorState {
 			_events.invoke('editor-tool', this._tool);
 	}
 	
+	get lightsEnabled() {
+		return this._lightsEnabled && _editor.focus == _root;
+	}
+	set lightsEnabled(v) {
+		this._lightsEnabled = !!v;
+	}
+	
 	constructor() {
 		this.gui = {};
 		this.project = null;
@@ -115,7 +122,7 @@ export default class D3DEditorState {
 		this.console = [];
 		this.lastSingleClick = 0;
 		this._mode = '3D';
-		this.lightsEnabled = false;
+		this._lightsEnabled = false;
 		this.draw2d = {
 			fill: true,
 			line: true,

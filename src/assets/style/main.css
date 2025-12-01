@@ -236,6 +236,10 @@ body, button, input, select {
 		justify-content: flex-end;
 		flex: 1 1 auto;
 	}
+	
+	.vm {
+		align-self: flex-end !important;
+	}
 }
 .no-scrollbar::-webkit-scrollbar {
 	width: 0;

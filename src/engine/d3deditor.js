@@ -34,6 +34,9 @@ import {
 import {
 	onAssetDroppedIntoGameView
 } from './d3deditordrop.js';
+import {
+	traceBitmap2DToGraphic2D
+} from './d2dbitmaptrace.js';
 
 import $ from 'jquery';
 import D2DRenderer from './d2drenderer.js';
@@ -157,7 +160,7 @@ async function initRoot(uri) {
 
 function initRenderers() {
 	const scene = _root.object3d;
-	const renderer3d = new THREE.WebGLRenderer({ antialias: true });
+	const renderer3d = new THREE.WebGLRenderer({ antialias: false });
 	const renderer2d = new D2DRenderer({root: _root, addGizmo: true});
 	
 	renderer3d.setPixelRatio(window.devicePixelRatio);
@@ -379,29 +382,27 @@ function startAnimationLoop() {
 	function animate(nowMs) {
 		_time.tick(nowMs); // updates _time.delta (seconds) + _time.now
 
-		updateObject([
-			'__onInternalEnterFrame',
-			'__onEditorEnterFrame',
-			'onEditorEnterFrame'
-		], _root);
-		
-		render();
-
-		updateObject([
-			'__onInternalExitFrame',
-			'__onEditorExitFrame',
-			'onEditorExitFrame'
-		], _root);
-		
-		_input._afterRenderFrame?.();
+		if(!_editor.__saving) {
+			updateObject([
+				'__onInternalEnterFrame',
+				'__onEditorEnterFrame',
+				'onEditorEnterFrame'
+			], _root);
+			
+			render();
+			
+			updateObject([
+				'__onInternalExitFrame',
+				'__onEditorExitFrame',
+				'onEditorExitFrame'
+			], _root);
+			
+			_input._afterRenderFrame?.();
+		}
 
 		requestAnimationFrame(animate);
 	}
 	function render() {
-		if(_editor.__saving) {
-			// Don't render while saving to free up main thread for compression/storing
-			return; 
-		}
 		if(!D3D.getEditorInFocus()) {
 			// Don't render while the editor window is out of focus
 			return;
@@ -1225,7 +1226,7 @@ async function onImportAssets(paths) {
 	_root.updateSymbolStore();
 	_editor.setDirty(true);
 }
-function addComponent(type) {
+function addComponent(type, properties = {}) {
 	const schema = D3DComponents[type];
 	
 	if(!schema) {
@@ -1265,7 +1266,7 @@ function addComponent(type) {
 			return;
 		}
 		
-		d3dobject.addComponent(type);
+		d3dobject.addComponent(type, properties);
 	});
 	_editor.updateInspector();
 }
@@ -1517,6 +1518,25 @@ function exportD3DSelectedObjects(opts = {}) {
 	
 	exportAsD3D([..._editor.selectedObjects], opts);
 }
+function traceSelectedBitmap(opts) {
+	const bitmapD3D = _editor.selectedObjects[0];
+	
+	if(!bitmapD3D) {
+		_editor.showError({
+			title: 'Error',
+			message: 'No bitmap selected'
+		});
+		return;
+	}
+	
+	traceBitmap2DToGraphic2D(bitmapD3D, _root.zip, opts);
+}
+function receiveMessage(name, ...params) {
+	const f = _editor[name];
+	
+	if(typeof f === 'function')
+		f(...params);
+}
 
 // INTERNAL
 
@@ -1550,6 +1570,8 @@ _editor.groupSelectedObjects = groupSelectedObjects;
 _editor.ungroupSelectedObjects = ungroupSelectedObjects;
 _editor.mergeSelectedObjects = mergeSelectedObjects;
 _editor.exportD3DSelectedObjects = exportD3DSelectedObjects;
+_editor.traceSelectedBitmap = traceSelectedBitmap;
+_editor.receiveMessage = receiveMessage;
 
 D3D.setEventListener('select-all', () => _editor.selectAll());
 D3D.setEventListener('delete', () => _editor.delete());
@@ -1570,7 +1592,7 @@ D3D.setEventListener('set-tool', (type) => _editor.setTool(type));
 D3D.setEventListener('set-transform-tool', (type) => _editor.setTransformTool(type));
 D3D.setEventListener('new-folder', () => _editor.newFolder());
 D3D.setEventListener('new-asset', (extension) => _editor.newAsset(extension));
-D3D.setEventListener('add-component', (type) => addComponent(type));
+D3D.setEventListener('add-component', (type, properties) => addComponent(type, properties));
 D3D.setEventListener('menu-import-assets', onImportAssets);
 D3D.setEventListener('csm', onConsoleMessage);
 D3D.setEventListener('copy-special', (type) => _editor.copySpecial(type));
@@ -1588,3 +1610,4 @@ D3D.setEventListener('reset-view', () => _editor.resetView());
 D3D.setEventListener('menu-export-assets', () => _editor.exportSelectedAssetsInspector?.());
 D3D.setEventListener('export-as-d3d', () => _editor.exportD3DSelectedObjects());
 D3D.setEventListener('export-as-d3dproj', () => _editor.exportD3DSelectedObjects({d3dproj: true}));
+D3D.setEventListener('send-message', (name, ...params) => _editor.receiveMessage(name, ...params));

@@ -2262,8 +2262,6 @@ export default function Inspector() {
 			return moved;
 		};
 	
-		if (!zip) return <div className="no-label mt">Waiting for project to load</div>;
-	
 		const updateIndex = (oldRel, newRel) => {
 			const a = _root.findAssetByPath(oldRel);
 			if (a) a.rel = newRel;
@@ -2906,20 +2904,25 @@ export default function Inspector() {
 		return rows;
 	}
 	
+	const loaded = !!_root?.zip;
+	
 	return (
 		<div className='insp-view'>
-			<div className='tabs-container'>
-				<div className='tabs no-scrollbar'>
-					{drawTabButtons()}
+			{loaded && (
+				<div className='tabs-container'>
+					<div className='tabs no-scrollbar'>
+						{drawTabButtons()}
+					</div>
 				</div>
-			</div>
+			)}
 			
 			<div className={`insp-itself insp-view-${tab}`}>
-				{(tab == 'assets' || tab == 'all') && _root && drawAssetInspector()}
-				{(tab == 'scene' || tab == 'all') && _root && drawSceneInspector()}
-				{(tab == 'object' || tab == 'all') && objects.length > 0 && drawObjectInspector()}
-				{selectedAssetPaths.size == 1 && drawMediaInspector()}
-				{(tab == 'project' || tab == 'all') && _editor.project && _editor.focus == _root && drawProjectInspector()}
+				{!loaded && (<div className="no-label mt">Waiting for project to load</div>)}
+				{(tab == 'assets' || tab == 'all') && loaded && drawAssetInspector()}
+				{(tab == 'scene' || tab == 'all') && loaded && drawSceneInspector()}
+				{(tab == 'object' || tab == 'all') && loaded && objects.length > 0 && drawObjectInspector()}
+				{selectedAssetPaths.size == 1 && loaded &&  drawMediaInspector()}
+				{(tab == 'project' || tab == 'all') && loaded && _editor.project && _editor.focus == _root && drawProjectInspector()}
 				
 				<div style={{height: 45}} />
 			</div>

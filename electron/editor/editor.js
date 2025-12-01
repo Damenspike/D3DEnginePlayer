@@ -21,6 +21,17 @@ let editorWindow;
 let gameWindow;
 let splashWindow;
 
+const toolWindows = {
+	bitmapTrace: {
+		title: 'Trace Bitmap',
+		width: 300,
+		height: 280,
+		resizable: false,
+		html: 'bitmap-trace.html',
+		_window: null
+	}
+}
+
 let lastOpenedProjectUri;
 let playerURI;
 let projectOpen = false;
@@ -282,6 +293,47 @@ async function createEditorWindow() {
 		editorWindow.webContents.once('did-finish-load', resolve);
 	});
 }
+async function createToolWindow(toolWindow) {
+	const browserWindow = new BrowserWindow({
+		title: toolWindow.title ?? 'Tool Window',
+		width: toolWindow.width ?? 100,
+		height: toolWindow.height ?? 100,
+		resizable: toolWindow.resizable ?? true,
+		webPreferences: {
+			preload: path.join(__dirname, 'preload-editor.cjs'),
+			contextIsolation: true,
+			nodeIntegration: false,
+			enableRemoteModule: false,
+			sandbox: false,
+			spellcheck: false
+		}
+	});
+	
+	if (isDev) {
+		await browserWindow.loadURL(`http://localhost:5173/tool-windows/${toolWindow.html}`);
+	} else {
+		await browserWindow.loadFile(resolvePath('dist', 'editor', 'tool-windows', toolWindow.html));
+	}
+
+	browserWindow.on('closed', () => {
+		toolWindow._window = null;
+	});
+	
+	setupTheme(browserWindow);
+	
+	if(!isMac)
+		browserWindow.setMenu(null);
+	else
+		Menu.setApplicationMenu(appMenuBase);
+	
+	// Send initial theme
+	browserWindow.webContents.on('did-finish-load', () => {
+		browserWindow.webContents.send('theme-changed', nativeTheme.shouldUseDarkColors ? 'dark' : 'light');
+	});
+	
+	toolWindow._window = browserWindow;
+}
+
 function setupTheme(browserWindow) {
 	// Send initial theme once page loads
 	browserWindow.webContents.on('did-finish-load', () => {
@@ -363,6 +415,28 @@ async function openProject(uri) {
 	await createEditorWindow();
 	
 	updateEditorMenusEnabled();
+}
+function openToolWindow(name) {
+	const toolWindow = toolWindows[name];
+	
+	if(!toolWindow || !toolWindow.title) { // ensure its a toolWindow
+		throw new Error(`Tool window ${name} does not exist`);
+	}
+	
+	createToolWindow(toolWindow);
+}
+function closeToolWindow(name) {
+	const toolWindow = toolWindows[name];
+	
+	if(!toolWindow || !toolWindow.title) { // ensure its a toolWindow
+		throw new Error(`Tool window ${name} does not exist`);
+	}
+	if(!toolWindow._window || typeof toolWindow._window.close !== 'function') {
+		console.warn('Tool window', name, 'is not open');
+		return;
+	}
+	
+	toolWindow._window.close();
 }
 function startNewProject() {
 	Menu.setApplicationMenu(appMenuBase);
@@ -457,9 +531,9 @@ function sendExportSelectedAssets() {
 	if (!editorWindow?.isFocused()) return;
 	editorWindow.webContents.send('menu-export-assets');
 }
-function sendAddComponent(type) {
+function sendAddComponent(type, properties) {
 	if (!editorWindow?.isFocused()) return;
-	editorWindow.webContents.send('add-component', type);
+	editorWindow.webContents.send('add-component', type, properties);
 }
 function sendCopySpecial(type) {
 	if (!editorWindow?.isFocused()) return;
@@ -884,10 +958,6 @@ const menuTemplate = [
 						click: () => sendAddComponent('Animation')
 					},
 					{
-						label: 'Rigidbody',
-						click: () => sendAddComponent('Rigidbody')
-					},
-					{
 						label: 'Camera Collision',
 						click: () => sendAddComponent('CameraCollision')
 					},
@@ -902,6 +972,23 @@ const menuTemplate = [
 					{
 						label: 'Audio Source',
 						click: () => sendAddComponent('AudioSource')
+					},
+					{
+						label: 'Rigidbody',
+						submenu: [
+							{
+								label: 'Dynamic',
+								click: () => sendAddComponent('Rigidbody', {kind: 'dynamic'})
+							},
+							{
+								label: 'Fixed',
+								click: () => sendAddComponent('Rigidbody', {kind: 'fixed'})
+							},
+							{
+								label: 'Kinematic',
+								click: () => sendAddComponent('Rigidbody', {kind: 'kinematic'})
+							},
+						]
 					},
 					
 					{ type: 'separator' },
@@ -1004,6 +1091,62 @@ const menuTemplate = [
 			{
 				label: 'Export As Project...',
 				click: () => sendExportAsD3DProj()
+			}
+		]
+	},
+	{
+		label: 'Modify',
+		submenu: [
+			{ label: '2D Modifications', type: 'header' },
+			{
+				label: 'Graphic',
+				submenu: [
+					{
+						label: 'Merge',
+						click: () => sendMergeObjects()
+					},
+					{
+						label: 'Convert to Bitmap',
+						click: () => sendModify('convert-bitmap')
+					},
+					{
+						label: 'Export As PNG...',
+						click: () => sendModify('export-png')
+					}
+				]
+			},
+			{
+				label: 'Bitmap',
+				submenu: [
+					{
+						label: 'Trace Bitmap',
+						accelerator: 'Shift+Alt+T',
+						click: () => openToolWindow('bitmapTrace')
+					},
+					{
+						label: 'Export Bitmap...',
+						click: () => sendModify('export-bitmap')
+					}
+				]
+			},
+			{ type: 'separator' },
+			{
+				label: 'Flip Vertically',
+				click: () => sendModify('flip-vertical')
+			},
+			{
+				label: 'Flip Horizontally',
+				click: () => sendModify('flip-horizontal')
+			},
+			{
+				label: 'Rotate 90 Degrees',
+				accelerator: 'Alt+R',
+				click: () => sendModify('rotate+90')
+			},
+			{
+				label: 'Rotate -90 Degrees',
+				accelerator: 'Shift+Alt+R',
+				click: () => sendModify('rotate-90')
 			}
 		]
 	},
@@ -1480,4 +1623,16 @@ ipcMain.on('ctx-menu', (event, {template, x, y}) => {
 });
 ipcMain.on('open-project-uri', (_, uri) => {
 	openProject(uri);
+});
+ipcMain.on('open-tool-window', (_, name) => {
+	openToolWindow(name);
+});
+ipcMain.on('close-tool-window', (_, name) => {
+	closeToolWindow(name);
+});
+ipcMain.on('send-message', (_, name, ...params) => {
+	if(editorWindow.isDestroyed())
+		return;
+	
+	editorWindow.webContents.send('send-message', name, ...params);
 });

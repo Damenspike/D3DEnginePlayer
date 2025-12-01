@@ -58,7 +58,7 @@ export async function handleImportFile(file, destDir) {
 			{
 				const norm = p => p.replace(/\/+/g, '/');
 				const safe = (s, fb='Material') => (s && typeof s === 'string' ? s : fb).replace(/[^\w\-\.]+/g, '_') || fb;
-				const hex = (c) => `#${((c?.getHex?.() ?? 0) >>> 0).toString(16).padStart(6,'0')}`;
+				const hex  = (c) => `#${((c?.getHex?.() ?? 0) >>> 0).toString(16).padStart(6,'0')}`;
 			
 				// Make subfolders once
 				const matsDir = norm(uniqueFilePath(zip, virtualDir, 'materials/'));
@@ -76,22 +76,23 @@ export async function handleImportFile(file, destDir) {
 				});
 			
 				// Dedupe by "signature" so identical materials only export once
-				const bySig = new Map(); // signature -> .mat rel
-				const byName = new Map(); // name -> .mat rel (best-effort)
+				const bySig   = new Map(); // signature -> .mat rel
+				const byName  = new Map(); // name -> .mat rel (best-effort)
 				const materialFiles = [];
 			
+				// Write texture file, then update asset index + return UUID
 				const writeTexture = async (tex, baseHint) => {
 					if (!tex || !tex.image) return null;
 			
 					try {
-						// draw into a canvas and save PNG
 						const img = tex.image; // HTMLImageElement | ImageBitmap | Canvas
 						const w = img.width || img.videoWidth || 0;
 						const h = img.height || img.videoHeight || 0;
 						if (!w || !h) return null;
 			
 						const canvas = document.createElement('canvas');
-						canvas.width = w; canvas.height = h;
+						canvas.width = w;
+						canvas.height = h;
 						const ctx = canvas.getContext('2d');
 						ctx.drawImage(img, 0, 0, w, h);
 			
@@ -100,26 +101,33 @@ export async function handleImportFile(file, destDir) {
 			
 						const base = safe(tex.name || baseHint || 'texture', 'texture');
 						const outRel = norm(uniqueFilePath(zip, texDir, `${base}.png`));
+			
 						const ab = await blob.arrayBuffer();
 						zip.file(outRel, ab, { binary: true });
 						wrote.push(outRel);
-						return outRel;
-					} catch (_) {
+						
+						// Update asset index to find the uuid
+						_root.updateAssetIndex();
+						
+						const uuid = _root.resolveAssetId(outRel);
+						
+						return uuid || null;
+					} catch {
 						return null;
 					}
 				};
 			
 				const matSignature = (m) => JSON.stringify({
-					type: m.type,
-					name: m.name || '',
-					color: m.color ? m.color.getHex() : undefined,
-					emissive: m.emissive ? m.emissive.getHex() : undefined,
-					roughness: m.roughness,
-					metalness: m.metalness,
-					opacity: m.opacity,
+					type:       m.type,
+					name:       m.name || '',
+					color:      m.color ? m.color.getHex() : undefined,
+					emissive:   m.emissive ? m.emissive.getHex() : undefined,
+					roughness:  m.roughness,
+					metalness:  m.metalness,
+					opacity:    m.opacity,
 					transparent: !!m.transparent,
-					side: m.side,
-					alphaTest: m.alphaTest
+					side:       m.side,
+					alphaTest:  m.alphaTest
 				});
 			
 				for (const mat of materialSet) {
@@ -130,38 +138,40 @@ export async function handleImportFile(file, destDir) {
 						continue; // already written identical material
 					}
 			
-					// Export textures (best-effort)
-					const mapRel       = await writeTexture(mat.map,          'basecolor');
-					const normalRel    = await writeTexture(mat.normalMap,    'normal');
-					const roughRel     = await writeTexture(mat.roughnessMap, 'roughness');
-					const metalRel     = await writeTexture(mat.metalnessMap, 'metallic');
-					const emissiveRel  = await writeTexture(mat.emissiveMap,  'emissive');
-					const aoRel        = await writeTexture(mat.aoMap,        'ao');
-					const alphaRel     = await writeTexture(mat.alphaMap,     'alpha');
+					// Export textures → UUIDs
+					const mapUUID      = await writeTexture(mat.map,          'basecolor');
+					const normalUUID   = await writeTexture(mat.normalMap,    'normal');
+					const roughUUID    = await writeTexture(mat.roughnessMap, 'roughness');
+					const metalUUID    = await writeTexture(mat.metalnessMap, 'metallic');
+					const emissiveUUID = await writeTexture(mat.emissiveMap,  'emissive');
+					const aoUUID       = await writeTexture(mat.aoMap,        'ao');
+					const alphaUUID    = await writeTexture(mat.alphaMap,     'alpha');
 			
-					// Build .mat JSON (keep params minimal + stable)
+					// Build .mat JSON
 					const baseName = safe(mat.name || mat.type || 'Material', 'Material');
 					outRel = norm(uniqueFilePath(zip, matsDir, `${baseName}.mat`));
 			
 					const matJson = {
-						type: mat.type || 'MeshStandardMaterial',
-						name: mat.name || baseName,
-						color: mat.color ? hex(mat.color) : '#ffffff',
-						emissive: mat.emissive ? hex(mat.emissive) : '#000000',
-						opacity: (typeof mat.opacity === 'number') ? mat.opacity : 1,
+						type:        mat.type || 'MeshStandardMaterial',
+						name:        mat.name || baseName,
+						color:       mat.color ? hex(mat.color) : '#ffffff',
+						emissive:    mat.emissive ? hex(mat.emissive) : '#000000',
+						opacity:     (typeof mat.opacity === 'number') ? mat.opacity : 1,
 						transparent: !!mat.transparent,
 						doubleSided: mat.side === THREE.DoubleSide,
-						roughness: (typeof mat.roughness === 'number') ? mat.roughness : undefined,
-						metalness: (typeof mat.metalness === 'number') ? mat.metalness : undefined,
-						alphaTest: (typeof mat.alphaTest === 'number') ? mat.alphaTest : undefined,
+						roughness:   (typeof mat.roughness === 'number') ? mat.roughness : undefined,
+						metalness:   (typeof mat.metalness === 'number') ? mat.metalness : undefined,
+						alphaTest:   (typeof mat.alphaTest === 'number') ? mat.alphaTest : undefined,
+			
+						// IMPORTANT: maps now store texture UUIDs
 						maps: {
-							map: mapRel,
-							normalMap: normalRel,
-							roughnessMap: roughRel,
-							metalnessMap: metalRel,
-							emissiveMap: emissiveRel,
-							aoMap: aoRel,
-							alphaMap: alphaRel
+							map:          mapUUID,
+							normalMap:    normalUUID,
+							roughnessMap: roughUUID,
+							metalnessMap: metalUUID,
+							emissiveMap:  emissiveUUID,
+							aoMap:        aoUUID,
+							alphaMap:     alphaUUID
 						}
 					};
 			
@@ -172,8 +182,9 @@ export async function handleImportFile(file, destDir) {
 					if (mat.name) byName.set(mat.name, outRel);
 					materialFiles.push(outRel);
 				}
+			
 				if (materialFiles.length) {
-					const manifestRel = norm(`${matsDir}materials.index.json`);
+					const manifestRel = `${matsDir.replace(/\/+$/,'/') }materials.index.json`;
 					const manifest = {
 						count: materialFiles.length,
 						files: materialFiles,
