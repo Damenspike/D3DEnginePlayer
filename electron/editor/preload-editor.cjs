@@ -1,5 +1,11 @@
 // preload.js
-const { contextBridge, ipcRenderer, shell } = require('electron');
+const { 
+	contextBridge, 
+	ipcRenderer, 
+	shell,
+	clipboard,
+	nativeImage
+} = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
 const { publishProject } = require('./editor-publish.js');
@@ -276,6 +282,37 @@ contextBridge.exposeInMainWorld('D3D', {
 	},
 	
 	updateWindow: () => null, // player only
+});
+contextBridge.exposeInMainWorld('SystemClipboard', {
+	writeText(text) {
+		clipboard.writeText(String(text ?? ''));
+	},
+	writeImage(uint8) {
+		if (!uint8) return;
+		const buf = Buffer.isBuffer(uint8) ? uint8 : Buffer.from(uint8);
+		const img = nativeImage.createFromBuffer(buf);
+		if (!img.isEmpty())
+			clipboard.writeImage(img);
+	},
+	
+	readText() {
+		return clipboard.readText() || '';
+	},
+	readImage() {
+		const img = clipboard.readImage();
+		if (img.isEmpty()) return null;
+		const pngBuffer = img.toPNG();
+		return new Uint8Array(pngBuffer);
+	},
+	readHTML() {
+		return clipboard.readHTML() || '';
+	},
+	readRTF() {
+		return clipboard.readRTF() || '';
+	},
+	clear() {
+		clipboard.clear();
+	}
 });
 
 function getExtension(path) {

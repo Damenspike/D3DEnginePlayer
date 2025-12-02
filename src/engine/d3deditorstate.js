@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import D3DConsole from './d3dconsole.js';
 
 import {
@@ -16,6 +17,9 @@ import {
 	getExtension,
 	cloneZip
 } from './d3dutility.js';
+import {
+	createImageFromData
+} from './d2dbitmapconvert.js';
 
 // Tool enum
 export const Tools = Object.freeze({
@@ -117,12 +121,12 @@ export default class D3DEditorState {
 		this.gizmo = null;
 		this.steps = [];
 		this.currentStep = -1;
-		this.clipboard = null;
 		this.animationDefaultFps = 60;
 		this.console = [];
 		this.lastSingleClick = 0;
 		this._mode = '3D';
 		this._lightsEnabled = false;
+		this.pastes = 0;
 		this.draw2d = {
 			fill: true,
 			line: true,
@@ -625,15 +629,46 @@ export default class D3DEditorState {
 	gameOrInspectorActive() {
 		return _editor.game3dRef.current.contains(document.activeElement) || _editor.game2dRef.current.contains(document.activeElement) || _editor.inspRef.current.contains(document.activeElement);
 	}
+	doCopySelectedObjects() {
+		this.pastes = 0;
+		
+		SystemClipboard.writeText(JSON.stringify(
+			this.selectedObjects.map(
+				d3dobject => d3dobject.getSerializableObject()
+			)
+		));
+		
+		// Copy image
+		if(this.selectedObjects.length === 1) {
+			const theObject = this.selectedObjects[0];
+			
+			if(!theObject)
+				return;
+			
+			if(theObject.hasComponent('Bitmap2D')) {
+				const bitmap2d = theObject.getComponent('Bitmap2D');
+				
+				if(!bitmap2d.source)
+					return;
+				
+				const rel = _root.resolvePath(bitmap2d.source);
+				const data = _editor.readFileData(rel);
+				
+				if(!data)
+					return;
+				
+				SystemClipboard.writeImage(data);
+			}
+		}
+	}
+	
 	copy() {
 		if(!this.gameOrInspectorActive()) {
 			_events.invoke('copy');
 			return;
 		}
-			
-		this.clipboard = this.selectedObjects.map(
-			d3dobject => d3dobject.getSerializableObject()
-		);
+		
+		this.doCopySelectedObjects();
 	}
 	cut() {
 		if(!this.gameOrInspectorActive()) {
@@ -641,9 +676,7 @@ export default class D3DEditorState {
 			return;
 		}
 		
-		this.clipboard = this.selectedObjects.map(
-			d3dobject => d3dobject.getSerializableObject()
-		);
+		this.doCopySelectedObjects();
 		this.deleteSelectedObjects({action: 'Cut'});
 	}
 	async paste() {
@@ -652,9 +685,30 @@ export default class D3DEditorState {
 			return;
 		}
 		
-		return await this.pasteFrom({clip: this.clipboard});
+		const json = SystemClipboard.readText();
+		const imageData = SystemClipboard.readImage();
+		
+		if(json) {
+			try {
+				const clipboard = JSON.parse(json);
+				
+				return await this.pasteFrom({clip: clipboard, posStep: true});
+			}catch(e) {
+				console.error('Paste error', e);
+			}
+		}
+		if(imageData) {
+			const newObj = await createImageFromData({
+				baseName: 'Pasted Image',
+				pngData: imageData
+			});
+			
+			newObj.depth = newObj.parent.getNextHighestDepth();
+			
+			return [newObj];
+		}
 	}
-	async pasteFrom({clip = [], action = 'Paste', addStep = true, selectResult = true}) {
+	async pasteFrom({clip = [], action = 'Paste', addStep = true, selectResult = true, posStep = false}) {
 		let pastedObjects = [];
 		
 		for(let objData of clip) {
@@ -662,13 +716,18 @@ export default class D3DEditorState {
 				updateComponents: false
 			});
 			
+			if(posStep && _editor.mode == '2D') {
+				d3dobject.position.add(new THREE.Vector3(10, 10, 0).multiplyScalar(this.pastes + 1));
+				this.pastes++;
+			}
+			
 			pastedObjects.push(d3dobject);
 		}
 		addStep && this.addStep({
 			name: `${action} ${clip.length} object(s)`,
 			undo: () => this.deleteObjects({objects: pastedObjects, addStep: false}),
 			redo: async () => {
-				pastedObjects = await this.pasteFrom({action, clip})
+				pastedObjects = await this.pasteFrom({action, clip, posStep})
 			}
 		});
 		selectResult && this.setSelection(pastedObjects, false);

@@ -141,7 +141,7 @@ export async function loadD3DProj(uri) {
 	// Setup resize handling
 	setupResize();
 	
-	// Step clipboard
+	// Setup clipboard
 	setupClipboard();
 
 	// Update editor window title
@@ -960,6 +960,14 @@ async function readFile(path, zip) {
 		return null;
 
 	return await file.async("string");
+}
+async function readFileData(path, zip) {
+	const z = zip ?? _root.zip;
+	const file = z.file(path);
+	if (!file) 
+		return null;
+
+	return await file.async("uint8array");
 }
 function clearDirectory(path, zip) {
 	const z = zip ?? _root.zip;

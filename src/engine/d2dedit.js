@@ -24,6 +24,7 @@ export default class D2DEdit {
 		this.lastLocal = null;
 		this.hasMoved = false;
 		this.runAfterRender = null;
+		this.curveDragPreservePoint = false;
 
 		// snapshots for standard/uniform edits
 		this.undoSnapshot = null; // { obj, items:[{pidx,i,x,y}] }
@@ -126,6 +127,8 @@ export default class D2DEdit {
 	render() {
 		if(_editor.mode != '2D') return;
 		if(_editor.tool != 'select') return;
+		
+		this.curveDragPreservePoint = !_input.getKeyDown('control') && !_input.getKeyDown('meta');
 		
 		const ctx = this.ctx;
 		if(!ctx) return;
@@ -628,9 +631,6 @@ export default class D2DEdit {
 			const obj = this.dragObj;
 		
 			if (this._curveDrag?.active && this._curveSnapshotBefore) {
-				// if control is almost on the straight line, drop the curve
-				this._maybeStraightenCurve(this._curveDrag);
-			
 				const before = this._curveSnapshotBefore;
 				const after  = U.clonePaths(obj.graphic2d._paths);
 				_editor.addStep?.({
@@ -1421,51 +1421,6 @@ export default class D2DEdit {
 				pts.push(...newly);
 				this.selectedPoints = pts;
 			}
-		}
-	}
-	
-	_maybeStraightenCurve(cd) {
-		if (!cd || !cd.obj?.graphic2d?._paths) return;
-	
-		const paths = cd.obj.graphic2d._paths;
-		const path  = paths[cd.pidx] || [];
-		if (!path.length) return;
-	
-		const logical = U.logicalPoints(path);
-		const aL = logical[cd.liA];
-		const bL = logical[cd.liB];
-		if (!aL || !bL) return;
-	
-		if (!cd.rawIdxsDest || !cd.rawIdxsDest.length) return;
-		const p0 = path[cd.rawIdxsDest[0]];
-		if (!p0 || !Number.isFinite(p0.cx) || !Number.isFinite(p0.cy)) return;
-	
-		const cx = p0.cx;
-		const cy = p0.cy;
-	
-		// distance from control to AB (in local space)
-		const vx = bL.x - aL.x;
-		const vy = bL.y - aL.y;
-		const denom = vx*vx + vy*vy;
-		if (denom <= 1e-6) return;
-	
-		const tLine = ((cx - aL.x) * vx + (cy - aL.y) * vy) / denom;
-		const projx = aL.x + tLine * vx;
-		const projy = aL.y + tLine * vy;
-	
-		const dx = cx - projx;
-		const dy = cy - projy;
-	
-		// tolerance in world/local units (based on ~4 px)
-		const tolWorld = U.pxToWorld(this.d2drenderer, 4);
-		if ((dx*dx + dy*dy) > tolWorld * tolWorld) return;
-	
-		// close enough: drop control and make it truly straight
-		for (const ri of cd.rawIdxsDest) {
-			const p = path[ri];
-			if (!p) continue;
-			delete p.cx;
-			delete p.cy;
 		}
 	}
 

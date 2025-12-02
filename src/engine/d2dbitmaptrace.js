@@ -414,76 +414,141 @@ function _segmentByColor(data, width, height, colorThreshold) {
 // ---------------------------------------------------------------------------
 
 function _traceRegionLoops(labels, width, height, regionId) {
-	const total = width * height;
-	const visited = new Uint8Array(total);
-
+	// ----- helpers -----
 	const idx = (x, y) => y * width + x;
 
-	const inBounds = (x, y) =>
-		(x >= 0 && x < width && y >= 0 && y < height);
+	const inRegion = (x, y) =>
+		(x >= 0 && x < width && y >= 0 && y < height && labels[idx(x, y)] === regionId);
 
-	const isRegion = (x, y) =>
-		inBounds(x, y) && labels[idx(x, y)] === regionId;
+	// We'll build boundary segments on the integer grid (0..width, 0..height).
+	// Each segment is between two vertices {x,y}.
+	const edges = [];
+	const adjacency = new Map(); // key "x,y" -> [edgeIndex, ...]
 
-	const isBoundary = (x, y) => {
-		if (!isRegion(x, y)) return false;
-		// boundary if any 4-neighbour is not this region
-		if (!isRegion(x - 1, y)) return true;
-		if (!isRegion(x + 1, y)) return true;
-		if (!isRegion(x, y - 1)) return true;
-		if (!isRegion(x, y + 1)) return true;
-		return false;
-	};
+	const makeKey = (p) => `${p.x},${p.y}`;
 
-	const loops = [];
+	function addEdge(a, b) {
+		const edge = { a, b };
+		const ei = edges.length;
+		edges.push(edge);
 
-	// Moore neighbor tracing (8-connected)
-	const dx8 = [ 1, 1, 0,-1,-1,-1, 0, 1 ];
-	const dy8 = [ 0, 1, 1, 1, 0,-1,-1,-1 ];
+		const ka = makeKey(a);
+		const kb = makeKey(b);
 
+		let la = adjacency.get(ka);
+		if (!la) { la = []; adjacency.set(ka, la); }
+		la.push(ei);
+
+		let lb = adjacency.get(kb);
+		if (!lb) { lb = []; adjacency.set(kb, lb); }
+		lb.push(ei);
+	}
+
+	// ----- 1) Collect all boundary edges for this region -----
+	// For each "inside" pixel (x,y), we look at its 4 neighbors.
+	// Where neighbor is "outside", we add an edge along that side.
 	for (let y = 0; y < height; y++) {
 		for (let x = 0; x < width; x++) {
-			const i = idx(x, y);
-			if (visited[i]) continue;
-			if (!isBoundary(x, y)) continue;
+			if (!inRegion(x, y)) continue;
 
-			let sx = x, sy = y;
-			let cx = x, cy = y;
-			let dir = 0;
-
-			const contour = [];
-			const maxSteps = width * height * 2;
-			let steps = 0;
-
-			while (steps++ < maxSteps) {
-				const ci = idx(cx, cy);
-				if (visited[ci]) break;
-				visited[ci] = 1;
-				contour.push({ x: cx, y: cy });
-
-				let found = false;
-
-				// start search from dir-1 (classic Moore)
-				for (let k = 0; k < 8; k++) {
-					const nd = (dir + 7 + k) & 7;
-					const nx = cx + dx8[nd];
-					const ny = cy + dy8[nd];
-
-					if (!isBoundary(nx, ny)) continue;
-
-					cx = nx;
-					cy = ny;
-					dir = nd;
-					found = true;
-					break;
-				}
-
-				if (!found) break;
-				if (cx === sx && cy === sy) break;
+			// LEFT edge between (x,y) and (x,y+1)
+			if (!inRegion(x - 1, y)) {
+				addEdge(
+					{ x: x,     y: y     },
+					{ x: x,     y: y + 1 }
+				);
 			}
 
-			if (contour.length >= 3)
-				loops.push(contour);
+			// RIGHT edge between (x+1,y) and (x+1,y+1)
+			if (!inRegion(x + 1, y)) {
+				addEdge(
+					{ x: x + 1, y: y     },
+					{ x: x + 1, y: y + 1 }
+				);
+			}
+
+			// TOP edge between (x,y) and (x+1,y)
+			if (!inRegion(x, y - 1)) {
+				addEdge(
+					{ x: x,     y: y     },
+					{ x: x + 1, y: y     }
+				);
+			}
+
+			// BOTTOM edge between (x,y+1) and (x+1,y+1)
+			if (!inRegion(x, y + 1)) {
+				addEdge(
+					{ x: x,     y: y + 1 },
+					{ x: x + 1, y: y + 1 }
+				);
+			}
+		}
+	}
+
+	if (!edges.length) return [];
+
+	// ----- 2) Stitch edges into closed loops -----
+	const used = new Array(edges.length).fill(false);
+	const loops = [];
+
+	for (let startEi = 0; startEi < edges.length; startEi++) {
+		if (used[startEi]) continue;
+
+		const startEdge = edges[startEi];
+		used[startEi] = true;
+
+		const loop = [];
+		loop.push({ x: startEdge.a.x, y: startEdge.a.y });
+		loop.push({ x: startEdge.b.x, y: startEdge.b.y });
+
+		let current = { x: startEdge.b.x, y: startEdge.b.y };
+		const startKey = makeKey(startEdge.a);
+
+		let safety = 0;
+		const maxSteps = edges.length * 4; // hard cap to avoid infinite loops
+
+		while (makeKey(current) !== startKey && safety++ < maxSteps) {
+			const key = makeKey(current);
+			const list = adjacency.get(key);
+			if (!list || !list.length) break;
+
+			// Find next unused edge incident to "current"
+			let nextEi = -1;
+			for (let i = 0; i < list.length; i++) {
+				const ei = list[i];
+				if (used[ei]) continue;
+				nextEi = ei;
+				break;
+			}
+
+			if (nextEi === -1) break; // open chain (shouldn't happen often)
+
+			used[nextEi] = true;
+			const e = edges[nextEi];
+
+			// Pick orientation so we continue from "current"
+			if (e.a.x === current.x && e.a.y === current.y) {
+				// current -> e.b
+				loop.push({ x: e.b.x, y: e.b.y });
+				current = { x: e.b.x, y: e.b.y };
+			} else if (e.b.x === current.x && e.b.y === current.y) {
+				// current -> e.a
+				loop.push({ x: e.a.x, y: e.a.y });
+				current = { x: e.a.x, y: e.a.y };
+			} else {
+				// Edge doesn't actually touch? Just skip it.
+				continue;
+			}
+		}
+
+		if (loop.length >= 3) {
+			// Ensure closed
+			const f = loop[0];
+			const l = loop[loop.length - 1];
+			if (f.x !== l.x || f.y !== l.y)
+				loop.push({ x: f.x, y: f.y });
+
+			loops.push(loop);
 		}
 	}
 

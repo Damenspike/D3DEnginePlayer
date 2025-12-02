@@ -294,6 +294,8 @@ async function createEditorWindow() {
 	});
 }
 async function createToolWindow(toolWindow) {
+	await closeToolWindow(toolWindow.name);
+	
 	const browserWindow = new BrowserWindow({
 		title: toolWindow.title ?? 'Tool Window',
 		width: toolWindow.width ?? 100,
@@ -419,6 +421,8 @@ async function openProject(uri) {
 function openToolWindow(name) {
 	const toolWindow = toolWindows[name];
 	
+	toolWindow.name = name;
+	
 	if(!toolWindow || !toolWindow.title) { // ensure its a toolWindow
 		throw new Error(`Tool window ${name} does not exist`);
 	}
@@ -432,11 +436,24 @@ function closeToolWindow(name) {
 		throw new Error(`Tool window ${name} does not exist`);
 	}
 	if(!toolWindow._window || typeof toolWindow._window.close !== 'function') {
-		console.warn('Tool window', name, 'is not open');
 		return;
 	}
 	
-	toolWindow._window.close();
+	return new Promise(resolve => {
+		if (!toolWindow._window) return resolve();
+		
+		// If already destroyed, just cleanup and resolve
+		if (toolWindow._window.isDestroyed()) {
+			toolWindow._window = null;
+			return resolve();
+		}
+		
+		editorWindow.once('closed', () => {
+			toolWindow._window = null;
+			resolve();
+		});
+		toolWindow._window.close();
+	});
 }
 function startNewProject() {
 	Menu.setApplicationMenu(appMenuBase);
