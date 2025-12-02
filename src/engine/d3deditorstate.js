@@ -218,6 +218,7 @@ export default class D3DEditorState {
 		);
 		
 		this.selectedObjects = objects;
+		this.selectedObjects = this.selectedObjects.filter(o => o != _root);
 		deselectAssets && this.selectNoAssets?.();
 		this.probeSelection();
 	}
@@ -240,6 +241,7 @@ export default class D3DEditorState {
 		);
 		
 		this.selectedObjects.push(...objects);
+		this.selectedObjects = this.selectedObjects.filter(o => o != _root);
 		this.selectNoAssets?.();
 		this.probeSelection();
 	}
@@ -261,6 +263,7 @@ export default class D3DEditorState {
 			[...this.selectedObjects]
 		);
 		
+		this.selectedObjects = this.selectedObjects.filter(o => o != _root);
 		this.probeSelection();
 	}
 	probeSelection() {

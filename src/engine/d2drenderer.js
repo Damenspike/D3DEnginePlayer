@@ -42,6 +42,9 @@ export default class D2DRenderer {
 		if(this.__viewScale === undefined)
 			this.__viewScale = 1;
 			
+		if(this.__viewScaleOverride !== undefined)
+			return this.__viewScaleOverride;
+			
 		if(window._player)
 			return this.__viewScale;
 		
@@ -54,6 +57,9 @@ export default class D2DRenderer {
 	get viewOffset() {
 		if(this.__viewOffset === undefined)
 			this.__viewOffset = new THREE.Vector2();
+			
+		if(this.__viewOffsetOverride !== undefined)
+			return this.__viewOffsetOverride;
 		
 		if(window._player)
 			return this.__viewOffset;
@@ -70,6 +76,7 @@ export default class D2DRenderer {
 	}
 	
 	constructor({width, height, pixelRatio, root, addGizmo = false} = {}) {
+		this.enabled = true;
 		this.pixelRatio = pixelRatio ?? (window.devicePixelRatio || 1);
 		this.pixelScale = 1;
 		this.drawScale = 1;
@@ -115,13 +122,16 @@ export default class D2DRenderer {
 	refreshSize() {
 		this.setSize(this.width, this.height);
 	}
-	applyDeviceTransform() {
-		const pr  = this.pixelRatio || 1;
-		const s   = this.viewScale  || 1;
+	applyDeviceTransform(ctx = null) {
+		ctx = !!ctx ? ctx : this.ctx;
+		
+		const pr = this.pixelRatio || 1;
+		const vs = this.viewScale || 1;
 		const off = this.viewOffset || { x: 0, y: 0 };
-		this.ctx.setTransform(pr * s, 0, 0, pr * s, off.x, off.y);
+		ctx.setTransform(pr * vs, 0, 0, pr * vs, off.x, off.y);
 	}
-	setSize(width, height) {
+	setSize(width, height, ctx = null) {
+		ctx = !!ctx ? ctx : this.ctx;
 		const pr = this.pixelRatio || 1;
 		const projW = Math.max(this.root.manifest.width  | 0, 1) * this.drawScale;
 		const projH = Math.max(this.root.manifest.height | 0, 1) * this.drawScale;
@@ -155,7 +165,7 @@ export default class D2DRenderer {
 		this.height = height;
 	
 		// don't bake view here—call it at draw time
-		this.ctx.setTransform(1,0,0,1,0,0);
+		ctx.setTransform(1,0,0,1,0,0);
 	}
 	getPixelRatio() {
 		return this.pixelRatio;
@@ -178,23 +188,23 @@ export default class D2DRenderer {
 		this.drawScale = s;
 		this.refreshSize();
 	}
-	clear() {
-		const ctx = this.ctx;
+	clear(ctx = null) {
+		ctx = !!ctx ? ctx : this.ctx;
 		ctx.setTransform(1, 0, 0, 1, 0, 0);
 		ctx.clearRect(0, 0, this.domElement.width, this.domElement.height);
 	}
-	render() {
-		if(!this._dirty)
+	render(ctx = null) {
+		if(!this._dirty || !this.enabled)
 			return;
 		
 		this.clear();
 		
-		const ctx = this.ctx;
+		ctx = !!ctx ? ctx : this.ctx;
 		
 		// ---- Apply view (pan+zoom) once for the whole scene ----
-		const pr  = this.pixelRatio || 1;
-		const vs  = this.viewScale  || 1;                 // >= 1
-		const off = this.viewOffset || { x: 0, y: 0 };    // in device pixels
+		const pr = this.pixelRatio || 1;
+		const vs = this.viewScale || 1;
+		const off = this.viewOffset || { x: 0, y: 0 };
 		
 		this.textInput?.beginFrame();
 		
@@ -207,7 +217,7 @@ export default class D2DRenderer {
 		if(window._editor) {
 			if(_editor.focus && _editor.focus != this.root) {
 				this.drawFocusOverlay();
-				this.renderParent(_editor.focus);
+				this.renderParent(_editor.focus, ctx);
 			}
 			
 			// Draw project frame
@@ -218,31 +228,34 @@ export default class D2DRenderer {
 		
 		//this._dirty = false;
 	}
-	renderParent(d3dobject) {
+	renderParent(d3dobject, ctx) {
 		if(!d3dobject.visible || d3dobject.__editorState.hidden || !d3dobject.enabled)
 			return;
 		
-		this.draw(d3dobject);
+		this.draw(d3dobject, ctx);
 		this._renderObjects.push(d3dobject);
 		
 		[...d3dobject.children]
 		.sort((a, b) => (a.depth || 0) - (b.depth || 0))
-		.forEach(d3dchild => this.renderParent(d3dchild));
+		.forEach(d3dchild => this.renderParent(d3dchild, ctx));
 	}
 	renderGizmos() {
+		if(!this.enabled)
+			return;
+		
 		this.gizmo?.render();
 		this.edit?.render();
 		this.drawer?.render();
 		
 		this.edit?.afterRender();
 	}
-	draw(d3dobject) {
+	draw(d3dobject, ctx = null) {
 		const graphic = d3dobject.graphic2d;
 		
 		if(!graphic) 
 			return;
 			
-		const ctx = this.ctx;
+		ctx = !!ctx ? ctx : this.ctx;
 		
 		// Collect all ancestor nodes that have graphic2d.mask === true
 		const maskAncestors = [];
@@ -254,10 +267,10 @@ export default class D2DRenderer {
 		
 		let clipped = false;
 		if (maskAncestors.length > 0) {
-			const pr  = this.pixelRatio || 1;
-			const vs  = this.viewScale  || 1;
-			const gs  = pr * vs;
+			const pr = this.pixelRatio || 1;
+			const vs = this.viewScale || 1;
 			const off = this.viewOffset || { x: 0, y: 0 };
+			const gs  = pr * vs;
 			
 			// match the draw pipeline: Translate(off) * Scale(gs)
 			const dev = new DOMMatrix().translateSelf(off.x, off.y).scaleSelf(gs, gs);
@@ -283,19 +296,19 @@ export default class D2DRenderer {
 			}
 		}
 		
-		this.drawVector(d3dobject);
+		this.drawVector(d3dobject, ctx);
 		
 		if (d3dobject.hasComponent('Text2D'))
-			this.drawText(d3dobject);
+			this.drawText(d3dobject, ctx);
 		
 		if (d3dobject.hasComponent('Bitmap2D'))
-			this.drawBitmap(d3dobject);
+			this.drawBitmap(d3dobject, ctx);
 		
 		if (clipped) 
 			ctx.restore(); // pop mask stack
 	}
-	drawBitmap(d3dobject) {
-		const ctx = this.ctx;
+	drawBitmap(d3dobject, ctx = null) {
+		ctx = !!ctx ? ctx : this.ctx;
 	
 		const bitmap2d = d3dobject.getComponent('Bitmap2D');
 		if (!bitmap2d) return;
@@ -435,8 +448,8 @@ export default class D2DRenderer {
 		ctx.drawImage(entry.img, sx, sy, sw, sh, dx, dy, dw, dh);
 		ctx.restore();
 	}
-	drawText(d3dobject) {
-		const ctx = this.ctx;
+	drawText(d3dobject, ctx = null) {
+		ctx = !!ctx ? ctx : this.ctx;
 	
 		const text2d = d3dobject.getComponent('Text2D');
 		if (!text2d) return;
@@ -849,8 +862,8 @@ export default class D2DRenderer {
 	
 		ctx.restore();
 	}
-	drawVector(d3dobject) {
-		const ctx = this.ctx;
+	drawVector(d3dobject, ctx = null) {
+		ctx = !!ctx ? ctx : this.ctx;
 		
 		const alpha = worldOpacity(d3dobject);
 		if (alpha <= 0) return;
@@ -1072,23 +1085,24 @@ export default class D2DRenderer {
 	
 		ctx.restore();
 	}
-	drawProjectFrame() {
+	drawProjectFrame(ctx) {
+		ctx = !!ctx ? ctx : this.ctx;
+		
 		// Project logical size
 		const projW = Math.max(this.root?.manifest?.width  | 0, 1);
 		const projH = Math.max(this.root?.manifest?.height | 0, 1);
 	
 		// Device-space mapping (letterbox math you already compute)
-		const pr  = this.pixelRatio || 1;
-		const s   = this.viewScale  || 1;
+		const pr = this.pixelRatio || 1;
+		const vs = this.viewScale || 1;
 		const off = this.viewOffset || { x: 0, y: 0 };
 	
 		// Device-space rect that contains the whole project content
 		const x = off.x;
 		const y = off.y;
-		const w = projW * pr * s;
-		const h = projH * pr * s;
-	
-		const ctx = this.ctx;
+		const w = projW * pr * vs;
+		const h = projH * pr * vs;
+		
 		ctx.save();
 	
 		// Draw in pure device space so stroke is always 1px regardless of zoom/scale
@@ -1106,9 +1120,8 @@ export default class D2DRenderer {
 	
 		ctx.restore();
 	}
-	drawFocusOverlay() {
-		const ctx = this.ctx;
-		
+	drawFocusOverlay(ctx = null) {
+		ctx = !!ctx ? ctx : this.ctx;
 		ctx.save();
 		
 		ctx.setTransform(1,0,0,1,0,0);

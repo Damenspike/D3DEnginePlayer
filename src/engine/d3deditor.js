@@ -37,6 +37,10 @@ import {
 import {
 	traceBitmap2DToGraphic2D
 } from './d2dbitmaptrace.js';
+import {
+	convertToBitmap2D,
+	exportAsPNG
+} from './d2dbitmapconvert.js';
 
 import $ from 'jquery';
 import D2DRenderer from './d2drenderer.js';
@@ -1537,6 +1541,99 @@ function receiveMessage(name, ...params) {
 	if(typeof f === 'function')
 		f(...params);
 }
+function modifySelected(type) {
+	const objects = _editor.selectedObjects;
+	
+	if(objects.length < 1) {
+		_editor.showError({
+			title: 'Modify',
+			message: 'No object(s) selected'
+		});
+		return;
+	}
+	
+	switch(type) {
+		case 'convert-bitmap': {
+			let convertObjs;
+			
+			_editor.addStep({
+				name: 'Convert to Bitmap',
+				undo: () => {
+					if(!convertObjs)
+						return;
+					
+					convertObjs.forEach(o => o.delete());
+				},
+				redo: () => {
+					convertObjs = convertToBitmap2D(objects);
+				}
+			});
+			
+			convertObjs = convertToBitmap2D(objects);
+			break;
+		}
+		case 'export-png': {
+			exportAsPNG(objects);
+			break;
+		}
+		case 'export-bitmap': {
+			
+			break;
+		}
+		case 'flip-vertical':
+		case 'flip-horizontal': {
+			const doAction = (isRedo = false) => {
+				objects.forEach(o => {
+					if(!isRedo)
+						o.__modifyActionRestoreScl = o.scale.clone();
+					
+					if(type == 'flip-vertical')
+						o.scale.y = -o.scale.y;
+					else
+					if(type == 'flip-horizontal')
+						o.scale.x = -o.scale.x;
+				})
+			}
+			_editor.addStep({
+				name: 'Flip',
+				undo: () => {
+					objects.forEach(o => {
+						if(o.__modifyActionRestoreScl !== undefined)
+							o.scale.copy(o.__modifyActionRestoreScl);
+					});
+				},
+				redo: () => doAction(true)
+			});
+			doAction();
+			break;
+		}
+		case 'rotate+90':
+		case 'rotate-90': {
+			const doAction = (isRedo = false) => {
+				objects.forEach(o => {
+					if(!isRedo)
+						o.__modifyActionRestoreRot = o.rotation.clone();
+					
+					o.rotation.z += THREE.MathUtils.degToRad(
+						type == 'rotate+90' ? 90 : -90
+					);
+				})
+			}
+			_editor.addStep({
+				name: 'Rotate',
+				undo: () => {
+					objects.forEach(o => {
+						if(o.__modifyActionRestoreRot !== undefined)
+							o.rotation.z = o.__modifyActionRestoreRot.z;
+					});
+				},
+				redo: () => doAction(true)
+			});
+			doAction();
+			break;
+		}
+	}
+}
 
 // INTERNAL
 
@@ -1572,6 +1669,7 @@ _editor.mergeSelectedObjects = mergeSelectedObjects;
 _editor.exportD3DSelectedObjects = exportD3DSelectedObjects;
 _editor.traceSelectedBitmap = traceSelectedBitmap;
 _editor.receiveMessage = receiveMessage;
+_editor.modifySelected = modifySelected;
 
 D3D.setEventListener('select-all', () => _editor.selectAll());
 D3D.setEventListener('delete', () => _editor.delete());
@@ -1611,3 +1709,7 @@ D3D.setEventListener('menu-export-assets', () => _editor.exportSelectedAssetsIns
 D3D.setEventListener('export-as-d3d', () => _editor.exportD3DSelectedObjects());
 D3D.setEventListener('export-as-d3dproj', () => _editor.exportD3DSelectedObjects({d3dproj: true}));
 D3D.setEventListener('send-message', (name, ...params) => _editor.receiveMessage(name, ...params));
+D3D.setEventListener('modify', (type) => _editor.modifySelected(type));
+
+
+

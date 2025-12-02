@@ -373,3 +373,4 @@ addIPCListener('menu-export-assets');
 addIPCListener('export-as-d3d');
 addIPCListener('export-as-d3dproj');
 addIPCListener('send-message');
+addIPCListener('modify');

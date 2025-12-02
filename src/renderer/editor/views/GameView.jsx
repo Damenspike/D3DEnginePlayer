@@ -233,6 +233,10 @@ export default function GameView({editorMode}) {
 						}
 					] : []
 				),
+				{
+					id: 'convert-bitmap',
+					label: 'Convert To Bitmap'
+				},
 				{ type: 'separator' },
 				{
 					id: 'edit',
@@ -241,6 +245,10 @@ export default function GameView({editorMode}) {
 				{
 					id: 'code',
 					label: 'Code'
+				},
+				{
+					id: 'export-png',
+					label: 'Export As PNG...'
 				},
 				{
 					id: 'exportd3d',
@@ -332,6 +340,12 @@ export default function GameView({editorMode}) {
 			}else
 			if(id == 'trace-bitmap') {
 				D3D.openToolWindow('bitmapTrace');
+			}else
+			if(id == 'convert-bitmap') {
+				_editor.modifySelected('convert-bitmap');
+			}else
+			if(id == 'export-png') {
+				_editor.modifySelected('export-png');
 			}
 		}
 		

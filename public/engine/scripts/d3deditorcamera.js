@@ -299,7 +299,7 @@ function getViewportPx() {
 }
 
 this.onEditorEnterFrame = () => {
-	const isGameInFocus = _input.getIsGameInFocus();
+	const isGameInFocus = _input.getIsGameInFocus3D();
 	const isCursorOverGame = _input.getCursorOverGame3D();
 	const inputFieldInFocus = _input.getInputFieldInFocus();
 	

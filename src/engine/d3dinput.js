@@ -257,8 +257,16 @@ export default class D3DInput {
 	 * Focus / game area helpers
 	 * ------------------------------------------------------------------ */
 
-	getIsGameInFocus() {
+	getIsGameInFocus3D() {
 		return _container3d.contains(document.activeElement);
+	}
+	
+	getIsGameInFocus2D() {
+		return _container2d.contains(document.activeElement);
+	}
+	
+	getIsGameInFocus() {
+		return this.getIsGameInFocus3D() || this.getIsGameInFocus2D();
 	}
 
 	getCursorOverGame() {

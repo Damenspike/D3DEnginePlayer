@@ -583,6 +583,10 @@ function sendExportAsD3DProj() {
 	if (!editorWindow?.isFocused()) return;
 	editorWindow.webContents.send('export-as-d3dproj');
 }
+function sendModify(type) {
+	if (!editorWindow?.isFocused()) return;
+	editorWindow.webContents.send('modify', type);
+}
 
 function sendBuild({prompt, play}) {
 	if (!editorWindow?.isFocused()) return;
@@ -1097,6 +1101,23 @@ const menuTemplate = [
 	{
 		label: 'Modify',
 		submenu: [
+			{
+				label: 'Flip Vertically',
+				click: () => sendModify('flip-vertical')
+			},
+			{
+				label: 'Flip Horizontally',
+				click: () => sendModify('flip-horizontal')
+			},
+			{
+				label: 'Rotate 90 Degrees',
+				click: () => sendModify('rotate+90')
+			},
+			{
+				label: 'Rotate -90 Degrees',
+				click: () => sendModify('rotate-90')
+			},
+			{ type: 'separator' },
 			{ label: '2D Modifications', type: 'header' },
 			{
 				label: 'Graphic',
@@ -1128,25 +1149,6 @@ const menuTemplate = [
 						click: () => sendModify('export-bitmap')
 					}
 				]
-			},
-			{ type: 'separator' },
-			{
-				label: 'Flip Vertically',
-				click: () => sendModify('flip-vertical')
-			},
-			{
-				label: 'Flip Horizontally',
-				click: () => sendModify('flip-horizontal')
-			},
-			{
-				label: 'Rotate 90 Degrees',
-				accelerator: 'Alt+R',
-				click: () => sendModify('rotate+90')
-			},
-			{
-				label: 'Rotate -90 Degrees',
-				accelerator: 'Shift+Alt+R',
-				click: () => sendModify('rotate-90')
 			}
 		]
 	},

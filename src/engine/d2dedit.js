@@ -702,6 +702,7 @@ export default class D2DEdit {
 	_onKeyDown(e) {
 		if (_editor.mode !== '2D') return;
 		if (!(_editor.tool === 'select' || _editor.tool === 'transform')) return;
+		if(!_input.getIsGameInFocus2D()) return;
 	
 		// Arrow → base delta in world units
 		let dx = 0, dy = 0;
@@ -875,6 +876,11 @@ export default class D2DEdit {
 			const byObjPath = new Map();
 			for (const sp of this.selectedPoints) {
 				if(!sp?.obj?.graphic2d?._paths) continue;
+				if(U.isRectLike2D(sp.obj)) {
+					// DO normal delete option instead
+					_editor.deleteSelectedObjects();
+					continue;
+				}
 				if(!byObjPath.has(sp.obj)) byObjPath.set(sp.obj, new Map());
 				const pm = byObjPath.get(sp.obj);
 				if(!pm.has(sp.pidx)) pm.set(sp.pidx, new Set());

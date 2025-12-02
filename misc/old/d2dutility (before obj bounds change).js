@@ -611,12 +611,7 @@ export function objBoundsCanvas(d2drenderer, obj) {
 		const M = childScreenMatrix(d2drenderer, obj);
 
 		for (const path of paths) {
-			if (!Array.isArray(path) || !path.length) continue;
-
-			// include curve samples so bounds match rendered shape
-			const pts = _flattenPathQuadratic(path, 12);
-
-			for (const p of pts) {
+			for (const p of (path || [])) {
 				const q = new DOMPoint(p.x, p.y).matrixTransform(M);
 				if (q.x < minx) minx = q.x;
 				if (q.y < miny) miny = q.y;
@@ -636,6 +631,7 @@ export function objBoundsCanvas(d2drenderer, obj) {
 	}
 
 	// ---------- 2) fallback: container2D / is2D with no graphic2d ----------
+	// e.g. Container2D: no own paths, but has 2D children (Text2D, Graphic2D, etc.)
 	const children = obj?.children || [];
 	if (!children.length) return null;
 
@@ -644,6 +640,8 @@ export function objBoundsCanvas(d2drenderer, obj) {
 
 	for (const child of children) {
 		if (!child) continue;
+
+		// Only bother with 2D-ish children
 		if (!child.graphic2d && !child.is2D) continue;
 
 		const cb = objBoundsCanvas(d2drenderer, child);
@@ -661,64 +659,6 @@ export function objBoundsCanvas(d2drenderer, obj) {
 
 	return {
 		l: minx, r: maxx, t: miny, b: maxy,
-		cx: (minx + maxx) * 0.5,
-		cy: (miny + maxy) * 0.5
-	};
-}
-
-export function objBoundsDevice(renderer, obj) {
-	// Use NEUTRAL view
-	const pr  = renderer.pixelRatio || 1;
-	const vs  = 1;            // force neutral
-	const off = { x: 0, y: 0 }; // force neutral
-
-	let minx = Infinity, miny = Infinity;
-	let maxx = -Infinity, maxy = -Infinity;
-	let found = false;
-
-	const visit = (o) => {
-		if (!o) return;
-
-		// local graphic?
-		const g = o.graphic2d;
-		if (g && Array.isArray(g._paths)) {
-			const M_world = childScreenMatrix(renderer, o); // world matrix
-			// apply neutral view:
-			const M = new DOMMatrix()
-				.translate(off.x, off.y)
-				.scale(pr * vs)
-				.multiply(M_world);
-
-			for (const path of g._paths) {
-				if (!Array.isArray(path)) continue;
-
-				const pts = _flattenPathQuadratic(path, 12);
-
-				for (const p of pts) {
-					const q = new DOMPoint(p.x, p.y).matrixTransform(M);
-					if (q.x < minx) minx = q.x;
-					if (q.y < miny) miny = q.y;
-					if (q.x > maxx) maxx = q.x;
-					if (q.y > maxy) maxy = q.y;
-					found = true;
-				}
-			}
-		}
-
-		// recurse
-		for (const ch of o.children || []) {
-			if (ch?.graphic2d || ch?.is2D)
-				visit(ch);
-		}
-	};
-
-	visit(obj);
-
-	if (!found) return null;
-
-	return {
-		l: minx, r: maxx,
-		t: miny, b: maxy,
 		cx: (minx + maxx) * 0.5,
 		cy: (miny + maxy) * 0.5
 	};
@@ -950,11 +890,10 @@ export function all2DInDrawOrder(host) {
 export function hostScreenMatrix(d2dr, host){
 	return viewMatrix(d2dr).multiply(worldDOMMatrix(host || _editor?.focus || _root));
 }
-export function canvasToLocal(renderer, obj, pt) {
-	const M = childScreenMatrix(renderer, obj);
-	const inv = M.inverse();
-	const q = new DOMPoint(pt.x, pt.y).matrixTransform(inv);
-	return { x: q.x, y: q.y };
+export function canvasToLocal(d2dr, host, canvasPt){
+	const inv = hostScreenMatrix(d2dr, host).inverse();
+	const q = new DOMPoint(canvasPt.x, canvasPt.y).matrixTransform(inv);
+	return { x:q.x, y:q.y };
 }
 export function localToCanvas(d2dr, host, localPt){
 	const M = hostScreenMatrix(d2dr, host);
