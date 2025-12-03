@@ -4,6 +4,7 @@ import D2DTextManager from './d2dmgr_text.js';
 import D2DBitmapManager from './d2dmgr_bitmap.js';
 import D2DGraphic2DManager from './d2dmgr_graphic2d.js';
 import D2DLayoutManager from './d2dmgr_layout.js';
+import D2DFilterManager from './d2dmgr_filter.js';
 import D3DAnimationManager from './d3dmgr_animation.js';
 import D3DMeshManager from './d3dmgr_mesh.js';
 import D3DCameraManager from './d3dmgr_camera.js';
@@ -800,12 +801,12 @@ const D3DComponents = {
 		persistent: true,
 		is2D: true,
 		fields: {
-			'_paths': { // legacy
+			'_paths': {
 				label: '',
 				type: 'none',
 				def: []
 			},
-			'_points': { // legacy
+			'_points': {
 				label: '',
 				type: 'none',
 				def: []
@@ -922,6 +923,11 @@ const D3DComponents = {
 			},
 			'mask': {
 				label: 'Mask',
+				type: 'boolean',
+				def: false
+			},
+			'blocks': {
+				label: 'Block mouse events',
 				type: 'boolean',
 				def: false
 			}
@@ -1715,6 +1721,170 @@ const D3DComponents = {
 			}
 		},
 		manager: D3DFirstPersonCharacterController
+	},
+	Filter2D: {
+		name: 'Filter 2D',
+		is2D: true,
+		sectionsLast: true,
+		fields: {
+			'brightness': {
+				label: 'Brightness',
+				type: 'islider',
+				min: -1,
+				max: 1,
+				step: 0.01,
+				def: 0
+			},
+			'tint': {
+				label: 'Tint',
+				type: 'boolean',
+				def: false
+			},
+			'tintColor': {
+				label: 'Tint color',
+				type: 'colorbest',
+				def: 'rgba(255,255,255,1)',
+				condition: c => c.properties.tint === true
+			},
+			'filterOpacity': {
+				label: 'Opacity',
+				type: 'islider',
+				min: 0,
+				max: 1,
+				step: 0.01,
+				def: 1
+			},
+			'blend': {
+				label: 'Blend mode',
+				type: 'select',
+				options: [
+					{ name: 'normal',    label: 'Normal' },
+					{ name: 'darken',    label: 'Darken' },
+					{ name: 'multiply',  label: 'Multiply' },
+					{ name: 'lighten',   label: 'Lighten' },
+					{ name: 'screen',    label: 'Screen' },
+					{ name: 'overlay',   label: 'Overlay' },
+					{ name: 'hard-light',label: 'Hard Light' },
+					{ name: 'add',       label: 'Add' },
+					{ name: 'subtract',  label: 'Subtract' },
+					{ name: 'difference',label: 'Difference' },
+					{ name: 'invert',    label: 'Invert' },
+					{ name: 'alpha',     label: 'Alpha' },
+					{ name: 'erase',     label: 'Erase' }
+				],
+				def: 'normal'
+			},
+			
+			glow: {
+				label: 'Glow',
+				type: 'boolean',
+				def: false,
+				section: 'glow'
+			},
+			glowColor: {
+				label: 'Color',
+				type: 'colora',
+				def: '#ffffffff',
+				section: 'glow',
+				condition: c => c.properties.glow === true
+			},
+			glowBlurX: {
+				label: 'Blur X',
+				type: 'number',
+				min: 0,
+				max: 256,
+				step: 1,
+				def: 8,
+				section: 'glow',
+				condition: c => c.properties.glow === true
+			},
+			glowBlurY: {
+				label: 'Blur Y',
+				type: 'number',
+				min: 0,
+				max: 256,
+				step: 1,
+				def: 8,
+				section: 'glow',
+				condition: c => c.properties.glow === true
+			},
+			glowStrength: {
+				label: 'Strength',
+				type: 'number',
+				min: 0,
+				max: 8,
+				step: 0.1,
+				def: 1,
+				section: 'glow',
+				condition: c => c.properties.glow === true
+			},
+			
+			shadow: {
+				label: 'Drop shadow',
+				type: 'boolean',
+				def: false,
+				section: 'shadow'
+			},
+			shadowColor: {
+				label: 'Shadow color',
+				type: 'colora',
+				def: '#000000ff',
+				section: 'shadow',
+				condition: c => c.properties.shadow === true
+			},
+			shadowAngle: {
+				label: 'Shadow angle (deg)',
+				type: 'number',
+				min: -360,
+				max: 360,
+				step: 1,
+				def: 45,
+				section: 'shadow',
+				condition: c => c.properties.shadow === true
+			},
+			shadowDistanceX: {
+				label: 'Distance X',
+				type: 'number',
+				min: -1024,
+				max: 1024,
+				step: 0.5,
+				def: 4,
+				section: 'shadow',
+				condition: c => c.properties.shadow === true
+			},
+			shadowDistanceY: {
+				label: 'Distance Y',
+				type: 'number',
+				min: -1024,
+				max: 1024,
+				step: 0.5,
+				def: 4,
+				section: 'shadow',
+				condition: c => c.properties.shadow === true
+			},
+			shadowBlur: {
+				label: 'Blur',
+				type: 'number',
+				min: 0,
+				max: 256,
+				step: 1,
+				def: 8,
+				section: 'shadow',
+				condition: c => c.properties.shadow === true
+			},
+			shadowType: {
+				label: 'Type',
+				type: 'select',
+				def: 'outer',
+				section: 'shadow',
+				options: [
+					{ name: 'outer', label: 'Outer' },
+					{ name: 'inner', label: 'Inner' }
+				],
+				condition: c => c.properties.shadow === true
+			}
+		},
+		manager: D2DFilterManager
 	}
 }
 

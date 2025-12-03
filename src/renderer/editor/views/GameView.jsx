@@ -239,14 +239,6 @@ export default function GameView({editorMode}) {
 				},
 				{ type: 'separator' },
 				{
-					id: 'edit',
-					label: 'Edit in Place'
-				},
-				{
-					id: 'code',
-					label: 'Code'
-				},
-				{
 					id: 'export-png',
 					label: 'Export As PNG...'
 				},
@@ -257,7 +249,17 @@ export default function GameView({editorMode}) {
 				{
 					id: 'exportd3dproj',
 					label: 'Export As Project...'
-				}
+				},
+				{ type: 'separator' },
+				{
+					id: 'edit',
+					label: 'Edit in Place',
+					enabled: _editor.selectedObjects.length === 1
+				},
+				{
+					id: 'code',
+					label: 'Code'
+				},
 			];
 			
 			let template = defaultCtx;
@@ -320,8 +322,8 @@ export default function GameView({editorMode}) {
 				_editor.ungroup();
 			}else
 			if(id == 'edit') {
+				_editor.focus = _editor.selectedObjects[0];
 				_editor.setSelection([]);
-				_editor.focus = objectHit;
 			}else
 			if(id == 'zoom-in') {
 				_editor.zoomIn2D();

@@ -1268,3 +1268,13 @@ body.dark {
 		margin-right: 5px;
 	}
 }
+.code-not-present {
+	svg {
+		opacity: 0.2;
+	}
+}
+.code-not-present:hover {
+	svg {
+		opacity: 1;
+	}
+}

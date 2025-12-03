@@ -296,11 +296,6 @@ export default function Inspector() {
 				},
 				{ type: 'separator' },
 				{
-					id: 'edit',
-					label: 'Edit in Place',
-					enabled: _editor.selectedObjects.length === 1
-				},
-				{
 					id: 'focus',
 					label: 'Focus'
 				},
@@ -336,8 +331,8 @@ export default function Inspector() {
 				},
 				{ type: 'separator' },
 				{
-					id: 'code',
-					label: 'Code'
+					id: 'exportpng',
+					label: 'Export As PNG...'
 				},
 				{
 					id: 'exportd3d',
@@ -346,7 +341,17 @@ export default function Inspector() {
 				{
 					id: 'exportd3dproj',
 					label: 'Export As Project...'
-				}
+				},
+				{ type: 'separator' },
+				{
+					id: 'edit',
+					label: 'Edit In Place',
+					enabled: _editor.selectedObjects.length === 1
+				},
+				{
+					id: 'code',
+					label: 'Code'
+				},
 			];
 			const x = e.clientX + 2;
 			const y = e.clientY + 2;
@@ -414,6 +419,9 @@ export default function Inspector() {
 				break;
 				case 'exportd3dproj':
 					_editor.exportD3DSelectedObjects({d3dproj: true});
+				break;
+				case 'exportpng':
+					_editor.modifySelected('export-png');
 				break;
 			}
 		}
@@ -1050,6 +1058,7 @@ export default function Inspector() {
 								onKeyDown={autoBlur}
 								min={field.min}
 								max={field.max}
+								step={field.step || 1}
 								readOnly={field.readOnly}
 								onChange={e => {
 									let val = Number(e.target.value) || 0;
@@ -1123,6 +1132,88 @@ export default function Inspector() {
 								/>
 								<div className='slider-value'>
 									{Number(current) || 0}
+								</div>
+							</div>
+						)
+						break;
+					}
+					case 'islider': {
+						fieldContent = (
+							<div className='flex'>
+								<input 
+									type="range" 
+									value={Number(current) || 0} 
+									onKeyDown={autoBlur}
+									min={field.min}
+									max={field.max}
+									step={field.step || 1}
+									readOnly={field.readOnly}
+									onChange={e => {
+										let val = Number(e.target.value) || 0;
+										
+										if(field.min !== undefined && val < field.min)
+											val = field.min;
+										
+										if(field.min !== undefined && val > field.max)
+											val = field.max;
+											
+										if(field.convert)
+											val = field.convert(val);
+											
+										addStep(val);
+										
+										dummyComponent.properties[fieldId] = val;
+										
+										object.setComponentValue(
+											component.type,
+											fieldId,
+											val
+										);
+										
+										update();
+									}}
+								/>
+								<div className='slider-value' style={{width: 'auto'}}>
+									<input 
+										className="tf tf--numm" 
+										type="number" 
+										value={Number(current) || 0} 
+										onKeyDown={autoBlur}
+										min={field.min}
+										max={field.max}
+										step={field.step || 1}
+										readOnly={field.readOnly}
+										onChange={e => {
+											let val = Number(e.target.value) || 0;
+											
+											dummyComponent.properties[fieldId] = val;
+											update();
+										}}
+										onBlur={e => {
+											let val = Number(e.target.value) || 0;
+											
+											if(field.min !== undefined && val < field.min)
+												val = field.min;
+											
+											if(field.min !== undefined && val > field.max)
+												val = field.max;
+											
+											if(field.convert)
+												val = field.convert(val);
+												
+											addStep(val);
+											
+											dummyComponent.properties[fieldId] = val;
+											
+											object.setComponentValue(
+												component.type,
+												fieldId,
+												val
+											);
+											
+											update();
+										}}
+									/>
 								</div>
 							</div>
 						)
@@ -1898,7 +1989,16 @@ export default function Inspector() {
 					(_editor.mode == '2D' && c.is2D)
 				) &&
 				(c.name.toLowerCase().includes(sceneFilter.toLowerCase()) || !sceneFilter)
-			);
+			)
+			.sort((a, b) => {
+				if(a.position.z > b.position.z)
+					return -1;
+				else
+				if(a.position.z < b.position.z)
+					return 1;
+				else
+					return 0;
+			});
 			
 			if(objects.length < 1) {
 				if(!sceneFilter) {
@@ -1974,18 +2074,16 @@ export default function Inspector() {
 					>
 						<div className='option-buttons'>
 							{
-								!!object.__script && (
-									<div 
-										className='option-button'
-										title='Code'
-										onClick={(e) => {
-											e.stopPropagation();
-											_editor.openCode(object);
-										}}
-									>
-										<MdCode />
-									</div>
-								)
+								<div 
+									className={['option-button', (!!object.__script ? 'code-present' : 'code-not-present')].join(' ')}
+									title='Code'
+									onClick={(e) => {
+										e.stopPropagation();
+										_editor.openCode(object);
+									}}
+								>
+									<MdCode />
+								</div>
 							}
 							
 							<div 

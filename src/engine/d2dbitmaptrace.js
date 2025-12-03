@@ -47,6 +47,10 @@ export async function traceBitmap2DToGraphic2D(d3dobject, zip, options = {}) {
 	// --- 0) Grab Bitmap2D and source UUID ---
 	const bitmap = d3dobject.getComponent('Bitmap2D');
 	if (!bitmap) {
+		_editor.showError({
+			name: 'Trace Bitmap',
+			message: 'Object is not a Bitmap2D'
+		});
 		console.warn('[BitmapTrace] Object', d3dobject.name, 'has no Bitmap2D component:', d3dobject);
 		return null;
 	}

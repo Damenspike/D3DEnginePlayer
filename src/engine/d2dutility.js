@@ -1710,27 +1710,38 @@ export function localBoundsOfGraphic(obj) {
  * For height-only changes, pass (sx=1, sy=ky) and anchor at minY.
  */
 export function scaleGraphicPathsLocalFromEdge(obj, sx, sy, ax = 0, ay = 0) {
-	const g = obj?.graphic2d;
-	const paths = Array.isArray(g?._paths) ? g._paths : null;
-	if (!paths || paths.length === 0) 
-		return;
-
-	const Sx = Number.isFinite(sx) ? +sx : 1;
-	const Sy = Number.isFinite(sy) ? +sy : 1;
-	const AX = +ax || 0;
-	const AY = +ay || 0;
-
-	for (const path of paths) {
-		if (!Array.isArray(path)) 
-			continue;
-		for (const p of path) {
-			const px = +p.x || 0;
-			const py = +p.y || 0;
-			p.x = AX + (px - AX) * Sx;
-			p.y = AY + (py - AY) * Sy;
-		}
-	}
-}
+	 const g = obj?.graphic2d;
+	 const paths = Array.isArray(g?._paths) ? g._paths : null;
+	 if (!paths || paths.length === 0)
+		 return;
+ 
+	 const Sx = Number.isFinite(sx) ? +sx : 1;
+	 const Sy = Number.isFinite(sy) ? +sy : 1;
+	 const AX = +ax || 0;
+	 const AY = +ay || 0;
+ 
+	 for (const path of paths) {
+		 if (!Array.isArray(path)) continue;
+ 
+		 for (const p of path) {
+			 // ----- Anchor -----
+			 const px = +p.x || 0;
+			 const py = +p.y || 0;
+ 
+			 p.x = AX + (px - AX) * Sx;
+			 p.y = AY + (py - AY) * Sy;
+ 
+			 // ----- Curve handle (if any) -----
+			 if (Number.isFinite(p.cx) && Number.isFinite(p.cy)) {
+				 const cx = +p.cx || 0;
+				 const cy = +p.cy || 0;
+ 
+				 p.cx = AX + (cx - AX) * Sx;
+				 p.cy = AY + (cy - AY) * Sy;
+			 }
+		 }
+	 }
+ }
 export function setupGraphicPivotData(obj) {
 	const g = obj?.graphic2d;
 	if (!g) return null;
@@ -1917,6 +1928,122 @@ function _flattenPathQuadratic(points, stepsPerCurve = 12) {
 		prev = curr;
 	}
 	return out;
+}
+
+/* ========================= FILTERING */
+export function getFilterProps(d3dobject) {
+	const comp = d3dobject.getComponent?.('Filter2D');
+	if (!comp) return null;
+	return comp.component.properties;
+}
+export function computeFilterState(d3dobject) {
+	const chain = [];
+	for (let n = d3dobject; n; n = n.parent)
+		chain.push(n);
+	chain.reverse();
+
+	let tint		 = false;
+	let brightness   = 0;
+	let opacity      = 1;
+	let tintColor    = null;
+	let tintStrength = 0;
+	let blend        = 'normal';
+
+	for (const obj of chain) {
+		const comp = obj.getComponent('Filter2D');
+		if (!comp || !comp.component.enabled) 
+			continue;
+			
+		const p = comp.component.properties;
+
+		const b = Number(p.brightness ?? 0);
+		if (Number.isFinite(b))
+			brightness += b;
+
+		const fo = Number(p.filterOpacity ?? 1);
+		if (Number.isFinite(fo))
+			opacity *= fo;
+
+		if (p.tint && p.tintColor) {
+			const parsed = parseTintColor(p.tintColor);
+			if (parsed) {
+				tintColor    = `rgba(${parsed.r},${parsed.g},${parsed.b},1)`;
+				tintStrength = parsed.a;
+			}
+			tint = true;
+		}
+
+		if (p.blend && p.blend !== 'normal')
+			blend = p.blend;
+	}
+
+	if (brightness < -1) brightness = -1;
+	if (brightness >  1) brightness =  1;
+	if (opacity   <  0) opacity   =  0;
+	if (opacity   >  1) opacity   =  1;
+
+	const isNeutral =
+		Math.abs(brightness) < 0.001 &&
+		Math.abs(opacity - 1) < 0.001 &&
+		(!tint || !tintColor || tintStrength <= 0.001) &&
+		blend === 'normal';
+
+	if (isNeutral)
+		return null;
+	
+	return {
+		brightness,
+		opacity,
+		tint,
+		tintColor,
+		tintStrength,
+		blend
+	};
+}
+export function mapBlendMode(name) {
+	switch (name) {
+		case 'darken':     return 'darken';
+		case 'multiply':   return 'multiply';
+		case 'lighten':    return 'lighten';
+		case 'screen':     return 'screen';
+		case 'overlay':    return 'overlay';
+		case 'hard-light': return 'hard-light';
+		case 'add':        return 'lighter';
+		case 'difference': return 'difference';
+		case 'invert':     return 'difference';       // cheap invert style
+		case 'alpha':      return 'source-in';
+		case 'erase':      return 'destination-out';
+		case 'normal':
+		default:           return 'source-over';
+	}
+}
+export function parseTintColor(str) {
+	if (!str) 
+		return null;
+
+	const m = str.match(/rgba?\s*\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)/i);
+	if (m) {
+		const r = Math.max(0, Math.min(255, +m[1]));
+		const g = Math.max(0, Math.min(255, +m[2]));
+		const b = Math.max(0, Math.min(255, +m[3]));
+		const a = m[4] !== undefined ? Math.max(0, Math.min(1, +m[4])) : 1;
+		return { r, g, b, a };
+	}
+
+	if (str[0] === '#') {
+		const hex = str.slice(1);
+		if (hex.length === 6 || hex.length === 8) {
+			const r = parseInt(hex.slice(0, 2), 16);
+			const g = parseInt(hex.slice(2, 4), 16);
+			const b = parseInt(hex.slice(4, 6), 16);
+			let a = 1;
+			if (hex.length === 8)
+				a = parseInt(hex.slice(6, 8), 16) / 255;
+			return { r, g, b, a };
+		}
+	}
+
+	return { r: 255, g: 255, b: 255, a: 1 };
 }
 
 /* ========================= DEFAULT BUNDLE ========================= */

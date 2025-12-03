@@ -25,10 +25,30 @@ const toolWindows = {
 	bitmapTrace: {
 		title: 'Trace Bitmap',
 		width: 300,
-		height: 280,
+		height: 260,
 		resizable: false,
-		html: 'bitmap-trace.html',
-		_window: null
+		html: 'bitmap-trace.html'
+	},
+	graphicSmooth: {
+		title: 'Smooth',
+		width: 300,
+		height: 160,
+		resizable: false,
+		html: 'graphic-smooth.html'
+	},
+	graphicStraighten: {
+		title: 'Straighten',
+		width: 300,
+		height: 160,
+		resizable: false,
+		html: 'graphic-straighten.html'
+	},
+	graphicSimplify: {
+		title: 'Simplify',
+		width: 300,
+		height: 160,
+		resizable: false,
+		html: 'graphic-simplify.html'
 	}
 }
 
@@ -1046,6 +1066,10 @@ const menuTemplate = [
 							{
 								label: 'Layout 2D',
 								click: () => sendAddComponent('Layout2D')
+							},
+							{
+								label: 'Filter 2D',
+								click: () => sendAddComponent('Filter2D')
 							}
 						]
 					},
@@ -1119,32 +1143,28 @@ const menuTemplate = [
 		label: 'Modify',
 		submenu: [
 			{
-				label: 'Flip Vertically',
-				click: () => sendModify('flip-vertical')
-			},
-			{
-				label: 'Flip Horizontally',
-				click: () => sendModify('flip-horizontal')
-			},
-			{
-				label: 'Rotate 90 Degrees',
-				click: () => sendModify('rotate+90')
-			},
-			{
-				label: 'Rotate -90 Degrees',
-				click: () => sendModify('rotate-90')
-			},
-			{ type: 'separator' },
-			{ label: '2D Modifications', type: 'header' },
-			{
 				label: 'Graphic',
 				submenu: [
+					{
+						label: 'Smooth',
+						click: () => openToolWindow('graphicSmooth')
+					},
+					{
+						label: 'Straighten',
+						click: () => openToolWindow('graphicStraighten')
+					},
+					{
+						label: 'Simplify',
+						click: () => openToolWindow('graphicSimplify')
+					},
+					{ type: 'separator' },
 					{
 						label: 'Merge',
 						click: () => sendMergeObjects()
 					},
+					{ type: 'separator' },
 					{
-						label: 'Convert to Bitmap',
+						label: 'Convert To Bitmap',
 						click: () => sendModify('convert-bitmap')
 					},
 					{
@@ -1166,7 +1186,24 @@ const menuTemplate = [
 						click: () => sendModify('export-bitmap')
 					}
 				]
-			}
+			},
+			{ type: 'separator' },
+			{
+				label: 'Flip Vertically',
+				click: () => sendModify('flip-vertical')
+			},
+			{
+				label: 'Flip Horizontally',
+				click: () => sendModify('flip-horizontal')
+			},
+			{
+				label: 'Rotate 90 Degrees',
+				click: () => sendModify('rotate+90')
+			},
+			{
+				label: 'Rotate -90 Degrees',
+				click: () => sendModify('rotate-90')
+			},
 		]
 	},
 	{

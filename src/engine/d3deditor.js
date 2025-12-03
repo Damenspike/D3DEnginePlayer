@@ -41,6 +41,11 @@ import {
 	convertToBitmap2D,
 	exportAsPNG
 } from './d2dbitmapconvert.js';
+import {
+	smoothShape,
+	straightenShape,
+	simplifyShape
+} from './d2dshapetools.js';
 
 import $ from 'jquery';
 import D2DRenderer from './d2drenderer.js';
@@ -1549,8 +1554,19 @@ function receiveMessage(name, ...params) {
 	if(typeof f === 'function')
 		f(...params);
 }
-function modifySelected(type) {
+async function modifySelected(type, options = {}) {
 	const objects = _editor.selectedObjects;
+	
+	const only2DCheck = () => {
+		if(_editor.mode != '2D') {
+			_editor.showError({
+				title: '2D Mode',
+				message: 'This operation is for 2D objects'
+			});
+			return false;
+		}
+		return true;
+	}
 	
 	if(objects.length < 1) {
 		_editor.showError({
@@ -1561,7 +1577,33 @@ function modifySelected(type) {
 	}
 	
 	switch(type) {
+		case 'simplify':
+			if(!only2DCheck()) return;
+			
+			simplifyShape(objects, {
+				tolerance: options.tolerance,
+				addStep: true
+			});
+		break;
+		case 'smooth':
+			if(!only2DCheck()) return;
+			
+			smoothShape(objects, {
+				strength: options.strength,
+				addStep: true
+			});
+		break;
+		case 'straighten':
+			if(!only2DCheck()) return;
+			
+			straightenShape(objects, {
+				strength: options.strength,
+				addStep: true
+			});
+		break;
 		case 'convert-bitmap': {
+			if(!only2DCheck()) return;
+			
 			let convertObjs;
 			
 			_editor.addStep({
@@ -1572,20 +1614,48 @@ function modifySelected(type) {
 					
 					convertObjs.forEach(o => o.delete());
 				},
-				redo: () => {
-					convertObjs = convertToBitmap2D(objects);
+				redo: async () => {
+					convertObjs = await convertToBitmap2D(objects);
 				}
 			});
 			
-			convertObjs = convertToBitmap2D(objects);
+			convertObjs = await convertToBitmap2D(objects);
+			_editor.setSelection([...convertObjs]);
 			break;
 		}
 		case 'export-png': {
+			if(!only2DCheck()) return;
+			
 			exportAsPNG(objects);
 			break;
 		}
 		case 'export-bitmap': {
+			if(!only2DCheck()) return;
 			
+			const selectedAssetPaths = [];
+			
+			objects.forEach(d3dobject => {
+				const bitmap2d = d3dobject.getComponent('Bitmap2D');
+				if(!bitmap2d || !bitmap2d.source)
+					return;
+				
+				const rel = _root.resolvePath(bitmap2d.source);
+				
+				if(!rel)
+					return;
+					
+				selectedAssetPaths.push(rel);
+			});
+			
+			if(selectedAssetPaths.length < 1) {
+				_editor.showError({
+					title: 'Export Bitmap',
+					message: 'No bitmaps found'
+				})
+				return;
+			}
+			
+			_editor.exportAssets([...selectedAssetPaths]);
 			break;
 		}
 		case 'flip-vertical':

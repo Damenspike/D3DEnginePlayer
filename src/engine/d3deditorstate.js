@@ -50,13 +50,6 @@ export default class D3DEditorState {
 		return this._focus ?? _root;
 	}
 	set focus(value) {
-		if(value?.__editorState?.hidden) {
-			_editor.showError({
-				title: 'Edit in Place',
-				message: 'Please make this object editor visible before editing it'
-			});
-			return;
-		}
 		this._focus = value ?? _root;
 		this.onEditorFocusChanged?.();
 		_events.invoke('editor-focus', value);
@@ -946,6 +939,13 @@ export default class D3DEditorState {
 		});
 	}
 	async mergeObjects(d3dobjects, containingParent, addStep = true) {
+		if(_editor.mode != '2D') {
+			_editor.showError({
+				title: '2D Mode',
+				message: 'This operation is for 2D objects'
+			});
+			return;
+		}
 		if(d3dobjects.length <= 1) {
 			this.showError({
 				title: 'Merge',

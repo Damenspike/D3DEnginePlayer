@@ -95,6 +95,9 @@ body, button, input, select {
 .tf--nums {
 	width: 40px !important;
 }
+.tf--numm {
+	width: 70px !important;
+}
 .field {
 	text-align: left;
 	margin-bottom: 20px;

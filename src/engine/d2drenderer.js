@@ -16,7 +16,9 @@ import {
 	toCanvasPaint,
 	parseRadialGradient,
 	parseLinearGradient,
-	hex8ToRgba
+	hex8ToRgba,
+	computeFilterState,
+	mapBlendMode
 } from './d2dutility.js';
 import {
 	onMouseUp,
@@ -123,7 +125,7 @@ export default class D2DRenderer {
 		this.setSize(this.width, this.height);
 	}
 	applyDeviceTransform(ctx = null) {
-		ctx = !!ctx ? ctx : this.ctx;
+		ctx = ctx || this.ctx;
 		
 		const pr = this.pixelRatio || 1;
 		const vs = this.viewScale || 1;
@@ -131,7 +133,7 @@ export default class D2DRenderer {
 		ctx.setTransform(pr * vs, 0, 0, pr * vs, off.x, off.y);
 	}
 	setSize(width, height, ctx = null) {
-		ctx = !!ctx ? ctx : this.ctx;
+		ctx = ctx || this.ctx;
 		const pr = this.pixelRatio || 1;
 		const projW = Math.max(this.root.manifest.width  | 0, 1) * this.drawScale;
 		const projH = Math.max(this.root.manifest.height | 0, 1) * this.drawScale;
@@ -189,7 +191,7 @@ export default class D2DRenderer {
 		this.refreshSize();
 	}
 	clear(ctx = null) {
-		ctx = !!ctx ? ctx : this.ctx;
+		ctx = ctx || this.ctx;
 		ctx.setTransform(1, 0, 0, 1, 0, 0);
 		ctx.clearRect(0, 0, this.domElement.width, this.domElement.height);
 	}
@@ -199,7 +201,7 @@ export default class D2DRenderer {
 		
 		this.clear();
 		
-		ctx = !!ctx ? ctx : this.ctx;
+		ctx = ctx || this.ctx;
 		
 		// ---- Apply view (pan+zoom) once for the whole scene ----
 		const pr = this.pixelRatio || 1;
@@ -229,11 +231,19 @@ export default class D2DRenderer {
 		//this._dirty = false;
 	}
 	renderParent(d3dobject, ctx) {
-		if(!d3dobject.visible || d3dobject.__editorState.hidden || !d3dobject.enabled)
+		let renderAnyway = false;
+		
+		if(window._editor) {
+			if(_editor.focus == d3dobject)
+				renderAnyway = true;
+		}
+		
+		if((!d3dobject.visible || d3dobject.__editorState.hidden || !d3dobject.enabled) && !renderAnyway)
 			return;
 		
 		this.draw(d3dobject, ctx);
 		this._renderObjects.push(d3dobject);
+		this._renderObjects = this._renderObjects.reverse();
 		
 		[...d3dobject.children]
 		.sort((a, b) => (a.depth || 0) - (b.depth || 0))
@@ -255,7 +265,7 @@ export default class D2DRenderer {
 		if(!graphic) 
 			return;
 			
-		ctx = !!ctx ? ctx : this.ctx;
+		ctx = ctx || this.ctx;
 		
 		// Collect all ancestor nodes that have graphic2d.mask === true
 		const maskAncestors = [];
@@ -296,19 +306,265 @@ export default class D2DRenderer {
 			}
 		}
 		
-		this.drawVector(d3dobject, ctx);
+		const filter = computeFilterState(d3dobject);
+		
+		this.drawVector(d3dobject, ctx, filter);
 		
 		if (d3dobject.hasComponent('Text2D'))
-			this.drawText(d3dobject, ctx);
+			this.drawText(d3dobject, ctx, filter);
 		
 		if (d3dobject.hasComponent('Bitmap2D'))
-			this.drawBitmap(d3dobject, ctx);
+			this.drawBitmap(d3dobject, ctx, filter);
 		
 		if (clipped) 
 			ctx.restore(); // pop mask stack
 	}
-	drawBitmap(d3dobject, ctx = null) {
-		ctx = !!ctx ? ctx : this.ctx;
+	drawVector(d3dobject, ctx = null, filter = null) {
+		ctx = ctx || this.ctx;
+		
+		let alpha = worldOpacity(d3dobject);
+		
+		if (filter)
+			alpha *= filter.opacity;
+		
+		if (alpha <= 0)
+			return;
+		
+		const graphic = d3dobject.graphic2d || {};
+	
+		const gLineEnabled = graphic.line !== false;
+		const gLineWidth   = Number(graphic.lineWidth ?? 1);
+		const gLineColor   = graphic.lineColor ?? '#ffffff';
+		const lineCap      = graphic.lineCap  ?? 'round';
+		const lineJoin     = graphic.lineJoin ?? 'round';
+		const miterLimit   = Number(graphic.miterLimit ?? 10);
+	
+		const fillEnabled  = graphic.fill !== false;
+		const fillPaintVal = graphic.fillColor ?? '#ffffffff';
+		const borderRadius = Math.max(0, Number(graphic.borderRadius ?? 0));
+	
+		const outlineOn        = graphic.outline === true;
+		const outlinePaintVal  = graphic.outlineColor ?? gLineColor;
+		const outlineWidth     = Number(graphic.outlineWidth ?? gLineWidth);
+	
+		let paths = Array.isArray(graphic._paths) ? graphic._paths.filter(p => Array.isArray(p)) : [];
+		if (Array.isArray(graphic._points)) { paths.push([...graphic._points]); delete graphic._points; }
+		graphic._paths = paths;
+		if (paths.length === 0) return;
+	
+		// ---- helpers: curves + paths ----
+		const hasCurveSegments = (pts) => {
+			if (!Array.isArray(pts)) return false;
+			for (let i = 1; i < pts.length; i++) {
+				const p = pts[i];
+				if (p && Number.isFinite(p.cx) && Number.isFinite(p.cy))
+					return true;
+			}
+			return false;
+		};
+	
+		// Build a Path2D from points, supporting optional quadratic curves.
+		// Convention: each point AFTER the first may define cx/cy as a control
+		// point for the segment from the previous point -> this point.
+		const buildCurvedPath = (pts, closed) => {
+			const p = new Path2D();
+			const first = pts[0];
+			p.moveTo(first.x, first.y);
+	
+			for (let i = 1; i < pts.length; i++) {
+				const pt   = pts[i];
+				const useCurve = Number.isFinite(pt.cx) && Number.isFinite(pt.cy);
+				if (useCurve) {
+					p.quadraticCurveTo(pt.cx, pt.cy, pt.x, pt.y);
+				} else {
+					p.lineTo(pt.x, pt.y);
+				}
+			}
+	
+			if (closed) {
+				// Optional: handle a curved closing segment if the first point
+				// defines a control point (Flash-style "back to start" curve).
+				const firstCPValid = Number.isFinite(first.cx) && Number.isFinite(first.cy);
+				const last         = pts[pts.length - 1];
+				if (!approx(last.x, first.x) || !approx(last.y, first.y)) {
+					// Shape isn't explicitly closed by a duplicate final point.
+					if (firstCPValid) {
+						p.quadraticCurveTo(first.cx, first.cy, first.x, first.y);
+					} else {
+						p.lineTo(first.x, first.y);
+					}
+				}
+				p.closePath();
+			}
+	
+			return p;
+		};
+	
+		// Old rounded-corner approximation kept as-is, for the case where
+		// there are *no* authored curve segments.
+		const makeRoundedPath = (pts, radius) => {
+			const base = pts.slice(0, -1);
+			const count = base.length;
+			if (count < 3) return null;
+			const get = i => base[(i + count) % count];
+			const p = new Path2D();
+			for (let i = 0; i < count; i++) {
+				const p0 = get(i - 1), p1 = get(i), p2 = get(i + 1);
+				const v1x = p1.x - p0.x, v1y = p1.y - p0.y;
+				const v2x = p2.x - p1.x, v2y = p2.y - p1.y;
+				const len1 = Math.hypot(v1x, v1y) || 1;
+				const len2 = Math.hypot(v2x, v2y) || 1;
+				const r = Math.min(radius, len1 / 2, len2 / 2);
+				const inX  = p1.x - (v1x / len1) * r, inY  = p1.y - (v1y / len1) * r;
+				const outX = p1.x + (v2x / len2) * r, outY = p1.y + (v2y / len2) * r;
+				if (i === 0) p.moveTo(inX, inY); else p.lineTo(inX, inY);
+				p.quadraticCurveTo(p1.x, p1.y, outX, outY);
+			}
+			p.closePath();
+			return p;
+		};
+	
+		// ---- world transform ----
+		let m = new DOMMatrix();
+		{
+			const chain = [];
+			for (let n = d3dobject; n; n = n.parent) chain.push(n);
+			chain.reverse();
+			for (const o of chain) {
+				const tx = Number(o.position?.x) || 0;
+				const ty = Number(o.position?.y) || 0;
+				const rz = Number(o.rotation?.z) || 0;
+				const sx = Number(o.scale?.x) || 1;
+				const sy = Number(o.scale?.y) || 1;
+				m = m.translate(tx, ty).rotate(rz * 180 / Math.PI).scale(sx, sy);
+			}
+		}
+	
+		const isInFocus = window._player || (_editor?.focus === d3dobject) || (_editor?.focus?.containsChild?.(d3dobject));
+	
+		// Build combined closed path + collect bounds for gradient paints
+		const combo       = new Path2D();
+		const closedPaths = [];
+		const openStrokes = [];
+		let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+	
+		for (const pts of paths) {
+			if (!Array.isArray(pts) || pts.length === 0) continue;
+			const points = pts.filter(p => p && Number.isFinite(p.x) && Number.isFinite(p.y));
+			if (points.length === 0) continue;
+	
+			const first = points[0];
+			const last  = points[points.length - 1];
+			const isClosed = points.length >= 3 && approx(first.x, last.x) && approx(first.y, last.y);
+			const hasCurves = hasCurveSegments(points);
+	
+			if (isClosed) {
+				// If user supplied curves, honour them and skip auto-rounded corners.
+				let path;
+				if (!hasCurves && borderRadius > 0 && points.length >= 3) {
+					const rounded = makeRoundedPath(points, borderRadius);
+					path = rounded || buildCurvedPath(points, true);
+				} else {
+					path = buildCurvedPath(points, true);
+				}
+	
+				combo.addPath(path);
+				closedPaths.push({ path, points });
+	
+				// local bounds for gradient mapping (anchors only – OK approximation)
+				for (const p of points) {
+					if (p.x < minX) minX = p.x;
+					if (p.y < minY) minY = p.y;
+					if (p.x > maxX) maxX = p.x;
+					if (p.y > maxY) maxY = p.y;
+				}
+			} else {
+				// open strokes – we still want curve segments here
+				openStrokes.push(points);
+			}
+		}
+	
+		const haveBounds = isFinite(minX) && isFinite(minY) && isFinite(maxX) && isFinite(maxY);
+		const bounds = haveBounds
+			? { x:minX, y:minY, w:Math.max(0, maxX-minX), h:Math.max(0, maxY-minY) }
+			: { x:0, y:0, w:1, h:1 };
+	
+		const BIG = 1e6;
+	
+		ctx.save();
+		ctx.globalAlpha *= alpha;
+		
+		if (filter) {
+			const bf = Math.max(0, 1 + filter.brightness);
+			if (Math.abs(filter.brightness) > 0.001)
+				ctx.filter = `brightness(${bf})`;
+			ctx.globalCompositeOperation = mapBlendMode(filter.blend);
+		}
+		
+		this.applyDeviceTransform();
+		ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
+	
+		// FILL
+		if (fillEnabled && closedPaths.length) {
+			ctx.fillStyle = toCanvasPaint(ctx, fillPaintVal, bounds);
+			ctx.fill(combo, 'evenodd');
+		}
+	
+		// OUTLINE (outside-only)
+		if (outlineOn && closedPaths.length && outlineWidth > 0) {
+			ctx.save();
+			const outside = new Path2D();
+			outside.rect(-BIG, -BIG, BIG * 2, BIG * 2);
+			outside.addPath(combo);
+			ctx.clip(outside, 'evenodd');
+	
+			ctx.lineWidth   = Math.max(0.001, outlineWidth * 2);
+			ctx.strokeStyle = toCanvasPaint(ctx, outlinePaintVal, bounds);
+			ctx.lineCap     = lineCap;
+			ctx.lineJoin    = lineJoin;
+			ctx.miterLimit  = miterLimit;
+			ctx.stroke(combo);
+			ctx.restore();
+		}
+	
+		// LINE strokes (centered)
+		if (gLineEnabled) {
+			// closed
+			for (const { path } of closedPaths) {
+				ctx.lineWidth   = Math.max(0.001, gLineWidth);
+				ctx.strokeStyle = toCanvasPaint(ctx, gLineColor, bounds);
+				ctx.lineCap     = lineCap;
+				ctx.lineJoin    = lineJoin;
+				ctx.miterLimit  = miterLimit;
+				ctx.stroke(path);
+			}
+	
+			// open (curve-aware)
+			for (const points of openStrokes) {
+				if (points.length < 2) continue;
+				const path = buildCurvedPath(points, false);
+				ctx.lineWidth   = Math.max(0.001, gLineWidth);
+				ctx.strokeStyle = toCanvasPaint(ctx, gLineColor, bounds);
+				ctx.lineCap     = lineCap;
+				ctx.lineJoin    = lineJoin;
+				ctx.miterLimit  = miterLimit;
+				ctx.stroke(path);
+			}
+		}
+		
+		if (filter && filter.tint && filter.tintColor && filter.tintStrength > 0 && closedPaths.length) {
+			ctx.save();
+			ctx.globalCompositeOperation = 'source-atop';
+			ctx.globalAlpha *= filter.tintStrength;
+			ctx.fillStyle = filter.tintColor;
+			ctx.fill(combo, 'evenodd');
+			ctx.restore();
+		}
+	
+		ctx.restore();
+	}
+	drawBitmap(d3dobject, ctx = null, filter = null) {
+		ctx = ctx || this.ctx;
 	
 		const bitmap2d = d3dobject.getComponent('Bitmap2D');
 		if (!bitmap2d) return;
@@ -345,9 +601,13 @@ export default class D2DRenderer {
 	
 		const gs = (this.pixelRatio || 1) * (this.viewScale || 1);
 		const isInFocus = window._player || (_editor.focus === d3dobject) || (_editor.focus.containsChild(d3dobject));
-		const masterAlpha = isInFocus ? 1 : masterUnfocusAlpha;
-		const alpha = worldOpacity(d3dobject);
-		if (alpha <= 0) return;
+		let alpha = worldOpacity(d3dobject);
+		
+		if (filter)
+			alpha *= filter.opacity;
+		
+		if (alpha <= 0) 
+			return;
 	
 		// ---- image cache ----
 		this._imageCache = this._imageCache || new Map();
@@ -427,8 +687,15 @@ export default class D2DRenderer {
 	
 		// ---- draw ----
 		ctx.save();
-		ctx.globalAlpha *= alpha * masterAlpha;
-	
+		ctx.globalAlpha *= alpha;
+		
+		if (filter) {
+			const bf = Math.max(0, 1 + filter.brightness);
+			if (Math.abs(filter.brightness) > 0.001)
+				ctx.filter = `brightness(${bf})`;
+			ctx.globalCompositeOperation = mapBlendMode(filter.blend);
+		}
+		
 		this.applyDeviceTransform();
 		ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
 	
@@ -446,10 +713,18 @@ export default class D2DRenderer {
 		}
 	
 		ctx.drawImage(entry.img, sx, sy, sw, sh, dx, dy, dw, dh);
+		
+		if (filter && filter.tint && filter.tintColor && filter.tintStrength > 0) {
+			ctx.globalCompositeOperation = 'source-atop';
+			ctx.globalAlpha *= filter.tintStrength;
+			ctx.fillStyle = filter.tintColor;
+			ctx.fillRect(boxX, boxY, boxW, boxH);
+		}
+		
 		ctx.restore();
 	}
-	drawText(d3dobject, ctx = null) {
-		ctx = !!ctx ? ctx : this.ctx;
+	drawText(d3dobject, ctx = null, filter = null) {
+		ctx = ctx || this.ctx;
 	
 		const text2d = d3dobject.getComponent('Text2D');
 		if (!text2d) return;
@@ -463,8 +738,13 @@ export default class D2DRenderer {
 		// Only bail on empty text if NOT an input (inputs still need caret/selection)
 		if (!text && !inputEnabled) return;
 	
-		const alpha = worldOpacity(d3dobject);
-		if (alpha <= 0) return;
+		let alpha = worldOpacity(d3dobject);
+		
+		if (filter)
+			alpha *= filter.opacity;
+		
+		if (alpha <= 0) 
+			return;
 	
 		// ---------- font / paint ----------
 		const fontSize    = Number(t2d.fontSize ?? 16);
@@ -556,7 +836,6 @@ export default class D2DRenderer {
 		const isInFocus = window._player ||
 			(_editor?.focus === d3dobject) ||
 			(_editor?.focus?.containsChild?.(d3dobject));
-		const masterAlpha = isInFocus ? 1 : masterUnfocusAlpha;
 	
 		// ---------- helpers ----------
 		const buildFont = () => `${fontStyle} ${fontVariant} ${fontWeight} ${fontSize}px ${fontFamily}`;
@@ -647,8 +926,15 @@ export default class D2DRenderer {
 	
 		// ---------- paint setup ----------
 		ctx.save();
-		ctx.globalAlpha *= alpha * masterAlpha;
-	
+		ctx.globalAlpha *= alpha;
+		
+		if (filter) {
+			const bf = Math.max(0, 1 + filter.brightness);
+			if (Math.abs(filter.brightness) > 0.001)
+				ctx.filter = `brightness(${bf})`;
+			ctx.globalCompositeOperation = mapBlendMode(filter.blend);
+		}
+		
 		// Match transform pipeline
 		this.applyDeviceTransform();
 		ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
@@ -799,7 +1085,11 @@ export default class D2DRenderer {
 				drawSpaced('strokeText', s, x, y);
 			}
 			if (fill) {
-				ctx.fillStyle = (typeof hexToRgba === 'function') ? hexToRgba(fillStyle) : fillStyle;
+				let fs = (typeof hexToRgba === 'function') ? hexToRgba(fillStyle) : fillStyle;
+				if (filter && filter.tint && filter.tintColor && filter.tintStrength > 0) {
+					fs = filter.tintColor;
+				}
+				ctx.fillStyle = fs;
 				drawSpaced('fillText', s, x, y);
 			}
 			y += lineHeight;
@@ -862,231 +1152,8 @@ export default class D2DRenderer {
 	
 		ctx.restore();
 	}
-	drawVector(d3dobject, ctx = null) {
-		ctx = !!ctx ? ctx : this.ctx;
-		
-		const alpha = worldOpacity(d3dobject);
-		if (alpha <= 0) return;
-		
-		const graphic = d3dobject.graphic2d || {};
-	
-		const gLineEnabled = graphic.line !== false;
-		const gLineWidth   = Number(graphic.lineWidth ?? 1);
-		const gLineColor   = graphic.lineColor ?? '#ffffff';
-		const lineCap      = graphic.lineCap  ?? 'round';
-		const lineJoin     = graphic.lineJoin ?? 'round';
-		const miterLimit   = Number(graphic.miterLimit ?? 10);
-	
-		const fillEnabled  = graphic.fill !== false;
-		const fillPaintVal = graphic.fillColor ?? '#ffffffff';
-		const borderRadius = Math.max(0, Number(graphic.borderRadius ?? 0));
-	
-		const outlineOn        = graphic.outline === true;
-		const outlinePaintVal  = graphic.outlineColor ?? gLineColor;
-		const outlineWidth     = Number(graphic.outlineWidth ?? gLineWidth);
-	
-		let paths = Array.isArray(graphic._paths) ? graphic._paths.filter(p => Array.isArray(p)) : [];
-		if (Array.isArray(graphic._points)) { paths.push([...graphic._points]); delete graphic._points; }
-		graphic._paths = paths;
-		if (paths.length === 0) return;
-	
-		// ---- helpers: curves + paths ----
-		const hasCurveSegments = (pts) => {
-			if (!Array.isArray(pts)) return false;
-			for (let i = 1; i < pts.length; i++) {
-				const p = pts[i];
-				if (p && Number.isFinite(p.cx) && Number.isFinite(p.cy))
-					return true;
-			}
-			return false;
-		};
-	
-		// Build a Path2D from points, supporting optional quadratic curves.
-		// Convention: each point AFTER the first may define cx/cy as a control
-		// point for the segment from the previous point -> this point.
-		const buildCurvedPath = (pts, closed) => {
-			const p = new Path2D();
-			const first = pts[0];
-			p.moveTo(first.x, first.y);
-	
-			for (let i = 1; i < pts.length; i++) {
-				const pt   = pts[i];
-				const useCurve = Number.isFinite(pt.cx) && Number.isFinite(pt.cy);
-				if (useCurve) {
-					p.quadraticCurveTo(pt.cx, pt.cy, pt.x, pt.y);
-				} else {
-					p.lineTo(pt.x, pt.y);
-				}
-			}
-	
-			if (closed) {
-				// Optional: handle a curved closing segment if the first point
-				// defines a control point (Flash-style "back to start" curve).
-				const firstCPValid = Number.isFinite(first.cx) && Number.isFinite(first.cy);
-				const last         = pts[pts.length - 1];
-				if (!approx(last.x, first.x) || !approx(last.y, first.y)) {
-					// Shape isn't explicitly closed by a duplicate final point.
-					if (firstCPValid) {
-						p.quadraticCurveTo(first.cx, first.cy, first.x, first.y);
-					} else {
-						p.lineTo(first.x, first.y);
-					}
-				}
-				p.closePath();
-			}
-	
-			return p;
-		};
-	
-		// Old rounded-corner approximation kept as-is, for the case where
-		// there are *no* authored curve segments.
-		const makeRoundedPath = (pts, radius) => {
-			const base = pts.slice(0, -1);
-			const count = base.length;
-			if (count < 3) return null;
-			const get = i => base[(i + count) % count];
-			const p = new Path2D();
-			for (let i = 0; i < count; i++) {
-				const p0 = get(i - 1), p1 = get(i), p2 = get(i + 1);
-				const v1x = p1.x - p0.x, v1y = p1.y - p0.y;
-				const v2x = p2.x - p1.x, v2y = p2.y - p1.y;
-				const len1 = Math.hypot(v1x, v1y) || 1;
-				const len2 = Math.hypot(v2x, v2y) || 1;
-				const r = Math.min(radius, len1 / 2, len2 / 2);
-				const inX  = p1.x - (v1x / len1) * r, inY  = p1.y - (v1y / len1) * r;
-				const outX = p1.x + (v2x / len2) * r, outY = p1.y + (v2y / len2) * r;
-				if (i === 0) p.moveTo(inX, inY); else p.lineTo(inX, inY);
-				p.quadraticCurveTo(p1.x, p1.y, outX, outY);
-			}
-			p.closePath();
-			return p;
-		};
-	
-		// ---- world transform ----
-		let m = new DOMMatrix();
-		{
-			const chain = [];
-			for (let n = d3dobject; n; n = n.parent) chain.push(n);
-			chain.reverse();
-			for (const o of chain) {
-				const tx = Number(o.position?.x) || 0;
-				const ty = Number(o.position?.y) || 0;
-				const rz = Number(o.rotation?.z) || 0;
-				const sx = Number(o.scale?.x) || 1;
-				const sy = Number(o.scale?.y) || 1;
-				m = m.translate(tx, ty).rotate(rz * 180 / Math.PI).scale(sx, sy);
-			}
-		}
-	
-		const isInFocus = window._player || (_editor?.focus === d3dobject) || (_editor?.focus?.containsChild?.(d3dobject));
-		const masterAlpha = isInFocus ? 1 : masterUnfocusAlpha;
-	
-		// Build combined closed path + collect bounds for gradient paints
-		const combo       = new Path2D();
-		const closedPaths = [];
-		const openStrokes = [];
-		let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-	
-		for (const pts of paths) {
-			if (!Array.isArray(pts) || pts.length === 0) continue;
-			const points = pts.filter(p => p && Number.isFinite(p.x) && Number.isFinite(p.y));
-			if (points.length === 0) continue;
-	
-			const first = points[0];
-			const last  = points[points.length - 1];
-			const isClosed = points.length >= 3 && approx(first.x, last.x) && approx(first.y, last.y);
-			const hasCurves = hasCurveSegments(points);
-	
-			if (isClosed) {
-				// If user supplied curves, honour them and skip auto-rounded corners.
-				let path;
-				if (!hasCurves && borderRadius > 0 && points.length >= 3) {
-					const rounded = makeRoundedPath(points, borderRadius);
-					path = rounded || buildCurvedPath(points, true);
-				} else {
-					path = buildCurvedPath(points, true);
-				}
-	
-				combo.addPath(path);
-				closedPaths.push({ path, points });
-	
-				// local bounds for gradient mapping (anchors only – OK approximation)
-				for (const p of points) {
-					if (p.x < minX) minX = p.x;
-					if (p.y < minY) minY = p.y;
-					if (p.x > maxX) maxX = p.x;
-					if (p.y > maxY) maxY = p.y;
-				}
-			} else {
-				// open strokes – we still want curve segments here
-				openStrokes.push(points);
-			}
-		}
-	
-		const haveBounds = isFinite(minX) && isFinite(minY) && isFinite(maxX) && isFinite(maxY);
-		const bounds = haveBounds
-			? { x:minX, y:minY, w:Math.max(0, maxX-minX), h:Math.max(0, maxY-minY) }
-			: { x:0, y:0, w:1, h:1 };
-	
-		const BIG = 1e6;
-	
-		ctx.save();
-		ctx.globalAlpha *= alpha * masterAlpha;
-		this.applyDeviceTransform();
-		ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
-	
-		// FILL
-		if (fillEnabled && closedPaths.length) {
-			ctx.fillStyle = toCanvasPaint(ctx, fillPaintVal, bounds);
-			ctx.fill(combo, 'evenodd');
-		}
-	
-		// OUTLINE (outside-only)
-		if (outlineOn && closedPaths.length && outlineWidth > 0) {
-			ctx.save();
-			const outside = new Path2D();
-			outside.rect(-BIG, -BIG, BIG * 2, BIG * 2);
-			outside.addPath(combo);
-			ctx.clip(outside, 'evenodd');
-	
-			ctx.lineWidth   = Math.max(0.001, outlineWidth * 2);
-			ctx.strokeStyle = toCanvasPaint(ctx, outlinePaintVal, bounds);
-			ctx.lineCap     = lineCap;
-			ctx.lineJoin    = lineJoin;
-			ctx.miterLimit  = miterLimit;
-			ctx.stroke(combo);
-			ctx.restore();
-		}
-	
-		// LINE strokes (centered)
-		if (gLineEnabled) {
-			// closed
-			for (const { path } of closedPaths) {
-				ctx.lineWidth   = Math.max(0.001, gLineWidth);
-				ctx.strokeStyle = toCanvasPaint(ctx, gLineColor, bounds);
-				ctx.lineCap     = lineCap;
-				ctx.lineJoin    = lineJoin;
-				ctx.miterLimit  = miterLimit;
-				ctx.stroke(path);
-			}
-	
-			// open (curve-aware)
-			for (const points of openStrokes) {
-				if (points.length < 2) continue;
-				const path = buildCurvedPath(points, false);
-				ctx.lineWidth   = Math.max(0.001, gLineWidth);
-				ctx.strokeStyle = toCanvasPaint(ctx, gLineColor, bounds);
-				ctx.lineCap     = lineCap;
-				ctx.lineJoin    = lineJoin;
-				ctx.miterLimit  = miterLimit;
-				ctx.stroke(path);
-			}
-		}
-	
-		ctx.restore();
-	}
 	drawProjectFrame(ctx) {
-		ctx = !!ctx ? ctx : this.ctx;
+		ctx = ctx || this.ctx;
 		
 		// Project logical size
 		const projW = Math.max(this.root?.manifest?.width  | 0, 1);
@@ -1121,7 +1188,7 @@ export default class D2DRenderer {
 		ctx.restore();
 	}
 	drawFocusOverlay(ctx = null) {
-		ctx = !!ctx ? ctx : this.ctx;
+		ctx = ctx || this.ctx;
 		ctx.save();
 		
 		ctx.setTransform(1,0,0,1,0,0);
