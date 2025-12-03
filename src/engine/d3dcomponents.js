@@ -1788,20 +1788,10 @@ const D3DComponents = {
 				section: 'glow',
 				condition: c => c.properties.glow === true
 			},
-			glowBlurX: {
-				label: 'Blur X',
+			glowBlur: {
+				label: 'Blur',
 				type: 'number',
-				min: 0,
-				max: 256,
-				step: 1,
-				def: 8,
-				section: 'glow',
-				condition: c => c.properties.glow === true
-			},
-			glowBlurY: {
-				label: 'Blur Y',
-				type: 'number',
-				min: 0,
+				min: -256,
 				max: 256,
 				step: 1,
 				def: 8,
@@ -1812,7 +1802,6 @@ const D3DComponents = {
 				label: 'Strength',
 				type: 'number',
 				min: 0,
-				max: 8,
 				step: 0.1,
 				def: 1,
 				section: 'glow',
@@ -1879,7 +1868,7 @@ const D3DComponents = {
 				section: 'shadow',
 				options: [
 					{ name: 'outer', label: 'Outer' },
-					{ name: 'inner', label: 'Inner' }
+					//{ name: 'inner', label: 'Inner' }
 				],
 				condition: c => c.properties.shadow === true
 			}

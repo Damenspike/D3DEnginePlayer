@@ -321,15 +321,14 @@ export default class D2DRenderer {
 	}
 	drawVector(d3dobject, ctx = null, filter = null) {
 		ctx = ctx || this.ctx;
-		
+	
+		// ---------- opacity ----------
 		let alpha = worldOpacity(d3dobject);
-		
 		if (filter)
-			alpha *= filter.opacity;
-		
+			alpha *= (Number(filter.opacity ?? 1) || 1);
 		if (alpha <= 0)
 			return;
-		
+	
 		const graphic = d3dobject.graphic2d || {};
 	
 		const gLineEnabled = graphic.line !== false;
@@ -347,12 +346,15 @@ export default class D2DRenderer {
 		const outlinePaintVal  = graphic.outlineColor ?? gLineColor;
 		const outlineWidth     = Number(graphic.outlineWidth ?? gLineWidth);
 	
+		// ---------- paths ----------
 		let paths = Array.isArray(graphic._paths) ? graphic._paths.filter(p => Array.isArray(p)) : [];
-		if (Array.isArray(graphic._points)) { paths.push([...graphic._points]); delete graphic._points; }
+		if (Array.isArray(graphic._points)) {
+			paths.push([...graphic._points]);
+			delete graphic._points;
+		}
 		graphic._paths = paths;
 		if (paths.length === 0) return;
 	
-		// ---- helpers: curves + paths ----
 		const hasCurveSegments = (pts) => {
 			if (!Array.isArray(pts)) return false;
 			for (let i = 1; i < pts.length; i++) {
@@ -363,16 +365,13 @@ export default class D2DRenderer {
 			return false;
 		};
 	
-		// Build a Path2D from points, supporting optional quadratic curves.
-		// Convention: each point AFTER the first may define cx/cy as a control
-		// point for the segment from the previous point -> this point.
 		const buildCurvedPath = (pts, closed) => {
 			const p = new Path2D();
 			const first = pts[0];
 			p.moveTo(first.x, first.y);
 	
 			for (let i = 1; i < pts.length; i++) {
-				const pt   = pts[i];
+				const pt = pts[i];
 				const useCurve = Number.isFinite(pt.cx) && Number.isFinite(pt.cy);
 				if (useCurve) {
 					p.quadraticCurveTo(pt.cx, pt.cy, pt.x, pt.y);
@@ -382,12 +381,9 @@ export default class D2DRenderer {
 			}
 	
 			if (closed) {
-				// Optional: handle a curved closing segment if the first point
-				// defines a control point (Flash-style "back to start" curve).
 				const firstCPValid = Number.isFinite(first.cx) && Number.isFinite(first.cy);
 				const last         = pts[pts.length - 1];
 				if (!approx(last.x, first.x) || !approx(last.y, first.y)) {
-					// Shape isn't explicitly closed by a duplicate final point.
 					if (firstCPValid) {
 						p.quadraticCurveTo(first.cx, first.cy, first.x, first.y);
 					} else {
@@ -396,12 +392,9 @@ export default class D2DRenderer {
 				}
 				p.closePath();
 			}
-	
 			return p;
 		};
 	
-		// Old rounded-corner approximation kept as-is, for the case where
-		// there are *no* authored curve segments.
 		const makeRoundedPath = (pts, radius) => {
 			const base = pts.slice(0, -1);
 			const count = base.length;
@@ -424,7 +417,7 @@ export default class D2DRenderer {
 			return p;
 		};
 	
-		// ---- world transform ----
+		// ---------- world transform ----------
 		let m = new DOMMatrix();
 		{
 			const chain = [];
@@ -440,9 +433,7 @@ export default class D2DRenderer {
 			}
 		}
 	
-		const isInFocus = window._player || (_editor?.focus === d3dobject) || (_editor?.focus?.containsChild?.(d3dobject));
-	
-		// Build combined closed path + collect bounds for gradient paints
+		// ---------- build combined path + bounds ----------
 		const combo       = new Path2D();
 		const closedPaths = [];
 		const openStrokes = [];
@@ -455,11 +446,10 @@ export default class D2DRenderer {
 	
 			const first = points[0];
 			const last  = points[points.length - 1];
-			const isClosed = points.length >= 3 && approx(first.x, last.x) && approx(first.y, last.y);
-			const hasCurves = hasCurveSegments(points);
+			const isClosed   = points.length >= 3 && approx(first.x, last.x) && approx(first.y, last.y);
+			const hasCurves  = hasCurveSegments(points);
 	
 			if (isClosed) {
-				// If user supplied curves, honour them and skip auto-rounded corners.
 				let path;
 				if (!hasCurves && borderRadius > 0 && points.length >= 3) {
 					const rounded = makeRoundedPath(points, borderRadius);
@@ -471,7 +461,6 @@ export default class D2DRenderer {
 				combo.addPath(path);
 				closedPaths.push({ path, points });
 	
-				// local bounds for gradient mapping (anchors only – OK approximation)
 				for (const p of points) {
 					if (p.x < minX) minX = p.x;
 					if (p.y < minY) minY = p.y;
@@ -479,7 +468,6 @@ export default class D2DRenderer {
 					if (p.y > maxY) maxY = p.y;
 				}
 			} else {
-				// open strokes – we still want curve segments here
 				openStrokes.push(points);
 			}
 		}
@@ -491,67 +479,157 @@ export default class D2DRenderer {
 	
 		const BIG = 1e6;
 	
+		// ---------- core painter ----------
+		const paintPaths = () => {
+			// Fill
+			if (fillEnabled && closedPaths.length) {
+				ctx.fillStyle = toCanvasPaint(ctx, fillPaintVal, bounds);
+				ctx.fill(combo, 'evenodd');
+			}
+	
+			// Outline (outside only)
+			if (outlineOn && closedPaths.length && outlineWidth > 0) {
+				ctx.save();
+				const outside = new Path2D();
+				outside.rect(-BIG, -BIG, BIG * 2, BIG * 2);
+				outside.addPath(combo);
+				ctx.clip(outside, 'evenodd');
+	
+				ctx.lineWidth   = Math.max(0.001, outlineWidth * 2);
+				ctx.strokeStyle = toCanvasPaint(ctx, outlinePaintVal, bounds);
+				ctx.lineCap     = lineCap;
+				ctx.lineJoin    = lineJoin;
+				ctx.miterLimit  = miterLimit;
+				ctx.stroke(combo);
+				ctx.restore();
+			}
+	
+			// Strokes
+			if (gLineEnabled) {
+				// closed
+				for (const { path } of closedPaths) {
+					ctx.lineWidth   = Math.max(0.001, gLineWidth);
+					ctx.strokeStyle = toCanvasPaint(ctx, gLineColor, bounds);
+					ctx.lineCap     = lineCap;
+					ctx.lineJoin    = lineJoin;
+					ctx.miterLimit  = miterLimit;
+					ctx.stroke(path);
+				}
+	
+				// open
+				for (const points of openStrokes) {
+					if (points.length < 2) continue;
+					const path = buildCurvedPath(points, false);
+					ctx.lineWidth   = Math.max(0.001, gLineWidth);
+					ctx.strokeStyle = toCanvasPaint(ctx, gLineColor, bounds);
+					ctx.lineCap     = lineCap;
+					ctx.lineJoin    = lineJoin;
+					ctx.miterLimit  = miterLimit;
+					ctx.stroke(path);
+				}
+			}
+		};
+	
+		// ---------- filter helpers ----------
+		const applyGlow = () => {
+			if (!filter || !filter.glow || !closedPaths.length) return;
+			if(!fillEnabled && !gLineEnabled && !outlineOn) return;
+	
+			const color = filter.glowColor || 'rgba(1,1,1,1)';
+			const blur = Number(filter.glowBlur ?? 0) || 0;
+	
+			let strength = Number(filter.glowStrength ?? 1);
+			if (!Number.isFinite(strength) || strength <= 0) return;
+	
+			const passes = Math.min(10, Math.max(1, Math.round(strength)));
+	
+			ctx.save();
+			const prevOp    = ctx.globalCompositeOperation;
+			const baseAlpha = ctx.globalAlpha;
+	
+			ctx.shadowColor   = color;
+			ctx.shadowBlur    = blur;
+			ctx.shadowOffsetX = 0;
+			ctx.shadowOffsetY = 0;
+			ctx.fillStyle     = color;
+			ctx.globalCompositeOperation = 'lighter';
+	
+			for (let i = 0; i < passes; i++) {
+				ctx.globalAlpha = baseAlpha;
+				ctx.fill(combo, 'evenodd');
+			}
+	
+			ctx.globalCompositeOperation = prevOp;
+			ctx.restore();
+		};
+	
+		const applyOuterShadow = () => {
+			if (!filter || !filter.shadow || filter.shadowType === 'inner') return;
+			if(!fillEnabled && !gLineEnabled && !outlineOn) return;
+			const color = hex8ToRgba(filter.shadowColor || '#000000ff', '#000000ff');
+			const blur  = Number(filter.shadowBlur ?? 0) || 0;
+			const dx    = Number(filter.shadowDistanceX ?? 0) || 0;
+			const dy    = Number(filter.shadowDistanceY ?? 0) || 0;
+	
+			ctx.save();
+			ctx.shadowColor   = color;
+			ctx.shadowBlur    = blur;
+			ctx.shadowOffsetX = dx;
+			ctx.shadowOffsetY = dy;
+			paintPaths();        // paints with drop shadow
+			ctx.restore();
+		};
+	
+		const applyInnerShadow = () => {
+			if (!filter || !filter.shadow || filter.shadowType !== 'inner' || !closedPaths.length) return;
+			if(!fillEnabled && !gLineEnabled && !outlineOn) return;
+			const color = hex8ToRgba(filter.shadowColor || '#000000ff', '#000000ff');
+			const blur  = Number(filter.shadowBlur ?? 0) || 0;
+			const dx    = Number(filter.shadowDistanceX ?? 0) || 0;
+			const dy    = Number(filter.shadowDistanceY ?? 0) || 0;
+	
+			const pad = blur * 4 + Math.max(bounds.w, bounds.h);
+			const x   = bounds.x - pad;
+			const y   = bounds.y - pad;
+			const w   = bounds.w + pad * 2;
+			const h   = bounds.h + pad * 2;
+	
+			ctx.save();
+			// Only affect inside the shape
+			ctx.clip(combo, 'evenodd');
+			ctx.shadowColor   = color;
+			ctx.shadowBlur    = blur;
+			ctx.shadowOffsetX = dx;
+			ctx.shadowOffsetY = dy;
+			ctx.fillStyle     = color;
+			ctx.fillRect(x, y, w, h);
+			ctx.restore();
+		};
+	
+		// ---------- draw ----------
 		ctx.save();
 		ctx.globalAlpha *= alpha;
-		
+	
 		if (filter) {
 			const bf = Math.max(0, 1 + filter.brightness);
 			if (Math.abs(filter.brightness) > 0.001)
 				ctx.filter = `brightness(${bf})`;
 			ctx.globalCompositeOperation = mapBlendMode(filter.blend);
 		}
-		
+	
 		this.applyDeviceTransform();
 		ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
 	
-		// FILL
-		if (fillEnabled && closedPaths.length) {
-			ctx.fillStyle = toCanvasPaint(ctx, fillPaintVal, bounds);
-			ctx.fill(combo, 'evenodd');
-		}
+		// 1) Glow under everything
+		applyGlow();
 	
-		// OUTLINE (outside-only)
-		if (outlineOn && closedPaths.length && outlineWidth > 0) {
-			ctx.save();
-			const outside = new Path2D();
-			outside.rect(-BIG, -BIG, BIG * 2, BIG * 2);
-			outside.addPath(combo);
-			ctx.clip(outside, 'evenodd');
+		// 2) Outer shadow (with shape) under base paint
+		applyOuterShadow();
 	
-			ctx.lineWidth   = Math.max(0.001, outlineWidth * 2);
-			ctx.strokeStyle = toCanvasPaint(ctx, outlinePaintVal, bounds);
-			ctx.lineCap     = lineCap;
-			ctx.lineJoin    = lineJoin;
-			ctx.miterLimit  = miterLimit;
-			ctx.stroke(combo);
-			ctx.restore();
-		}
+		// 3) Base fill + outline + strokes
+		paintPaths();
 	
-		// LINE strokes (centered)
-		if (gLineEnabled) {
-			// closed
-			for (const { path } of closedPaths) {
-				ctx.lineWidth   = Math.max(0.001, gLineWidth);
-				ctx.strokeStyle = toCanvasPaint(ctx, gLineColor, bounds);
-				ctx.lineCap     = lineCap;
-				ctx.lineJoin    = lineJoin;
-				ctx.miterLimit  = miterLimit;
-				ctx.stroke(path);
-			}
-	
-			// open (curve-aware)
-			for (const points of openStrokes) {
-				if (points.length < 2) continue;
-				const path = buildCurvedPath(points, false);
-				ctx.lineWidth   = Math.max(0.001, gLineWidth);
-				ctx.strokeStyle = toCanvasPaint(ctx, gLineColor, bounds);
-				ctx.lineCap     = lineCap;
-				ctx.lineJoin    = lineJoin;
-				ctx.miterLimit  = miterLimit;
-				ctx.stroke(path);
-			}
-		}
-		
+		// 4) Tint on top of painted shape
 		if (filter && filter.tint && filter.tintColor && filter.tintStrength > 0 && closedPaths.length) {
 			ctx.save();
 			ctx.globalCompositeOperation = 'source-atop';
@@ -560,6 +638,9 @@ export default class D2DRenderer {
 			ctx.fill(combo, 'evenodd');
 			ctx.restore();
 		}
+	
+		// 5) INNER SHADOW LAST, so it’s visible on top of the fill
+		applyInnerShadow();
 	
 		ctx.restore();
 	}
@@ -739,11 +820,9 @@ export default class D2DRenderer {
 		if (!text && !inputEnabled) return;
 	
 		let alpha = worldOpacity(d3dobject);
-		
 		if (filter)
 			alpha *= filter.opacity;
-		
-		if (alpha <= 0) 
+		if (alpha <= 0)
 			return;
 	
 		// ---------- font / paint ----------
@@ -766,7 +845,7 @@ export default class D2DRenderer {
 		const valign        = t2d.valign ?? 'top';    // top|middle|bottom
 		const lineHeightMul = Number(t2d.lineHeight ?? 1) || 1;
 		const lineHeight    = (fontSize * 1.25) * lineHeightMul;
-		const multiline		= !!(t2d.multiline ?? true);
+		const multiline     = !!(t2d.multiline ?? true);
 		const wrap          = !!(t2d.wrap ?? true) && multiline;
 		const breakWords    = !!(t2d.breakWords ?? false);
 		const letterSpacing = Number(t2d.letterSpacing ?? 0);
@@ -955,7 +1034,6 @@ export default class D2DRenderer {
 		const rawLines = [];
 		
 		if (isPassword) {
-			// Single visual line, but preserve true text length for indices.
 			const visible = maskChar.repeat(text.length);
 			rawLines.push({ start: 0, end: text.length, str: visible });
 			if (rawLines.length === 0) rawLines.push({ start: 0, end: 0, str: '' });
@@ -1013,7 +1091,7 @@ export default class D2DRenderer {
 	
 		// Scroll + baseline (with vertical align)
 		const baseX = boxX + padL - (wrap ? 0 : scrollX);
-		let y       = boxY + padT + vAlignOffset - scrollY;
+		const baseY = boxY + padT + vAlignOffset - scrollY;
 	
 		// ---------- INPUT FIELD (register + selection) ----------
 		let inputState = null;
@@ -1068,32 +1146,142 @@ export default class D2DRenderer {
 			}
 		}
 	
-		// ---------- DRAW TEXT ----------
-		for (let i = 0; i < lines.length; i++) {
-			const s = lines[i];
-			let x   = baseX;
+		// ---------- FILTER HELPERS FOR TEXT ----------
+		const drawAllTextLines = () => {
+			let yLine = baseY;
+			for (let i = 0; i < lines.length; i++) {
+				const s = lines[i];
+				let xLine   = baseX;
 	
-			if (contentW) {
-				const w = lineWidthAdv(s);
-				if (align === 'center') x += Math.max(0, (contentW - w) * 0.5);
-				else if (align === 'right') x += Math.max(0, (contentW - w));
-			}
-	
-			if (strokeOn && strokeWidth > 0) {
-				ctx.lineWidth   = Math.max(0.001, strokeWidth);
-				ctx.strokeStyle = (typeof hexToRgba === 'function') ? hexToRgba(strokeStyle) : strokeStyle;
-				drawSpaced('strokeText', s, x, y);
-			}
-			if (fill) {
-				let fs = (typeof hexToRgba === 'function') ? hexToRgba(fillStyle) : fillStyle;
-				if (filter && filter.tint && filter.tintColor && filter.tintStrength > 0) {
-					fs = filter.tintColor;
+				if (contentW) {
+					const w = lineWidthAdv(s);
+					if (align === 'center')      xLine += Math.max(0, (contentW - w) * 0.5);
+					else if (align === 'right') xLine += Math.max(0, (contentW - w));
 				}
-				ctx.fillStyle = fs;
-				drawSpaced('fillText', s, x, y);
+	
+				if (strokeOn && strokeWidth > 0) {
+					ctx.lineWidth   = Math.max(0.001, strokeWidth);
+					ctx.strokeStyle = (typeof hexToRgba === 'function') ? hexToRgba(strokeStyle) : strokeStyle;
+					drawSpaced('strokeText', s, xLine, yLine);
+				}
+				if (fill) {
+					const baseFill = (typeof hexToRgba === 'function') ? hexToRgba(fillStyle) : fillStyle;
+					ctx.fillStyle = baseFill;
+					drawSpaced('fillText', s, xLine, yLine);
+				}
+				yLine += lineHeight;
 			}
-			y += lineHeight;
-		}
+		};
+	
+		const applyTextGlow = () => {
+			if (!filter || !filter.glow) return;
+		
+			const color = filter.glowColor || 'rgba(1,1,1,1)';
+			const blur = Number(filter.glowBlur ?? 0) || 0;
+			let strength = Number(filter.glowStrength ?? 1);
+			if (blur <= 0 || strength <= 0) return;
+		
+			// Number of passes (strength factor), capped
+			const passes = Math.min(10, Math.max(1, Math.round(strength)));
+		
+			ctx.save();
+		
+			// Glow should not be clipped by the textbox rect
+			// so do NOT call ctx.clip() before this.
+		
+			// Draw on top of background — not affecting fill/stroke                
+			ctx.globalCompositeOperation = 'lighter';
+		
+			ctx.shadowColor   = color;
+			ctx.shadowBlur    = blur;
+			ctx.shadowOffsetX = 0;
+			ctx.shadowOffsetY = 0;
+		
+			// Draw glow multiple times for stronger effect
+			for (let p = 0; p < passes; p++) {
+				let yLine = baseY;
+				for (let li = 0; li < lines.length; li++) {
+					const s = lines[li];
+					let xLine = baseX;
+		
+					if (contentW) {
+						const w = lineWidthAdv(s);
+						if (align === 'center')      xLine += Math.max(0, (contentW - w) * 0.5);
+						else if (align === 'right') xLine += Math.max(0, (contentW - w));
+					}
+		
+					// The glow must render the glyph mask — use fillText only
+					ctx.fillStyle = '#ffffff'; // mask color doesn't matter, shadowColor does
+					drawSpaced('fillText', s, xLine, yLine);
+		
+					yLine += lineHeight;
+				}
+			}
+		
+			ctx.restore();
+		};
+	
+		const applyTextShadowOuter = () => {
+			if (!filter || !filter.shadow || filter.shadowType === 'inner') return;
+			const color = hex8ToRgba(filter.shadowColor || '#000000ff', '#000000ff');
+			const blur  = Number(filter.shadowBlur ?? 0) || 0;
+			const dx    = Number(filter.shadowDistanceX ?? 0) || 0;
+			const dy    = Number(filter.shadowDistanceY ?? 0) || 0;
+	
+			ctx.save();
+			ctx.shadowColor   = color;
+			ctx.shadowBlur    = blur;
+			ctx.shadowOffsetX = dx;
+			ctx.shadowOffsetY = dy;
+	
+			// Shadow of fill only
+			let yLine = baseY;
+			for (let li = 0; li < lines.length; li++) {
+				const s = lines[li];
+				let xLine = baseX;
+	
+				if (contentW) {
+					const w = lineWidthAdv(s);
+					if (align === 'center')      xLine += Math.max(0, (contentW - w) * 0.5);
+					else if (align === 'right') xLine += Math.max(0, (contentW - w));
+				}
+				ctx.fillStyle = color;
+				drawSpaced('fillText', s, xLine, yLine);
+				yLine += lineHeight;
+			}
+			ctx.restore();
+		};
+	
+		const applyTextTint = () => {
+			if (!filter || !filter.tint || !filter.tintColor || filter.tintStrength <= 0) return;
+	
+			ctx.save();
+			ctx.globalCompositeOperation = 'source-atop';
+			ctx.globalAlpha *= filter.tintStrength;
+			ctx.fillStyle = filter.tintColor;
+	
+			let yLine = baseY;
+			for (let li = 0; li < lines.length; li++) {
+				const s = lines[li];
+				let xLine = baseX;
+	
+				if (contentW) {
+					const w = lineWidthAdv(s);
+					if (align === 'center')      xLine += Math.max(0, (contentW - w) * 0.5);
+					else if (align === 'right') xLine += Math.max(0, (contentW - w));
+				}
+				drawSpaced('fillText', s, xLine, yLine);
+				yLine += lineHeight;
+			}
+	
+			ctx.restore();
+		};
+	
+		// ---------- DRAW TEXT WITH FILTERS ----------
+		applyTextGlow();
+		applyTextShadowOuter();
+		drawAllTextLines();
+		applyTextTint();
 	
 		// ---------- CARET (after text, so it draws on top) ----------
 		if (inputEnabled && inputState && inputState.active && inputState.blinkOn) {
@@ -1137,7 +1325,7 @@ export default class D2DRenderer {
 			}
 	
 			// Y for this line (with vertical align)
-			const cy = (boxY + padT + vAlignOffset - scrollY) + (li * lineHeight);
+			const cy = baseY + (li * lineHeight);
 	
 			// Draw caret
 			ctx.save();

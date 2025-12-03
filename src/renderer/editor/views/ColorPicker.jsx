@@ -172,6 +172,10 @@ export default function ColorPicker({
 						top: panelStyle.top,
 						left: panelStyle.left
 					}}
+					onMouseDown={e => {
+						e.stopPropagation();
+						e.preventDefault();
+					}}
 				>
 					<RgbaColorPicker 
 						color={rgba} 

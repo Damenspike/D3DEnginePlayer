@@ -1942,62 +1942,183 @@ export function computeFilterState(d3dobject) {
 		chain.push(n);
 	chain.reverse();
 
-	let tint		 = false;
-	let brightness   = 0;
-	let opacity      = 1;
-	let tintColor    = null;
-	let tintStrength = 0;
-	let blend        = 'normal';
+	let tint          = false;
+	let brightness    = 0;
+	let opacity       = 1;
+	let tintColor     = null;
+	let tintStrength  = 0;
+	let blend         = 'normal';
+
+	// glow
+	let glow          = false;
+	let glowColor     = null;
+	let glowBlur     = 0;
+	let glowStrength  = 1;
+
+	// shadow
+	let shadow        = false;
+	let shadowColor   = null;
+	let shadowDistanceX = 0;
+	let shadowDistanceY = 0;
+	let shadowBlur    = 0;
+	let shadowInner   = false;   // boolean
+	let shadowType    = null;    // 'inner' | 'outer'
 
 	for (const obj of chain) {
-		const comp = obj.getComponent('Filter2D');
-		if (!comp || !comp.component.enabled) 
+		const comp = obj.getComponent?.('Filter2D');
+		if (!comp || !comp.component?.enabled)
 			continue;
-			
-		const p = comp.component.properties;
 
-		const b = Number(p.brightness ?? 0);
-		if (Number.isFinite(b))
-			brightness += b;
+		const p = comp.component.properties || {};
 
-		const fo = Number(p.filterOpacity ?? 1);
-		if (Number.isFinite(fo))
-			opacity *= fo;
+		// ----- brightness (additive) -----
+		{
+			const b = Number(p.brightness ?? 0);
+			if (Number.isFinite(b))
+				brightness += b;
+		}
 
+		// ----- extra opacity (multiplicative) -----
+		{
+			const fo = Number(p.filterOpacity ?? 1);
+			if (Number.isFinite(fo))
+				opacity *= fo;
+		}
+
+		// ----- tint (last-takes-precedence) -----
 		if (p.tint && p.tintColor) {
 			const parsed = parseTintColor(p.tintColor);
 			if (parsed) {
 				tintColor    = `rgba(${parsed.r},${parsed.g},${parsed.b},1)`;
 				tintStrength = parsed.a;
+				tint         = true;
 			}
-			tint = true;
 		}
 
+		// ----- blend mode (last non-normal wins) -----
 		if (p.blend && p.blend !== 'normal')
 			blend = p.blend;
+
+		// ----- glow (last enabled wins) -----
+		if (p.glow) {
+			const parsedGlow = parseTintColor(p.glowColor || '#ffffff');
+			if (parsedGlow) {
+				glow         = true;
+				glowColor    = `rgba(${parsedGlow.r},${parsedGlow.g},${parsedGlow.b},1)`;
+				glowBlur    = Number(p.glowBlur ?? 0) || 0;
+				glowStrength = Number(p.glowStrength ?? 1) || 0;
+			}
+		}
+
+		// ----- shadow (last enabled wins) -----
+		if (p.shadow) {
+			const parsedShadow = parseTintColor(p.shadowColor || '#000000');
+			if (parsedShadow) {
+				shadow      = true;
+				shadowColor = `rgba(${parsedShadow.r},${parsedShadow.g},${parsedShadow.b},1)`;
+
+				// Read both offset-style and distance-style fields,
+				// but emit shadowDistanceX/Y because that’s what the renderer uses.
+				let dx = Number(
+					p.shadowDistanceX ??
+					p.shadowOffsetX ??
+					0
+				) || 0;
+
+				let dy = Number(
+					p.shadowDistanceY ??
+					p.shadowOffsetY ??
+					0
+				) || 0;
+
+				// Optional polar form: angle + distance
+				const dist = Number(p.shadowDistance ?? 0) || 0;
+				if (dist !== 0) {
+					const angRad = (Number(p.shadowAngle ?? 0) * Math.PI) / 180;
+					const ax = Math.cos(angRad) * dist;
+					const ay = Math.sin(angRad) * dist;
+
+					// If no explicit X/Y, derive from angle+distance
+					if (!dx && !dy) {
+						dx = ax;
+						dy = ay;
+					}
+				}
+
+				shadowDistanceX = dx;
+				shadowDistanceY = dy;
+				shadowBlur      = Number(p.shadowBlur ?? 0) || 0;
+
+				// allow either explicit type or boolean inner
+				if (typeof p.shadowType === 'string') {
+					shadowType  = p.shadowType === 'inner' ? 'inner' : 'outer';
+					shadowInner = shadowType === 'inner';
+				} else {
+					shadowInner = !!p.shadowInner;
+					shadowType  = shadowInner ? 'inner' : 'outer';
+				}
+			}
+		}
 	}
 
+	// ---- clamp core channels ----
 	if (brightness < -1) brightness = -1;
 	if (brightness >  1) brightness =  1;
 	if (opacity   <  0) opacity   =  0;
 	if (opacity   >  1) opacity   =  1;
 
+	const tintActive =
+		tint &&
+		!!tintColor &&
+		tintStrength > 0.001;
+
+	const glowActive =
+		glow &&
+		!!glowColor &&
+		(glowBlur !== 0 || glowStrength > 0);
+
+	const shadowActive =
+		shadow &&
+		!!shadowColor &&
+		(
+			shadowBlur !== 0 ||
+			shadowDistanceX !== 0 ||
+			shadowDistanceY !== 0
+		);
+		
 	const isNeutral =
 		Math.abs(brightness) < 0.001 &&
 		Math.abs(opacity - 1) < 0.001 &&
-		(!tint || !tintColor || tintStrength <= 0.001) &&
-		blend === 'normal';
+		!tintActive &&
+		blend === 'normal' &&
+		!glowActive &&
+		!shadowActive;
 
 	if (isNeutral)
 		return null;
-	
+
 	return {
 		brightness,
 		opacity,
 		tint,
 		tintColor,
 		tintStrength,
-		blend
+		blend,
+
+		// glow
+		glow: glowActive,
+		glowColor,
+		glowBlur,
+		glowStrength,
+
+		// shadow
+		shadow: shadowActive,
+		shadowColor,
+		shadowDistanceX,
+		shadowDistanceY,
+		shadowBlur,
+		shadowType,
+		shadowInner
 	};
 }
 export function mapBlendMode(name) {
@@ -2018,32 +2139,57 @@ export function mapBlendMode(name) {
 	}
 }
 export function parseTintColor(str) {
-	if (!str) 
-		return null;
+	if (!str || typeof str !== 'string')
+		return { r: 255, g: 255, b: 255, a: 1 };
 
+	str = str.trim();
+	str = str.replace('0x', '#');
+
+	// --- rgba(...) / rgb(...) ---
 	const m = str.match(/rgba?\s*\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)/i);
 	if (m) {
 		const r = Math.max(0, Math.min(255, +m[1]));
 		const g = Math.max(0, Math.min(255, +m[2]));
 		const b = Math.max(0, Math.min(255, +m[3]));
-		const a = m[4] !== undefined ? Math.max(0, Math.min(1, +m[4])) : 1;
+		const a = m[4] !== undefined
+			? Math.max(0, Math.min(1, +m[4]))
+			: 1;
 		return { r, g, b, a };
 	}
 
+	// --- hex forms ---
 	if (str[0] === '#') {
-		const hex = str.slice(1);
+		let hex = str.slice(1).toLowerCase();
+
+		// #RGB or #RGBA -> expand to #RRGGBB / #RRGGBBAA
+		if (hex.length === 3 || hex.length === 4) {
+			let r = hex[0], g = hex[1], b = hex[2], a = hex[3] ?? 'f';
+			hex = r + r + g + g + b + b + a + a; // now 6 or 8 chars
+		}
+
 		if (hex.length === 6 || hex.length === 8) {
 			const r = parseInt(hex.slice(0, 2), 16);
 			const g = parseInt(hex.slice(2, 4), 16);
 			const b = parseInt(hex.slice(4, 6), 16);
-			let a = 1;
+			let   a = 255;
+
 			if (hex.length === 8)
-				a = parseInt(hex.slice(6, 8), 16) / 255;
-			return { r, g, b, a };
+				a = parseInt(hex.slice(6, 8), 16);
+
+			// guard NaN
+			if (Number.isFinite(r) && Number.isFinite(g) && Number.isFinite(b) && Number.isFinite(a)) {
+				return {
+					r: Math.max(0, Math.min(255, r)),
+					g: Math.max(0, Math.min(255, g)),
+					b: Math.max(0, Math.min(255, b)),
+					a: Math.max(0, Math.min(1, a / 255))
+				};
+			}
 		}
 	}
 
-	return { r: 255, g: 255, b: 255, a: 1 };
+	// fallback
+	return { r: 255, g: 255, b: 255, a: 1, error: true };
 }
 
 /* ========================= DEFAULT BUNDLE ========================= */

@@ -1788,6 +1788,7 @@ D3D.setEventListener('export-as-d3d', () => _editor.exportD3DSelectedObjects());
 D3D.setEventListener('export-as-d3dproj', () => _editor.exportD3DSelectedObjects({d3dproj: true}));
 D3D.setEventListener('send-message', (name, ...params) => _editor.receiveMessage(name, ...params));
 D3D.setEventListener('modify', (type) => _editor.modifySelected(type));
+D3D.setEventListener('paste-in-place', (type) => _editor.pasteInPlace());
 
 
 

@@ -672,7 +672,10 @@ export default class D3DEditorState {
 		this.doCopySelectedObjects();
 		this.deleteSelectedObjects({action: 'Cut'});
 	}
-	async paste() {
+	async pasteInPlace() {
+		return await this.paste({posStep: false});
+	}
+	async paste(opts = {}) {
 		if(!this.gameOrInspectorActive()) {
 			_events.invoke('paste');
 			return;
@@ -685,7 +688,7 @@ export default class D3DEditorState {
 			try {
 				const clipboard = JSON.parse(json);
 				
-				return await this.pasteFrom({clip: clipboard, posStep: true});
+				return await this.pasteFrom({clip: clipboard, posStep: opts.posStep !== false});
 			}catch(e) {
 				console.error('Paste error', e);
 			}

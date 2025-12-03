@@ -624,6 +624,10 @@ function sendModify(type) {
 	if (!editorWindow?.isFocused()) return;
 	editorWindow.webContents.send('modify', type);
 }
+function sendPasteInPlace(type) {
+	if (!editorWindow?.isFocused()) return;
+	editorWindow.webContents.send('paste-in-place', type);
+}
 
 function sendBuild({prompt, play}) {
 	if (!editorWindow?.isFocused()) return;
@@ -873,6 +877,11 @@ const menuTemplate = [
 			{ role: 'cut', id: 'cut' },
 			{ role: 'copy', id: 'copy' },
 			{ role: 'paste', id: 'paste' },
+			{
+				label: 'Paste In Place',
+				accelerator: 'CmdOrCtrl+Shift+V',
+				click: () => sendPasteInPlace()
+			},
 			{
 				label: 'Copy Transform',
 				accelerator: 'CmdOrCtrl+Shift+T',
