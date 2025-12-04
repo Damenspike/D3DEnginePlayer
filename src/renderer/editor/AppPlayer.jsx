@@ -6,7 +6,7 @@ import { eventToWorld } from '../../engine/d2dutility.js';
 import '../../assets/style/main.css';
 import '../../assets/style/player.css';
 
-var playerVersion;
+var playerVersion = '';
 
 export default function AppPlayer({srcAttr}) {
 	const gameMasterRef = useRef(null);
@@ -15,9 +15,11 @@ export default function AppPlayer({srcAttr}) {
 	const theme = _isStandalone && useSystemTheme();
 	
 	useEffect(() => {
-		D3D.getPlayerVersion().then(v => {
-			playerVersion = v;
-		});
+		if(window._isStandalone) {
+			D3D.getPlayerVersion().then(v => {
+				playerVersion = v;
+			});
+		}
 	}, []);
 	
 	useEffect(() => {

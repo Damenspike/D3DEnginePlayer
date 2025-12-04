@@ -455,11 +455,22 @@ export default class D3DObject {
 		if(this.hasComponent('Graphic2D'))
 			return this.components.find(c => c.type == 'Graphic2D').properties;
 	}
+	
 	get depth() {
+		const pos = this.position;
+		return pos.z;
+	}
+	set depth(value) {
+		const pos = this.position;
+		pos.z = value;
+		this.pos = pos;
+	}
+	
+	get worldDepth() {
 		const worldPos = this.worldPosition;
 		return worldPos.z;
 	}
-	set depth(value) {
+	set worldDepth(value) {
 		const worldPos = this.worldPosition;
 		worldPos.z = value;
 		this.worldPosition = worldPos;
@@ -961,6 +972,9 @@ export default class D3DObject {
 			
 			// Editor relevant only
 			_editor: window._editor,
+			
+			// Global store
+			_global: window.__global,
 			
 			// D3DObject intances
 			root: this.root,
@@ -1840,7 +1854,7 @@ export default class D3DObject {
 	}
 	
 	getNextHighestDepth() {
-		let depth = 0;
+		let depth = -Infinity;
 		this.children.forEach(d3dobj => {
 			if(d3dobj.__temp) return;
 			
@@ -1848,10 +1862,14 @@ export default class D3DObject {
 			if(d > depth)
 				depth = d;
 		});
+		
+		if(!Number.isFinite(depth))
+			return 0;
+		
 		return depth + 1;
 	}
 	getNextLowestDepth() {
-		let depth = 0;
+		let depth = Infinity;
 		this.children.forEach(d3dobj => {
 			if(d3dobj.__temp) return;
 			
@@ -1859,6 +1877,10 @@ export default class D3DObject {
 			if(d < depth)
 				depth = d;
 		});
+		
+		if(!Number.isFinite(depth))
+			return 0;
+			
 		return depth - 1;
 	}
 	invalidateGraphic2D() {

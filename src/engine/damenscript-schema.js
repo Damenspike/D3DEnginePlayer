@@ -1,7 +1,7 @@
 export const KEYWORDS = [
 	'var', 'let','const','function','return','if','else','for','while','break','continue', 'async', 'await',
 	'true','false','null','undefined','import','from','export','struct','enum','match',
-	'case','default','try','catch','finally','throw', 'this', 'root', '_root', 'parent', '_time', '_physics', '_input', '_dimensions', '_graphics'
+	'case','default','try','catch','finally','throw', 'this', 'root', '_root', 'parent', '_time', '_physics', '_input', '_dimensions', '_graphics', '_global'
 ]
 export const TYPE_KEYWORDS = [
 	'number','string','bool','Vector2','Vector3','Vector4','MathUtils','Box3','Quaternion','crypto','Math','JSON','Promise','WebSocket','console','Raycaster','Color','Euler','Box4','Sphere','Plane', 'Infinity','fileMeta',

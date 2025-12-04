@@ -70,6 +70,7 @@ window._time = new D3DTime();
 window._dimensions = new D3DDimensions();
 window._physics = new D3DPhysics();
 window._graphics = new D3DGraphics();
+window.__global = {}; // our own runtime global store
 
 // Host
 window._host = window._editor;
@@ -898,6 +899,9 @@ async function addD3DObjectEditor(type) {
 		break;
 	}
 	
+	if(_editor.mode == '2D' && type == 'empty') {
+		newd3dobj.addComponent('Container2D');
+	}else
 	if(_editor.mode != '3D')
 		_editor.mode = '3D';
 	

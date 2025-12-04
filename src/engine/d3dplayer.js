@@ -23,6 +23,7 @@ window._physics = new D3DPhysics();
 window._dimensions = new D3DDimensions();
 window._graphics = new D3DGraphics();
 window._player = {};
+window.__global = {}; // our own runtime global store
 
 // Host
 window._host = window._player;
@@ -263,5 +264,7 @@ _player.closePlayer = closePlayer;
 _player.showConfirm = showConfirm;
 _player.onConsoleMessage = onConsoleMessage;
 
-D3D.setEventListener('ctx-menu-action', (id) => _events.invoke('ctx-menu-action', id));
-D3D.setEventListener('ctx-menu-close', () => _events.invoke('ctx-menu-close'));
+if(window._isStandalone) {
+	D3D.setEventListener('ctx-menu-action', (id) => _events.invoke('ctx-menu-action', id));
+	D3D.setEventListener('ctx-menu-close', () => _events.invoke('ctx-menu-close'));
+}

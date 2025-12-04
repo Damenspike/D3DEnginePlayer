@@ -214,6 +214,7 @@ export default class D2DRenderer {
 		
 		// Do the draw
 		this.renderParent(this.root);
+		this._renderObjects = this._renderObjects.reverse();
 		
 		// Draw focus
 		if(window._editor) {
@@ -243,10 +244,9 @@ export default class D2DRenderer {
 		
 		this.draw(d3dobject, ctx);
 		this._renderObjects.push(d3dobject);
-		this._renderObjects = this._renderObjects.reverse();
 		
 		[...d3dobject.children]
-		.sort((a, b) => (a.depth || 0) - (b.depth || 0))
+		.sort((a, b) => (a.worldDepth || 0) - (b.worldDepth || 0))
 		.forEach(d3dchild => this.renderParent(d3dchild, ctx));
 	}
 	renderGizmos() {

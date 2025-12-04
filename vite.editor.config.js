@@ -18,10 +18,17 @@ export default defineConfig({
 		emptyOutDir: true,
 		rollupOptions: {
 			input: {
+				// Main windows
 				main: resolve(__dirname, 'src/renderer/editor/index.html'),
 				editorstart: resolve(__dirname, 'src/renderer/editor/editorstart.html'),
 				editornew: resolve(__dirname, 'src/renderer/editor/editornew.html'),
-				player: resolve(__dirname, 'src/renderer/editor/player.html')
+				player: resolve(__dirname, 'src/renderer/editor/player.html'),
+				
+				// Tool windows
+				bitmapTrace: resolve(__dirname, 'src/renderer/editor/tool-windows/bitmap-trace.html'),
+				graphicSmooth: resolve(__dirname, 'src/renderer/editor/tool-windows/graphic-smooth.html'),
+				graphicStraighten: resolve(__dirname, 'src/renderer/editor/tool-windows/graphic-straighten.html'),
+				graphicSimplify: resolve(__dirname, 'src/renderer/editor/tool-windows/graphic-simplify.html'),
 			},
 			external: ['electron', 'fs', 'path', 'vm']
 		}

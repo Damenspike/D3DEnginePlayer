@@ -1108,14 +1108,18 @@ const DamenScript = (() => {
 		  return undefined;
 	  }
 	  
+	  _getGlobalStore() {
+		  return window.__global;
+	  }
+	  
 	  get(n){
 		 if (n === 'this')
 			 return this.get('self'); // alias
-	 
+			 
 		 // 1) local
 		 if (this.hasLocal(n))
 			 return this.map[n];
-	 
+			 
 		 // 2) parent chain
 		 if (this.parent) {
 			 try {
@@ -1124,16 +1128,15 @@ const DamenScript = (() => {
 				 if (!(e && /Unknown identifier/.test(String(e.message)))) throw e;
 			 }
 		 }
-	 
+		 
 		 // 3) self/this fallback (match assignment behavior + auto-bind methods)
 		 const selfObj = this._getSelf();
 		 if (selfObj && typeof selfObj === 'object') {
 			 if (BLOCKED_PROPS.has(n))
 				 throw DRuntime(`Forbidden property: ${n}`);
 	 
-			 let v = selfObj[n]; // may be undefined; fine
+			 let v = selfObj[n]; 
 	 
-			 // Auto-bind plain functions to self so "getComponent(...)" works
 			 if (typeof v === 'function') {
 				 // cache per-self to avoid rebinding every lookup
 				 let cache = selfObj[DS_BIND_CACHE];
@@ -1150,10 +1153,22 @@ const DamenScript = (() => {
 				 }
 				 return bound;
 			 }
-	 
-			 return v; // primitives/objects just pass through
+	 		
+			 if(v !== undefined)
+			 	return v;
 		 }
-	 
+		 
+		 const g = this._getGlobalStore();
+		 if (g && typeof g === 'object') {
+			 if (BLOCKED_PROPS.has(n))
+				 throw DRuntime(`Forbidden property: ${n}`);
+		 	
+			const v = g[n];	
+				
+			if(v !== undefined)
+				return v;
+		 }
+		 
 		 // 4) no self to fall back to
 		 throw DRuntime(`Unknown identifier: ${n}`);
 	 }
