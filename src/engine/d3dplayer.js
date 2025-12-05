@@ -4,6 +4,9 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import {
+	updateObject
+} from './d3dutility.js';
 
 import D2DRenderer from './d2drenderer.js';
 import D3DObject from './d3dobject.js';
@@ -166,19 +169,6 @@ function initComposer() {
 	_player.composer = composer;
 	_player.renderPass = renderPass;
 	_player.gtaoPass = gtaoPass;
-}
-
-function updateObject(methods, d3dobj) {
-	methods.forEach(method => {
-		try {
-			if(d3dobj.enabled)
-				d3dobj[method]?.();
-		}catch(e) {
-			D3DConsole.error(`[${d3dobj.name}][${method}]`, e.name, e.message);
-			console.error(`[${d3dobj.name}][${method}]`, e);
-		}
-	});
-	d3dobj.children.forEach(child => updateObject(methods, child));
 }
 
 function startAnimationLoop() {

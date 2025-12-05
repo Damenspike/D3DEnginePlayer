@@ -207,6 +207,46 @@ export default class Graphic2DManager {
 		this.component.properties.blocks = v;
 		this.refresh();
 	}
+	
+	get lineStyle() {
+		return this.component.properties.lineStyle ?? 'solid';
+	}
+	set lineStyle(v) {
+		this.component.properties.lineStyle = v;
+		this.refresh();
+	}
+	
+	get lineDashLength() {
+		return this.component.properties.lineDashLength ?? 12;
+	}
+	set lineDashLength(v) {
+		this.component.properties.lineDashLength = v;
+		this.refresh();
+	}
+	
+	get lineDashGap() {
+		return this.component.properties.lineDashGap ?? 8;
+	}
+	set lineDashGap(v) {
+		this.component.properties.lineDashGap = v;
+		this.refresh();
+	}
+	
+	get lineDotGap() {
+		return this.component.properties.lineDotGap ?? 4;
+	}
+	set lineDotGap(v) {
+		this.component.properties.lineDotGap = v;
+		this.refresh();
+	}
+	
+	get lineDashOffset() {
+		return this.component.properties.lineDashOffset ?? 0;
+	}
+	set lineDashOffset(v) {
+		this.component.properties.lineDashOffset = v;
+		this.refresh();
+	}
 
 	hitTest({ x, y }) {
 		return hitObject(this.d3dobject, x, y);

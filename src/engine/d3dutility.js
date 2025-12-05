@@ -1,6 +1,7 @@
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { ConvexHull } from 'three/addons/math/ConvexHull.js';
 import JSZip from 'jszip';
+import D3DConsole from './d3dconsole.js';
 
 export const MIME_D3D_ROW = "application/x-d3d-objectrow";
 
@@ -17,7 +18,7 @@ export async function moveZipEntry(zip, srcPath, destDir, { updateIndex }) {
 	const nd = p => (p.endsWith('/') ? p : p + '/');
 	const nf = p => p.replace(/\/+$/, '');
 	const base = p => nf(p).split('/').pop();
-console.log(destDir);
+	
 	const entry = zip.files[srcPath] ?? zip.files[srcPath + '/'];
 	
 	if(!entry)
@@ -701,9 +702,33 @@ export function buildConvexWireGeometry(verts, puff = 1.005) {
 	geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 	return geom;
 }
-export function updateObject(methods, d3dobj, ...params) {
-	methods.forEach(method => d3dobj[method]?.(...params));
-	d3dobj.children.forEach(child => updateObject(methods, child, ...params));
+export function updateObject(methods, d3dobj) {
+	if (!d3dobj) return;
+	
+	if (d3dobj.enabled) {
+		for (let i = 0, n = methods.length; i < n; i++) {
+			const name = methods[i];
+			const fn   = d3dobj[name];
+			
+			if (typeof fn !== 'function') 
+				continue;
+			
+			try {
+				fn.call(d3dobj);
+			} catch (e) {
+				D3DConsole.error(`[${d3dobj.name}][${name}]`, e.name, e.message);
+				console.error(`[${d3dobj.name}][${name}]`, e);
+			}
+		}
+	}
+	
+	const children = d3dobj.children;
+	if (!children || children.length === 0) 
+		return;
+	
+	for (let i = 0, n = children.length; i < n; i++) {
+		updateObject(methods, children[i]);
+	}
 }
 export function getHitNormalRotation(face, d3dobject) {
 	const object3d = d3dobject?.object3d;

@@ -6,9 +6,9 @@ export function onMouseDown(e) {
 	
 	e.pointerId = pid;
 
-	r._renderObjects.forEach(d3dobject => {
+	for(const d3dobject of r._renderObjects) {
 		if(e.blocked)
-			return;
+			break;
 			
 		e.block = () => {
 			e.blocked = true;
@@ -19,25 +19,25 @@ export function onMouseDown(e) {
 			typeof d3dobject?.onMouseUp   !== 'function' &&
 			typeof d3dobject?.graphic2d?.blocks === 'undefined'
 		) {
-			return;
+			continue;
 		}
 		
 		if (!d3dobject.hitTestPoint(_input.mouse))
-			return;
-
+			continue;
+		
 		// This pointer now "owns" the click/drag on this object
 		d3dobject.isClicked = true;
 		d3dobject.pointerId = pid;
 		
 		if(d3dobject.graphic2d?.blocks)
 			e.blocked = true;
-
+		
 		try {
 			d3dobject.onMouseDown?.(e);
 		}catch(e) {
 			D3DConsole.error(e);
 		}
-	});
+	}
 }
 
 export function onMouseUp(e) {
@@ -46,9 +46,9 @@ export function onMouseUp(e) {
 	
 	e.pointerId = pid;
 
-	r._renderObjects.forEach(d3dobject => {
+	for(const d3dobject of r._renderObjects) {
 		if(e.blocked)
-			return;
+			break;
 			
 		e.block = () => {
 			e.blocked = true;
@@ -63,14 +63,14 @@ export function onMouseUp(e) {
 		}
 		
 		if (typeof d3dobject?.onMouseUp !== 'function')
-			return;
+			continue;
 		
 		if (!d3dobject.isClicked)
-			return;
-
+			continue;
+		
 		// Only release if this pointer matches the one that pressed it
 		if (d3dobject.pointerId !== undefined && d3dobject.pointerId !== pid)
-			return;
+			continue;
 		
 		d3dobject.isClicked = false;
 		d3dobject.pointerId = undefined;
@@ -83,7 +83,7 @@ export function onMouseUp(e) {
 		}catch(e) {
 			D3DConsole.error(e);
 		}
-	});
+	}
 }
 
 export function onMouseMove(e) {
@@ -92,7 +92,7 @@ export function onMouseMove(e) {
 	
 	e.pointerId = pid;
 	
-	r._renderObjects.forEach(d3dobject => {
+	for(const d3dobject of r._renderObjects) {
 		e.block = () => {
 			e.blocked = true;
 		}
@@ -103,12 +103,12 @@ export function onMouseMove(e) {
 			typeof d3dobject?.onMouseOut  !== 'function' &&
 			typeof d3dobject?.graphic2d?.blocks === 'undefined'
 		) {
-			return;
+			continue;
 		}
 		
 		// Only send if this pointer matches the one that pressed it
 		if (d3dobject.pointerId !== undefined && d3dobject.pointerId !== pid)
-			return;
+			continue;
 			
 		if(d3dobject.isMouseOver) {
 			try {
@@ -127,11 +127,11 @@ export function onMouseMove(e) {
 				D3DConsole.error(e);
 			}
 			
-			return;
+			continue;
 		}
 		
 		if(e.blocked)
-			return;
+			break;
 			
 		if(d3dobject.graphic2d?.blocks)
 			e.blocked = true;
@@ -145,15 +145,15 @@ export function onMouseMove(e) {
 				D3DConsole.error(e);
 			}
 		}
-	});
+	}
 }
 
 export function onMouseWheel(e) {
 	const r = _host.renderer2d;
 	
-	r._renderObjects.forEach(d3dobject => {
+	for(const d3dobject of r._renderObjects) {
 		if(e.blocked)
-			return;
+			break;
 			
 		e.block = () => {
 			e.blocked = true;
@@ -163,10 +163,10 @@ export function onMouseWheel(e) {
 			typeof d3dobject?.onMouseWheel !== 'function' &&
 			typeof d3dobject?.graphic2d?.blocks === 'undefined'
 		)
-			return;
+			continue;
 			
 		if (!d3dobject.hitTestPoint(_input.mouse))
-			return;
+			continue;
 			
 		if(d3dobject.graphic2d?.blocks)
 			e.blocked = true;
@@ -176,7 +176,7 @@ export function onMouseWheel(e) {
 		}catch(e) {
 			D3DConsole.error(e);
 		}
-	});
+	}
 }
 
 function getPointerId(e, useChanged = false) {

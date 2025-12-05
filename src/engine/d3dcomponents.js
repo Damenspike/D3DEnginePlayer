@@ -887,6 +887,75 @@ const D3DComponents = {
 					c.properties.lineJoin == 'miter'
 				)
 			},
+			'lineStyle': {
+				label: 'Line style',
+				type: 'select',
+				def: 'solid',
+				section: 'line',
+				options: [
+					{ name: 'solid',   label: 'Solid' },
+					{ name: 'dashed',  label: 'Dashed' },
+					{ name: 'dotted',  label: 'Dotted' },
+					{ name: 'dashdot', label: 'Dash-Dot' }
+				]
+			},
+			'lineDashLength': {
+				label: 'Dash length',
+				type: 'number',
+				min: 0,
+				max: 1024,
+				step: 0.5,
+				def: 12,
+				section: 'line',
+				// only for dashed + dashdot
+				condition: c => {
+					const s = c.properties.lineStyle;
+					return s === 'dashed' || s === 'dashdot';
+				}
+			},
+			'lineDashGap': {
+				label: 'Dash gap',
+				type: 'number',
+				min: 0,
+				max: 1024,
+				step: 0.5,
+				def: 8,
+				section: 'line',
+				// only for dashed + dashdot
+				condition: c => {
+					const s = c.properties.lineStyle;
+					return s === 'dashed' || s === 'dashdot';
+				}
+			},
+			'lineDotGap': {
+				label: 'Dot gap',
+				type: 'number',
+				min: 0,
+				max: 1024,
+				step: 0.5,
+				def: 4,
+				section: 'line',
+				// only for dotted + dashdot
+				condition: c => {
+					const s = c.properties.lineStyle;
+					return s === 'dotted' || s === 'dashdot';
+				}
+			},
+			'lineDashOffset': {
+				label: 'Dash offset',
+				type: 'number',
+				min: -9999,
+				max: 9999,
+				step: 0.5,
+				def: 0,
+				section: 'line',
+				// for anything that actually uses a pattern
+				condition: c => {
+					const s = c.properties.lineStyle;
+					return s === 'dashed' || s === 'dotted' || s === 'dashdot';
+				}
+			},
+			
 			'outline': {
 				label: 'Outline',
 				type: 'boolean',

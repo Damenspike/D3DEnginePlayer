@@ -337,6 +337,12 @@ export default class D2DRenderer {
 		const lineCap      = graphic.lineCap  ?? 'round';
 		const lineJoin     = graphic.lineJoin ?? 'round';
 		const miterLimit   = Number(graphic.miterLimit ?? 10);
+		
+		const lineStyle      = graphic.lineStyle ?? 'solid';
+		const dashLength     = Number(graphic.lineDashLength ?? (gLineWidth * 4));
+		const dashGap        = Number(graphic.lineDashGap ?? (gLineWidth * 2));
+		const dotGap      = Number(graphic.lineDotGap ?? gLineWidth);
+		const lineDashOffset = Number(graphic.lineDashOffset ?? 0);
 	
 		const fillEnabled  = graphic.fill !== false;
 		const fillPaintVal = graphic.fillColor ?? '#ffffffff';
@@ -416,6 +422,44 @@ export default class D2DRenderer {
 			p.closePath();
 			return p;
 		};
+		
+		const applyStrokeStyle = (isOutline = false, widthOverride = null, colorOverride = null) => {
+			// base stroke params
+			ctx.lineWidth   = Math.max(0.001, widthOverride ?? gLineWidth);
+			ctx.lineCap     = lineCap;
+			ctx.lineJoin    = lineJoin;
+			ctx.miterLimit  = miterLimit;
+			ctx.strokeStyle = colorOverride ?? toCanvasPaint(ctx, gLineColor, bounds);
+		
+			// line dash / pattern
+			switch (lineStyle) {
+				case 'dashed': {
+					const dash = dashLength > 0 ? dashLength : gLineWidth * 4;
+					const gap  = dashGap   > 0 ? dashGap   : gLineWidth * 2;
+					ctx.setLineDash([dash, gap]);
+					break;
+				}
+				case 'dotted': {
+					const dot = dotGap > 0 ? dotGap : gLineWidth;
+					// small segments / gaps to approximate dots
+					ctx.setLineDash([0, dot * 2]);
+					break;
+				}
+				case 'dashdot': {
+					const dash = dashLength > 0 ? dashLength : gLineWidth * 4;
+					const gap  = dashGap   > 0 ? dashGap   : gLineWidth * 2;
+					const dot  = dotGap > 0 ? dotGap : gLineWidth;
+					ctx.setLineDash([dash, gap, dot, gap]);
+					break;
+				}
+				case 'solid':
+				default:
+					ctx.setLineDash([]);
+					break;
+			}
+		
+			ctx.lineDashOffset = lineDashOffset || 0;
+		};
 	
 		// ---------- world transform ----------
 		let m = new DOMMatrix();
@@ -487,47 +531,39 @@ export default class D2DRenderer {
 				ctx.fill(combo, 'evenodd');
 			}
 	
-			// Outline (outside only)
 			if (outlineOn && closedPaths.length && outlineWidth > 0) {
 				ctx.save();
 				const outside = new Path2D();
 				outside.rect(-BIG, -BIG, BIG * 2, BIG * 2);
 				outside.addPath(combo);
 				ctx.clip(outside, 'evenodd');
-	
-				ctx.lineWidth   = Math.max(0.001, outlineWidth * 2);
-				ctx.strokeStyle = toCanvasPaint(ctx, outlinePaintVal, bounds);
-				ctx.lineCap     = lineCap;
-				ctx.lineJoin    = lineJoin;
-				ctx.miterLimit  = miterLimit;
+			
+				// use the same style but doubled width for outer outline
+				applyStrokeStyle(true, outlineWidth * 2, toCanvasPaint(ctx, outlinePaintVal, bounds));
 				ctx.stroke(combo);
+			
 				ctx.restore();
 			}
-	
-			// Strokes
+			
+			// LINE strokes (centered)
 			if (gLineEnabled) {
-				// closed
+				// closed shapes
 				for (const { path } of closedPaths) {
-					ctx.lineWidth   = Math.max(0.001, gLineWidth);
-					ctx.strokeStyle = toCanvasPaint(ctx, gLineColor, bounds);
-					ctx.lineCap     = lineCap;
-					ctx.lineJoin    = lineJoin;
-					ctx.miterLimit  = miterLimit;
+					applyStrokeStyle(false);
 					ctx.stroke(path);
 				}
-	
-				// open
+			
+				// open (curve-aware)
 				for (const points of openStrokes) {
 					if (points.length < 2) continue;
 					const path = buildCurvedPath(points, false);
-					ctx.lineWidth   = Math.max(0.001, gLineWidth);
-					ctx.strokeStyle = toCanvasPaint(ctx, gLineColor, bounds);
-					ctx.lineCap     = lineCap;
-					ctx.lineJoin    = lineJoin;
-					ctx.miterLimit  = miterLimit;
+					applyStrokeStyle(false);
 					ctx.stroke(path);
 				}
 			}
+			
+			ctx.setLineDash([]);
+			ctx.lineDashOffset = 0;
 		};
 	
 		// ---------- filter helpers ----------
