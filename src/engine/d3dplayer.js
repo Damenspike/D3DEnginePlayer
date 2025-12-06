@@ -31,6 +31,30 @@ window.__global = {}; // our own runtime global store
 // Host
 window._host = window._player;
 
+/////////////////////
+// Error handling
+////////////////////
+window.addEventListener('error', (event) => {
+	try {
+		D3DConsole.error(
+			'[Uncaught Error]',
+			event.message,
+			event.error || null
+		);
+	} catch (_) {}
+});
+// Unhandled promise rejections (async/await, .then chains, etc.)
+window.addEventListener('unhandledrejection', (event) => {
+	try {
+		const reason = event.reason;
+		const msg =
+			(reason && reason.message) ||
+			(typeof reason === 'string' ? reason : 'Unhandled promise rejection');
+
+		D3DConsole.error('[Unhandled Promise Rejection]', msg, reason || null);
+	} catch (_) {}
+});
+
 // Add convenience vectors
 THREE.Vector3.right = new THREE.Vector3(1, 0, 0);
 THREE.Vector3.up = new THREE.Vector3(0, 1, 0);

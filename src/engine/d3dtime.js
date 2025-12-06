@@ -17,6 +17,9 @@ export default class D3DTime {
 	get sinceStart() {
 		return this.now - this._start;
 	}
+	get date() {
+		return new Date();
+	}
 	constructor() {
 		this._nowMs = performance.now();
 		this._start = this.now;

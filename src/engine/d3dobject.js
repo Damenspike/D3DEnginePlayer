@@ -6,6 +6,8 @@ import D3DComponents from './d3dcomponents.js';
 import D3DConsole from './d3dconsole.js';
 import D3DPromise from './d3dpromise.js';
 import D3DWebsocket from './d3dwebsocket.js';
+import D3DWebRTC from './d3dwebrtc.js';
+import D3DLocalStorage from './d3dlocalstorage.js';
 import Tween from './d3dtween.js';
 import { v4 as uuidv4 } from 'uuid';
 import {
@@ -969,6 +971,8 @@ export default class D3DObject {
 			// JS Adaptors
 			Promise: Object.freeze(D3DPromise),
 			WebSocket: Object.freeze(D3DWebsocket),
+			WebRTC: Object.freeze(D3DWebRTC),
+			LocalStorage: Object.freeze(D3DLocalStorage),
 			
 			// Editor relevant only
 			_editor: window._editor,

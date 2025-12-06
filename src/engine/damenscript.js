@@ -48,7 +48,8 @@ const DamenScript = (() => {
   // ===== Lexer =====
   const KEYWORDS = new Set([
 	  'let','const','var','if','else','while','for','true','false','null',
-	  'function','return','undefined','NaN','Infinity','in','of','async','await'
+	  'function','return','undefined','NaN','Infinity','in','of','async','await',
+	  'try','catch','finally','throw'
   ]);
   const PUNCT = new Set(['(',')','{','}','[',']',';',',','.',':','?']);
   const TWO_CHAR_OPS = new Set([
@@ -402,6 +403,8 @@ const DamenScript = (() => {
 	  if (t.type==='kw' && t.value==='if') return IfStmt();
 	  if (t.type==='kw' && t.value==='while') return WhileStmt();
 	  if (t.type==='kw' && t.value==='for') return ForStmt();
+	  if (t.type==='kw' && t.value==='try') return TryStmt();
+	  if (t.type==='kw' && t.value==='throw') return ThrowStmt();
 	  if (t.type==='kw' && t.value==='return') {
 		next();
 		const hasExpr = !(peek().type==='punc' && peek().value===';');
@@ -530,6 +533,57 @@ const DamenScript = (() => {
 	
 		body = Statement();
 		return { type:'ForStatement', init, test, update, body };
+	}
+	
+	function TryStmt() {
+	  expect('kw','try');
+	  const block = Block(); // existing Block() parser
+	
+	  let handler = null;
+	  let finalizer = null;
+	
+	  if (match('kw','catch')) {
+		let param = null;
+	
+		if (match('punc','(')) {
+		  const idTok = expect('ident');
+		  param = { type:'Identifier', name:idTok.value };
+		  expect('punc',')');
+		}
+	
+		const body = Block();
+		handler = {
+		  type: 'CatchClause',
+		  param,
+		  body
+		};
+	  }
+	
+	  if (match('kw','finally')) {
+		finalizer = Block();
+	  }
+	
+	  if (!handler && !finalizer) {
+		const t = peek();
+		throw DSyntax('Missing catch or finally after try', t.line, t.col);
+	  }
+	
+	  return {
+		type: 'TryStatement',
+		block,
+		handler,
+		finalizer
+	  };
+	}
+	
+	function ThrowStmt() {
+	  expect('kw','throw');
+	  const argument = Expression();
+	  match('punc',';');
+	  return {
+		type: 'ThrowStatement',
+		argument
+	  };
 	}
 
 	// ---- Single parameter (pattern or identifier) with optional default
@@ -1660,6 +1714,50 @@ const DamenScript = (() => {
 			}
 			return undefined;
 		}
+		
+		case 'ThrowStatement': {
+		  const val = node.argument ? evalNode(node.argument, scope) : undefined;
+		  throw val;
+		}
+		
+		case 'TryStatement': {
+		  let result;
+		  let pending = null; // used for RETURN or uncaught error
+		
+		  try {
+			try {
+			  // run try-block
+			  result = evalNode(node.block, scope);
+			} catch (e) {
+			  // let RETURN bubble, but after running finally
+			  if (e && e.__kind === RETURN) {
+				pending = e;
+			  } else if (node.handler) {
+				// normal catch
+				const catchScope = new Scope(scope);
+				if (node.handler.param) {
+				  catchScope.declare('let', node.handler.param.name, e);
+				}
+				result = evalNode(node.handler.body, catchScope);
+			  } else {
+				// no catch → rethrow after finally
+				pending = e;
+			  }
+			}
+		  } finally {
+			// always run finally if present
+			if (node.finalizer) {
+			  // if finalizer throws (including RETURN), it overrides previous state
+			  result = evalNode(node.finalizer, scope);
+			}
+		  }
+		
+		  if (pending) {
+			// propagate RETURN or error after finally
+			throw pending;
+		  }
+		  return result;
+		}
 
 		default: throw DRuntime(`Unsupported node type ${node.type}`);
 	  }
@@ -1898,8 +1996,7 @@ const DamenScript = (() => {
 			  }
   
 			  case 'AwaitExpression': {
-				  const v = await evalNode(node.argument, scope);
-				  return await v; // then-able or plain value
+				return await evalNode(node.argument, scope);
 			  }
   
 			  case 'VariableDeclaration': {
@@ -2003,46 +2100,55 @@ const DamenScript = (() => {
 			  }
   
 			  case 'CallExpression': {
-				  const calleeNode = node.callee;
-				  async function evalArgs() {
-					  const out = [];
-					  for (const a of node.arguments) {
-						  if (a.type === 'SpreadElement') {
-							  const v = await evalNode(a.argument, scope);
-							  if (Array.isArray(v)) out.push(...v);
-							  else throw DRuntime('Spread in call requires an array');
-						  } else {
-							  out.push(await evalNode(a, scope));
-						  }
-					  }
-					  return out;
+				const calleeNode = node.callee;
+			  
+				async function evalArgs() {
+				  const out = [];
+				  for (const a of node.arguments) {
+					if (a.type === 'SpreadElement') {
+					  const v = await evalNode(a.argument, scope);
+					  if (Array.isArray(v)) out.push(...v);
+					  else throw DRuntime('Spread in call requires an array');
+					} else {
+					  out.push(await evalNode(a, scope));
+					}
 				  }
-  
-				  if (calleeNode.type === 'MemberExpression') {
-					  const obj = await evalNode(calleeNode.object, scope);
-					  if (calleeNode.optional && (obj == null)) return undefined;
-  
-					  let fn;
-					  if (calleeNode.computed) {
-						  const key = await evalNode(calleeNode.property, scope);
-						  fn = getProp(obj, key, true);
-					  } else {
-						  const key = calleeNode.property.name;
-						  fn = getProp(obj, key, false);
-					  }
-					  if (node.optional && (fn == null)) return undefined;
-					  if (typeof fn !== 'function')
-						  throw DRuntime('Attempt to call non-function ' + (calleeNode.computed ? '' : calleeNode.property.name));
-					  const args = await evalArgs();
-					  // Do NOT await result here; only AwaitExpression unwraps.
-					  return fn.apply(obj, args);
+				  return out;
+				}
+			  
+				if (calleeNode.type === 'MemberExpression') {
+				  const obj = await evalNode(calleeNode.object, scope);
+				  if (calleeNode.optional && (obj == null)) return undefined;
+			  
+				  let fn;
+				  if (calleeNode.computed) {
+					const key = await evalNode(calleeNode.property, scope);
+					fn = getProp(obj, key, true);
+				  } else {
+					const key = calleeNode.property.name;
+					fn = getProp(obj, key, false);
 				  }
-  
-				  const fn = await evalNode(calleeNode, scope);
+			  
 				  if (node.optional && (fn == null)) return undefined;
-				  if (typeof fn !== 'function') throw DRuntime('Attempt to call non-function');
+				  if (typeof fn !== 'function')
+					throw DRuntime('Attempt to call non-function ' + (calleeNode.computed ? '' : calleeNode.property.name));
+			  
 				  const args = await evalArgs();
-				  return fn.apply(undefined, args);
+				  const result = fn.apply(obj, args);
+				  if (result && typeof result.then === 'function')
+					return await result;
+				  return result;
+				}
+			  
+				const fn = await evalNode(calleeNode, scope);
+				if (node.optional && (fn == null)) return undefined;
+				if (typeof fn !== 'function') throw DRuntime('Attempt to call non-function');
+			  
+				const args = await evalArgs();
+				const result = fn.apply(undefined, args);
+				if (result && typeof result.then === 'function')
+				  return await result;
+				return result;
 			  }
   
 			  case 'NullishCoalesceExpression': {
@@ -2209,6 +2315,45 @@ const DamenScript = (() => {
 					  await evalNode(node.body, iterScope);
 				  }
 				  return undefined;
+			  }
+			  
+			  case 'ThrowStatement': {
+				const val = node.argument ? await evalNode(node.argument, scope) : undefined;
+				throw val;
+			  }
+			  
+			  case 'TryStatement': {
+				let result;
+				let pending = null;
+			  
+				try {
+				  try {
+					// run try-block
+					result = await evalNode(node.block, scope);
+				  } catch (e) {
+					if (e && e.__kind === RETURN) {
+					  pending = e;
+					} else if (node.handler) {
+					  const catchScope = new Scope(scope);
+					  if (node.handler.param) {
+						catchScope.declare('let', node.handler.param.name, e);
+					  }
+					  result = await evalNode(node.handler.body, catchScope);
+					} else {
+					  pending = e;
+					}
+				  }
+				} finally {
+				  if (node.finalizer) {
+					// finalizer can be async too
+					result = await evalNode(node.finalizer, scope);
+				  }
+				}
+			  
+				if (pending) {
+				  throw pending;
+				}
+				return result;
 			  }
   
 			  default:
