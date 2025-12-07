@@ -967,3 +967,31 @@ export function relNoAssets(rel) {
 	
 	return outName;
 }
+export const sleep = ms => new Promise(r => setTimeout(r, ms));
+export function forSeconds(s) {
+	if (s == null || isNaN(s) || s < 0 || !Number.isFinite(s))
+		throw new Error('Invalid seconds');
+	return sleep(s * 1000);
+}
+export function forFrames(frames) {
+	if (!Number.isFinite(frames) || isNaN(frames) || frames < 0)
+		throw new Error('Invalid frames');
+
+	const target = Math.floor(frames);
+	if (target === 0)
+		return Promise.resolve();
+
+	return new Promise(resolve => {
+		let remaining = target;
+
+		function step() {
+			remaining--;
+			if (remaining <= 0)
+				return resolve();
+
+			requestAnimationFrame(step);
+		}
+
+		requestAnimationFrame(step);
+	});
+}

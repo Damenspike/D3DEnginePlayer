@@ -1,4 +1,3 @@
-// d3dwebrtc.js
 export default function D3DWebRTC(signalingUrl) {
 	const state = {
 		signalingUrl,
@@ -7,20 +6,41 @@ export default function D3DWebRTC(signalingUrl) {
 		dcReliable: null,
 		dcUnreliable: null,
 		onDisconnect: () => {},
-		handlers: {} // event -> fn
+		handlers: {}, // event -> fn
+		_disconnected: false
 	};
+
+	function markDisconnected(reason) {
+		if (state._disconnected) return;
+		state._disconnected = true;
+		try {
+			state.onDisconnect?.(reason);
+		} catch (e) {
+			console.error('[D3DWebRTC] onDisconnect handler error:', e);
+		}
+	}
 
 	function connect() {
 		return new Promise((resolve, reject) => {
 			const ws = new WebSocket(state.signalingUrl);
 			state.ws = ws;
+			state._disconnected = false;
 
 			ws.onerror = err => {
-				reject(err);
+				// if we haven't resolved yet, reject connect()
+				if (!state._disconnected)
+					reject(err);
+				// also treat as disconnect
+				markDisconnected('ws-error');
 			};
 
 			ws.onopen = () => {
 				begin(resolve, reject);
+			};
+
+			ws.onclose = () => {
+				// signaling server went away
+				markDisconnected('ws-close');
 			};
 
 			ws.onmessage = async e => {
@@ -53,6 +73,23 @@ export default function D3DWebRTC(signalingUrl) {
 		});
 		state.pc = pc;
 
+		// ---- watch connection state for disconnects ----
+		pc.onconnectionstatechange = () => {
+			const cs = pc.connectionState;
+			// 'disconnected' can be temporary, but for D3D it's usually safe to treat as "gone"
+			if (cs === 'failed' || cs === 'disconnected' || cs === 'closed') {
+				markDisconnected(`pc-${cs}`);
+			}
+		};
+
+		// back-compat if you care:
+		pc.oniceconnectionstatechange = () => {
+			const ics = pc.iceConnectionState;
+			if (ics === 'failed' || ics === 'disconnected' || ics === 'closed') {
+				markDisconnected(`ice-${ics}`);
+			}
+		};
+
 		// ---- data channels ----
 		const dcReliable = pc.createDataChannel('reliable', {
 			ordered: true
@@ -80,11 +117,19 @@ export default function D3DWebRTC(signalingUrl) {
 			// resolve exactly once when reliable channel is ready
 			resolve(api);
 		};
-		dcReliable.onclose = () => state.onDisconnect?.();
+
+		dcReliable.onclose = () => {
+			markDisconnected('dcReliable-close');
+		};
+
 		dcReliable.onmessage = e => handlePacket(e.data, true);
 
 		dcUnreliable.onopen = () => {};
-		dcUnreliable.onclose = () => state.onDisconnect?.();
+
+		dcUnreliable.onclose = () => {
+			markDisconnected('dcUnreliable-close');
+		};
+
 		dcUnreliable.onmessage = e => handlePacket(e.data, false);
 
 		// ---- ICE -> signaling ----
@@ -134,6 +179,9 @@ export default function D3DWebRTC(signalingUrl) {
 		try { state.dcUnreliable?.close(); } catch {}
 		try { state.pc?.close(); } catch {}
 		try { state.ws?.close(); } catch {}
+
+		// make sure user gets notified for manual close too
+		markDisconnected('manual-close');
 	}
 
 	function on(event, fn) {
@@ -151,7 +199,7 @@ export default function D3DWebRTC(signalingUrl) {
 		close,
 		on,
 		off,
-		onDisconnect(fn) { state.onDisconnect = fn || (() => {}); }
+		onDisconnect(fn) { state.onDisconnect = fn; }
 	};
 
 	return api;

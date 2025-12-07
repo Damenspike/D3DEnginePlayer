@@ -41,7 +41,7 @@ export default function CodeEditor({isOpen, theme}) {
 			if(!objectsOpen.includes(defObject))
 				setObjectsOpen([...objectsOpen, defObject]);
 			
-			//setObjectOpen(defObject);
+			setObjectOpen(defObject);
 		}
 		
 		_editor.openCodeEditor = (d3dobject) => {

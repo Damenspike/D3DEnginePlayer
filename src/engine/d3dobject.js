@@ -13,7 +13,9 @@ import { v4 as uuidv4 } from 'uuid';
 import {
 	getExtension,
 	applyOpacity,
-	applyTextureToSceneBackground
+	applyTextureToSceneBackground,
+	forSeconds,
+	forFrames
 } from './d3dutility.js';
 
 const protectedNames = [
@@ -957,6 +959,8 @@ export default class D3DObject {
 			setInterval,
 			clearTimeout,
 			clearInterval,
+			forSeconds,
+			forFrames,
 			performance: Object.freeze({ now: () => globalThis.performance.now() }),
 			queueMicrotask: (fn) => globalThis.queueMicrotask(fn),
 			crypto: Object.freeze({
@@ -1172,6 +1176,9 @@ export default class D3DObject {
 		this.toggleComponent(type, false);
 	}
 	async updateComponents() {
+		if(!this.enabled)
+			return;
+		
 		const zip = this.root.zip;
 		const components = this.components;
 		

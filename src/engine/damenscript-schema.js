@@ -10,7 +10,8 @@ export const TYPE_KEYWORDS = [
 	'onEnterFrame','onBeforeRender','onExitFrame', 'onPhysicsUpdate',
 	'onMouseOver', 'onMouseOut', 'onMouseMove',
 	'onMouseDown', 'onMouseUp', 'onMouseWheel', 'onRelease',
-	'addEventListener','removeEventListener'
+	'addEventListener','removeEventListener', 
+	'forSeconds', 'forFrames'
 ]
 export const FORBIDDEN_KEYWORDS = [
 	'window','document','globalThis',
@@ -77,7 +78,9 @@ export const NO_OBFUSCATE = [
 	"Color",
 	"Raycaster",
 	"Sphere",
-	"Plane"
+	"Plane",
+	"forSeconds",
+	"forFrames"
 ]
 export const D3D_OBJECT_SCHEMA = {
 	// ---------- identity & basic state ----------
