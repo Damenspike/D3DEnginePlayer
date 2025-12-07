@@ -967,6 +967,9 @@ export function relNoAssets(rel) {
 	
 	return outName;
 }
+export function relNoExt(rel) {
+	return rel.replace(/\.[^.]+$/, '');
+}
 export const sleep = ms => new Promise(r => setTimeout(r, ms));
 export function forSeconds(s) {
 	if (s == null || isNaN(s) || s < 0 || !Number.isFinite(s))

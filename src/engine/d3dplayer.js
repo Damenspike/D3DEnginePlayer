@@ -51,7 +51,10 @@ window.addEventListener('unhandledrejection', (event) => {
 			(reason && reason.message) ||
 			(typeof reason === 'string' ? reason : 'Unhandled promise rejection');
 
-		D3DConsole.error('[Unhandled Promise Rejection]', msg, reason || null);
+		D3DConsole.error('[Unhandled Promise Rejection]', msg);
+		if(reason) {
+			D3DConsole.error(reason)
+		}
 	} catch (_) {}
 });
 

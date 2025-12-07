@@ -1174,7 +1174,8 @@ async function buildProject(buildURI, play = false) {
 	try {
 		await _editor.__build(buildURI, {
 			openInFinder: !play,
-			compressionLevel: !play ? 6 : 3
+			compressionLevel: !play ? 6 : 3,
+			obfuscateCode: !play
 		});
 		
 		if(play) {

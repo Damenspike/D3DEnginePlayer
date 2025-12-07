@@ -1,17 +1,24 @@
 export const KEYWORDS = [
-	'var', 'let','const','function','return','if','else','for','while','break','continue', 'async', 'await',
-	'true','false','null','undefined','import','from','export','struct','enum','match',
-	'case','default','try','catch','finally','throw', 'this', 'root', '_root', 'parent', '_time', '_physics', '_input', '_dimensions', '_graphics', '_global'
+	'var', 'let','const','function','return','if','else','for','while','break','continue', 'delete', 'async', 'await',
+	'true','false','null','undefined','import','from','export','struct','enum','match', 'typeOf',
+	'case','default','try','catch','finally','throw', 'this', 'root', '_root', 'parent', 
+	'_time', '_physics', '_input', '_dimensions', '_graphics', '_global'
 ]
 export const TYPE_KEYWORDS = [
-	'number','string','bool','Vector2','Vector3','Vector4','MathUtils','Box3','Quaternion','crypto','Math','JSON','Promise','WebSocket','LocalStorage','WebRTC','console','Raycaster','Color','Euler','Box4','Sphere','Plane', 'Infinity','fileMeta',
+	'Number','String','Boolean','Uint8Array','Uint16Array','Uint32Array','Int8Array','Int16Array','Int32Array','Float32Array','Float64Array',
+	'Vector2','Vector3','Vector4','MathUtils','Box3','Quaternion',
+	'Raycaster','Color','Euler','Box4','Sphere','Plane',
+	'crypto','Math','JSON','Promise','console', 'Infinity',
+	'WebSocket','LocalStorage','WebRTC','fileMeta',
 	
 	'onStart', 'onGraphicsReady', 'onLoad',
 	'onEnterFrame','onBeforeRender','onExitFrame', 'onPhysicsUpdate',
 	'onMouseOver', 'onMouseOut', 'onMouseMove',
 	'onMouseDown', 'onMouseUp', 'onMouseWheel', 'onRelease',
 	'addEventListener','removeEventListener', 
-	'forSeconds', 'forFrames'
+	'forSeconds', 'forFrames',
+	'createObject', 'createFromSymbol',
+	'addComponent', 'removeComponent'
 ]
 export const FORBIDDEN_KEYWORDS = [
 	'window','document','globalThis',
@@ -80,7 +87,19 @@ export const NO_OBFUSCATE = [
 	"Sphere",
 	"Plane",
 	"forSeconds",
-	"forFrames"
+	"forFrames",
+	"Number",
+	"String",
+	"Boolean",
+	"Uint8Array",
+	"Uint16Array",
+	"Uint32Array",
+	"Int8Array",
+	"Int16Array",
+	"Int32Array",
+	"Float32Array",
+	"Float64Array",
+	"typeOf"
 ]
 export const D3D_OBJECT_SCHEMA = {
 	// ---------- identity & basic state ----------
@@ -144,7 +163,11 @@ export const D3D_OBJECT_SCHEMA = {
 	},
 	createObject: {
 		type: 'Function(objData:Object, opts?:{ executeScripts?:boolean }):Promise<D3DObject>',
-		doc: 'Creates a child object from serialized data (usually used by the engine, not user scripts).'
+		doc: 'Creates a child object from serialized data.'
+	},
+	createFromSymbol: {
+		type: 'Function(path:String, objData?:Object, opts?:{ executeScripts?:boolean }):Promise<D3DObject>',
+		doc: 'Creates a child object from a symbol path'
 	},
 	delete: {
 		type: 'Function(force?:boolean):void',

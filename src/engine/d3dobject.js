@@ -15,7 +15,9 @@ import {
 	applyOpacity,
 	applyTextureToSceneBackground,
 	forSeconds,
-	forFrames
+	forFrames,
+	relNoAssets,
+	relNoExt
 } from './d3dutility.js';
 
 const protectedNames = [
@@ -754,6 +756,22 @@ export default class D3DObject {
 		
 		return child;
 	}
+	async createFromSymbol(rel, objData = {}, opts = {}) {
+		const symbol = Object.values(this.root.__symbols).find(
+			s => relNoAssets(relNoExt(s.file.name)) == rel
+		);
+		
+		if(!symbol) {
+			console.warn('Create from symbol: No such symbol by path', rel);
+			return;
+		}
+		
+		const { symbolId } = symbol;
+		
+		objData.symbolId = symbolId;
+		
+		return await this.createObject(objData, opts);
+	}
 	
 	async load(uri) {
 		let buffer;
@@ -765,6 +783,8 @@ export default class D3DObject {
 		
 		this.__origin = uri;
 		this.__symbols = {};
+		
+		this.deleteAllChildren();
 		
 		if (uri.startsWith('http://') || uri.startsWith('https://') || !_isStandalone) {
 			// Remote URL
@@ -970,6 +990,17 @@ export default class D3DObject {
 			
 			Math: Object.freeze(Math),
 			JSON: Object.freeze(JSON),
+			Number: Object.freeze(Number),
+			String: Object.freeze(String),
+			Boolean: Object.freeze(Boolean),
+			Uint8Array: Object.freeze(Uint8Array),
+			Uint16Array: Object.freeze(Uint16Array),
+			Uint32Array: Object.freeze(Uint32Array),
+			Int8Array: Object.freeze(Int8Array),
+			Int16Array: Object.freeze(Int16Array),
+			Int32Array: Object.freeze(Int32Array),
+			Float32Array: Object.freeze(Float32Array),
+			Float64Array: Object.freeze(Float64Array),
 			Infinity,
 			
 			// JS Adaptors
@@ -977,6 +1008,7 @@ export default class D3DObject {
 			WebSocket: Object.freeze(D3DWebsocket),
 			WebRTC: Object.freeze(D3DWebRTC),
 			LocalStorage: Object.freeze(D3DLocalStorage),
+			typeOf: Object.freeze((val) => typeof val),
 			
 			// Editor relevant only
 			_editor: window._editor,
@@ -1012,7 +1044,8 @@ export default class D3DObject {
 			Plane: (...a) => new THREE.Plane(...a),
 		});
 		
-		DamenScript.run(script, sandbox).catch(e => {
+		DamenScript.run(script, sandbox)
+		.catch(e => {
 			D3DConsole.error(`[${this.name}]`, e.name, e.message);
 			console.error(`[${this.name}]`, e);
 		});
@@ -1719,6 +1752,9 @@ export default class D3DObject {
 		return dir.clone().applyQuaternion(this.quaternion);
 	}
 	
+	deleteAllChildren() {
+		this.children.forEach(d3dobj => d3dobj.forceDelete());
+	}
 	forceDelete() {
 		this.delete(true);
 	}
