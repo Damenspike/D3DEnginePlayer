@@ -29,7 +29,8 @@ const isDigit = c => /[0-9]/.test(c);
 
 const DS_KEYWORDS = new Set([
 	'let','const','var','if','else','while','for','true','false','null',
-	'function','return','undefined','NaN','Infinity','in','of','async','await'
+	'function','return','undefined','NaN','Infinity','in','of','async','await',
+	'try','catch','finally','throw','delete'
 ]);
 
 const PUNCT = new Set(['(',')','{','}','[',']',';',',','.',':','?']);

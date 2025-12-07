@@ -1231,7 +1231,7 @@ function onAssetDeleted(path) {
 				objectsToDelete.push(d3dobject);
 			}
 		}
-		objectsToDelete.forEach(d3dobject => d3dobject.delete());
+		objectsToDelete.forEach(d3dobject => d3dobject.remove());
 		
 		delete _root.__symbols[symbol.symbolId];
 		
@@ -1617,7 +1617,7 @@ async function modifySelected(type, options = {}) {
 					if(!convertObjs)
 						return;
 					
-					convertObjs.forEach(o => o.delete());
+					convertObjs.forEach(o => o.remove());
 				},
 				redo: async () => {
 					convertObjs = await convertToBitmap2D(objects);

@@ -169,13 +169,13 @@ export const D3D_OBJECT_SCHEMA = {
 		type: 'Function(path:String, objData?:Object, opts?:{ executeScripts?:boolean }):Promise<D3DObject>',
 		doc: 'Creates a child object from a symbol path'
 	},
-	delete: {
+	destroy: {
 		type: 'Function(force?:boolean):void',
-		doc: 'Deletes this object from its parent. Throws if root; may be blocked for managed sub-meshes unless force=true.'
+		doc: 'Deletes this object from its parent.'
 	},
-	forceDelete: {
-		type: 'Function():void',
-		doc: 'Force-delete this object, bypassing certain managed-object protections.'
+	destroyChildren: {
+		type: 'Function):void',
+		doc: 'Deletes all children inside parent.'
 	},
 	replaceObject3D: {
 		type: 'Function(newObject3D:THREE.Object3D, opts?:{ keepChildren?:boolean }):void',

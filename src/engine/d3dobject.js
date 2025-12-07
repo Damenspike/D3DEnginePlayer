@@ -69,7 +69,7 @@ export default class D3DObject {
 				this.parent.object3d.remove(this.object3d);
 		}
 		if(this._enabled && !this.__scriptRan) {
-			//this.executeScripts();
+			this.executeScripts();
 		}
 	}
 	
@@ -784,7 +784,7 @@ export default class D3DObject {
 		this.__origin = uri;
 		this.__symbols = {};
 		
-		this.deleteAllChildren();
+		this.removeAllChildren();
 		
 		if (uri.startsWith('http://') || uri.startsWith('https://') || !_isStandalone) {
 			// Remote URL
@@ -922,6 +922,8 @@ export default class D3DObject {
 		let script = null;
 		let scriptName = this.engineScript || `__script[${this.name}]`;
 		
+		this.__scriptRan = true;
+		
 		try {
 			if(this.engineScript) {
 				const engineScriptPath = await D3D.resolveEngineScriptPath(this.engineScript);
@@ -954,7 +956,6 @@ export default class D3DObject {
 		
 		if(script && (!window._editor || this.editorOnly)) {
 			this.__runInSandbox(script);
-			this.__scriptRan = true;
 			console.log(`${scriptName} executed in DamenScript sandbox`);
 		}
 		if(this.children && this.children.length > 0) {
@@ -1044,7 +1045,7 @@ export default class D3DObject {
 			Plane: (...a) => new THREE.Plane(...a),
 		});
 		
-		DamenScript.run(script, sandbox)
+		DamenScript.run(script, sandbox, { contextId: this.name })
 		.catch(e => {
 			D3DConsole.error(`[${this.name}]`, e.name, e.message);
 			console.error(`[${this.name}]`, e);
@@ -1752,13 +1753,25 @@ export default class D3DObject {
 		return dir.clone().applyQuaternion(this.quaternion);
 	}
 	
-	deleteAllChildren() {
-		this.children.forEach(d3dobj => d3dobj.forceDelete());
+	removeAllChildren(force = true) {
+		this.children.forEach(d3dobj => d3dobj.remove(force));
 	}
 	forceDelete() {
-		this.delete(true);
+		this.forceRemove();
 	}
 	delete(force = false) {
+		this.remove(force);
+	}
+	forceRemove() {
+		this.remove(true);
+	}
+	destroy() {
+		this.forceRemove();
+	}
+	destroyChildren() {
+		this.removeAllChildren();
+	}
+	remove(force = false) {
 		if(this.parent == null)
 			throw new Error("Can't delete _root");
 			
