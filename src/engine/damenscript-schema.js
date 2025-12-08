@@ -1,6 +1,6 @@
 export const KEYWORDS = [
 	'var', 'let','const','function','return','if','else','for','while','break','continue', 'delete', 'async', 'await',
-	'true','false','null','undefined','import','from','export','struct','enum','match', 'typeOf',
+	'true','false','null','undefined','Infinity', 'NaN','import','from','export','struct','enum','match', 'typeOf',
 	'case','default','try','catch','finally','throw', 'this', 'root', '_root', 'parent', 
 	'_time', '_physics', '_input', '_dimensions', '_graphics', '_global'
 ]
@@ -8,9 +8,10 @@ export const TYPE_KEYWORDS = [
 	'Number','String','Boolean','Uint8Array','Uint16Array','Uint32Array','Int8Array','Int16Array','Int32Array','Float32Array','Float64Array',
 	'Vector2','Vector3','Vector4','MathUtils','Box3','Quaternion',
 	'Raycaster','Color','Euler','Box4','Sphere','Plane',
-	'crypto','Math','JSON','Promise','console', 'Infinity',
+	'crypto','Math','JSON','Promise','console',
 	'WebSocket','LocalStorage','WebRTC','fileMeta',
 	
+	'position','rotation','scale','worldPosition', 'worldRotation', 'localAttitude', 'worldAttitude', 'localEulerAngles', 'quaternion',
 	'onStart', 'onGraphicsReady', 'onLoad',
 	'onEnterFrame','onBeforeRender','onExitFrame', 'onPhysicsUpdate',
 	'onMouseOver', 'onMouseOut', 'onMouseMove',
@@ -18,7 +19,9 @@ export const TYPE_KEYWORDS = [
 	'addEventListener','removeEventListener', 
 	'forSeconds', 'forFrames',
 	'createObject', 'createFromSymbol',
-	'addComponent', 'removeComponent'
+	'destroy', 'destroyChildren',
+	'addComponent', 'removeComponent', 'getComponent', 'hasComponent',
+	'worldToScreen',
 ]
 export const FORBIDDEN_KEYWORDS = [
 	'window','document','globalThis',
@@ -99,7 +102,8 @@ export const NO_OBFUSCATE = [
 	"Int32Array",
 	"Float32Array",
 	"Float64Array",
-	"typeOf"
+	"typeOf",
+	"worldToScreen"
 ]
 export const D3D_OBJECT_SCHEMA = {
 	// ---------- identity & basic state ----------

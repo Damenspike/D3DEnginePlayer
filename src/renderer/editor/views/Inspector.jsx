@@ -439,6 +439,8 @@ export default function Inspector() {
 		setDummyObject({...dummyObject});
 		setDummyProject({...dummyProject});
 		_editor.setDirty(true);
+		
+		objects.forEach(o => o.checkSymbols());
 	}
 	const writeAndRefresh = (uri, data) => {
 		_editor.writeFile({ path: uri, data });
@@ -1981,7 +1983,7 @@ export default function Inspector() {
 		}
 		const drawObjects = () => {
 			const rows = [];
-			const objects = _editor.focus.children
+			let objects = _editor.focus.children
 			.filter(
 				c => !c.editorOnly &&
 				(
@@ -1989,16 +1991,19 @@ export default function Inspector() {
 					(_editor.mode == '2D' && c.is2D)
 				) &&
 				(c.name.toLowerCase().includes(sceneFilter.toLowerCase()) || !sceneFilter)
-			)
-			.sort((a, b) => {
-				if(a.position.z > b.position.z)
-					return -1;
-				else
-				if(a.position.z < b.position.z)
-					return 1;
-				else
-					return 0;
-			});
+			);
+			
+			if(_editor.mode == '2D') {
+				objects = objects.sort((a, b) => {
+					if(a.position.z > b.position.z)
+						return -1;
+					else
+					if(a.position.z < b.position.z)
+						return 1;
+					else
+						return 0;
+				});
+			}
 			
 			if(objects.length < 1) {
 				if(!sceneFilter) {

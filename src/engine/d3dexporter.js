@@ -39,7 +39,7 @@ export async function exportAsD3D(d3dobjects, opts = {}) {
 		}
 		
 		// Build minimal scene graph
-		const scene = {..._root.scene};
+		const scene = {name: 'Exported Scene', objects: [], background: {}};
 		scene.objects = [d3dobject.getSerializableObject()];
 		
 		const sceneGraphStr = JSON.stringify([scene]);
@@ -48,15 +48,32 @@ export async function exportAsD3D(d3dobjects, opts = {}) {
 		// Build asset index based on dependencies
 		{
 			const newAssetIndex = [];
-			const symbolsArr = Object.values(_root.__symbols);
 			
+			// Find asset dependencies
 			_root.assetIndex.forEach(a => {
 				const { uuid, rel } = a ?? {};
 				
 				if(!uuid || !rel) return;
 				
-				if(sceneGraphStr.includes(uuid) || symbolsArr.find(s => s.file.name == rel))
+				if(sceneGraphStr.includes(uuid))
 					newAssetIndex.push(a);
+			});
+			
+			// Find symbol dependencies
+			scene.objects.forEach(obj => {
+				if(!obj.symbolId)
+					return;
+				
+				const symbol = _root.__symbols[obj.symbolId];
+				
+				if(!symbol)
+					return;
+				
+				const symbolRel = symbol.file.name;
+				const symbolFileUUID = _root.resolveAssetId(symbolRel);
+				
+				if(!newAssetIndex.find(a => a.uuid == symbolFileUUID))
+					newAssetIndex.push({ uuid: symbolFileUUID, rel: symbolRel })
 			});
 			
 			if(newAssetIndex.length > 0) {

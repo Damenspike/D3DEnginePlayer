@@ -172,6 +172,38 @@ export default class MeshManager {
 		};
 	}
 
+	async _buildMaterialFromParams(paramsIn) {
+		if (!paramsIn) return null;
+	
+		const params = { ...paramsIn };
+		const type   = params.type || 'MeshStandardMaterial';
+	
+		// Keep it simple: only normal Three material types here
+		if ('color' in params)    params.color    = this._fixColor(params.color);
+		if ('emissive' in params) params.emissive = this._fixColor(params.emissive);
+	
+		if (params.opacity !== undefined && params.opacity < 1 && params.transparent !== true)
+			params.transparent = true;
+	
+		if (typeof params.side === 'string' && THREE[params.side] !== undefined)
+			params.side = THREE[params.side];
+	
+		const Ctor = THREE[type];
+		if (!Ctor) return null;
+	
+		const { ctorParams } = this._stripIncompatible(params, type);
+		const m = new Ctor(ctorParams);
+	
+		if (!m.userData) m.userData = {};
+		if (m.userData._baseOpacity == null) {
+			m.userData._baseOpacity =
+				typeof ctorParams.opacity === 'number' ? ctorParams.opacity : 1;
+		}
+		if ('toneMapped' in m) m.toneMapped = false;
+	
+		m.needsUpdate = true;
+		return m;
+	}
 	async _buildMaterialFromMatUUID(uuid) {
 		if (!uuid) return null;
 	
@@ -358,15 +390,33 @@ export default class MeshManager {
 		return m;
 	}
 
-	async _applyMaterialsToThreeMesh(mesh, matUUIDs) {
-		const mats = await Promise.all((matUUIDs || []).map(id => this._buildMaterialFromMatUUID(id)));
+	async _applyMaterialsToThreeMesh(mesh, defs) {
+		const src = Array.isArray(defs) ? defs : [];
+		const mats = await Promise.all(src.map(def => {
+			if (!def) return null;
+	
+			// 1) existing path: UUID string
+			if (typeof def === 'string')
+				return this._buildMaterialFromMatUUID(def);
+	
+			// 2) direct THREE.Material (optional but handy)
+			if (def.isMaterial)
+				return def;
+	
+			// 3) plain params object: runtime material
+			if (typeof def === 'object')
+				return this._buildMaterialFromParams(def);
+	
+			return null;
+		}));
+	
 		const groups = mesh.geometry?.groups ?? [];
-
+	
 		if (mesh.isSkinnedMesh) {
 			for (const mm of mats) if (mm && 'skinning' in mm) mm.skinning = true;
 			mesh.frustumCulled = false;
 		}
-
+	
 		if (groups.length > 1) {
 			const maxSlot = groups.reduce((m, g) => Math.max(m, g.materialIndex ?? 0), 0);
 			const arr = new Array(Math.max(mats.length, maxSlot + 1));
@@ -381,6 +431,8 @@ export default class MeshManager {
 				mesh.material.needsUpdate = true;
 			}
 		}
+		
+		this.meshLoaded = true;
 	}
 
 	async _buildMatMap(modelPath) {
@@ -431,12 +483,6 @@ export default class MeshManager {
 		let name = (raw && raw.trim()) ? raw : `${modelBase}_${key}`;
 		if (/^root$/i.test(name)) name = `Container`;
 		return name.replace(/[^\w\-\.]+/g, '_');
-	}
-
-	_findByName(parent, name) {
-		if (!Array.isArray(parent.children)) return null;
-		for (const c of parent.children) if (c.name === name) return c;
-		return null;
 	}
 
 	_setLocalTRS(d3d, node) {
@@ -535,45 +581,38 @@ export default class MeshManager {
 		// ---------------- Build GLTF hierarchy ----------------
 		if (justLoaded) {
 			const matNameToUUID = await this._buildMatMap(modelPath);
-
+		
 			const bindChildrenDirect = async (threeParent, d3dHost) => {
 				for (const child of threeParent.children.slice()) {
-					const rawName = child.name || child.type || '';
+					const rawName = child.name;
+					if(!rawName)
+						continue; // IMPORTANT: Skip the weird empty children because they link to the wrong things and mess everything up
+					
 					if (/^root$/i.test(rawName)) {
 						await bindChildrenDirect(child, d3dHost);
 						continue;
 					}
-
-					const key = this._stableKeyFor(child, sceneRoot);
+					
+					const key  = this._stableKeyFor(child, sceneRoot);
 					const want = this._sanitizeName(rawName, modelBase, key);
-					let d3dChild = this._findByName(d3dHost, want);
+					
+					let d3dChild = d3dHost.find(want);
+					
 					if (!d3dChild) {
+						// brand new auto wrapper
 						d3dChild = await d3dHost.createObject({ name: want, components: [] });
 						d3dChild.__auto_gltf = true;
 						this._setLocalTRS(d3dChild, child);
 					}
-
+					
 					child.matrixAutoUpdate = true;
 					d3dChild.replaceObject3D(child);
-
-					if (child.isMesh || child.isSkinnedMesh) {
-						child.castShadow = !!this.component.properties.castShadow;
-						child.receiveShadow = !!this.component.properties.receiveShadow;
-
-						const hasSub = !!d3dChild.hasComponent('SubMesh');
-						if (!hasSub) {
-							const mats = Array.isArray(child.material) ? child.material : [child.material];
-							const uuids = mats.map(m => {
-								const nm = m?.name || null;
-								return (nm && matNameToUUID.has(nm)) ? matNameToUUID.get(nm) : null;
-							});
-							d3dChild.addComponent('SubMesh', { materials: uuids }, {doUpdateAll: false});
-						}
-					}
+			
+					// recurse
 					await bindChildrenDirect(child, d3dChild);
 				}
 			};
-
+		
 			await bindChildrenDirect(sceneRoot, this.d3dobject);
 			this.d3dobject.traverse(d3d => d3d.updateComponents());
 		}
@@ -581,6 +620,19 @@ export default class MeshManager {
 		// ---------------- Apply shadows ----------------
 		this._applyShadows();
 		this.d3dobject.updateVisibility(true);
+	}
+	
+	setMaterial(index, params) {
+		if(!params)
+			return;
+			
+		const props = this.component.properties;
+		const mats = [...props.materials];
+		
+		mats[index] = params;
+		props.materials = mats;
+		
+		this.d3dobject.updateComponents();
 	}
 
 	// =====================================================

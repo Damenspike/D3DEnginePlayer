@@ -3,7 +3,8 @@ import * as THREE from 'three';
 
 import {
 	updateObject,
-	getHitNormalRotation
+	getHitNormalRotation,
+	isLiveObject
 } from './d3dutility.js';
 
 const _TMP_V1 = new THREE.Vector3();
@@ -229,12 +230,14 @@ export default class D3DPhysics {
 		const maxDist   = Number(opts.maxDistance) || Infinity;
 		const recursive = opts.recursive !== false;
 		
-		let objects = opts.objects?.filter(Boolean) || _root.children;
+		let objects = opts.objects || _root.children;
 		
 		if (filter) {
 			// cheap filter: avoid allocations if possible
 			objects = objects.filter(filter);
 		}
+		
+		objects = objects.filter(isLiveObject);
 		
 		// Break down to object3d's themselves
 		objects = objects.map(o => o.object3d).filter(Boolean);
@@ -335,6 +338,8 @@ export default class D3DPhysics {
 		const filter = opts.filter;
 		let objects = opts.objects || _root?.superObjectsThree || [];
 		if (filter) objects = objects.filter(filter);
+		
+		objects = objects.filter(isLiveObject);
 	
 		const querySphere = new THREE.Sphere(center.clone(), radius);
 	

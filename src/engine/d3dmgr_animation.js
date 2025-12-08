@@ -304,6 +304,14 @@ export default function AnimationManager(d3dobject, component) {
 		clipState.smoothing = Number(options?.smoothing) || clipState.smoothing;
 		clipState.weight = Number(options?.weight) || clipState.weight;
 		clipState.listener = options?.listener;
+		
+		// Stop all other clips on this layer
+		for(let i in this.clipStates) {
+			const s = this.clipStates[i];
+			if(!s || s == clipState) continue;
+			if(s.playing && s.layer == clipState.layer)
+				this.stop(s.clip.name);
+		}
 	}
 	this.pause = (clipName) => {
 		const uuid = isUUID(clipName) ? clipName : this.resolveClipUUID(clipName);

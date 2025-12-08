@@ -97,7 +97,10 @@ export default class RigidbodyManager {
 			this.component._cache = next;
 		}
 		
-		this.__onInternalPhysicsUpdate = () => {
+		/*this.__onInternalPhysicsUpdate = () => {
+			this._sampleMotion();
+		};*/
+		this.__onInternalEnterFrame = () => {
 			this._sampleMotion();
 		};
 	}
@@ -1143,7 +1146,7 @@ export default class RigidbodyManager {
 	_sampleMotion() {
 		const now = this._takeSnapshot();
 		const then = this._lastSnapshot || now;
-		const dt = _physics.fixedDt;
+		const dt = _time.delta; //_physics.fixedDt;
 		
 		if(dt <= 0) {
 			this._lastSnapshot = now;

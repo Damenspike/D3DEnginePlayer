@@ -1456,6 +1456,61 @@ export function hex8ToRgba(input, fallback='#000'){
 	return s || fallback;
 }
 
+export function normalizeToHexRGB(input, fallback = '#000000') {
+	if (!input) return fallback;
+
+	// uses existing helper in this file
+	const c = parseTintColor(String(input));
+	if (!c) return fallback;
+
+	const clamp255 = (v) => {
+		v = Number(v);
+		if (!Number.isFinite(v)) return 0;
+		return Math.max(0, Math.min(255, v | 0));
+	};
+
+	const r = clamp255(c.r);
+	const g = clamp255(c.g);
+	const b = clamp255(c.b);
+
+	return (
+		'#' +
+		r.toString(16).padStart(2, '0') +
+		g.toString(16).padStart(2, '0') +
+		b.toString(16).padStart(2, '0')
+	);
+}
+
+export function normalizeToHexRGBA(input, fallback = '#000000ff') {
+	if (!input) return fallback;
+
+	const c = parseTintColor(String(input));
+	if (!c) return fallback;
+
+	const clamp255 = (v) => {
+		v = Number(v);
+		if (!Number.isFinite(v)) return 0;
+		return Math.max(0, Math.min(255, v | 0));
+	};
+
+	const r = clamp255(c.r);
+	const g = clamp255(c.g);
+	const b = clamp255(c.b);
+
+	// If parseTintColor didn’t give alpha, assume 1
+	let a = c.a;
+	if (a == null || !Number.isFinite(a)) a = 1;
+	const ai = clamp255(a * 255);
+
+	return (
+		'#' +
+		r.toString(16).padStart(2, '0') +
+		g.toString(16).padStart(2, '0') +
+		b.toString(16).padStart(2, '0') +
+		ai.toString(16).padStart(2, '0')
+	);
+}
+
 // Parse "color [offset]" where offset is "##%" or 0..1
 function parseColorStop(stopStr){
 	// split off the final numeric token if present
@@ -2192,13 +2247,53 @@ export function parseTintColor(str) {
 	return { r: 255, g: 255, b: 255, a: 1, error: true };
 }
 
+export function worldToScreen(worldPos, camera) {
+	if (!worldPos || !camera)
+		throw new Error('worldToScreen expects a worldPos Vector3 and a camera reference');
+
+	if (camera.__d3d)
+		camera = camera.object3d;
+
+	const v = worldPos.clone().project(camera);
+	const ndcZ = v.z;
+
+	// behind camera → bail with depth only
+	if (ndcZ < -1 || ndcZ > 1)
+		return new THREE.Vector3(-99999, -99999, ndcZ);
+
+	const renderer2d = _host.renderer2d;
+	const canvas     = renderer2d.domElement;
+
+	// === NDC -> client coords on the 2D canvas ===
+	const rect = canvas.getBoundingClientRect();
+	const clientX = rect.left + (v.x * 0.5 + 0.5) * rect.width;
+	const clientY = rect.top  + (-v.y * 0.5 + 0.5) * rect.height;
+
+	// === client -> canvas device pixels (same as eventToWorld) ===
+	const sx = canvas.width  / rect.width;
+	const sy = canvas.height / rect.height;
+	const cx = (clientX - rect.left) * sx;
+	const cy = (clientY - rect.top)  * sy;
+
+	// === device -> logical world (invert viewMatrix) ===
+	const pr  = renderer2d.pixelRatio || 1;
+	const vs  = renderer2d.viewScale  || 1;
+	const off = renderer2d.viewOffset || { x: 0, y: 0 };
+	const k   = pr * vs;
+
+	const logicalX = (cx - off.x) / k;
+	const logicalY = (cy - off.y) / k;
+
+	return new THREE.Vector3(logicalX, logicalY, ndcZ);
+}
+
 /* ========================= DEFAULT BUNDLE ========================= */
 
 const D2DUtil = {
 	// matrices
 	mul, applyMat, worldMatrix, invert, worldMatrixInverse,
 	// px/world
-	pxToWorld, eventToWorld,
+	pxToWorld, eventToWorld, worldToScreen,
 	// geometry / paths
 	isClosed, pointInPolygon, distSqToSeg, pointNearPolyline, localPoints, logicalPoints, logicalIndexMap,
 	// traversal / bounds

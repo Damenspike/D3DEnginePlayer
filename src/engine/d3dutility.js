@@ -757,6 +757,9 @@ export function getHitNormalRotation(face, d3dobject) {
 
 	return quat;
 }
+export function isLiveObject(d3dobject) {
+	return !!d3dobject && d3dobject?.enabled === true;
+}
 export async function applyTextureToSceneBackground(root, zip, scene, assetId) {
 	if(!zip || !assetId) 
 		return;

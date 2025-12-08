@@ -19,6 +19,9 @@ import {
 	relNoAssets,
 	relNoExt
 } from './d3dutility.js';
+import {
+	worldToScreen
+} from './d2dutility.js';
 
 const protectedNames = [
 	'_root', 'Input', 'position', 'rotation', 'scale', 'name', 'parent', 'children', 'threeObj', 'scenes', 'zip', 'forward', 'right', 'up', 'quaternion', 'onEnterFrame', 'onAddedToScene', 'manifest', 'scenes', '__origin', '__componentInstances', '__onInternalEnterFrame', '__onEditorEnterFrame', '__deleted', '__animatedTransformChange', '_mesh', '_animation', '__self__', '_camera', '_directionallight', '_ambientlight', '_pointlight', 'isClicked', 'isMouseOver', '__runInSandbox', '__loaded', 'fileMeta'
@@ -47,6 +50,7 @@ export default class D3DObject {
 		
 		this.object3d = this.parent ? new THREE.Object3D() : new THREE.Scene();
 		this.object3d.userData.d3dobject = this;
+		this.__d3d = true;
 		
 		this.setupDefaultMethods();
 	}
@@ -55,7 +59,15 @@ export default class D3DObject {
 	// Getters and setters only
 	///////////////////////////////
 	get enabled() {
-		return this._enabled;
+		let o = this;
+		
+		while(o) {
+			if(!o._enabled)
+				return false;
+			o = o.parent;
+		}
+		
+		return true;
 	}
 	set enabled(v) {
 		this._enabled = !!v;
@@ -65,8 +77,10 @@ export default class D3DObject {
 				this.parent.object3d.add(this.object3d);
 				this.updateComponents();
 			}else
-			if(!this._enabled && this.parent.object3d.children.includes(this.object3d))
+			if(!this._enabled && this.parent.object3d.children.includes(this.object3d)) {
+				this.disposeAllRigidbodies();
 				this.parent.object3d.remove(this.object3d);
+			}
 		}
 		if(this._enabled && !this.__scriptRan) {
 			this.executeScripts();
@@ -603,13 +617,14 @@ export default class D3DObject {
 	
 	async createObject(objData, opts = {}) {
 		const executeScripts = opts?.executeScripts ?? true;
+		const root = opts.root || this.root;
 		
 		if(!objData) {
 			throw new Error('No object data provided to create object from!');
 		}
 		if(objData.symbolId) {
 			// Load objData from symbol instead
-			const symbol = this.root.__symbols[objData.symbolId];
+			const symbol = root.__symbols[objData.symbolId];
 			
 			if(!symbol) {
 				throw new Error(`Symbol doesn't exist ${objData.symbolId}`)
@@ -757,7 +772,8 @@ export default class D3DObject {
 		return child;
 	}
 	async createFromSymbol(rel, objData = {}, opts = {}) {
-		const symbol = Object.values(this.root.__symbols).find(
+		const root = opts.root || this.root;
+		const symbol = Object.values(root.__symbols).find(
 			s => relNoAssets(relNoExt(s.file.name)) == rel
 		);
 		
@@ -1010,6 +1026,7 @@ export default class D3DObject {
 			WebRTC: Object.freeze(D3DWebRTC),
 			LocalStorage: Object.freeze(D3DLocalStorage),
 			typeOf: Object.freeze((val) => typeof val),
+			worldToScreen: Object.freeze(worldToScreen),
 			
 			// Editor relevant only
 			_editor: window._editor,
@@ -1753,6 +1770,9 @@ export default class D3DObject {
 		return dir.clone().applyQuaternion(this.quaternion);
 	}
 	
+	disposeAllRigidbodies() {
+		this.traverse(o => o._rigidbody?.dispose());
+	}
 	removeAllChildren(force = true) {
 		this.children.forEach(d3dobj => d3dobj.remove(force));
 	}
@@ -1785,6 +1805,8 @@ export default class D3DObject {
 			console.error("Can't delete managed object");
 			return;
 		}
+		
+		this.disposeAllRigidbodies();
 		
 		const idx = this.parent.children.indexOf(this);
 		

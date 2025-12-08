@@ -397,7 +397,7 @@ export default function AnimationInspector() {
 				const d3dobject = originTransforms[i];
 				
 				// Restore original transforms
-				d3dobject.resetAnimationTransform();
+				d3dobject?.resetAnimationTransform();
 			}
 			originTransforms = {};
 		}
@@ -856,7 +856,7 @@ export default function AnimationInspector() {
 		
 		if(clipState) {
 			const d3dtarget = clipState.findAnimationTarget(track);
-			d3dtarget.resetAnimationTransform();
+			d3dtarget?.resetAnimationTransform();
 		}
 		
 		const doDelete = () => {
