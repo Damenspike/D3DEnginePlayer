@@ -1774,7 +1774,8 @@ export default class D3DObject {
 		this.traverse(o => o._rigidbody?.dispose());
 	}
 	removeAllChildren(force = true) {
-		this.children.forEach(d3dobj => d3dobj.remove(force));
+		const children = [...this.children];
+		children.forEach(d3dobj => d3dobj.remove(force));
 	}
 	forceDelete() {
 		this.forceRemove();
@@ -1789,7 +1790,7 @@ export default class D3DObject {
 		this.forceRemove();
 	}
 	destroyChildren() {
-		this.removeAllChildren();
+		this.removeAllChildren(true);
 	}
 	remove(force = false) {
 		if(this.parent == null)

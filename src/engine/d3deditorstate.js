@@ -712,6 +712,28 @@ export default class D3DEditorState {
 				updateComponents: false
 			});
 			
+			let containsSymbol = false;
+			
+			d3dobject.traverse(o => {
+				if(o.symbol) {
+					containsSymbol = true;
+					return false;
+				}
+			});
+			
+			if(_editor.mode == '3D' && d3dobject.hasComponent('Container2D')) {
+				if(!containsSymbol) {
+					d3dobject.traverse(o => o.removeComponent('Container2D'));
+				}else
+					_editor.mode = '2D';
+			}else
+			if(_editor.mode == '2D' && !d3dobject.is2D) {
+				if(!containsSymbol)
+					d3dobject.traverse(o => !o.is2D && o.addComponent('Container2D'));
+				else
+					_editor.mode = '3D';
+			}
+			
 			if(posStep && _editor.mode == '2D') {
 				d3dobject.position.add(new THREE.Vector3(10, 10, 0).multiplyScalar(this.pastes + 1));
 				this.pastes++;

@@ -76,9 +76,9 @@ export async function handleImportFile(file, destDir) {
 				});
 			
 				// Dedupe by "signature" so identical materials only export once
-				const bySig   = new Map(); // signature -> .mat rel
-				const byName  = new Map(); // name -> .mat rel (best-effort)
-				const materialFiles = [];
+				const bySig   = new Map(); // signature -> outRel (path to .mat)
+				const byName  = new Map(); // matName -> outRel
+				const materialFiles = [];  // list of outRel strings
 			
 				// Write texture file, then update asset index + return UUID
 				const writeTexture = async (tex, baseHint) => {
@@ -105,12 +105,11 @@ export async function handleImportFile(file, destDir) {
 						const ab = await blob.arrayBuffer();
 						zip.file(outRel, ab, { binary: true });
 						wrote.push(outRel);
-						
+			
 						// Update asset index to find the uuid
 						_root.updateAssetIndex();
-						
+			
 						const uuid = _root.resolveAssetId(outRel);
-						
 						return uuid || null;
 					} catch {
 						return null;
@@ -118,24 +117,25 @@ export async function handleImportFile(file, destDir) {
 				};
 			
 				const matSignature = (m) => JSON.stringify({
-					type:       m.type,
-					name:       m.name || '',
-					color:      m.color ? m.color.getHex() : undefined,
-					emissive:   m.emissive ? m.emissive.getHex() : undefined,
-					roughness:  m.roughness,
-					metalness:  m.metalness,
-					opacity:    m.opacity,
+					type:        m.type,
+					name:        m.name || '',
+					color:       m.color ? m.color.getHex() : undefined,
+					emissive:    m.emissive ? m.emissive.getHex() : undefined,
+					roughness:   m.roughness,
+					metalness:   m.metalness,
+					opacity:     m.opacity,
 					transparent: !!m.transparent,
-					side:       m.side,
-					alphaTest:  m.alphaTest
+					side:        m.side,
+					alphaTest:   m.alphaTest
 				});
 			
 				for (const mat of materialSet) {
 					const sig = matSignature(mat);
 					let outRel = bySig.get(sig);
 					if (outRel) {
+						// Already wrote identical material, just map its name → same .mat file
 						if (mat.name && !byName.has(mat.name)) byName.set(mat.name, outRel);
-						continue; // already written identical material
+						continue;
 					}
 			
 					// Export textures → UUIDs
@@ -156,14 +156,14 @@ export async function handleImportFile(file, destDir) {
 						name:        mat.name || baseName,
 						color:       mat.color ? hex(mat.color) : '#ffffff',
 						emissive:    mat.emissive ? hex(mat.emissive) : '#000000',
-						opacity:     (typeof mat.opacity === 'number') ? mat.opacity : 1,
+						opacity:     (mat.opacity ?? 1),
 						transparent: !!mat.transparent,
 						doubleSided: mat.side === THREE.DoubleSide,
-						roughness:   (typeof mat.roughness === 'number') ? mat.roughness : undefined,
-						metalness:   (typeof mat.metalness === 'number') ? mat.metalness : undefined,
-						alphaTest:   (typeof mat.alphaTest === 'number') ? mat.alphaTest : undefined,
+						roughness:   mat.roughness,
+						metalness:   mat.metalness,
+						alphaTest:   mat.alphaTest,
 			
-						// IMPORTANT: maps now store texture UUIDs
+						// IMPORTANT: maps store texture UUIDs (your asset IDs)
 						maps: {
 							map:          mapUUID,
 							normalMap:    normalUUID,
@@ -183,13 +183,40 @@ export async function handleImportFile(file, destDir) {
 					materialFiles.push(outRel);
 				}
 			
+				// ---------- Build materials.index.json with UUIDs ----------
 				if (materialFiles.length) {
+					// Make sure asset index knows about the new .mat files
+					_root.updateAssetIndex();
+			
+					// Build files: [{ name, rel, uuid }]
+					const files = materialFiles.map(rel => {
+						const uuid = _root.resolveAssetId(rel) || null;
+			
+						// Find a name for this rel (if any)
+						let name = null;
+						for (const [n, r] of byName.entries()) {
+							if (r === rel) {
+								name = n;
+								break;
+							}
+						}
+			
+						return { name, uuid };
+					});
+			
+					// byName map: name -> uuid (your asset ID)
+					const byNameUUID = {};
+					for (const f of files) {
+						if (f.name && f.uuid) byNameUUID[f.name] = f.uuid;
+					}
+			
 					const manifestRel = `${matsDir.replace(/\/+$/,'/') }materials.index.json`;
 					const manifest = {
-						count: materialFiles.length,
-						files: materialFiles,
-						byName: Object.fromEntries(byName)
+						count: files.length,
+						files,
+						byName: byNameUUID
 					};
+			
 					zip.file(manifestRel, JSON.stringify(manifest, null, 2));
 					wrote.push(manifestRel);
 				}

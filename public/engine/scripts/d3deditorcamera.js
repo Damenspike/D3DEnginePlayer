@@ -277,10 +277,12 @@ function updatePan() {
 		worldPerPxY = worldScreenHeight / h;
 		worldPerPxX = worldScreenWidth  / w;
 	}
+	
+	const zoomMult = 1 + (((_input.zoomMult || 1) - 1) * 0.001);
 
 	// move camera so content follows the hand (drag right -> move right; drag up -> move up)
-	const moveX = -dxPx * worldPerPxX * (_input.zoomMult || 1); // negative so dragging right moves content right
-	const moveY =  dyPx * worldPerPxY * (_input.zoomMult || 1); // dragging up moves content up
+	const moveX = -dxPx * worldPerPxX * zoomMult; // negative so dragging right moves content right
+	const moveY =  dyPx * worldPerPxY * zoomMult; // dragging up moves content up
 
 	const delta = Vector3()
 		.addScaledVector(right, moveX)

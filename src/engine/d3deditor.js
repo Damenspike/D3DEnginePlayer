@@ -1517,7 +1517,7 @@ async function exportAssets(paths) {
 	}
 	
 	if(fileDatas.length < 1) return;
-
+	console.log('D3D.exportMultipleFiles', fileDatas);
 	await D3D.exportMultipleFiles(fileDatas);
 }
 function groupSelectedObjects() {

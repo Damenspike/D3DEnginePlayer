@@ -437,33 +437,31 @@ export default class MeshManager {
 
 	async _buildMatMap(modelPath) {
 		if (!modelPath) return new Map();
-		const fullPath = this._norm('assets/' + modelPath);
+	
+		const fullPath  = this._norm('assets/' + modelPath);
 		const container = fullPath.replace(/\/[^\/]*$/, '/');
-		const matsDir = container + 'materials/';
-		const manifest = matsDir + 'materials.index.json';
+		const matsDir   = container + 'materials/';
+		const manifest  = matsDir + 'materials.index.json';
+	
 		const map = new Map();
-		const mf = this.zip.file(manifest);
-		if (mf) {
-			try {
-				const txt = await mf.async('string');
-				const json = JSON.parse(txt);
-				if (json?.byName) {
-					for (const k of Object.keys(json.byName)) {
-						const rel = this._norm(json.byName[k]);
-						let uuid = this.d3dobject.root.resolveAssetId(rel);
-						if(!uuid) {
-							const fallbackRel = `${matsDir}${fileName(rel)}`;
-							console.log('Trying with fallback URI', fallbackRel);
-							uuid = this.d3dobject.root.resolveAssetId(fallbackRel);
-							if(uuid)
-								console.log('Succeeded with fallback rel');
-						}
-							
-						if (uuid) map.set(k, uuid);
-					}
-				}
-			} catch {}
+		const mf  = this.zip.file(manifest);
+		if (!mf) return map;
+	
+		try {
+			const txt  = await mf.async('string');
+			const json = JSON.parse(txt);
+	
+			const byName = json?.byName || {};
+			for (const name of Object.keys(byName)) {
+				const uuid = byName[name];
+				if (!uuid) continue;
+				// value is already our asset UUID
+				map.set(name, uuid);
+			}
+		} catch (e) {
+			console.warn('[MeshManager] Failed to read materials.index.json', e);
 		}
+	
 		return map;
 	}
 
@@ -581,11 +579,11 @@ export default class MeshManager {
 		// ---------------- Build GLTF hierarchy ----------------
 		if (justLoaded) {
 			const matNameToUUID = await this._buildMatMap(modelPath);
-		
+			
 			const bindChildrenDirect = async (threeParent, d3dHost) => {
 				for (const child of threeParent.children.slice()) {
 					const rawName = child.name;
-					if(!rawName)
+					if (!rawName)
 						continue; // IMPORTANT: Skip the weird empty children because they link to the wrong things and mess everything up
 					
 					if (/^root$/i.test(rawName)) {
@@ -608,11 +606,35 @@ export default class MeshManager {
 					child.matrixAutoUpdate = true;
 					d3dChild.replaceObject3D(child);
 			
+					// ---------- SubMesh hookup (using ASSET uuids, not THREE uuids) ----------
+					if (child.isMesh || child.isSkinnedMesh) {
+						child.castShadow    = !!this.component.properties.castShadow;
+						child.receiveShadow = !!this.component.properties.receiveShadow;
+			
+						// build an array of *asset* uuids from material names
+						const mats = Array.isArray(child.material)
+							? child.material
+							: [child.material];
+			
+						const uuids = mats.map(m => {
+							const nm = m && m.name;
+							return nm ? (matNameToUUID.get(nm) || null) : null;
+						});
+			
+						if (!d3dChild.hasComponent('SubMesh')) {
+							d3dChild.addComponent(
+								'SubMesh',
+								{ materials: uuids },
+								{ doUpdateAll: false }
+							);
+						}
+					}
+					
 					// recurse
 					await bindChildrenDirect(child, d3dChild);
 				}
 			};
-		
+			
 			await bindChildrenDirect(sceneRoot, this.d3dobject);
 			this.d3dobject.traverse(d3d => d3d.updateComponents());
 		}
