@@ -134,6 +134,11 @@ body.dark {
 		.console-count-badge {
 			color: white;
 		}
+		.console-input {
+			.tf {
+				background: rgba(0, 0, 0, 0.4);
+			}
+		}
 	}
 	.object-row:hover {
 		background: rgba(0, 0, 0, 0.3);
@@ -1176,7 +1181,7 @@ body.dark {
 		
 		.tf {
 			width: calc(100% - 15px) !important;
-			background: rgba(0, 0, 0, 0.2);
+			background: rgba(0, 0, 0, 0.08);
 			font-family: monospace;
 		}
 	}

@@ -120,9 +120,9 @@ export default function ConsoleInspector() {
 							setCode(oldCode);
 							endOfCode();
 							setStackNumber(
-								stackNumber < codeHistory.length
+								(stackNumber + 1) < codeHistory.length
 									? (stackNumber + 1)
-									: codeHistory.length
+									: (codeHistory.length - 1)
 							);
 							e.preventDefault();
 						}else
