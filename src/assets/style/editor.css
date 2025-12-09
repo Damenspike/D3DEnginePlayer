@@ -1127,13 +1127,23 @@ body.dark {
 		}
 	}
 }
+.clear-console {
+	position: absolute;
+	top: 5px;
+	right: 5px;
+}
 .console-inspector {
+	position: relative;
 	padding: 5px;
 	border-radius: 10px;
 	height: calc(100% - 97px);
-	overflow-y: scroll;
-	user-select: all !important;
 	
+	.console-entries {
+		width: 100%;
+		height: calc(100% - 35px);
+		user-select: all !important;
+		overflow-y: scroll;
+	}
 	.console-entry {
 		font-family: monospace;
 	}
@@ -1142,11 +1152,6 @@ body.dark {
 	}
 	.console-entry-error {
 		color: #b13535;
-	}
-	.clear-console {
-		position: absolute;
-		top: 5px;
-		right: 5px;
 	}
 	.console-count-badge {
 		display: inline-flex;
@@ -1162,6 +1167,18 @@ body.dark {
 		font-size: 10px;
 		font-weight: bold;
 		vertical-align: middle;
+	}
+	.console-input {
+		position: absolute;
+		bottom: 5px;
+		left: 5px;
+		right: 5px;
+		
+		.tf {
+			width: calc(100% - 15px) !important;
+			background: rgba(0, 0, 0, 0.2);
+			font-family: monospace;
+		}
 	}
 }
 .console-inspector {

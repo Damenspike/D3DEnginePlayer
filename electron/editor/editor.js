@@ -1024,6 +1024,10 @@ const menuTemplate = [
 						click: () => sendAddComponent('AudioSource')
 					},
 					{
+						label: 'Auto LOD',
+						click: () => sendAddComponent('AutoLOD')
+					},
+					{
 						label: 'Rigidbody',
 						submenu: [
 							{

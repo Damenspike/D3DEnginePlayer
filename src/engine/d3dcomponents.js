@@ -21,6 +21,7 @@ import D3DParticleSystemManager from './d3dmgr_particlesystem.js';
 import D3DCameraCollisionManager from './d3dmgr_cameracollision.js';
 import D3DFirstPersonCameraManager from './d3dmgr_firstpersoncamera.js';
 import D3DFirstPersonCharacterController from './d3dmgr_firstpersoncharactercontroller.js';
+import D3DAutoLODManager from './d3dmgr_autolod.js';
 
 import { WebSafeFonts } from './d3dfonts.js';
 
@@ -1844,20 +1845,20 @@ const D3DComponents = {
 				def: 'normal'
 			},
 			
-			glow: {
+			'glow': {
 				label: 'Glow',
 				type: 'boolean',
 				def: false,
 				section: 'glow'
 			},
-			glowColor: {
+			'glowColor': {
 				label: 'Color',
 				type: 'colora',
 				def: '#ffffffff',
 				section: 'glow',
 				condition: c => c.properties.glow === true
 			},
-			glowBlur: {
+			'glowBlur': {
 				label: 'Blur',
 				type: 'number',
 				min: -256,
@@ -1867,7 +1868,7 @@ const D3DComponents = {
 				section: 'glow',
 				condition: c => c.properties.glow === true
 			},
-			glowStrength: {
+			'glowStrength': {
 				label: 'Strength',
 				type: 'number',
 				min: 0,
@@ -1877,20 +1878,20 @@ const D3DComponents = {
 				condition: c => c.properties.glow === true
 			},
 			
-			shadow: {
+			'shadow': {
 				label: 'Drop shadow',
 				type: 'boolean',
 				def: false,
 				section: 'shadow'
 			},
-			shadowColor: {
+			'shadowColor': {
 				label: 'Shadow color',
 				type: 'colora',
 				def: '#000000ff',
 				section: 'shadow',
 				condition: c => c.properties.shadow === true
 			},
-			shadowAngle: {
+			'shadowAngle': {
 				label: 'Shadow angle (deg)',
 				type: 'number',
 				min: -360,
@@ -1900,7 +1901,7 @@ const D3DComponents = {
 				section: 'shadow',
 				condition: c => c.properties.shadow === true
 			},
-			shadowDistanceX: {
+			'shadowDistanceX': {
 				label: 'Distance X',
 				type: 'number',
 				min: -1024,
@@ -1910,7 +1911,7 @@ const D3DComponents = {
 				section: 'shadow',
 				condition: c => c.properties.shadow === true
 			},
-			shadowDistanceY: {
+			'shadowDistanceY': {
 				label: 'Distance Y',
 				type: 'number',
 				min: -1024,
@@ -1920,7 +1921,7 @@ const D3DComponents = {
 				section: 'shadow',
 				condition: c => c.properties.shadow === true
 			},
-			shadowBlur: {
+			'shadowBlur': {
 				label: 'Blur',
 				type: 'number',
 				min: 0,
@@ -1930,7 +1931,7 @@ const D3DComponents = {
 				section: 'shadow',
 				condition: c => c.properties.shadow === true
 			},
-			shadowType: {
+			'shadowType': {
 				label: 'Type',
 				type: 'select',
 				def: 'outer',
@@ -1943,6 +1944,48 @@ const D3DComponents = {
 			}
 		},
 		manager: D2DFilterManager
+	},
+	AutoLOD: {
+		name: 'Auto LOD',
+		fields: {
+			'levels': {
+				label: 'Levels',
+				type: 'slider',
+				min: 1,
+				max: 4,
+				step: 1,
+				def: 3
+			},
+			'simplification': {
+				label: 'Simplification',
+				type: 'slider',
+				min: 0.01,
+				max: 1,
+				step: 0.01,
+				def: 0.25
+			},
+			'maxDistance': {
+				label: 'Maximum distance',
+				type: 'number',
+				min: 1,
+				step: 1,
+				def: 100,
+				description: 'Beyond this distance, the object is culled. At half this distance, the object is using the middle level.'
+			},
+			'cameraName': {
+				label: 'Camera name',
+				description: 'Path to the camera object (.camera property pointing to an object instance overrides this value)',
+				type: 'string',
+				def: ''
+			},
+			'applyToChildren': {
+				label: 'Apply to children',
+				description: 'When true, all mesh children will recursively be included in the simplification',
+				type: 'boolean',
+				def: false
+			}
+		},
+		manager: D3DAutoLODManager
 	}
 }
 

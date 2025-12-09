@@ -2,8 +2,13 @@ import React, { useState, useEffect, useRef } from 'react';
 
 export default function ConsoleInspector() {
 	const [editorConsole, setEditorConsole] = useState(_editor.console);
+	const [code, setCode] = useState('');
+	const [codeHistory, setCodeHistory] = useState([]);
+	const [stackNumber, setStackNumber] = useState(0);
+	
 	const scrollRef = useRef();
 	const autoScroll = useRef(true);
+	const codeRef = useRef(null);
 
 	useEffect(() => {
 		_events.on('editor-console', (ec) => {
@@ -31,23 +36,16 @@ export default function ConsoleInspector() {
 		setEditorConsole([]);
 	}
 
-	const drawOptions = () => {
-		const drawClearButton = () => (
-			<div className='clear-console'>
-				<button 
-					onClick={clearConsole}
-					disabled={editorConsole.length < 1}
-				>
-					Clear
-				</button>
-			</div>
-		)
-		return (
-			<>
-				{drawClearButton()}
-			</>
-		)
-	}
+	const drawClearButton = () => (
+		<div className='clear-console'>
+			<button 
+				onClick={clearConsole}
+				disabled={editorConsole.length < 1}
+			>
+				Clear
+			</button>
+		</div>
+	)
 	const drawConsoleLines = () => {
 		const rows = [];
 		
@@ -77,17 +75,89 @@ export default function ConsoleInspector() {
 			);
 		});
 		
-		return rows;
+		return (
+			<div className='console-entries'>
+				{rows}
+			</div>
+		);
 	};
+	const submitCodeInput = () => {
+		if(!code) return;
+		
+		_editor.focus.__runInSandbox(code);
+		setCodeHistory([code, ...codeHistory]);
+		setCode('');
+		setStackNumber(0);
+	}
+	const endOfCode = () => {
+		requestAnimationFrame(() => {
+			const el = codeRef.current;
+			if(!el) return;
+			const len = el.value.length;
+			el.setSelectionRange(len, len);
+		});
+	}
+	const drawConsoleInput = () => {
+		return (
+			<div className='console-input'>
+				<input
+					ref={codeRef}
+					type='text'
+					className='tf'
+					placeholder='DamenScript ⏎'
+					value={code}
+					onChange={e => setCode(e.target.value)}
+					onKeyDown={e => {
+						if(e.keyCode === 13) {
+							submitCodeInput();
+						}else
+						if(e.keyCode === 38) {
+							if(stackNumber > codeHistory.length)
+								return;
+								
+							const oldCode = codeHistory[stackNumber];
+							
+							setCode(oldCode);
+							endOfCode();
+							setStackNumber(
+								stackNumber < codeHistory.length
+									? (stackNumber + 1)
+									: codeHistory.length
+							);
+							e.preventDefault();
+						}else
+						if(e.keyCode === 40) {
+							// moving *towards* newer code
+							if(stackNumber <= 0) {
+								setCode('');          // <-- clear the editor
+								setStackNumber(0);    // already at newest
+								return;
+							}
+							
+							const oldCode = codeHistory[stackNumber - 1];
+							
+							setCode(oldCode);
+							endOfCode();
+							setStackNumber(stackNumber - 1);
+							e.preventDefault();
+						}
+					}}
+				/>
+			</div>
+		)
+	}
 
 	return (
-		<div 
-			ref={scrollRef}
-			className='console-inspector shade'
-			onScroll={onScroll}
-		>
-			{drawOptions()}
-			{drawConsoleLines()}
-		</div>
+		<>
+			{drawClearButton()}
+			<div 
+				ref={scrollRef}
+				className='console-inspector shade'
+				onScroll={onScroll}
+			>
+				{drawConsoleLines()}
+				{drawConsoleInput()}
+			</div>
+		</>
 	);
 }
