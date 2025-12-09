@@ -1,4 +1,7 @@
 import { SimplifyModifier } from 'three/examples/jsm/modifiers/SimplifyModifier.js';
+import {
+	getObjectsCenter
+} from './d3dutility.js';
 
 const minimumVertexCount = 20;
 
@@ -8,7 +11,25 @@ export default class AutoLODManager {
 		this.component = component;
 		
 		this.levelStore = [];
+	}
+	
+	get center() {
+		const type = this.centerType;
 		
+		if(type == 'pivot')
+			return this.d3dobject.worldPosition;
+		else
+		if(type == 'center')
+			return this.centerBBox;
+		else
+			throw new Error(`Invalid center type ${type}`);
+	}
+	
+	get centerType() {
+		return this.component.properties.centerType;
+	}
+	set centerType(v) {
+		this.component.properties.centerType = v;
 	}
 	
 	get levels() {
@@ -134,6 +155,8 @@ export default class AutoLODManager {
 		});
 	}
 	updateComponent() {
+		this.centerBBox = getObjectsCenter([this.d3dobject]);
+		
 		if(!this.lastProperties || JSON.stringify(this.component.properties) != JSON.stringify(this.lastProperties)) {
 			this.generateLevels();
 			this.currentLODLevel = -1; // force refresh
@@ -152,7 +175,7 @@ export default class AutoLODManager {
 		if(!camera)
 			return;
 		
-		const distToMe = this.d3dobject.worldPosition.distanceTo(camera.worldPosition);
+		const distToMe = this.center.distanceTo(camera.worldPosition);
 		
 		if(distToMe > maxDistance) {
 			this.d3dobject.visible = false;

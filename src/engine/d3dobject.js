@@ -1192,6 +1192,27 @@ export default class D3DObject {
 			this.checkSymbols();
 		}
 	}
+	getComponentObject(type, { dummy = false } = {}) {
+		const component = this.components.find(c => c.type == type);
+		
+		if(!component)
+			return;
+		
+		if(dummy) {
+			if(!this.__dummyComponents)
+				this.__dummyComponents = [];
+			
+			const dummyComponent = this.__dummyComponents.find(c => c.type == type);
+			
+			if(!dummyComponent) {
+				this.__dummyComponents.push(structuredClone(component));
+			}else{
+				return dummyComponent;
+			}
+		}
+		
+		return component;
+	}
 	getComponent(type) {
 		const component = this.components.find(c => c.type == type);
 		

@@ -27,6 +27,7 @@ import { WebSafeFonts } from './d3dfonts.js';
 
 const D3DComponents = {
 	Mesh: {
+		name: 'Mesh',
 		fields: {
 			'mesh': {
 				label: 'Model',
@@ -61,6 +62,7 @@ const D3DComponents = {
 		manager: D3DMeshManager
 	},
 	SubMesh: {
+		name: 'Sub Mesh',
 		fields: {
 			'materials': { 
 				label: 'Materials', 
@@ -82,6 +84,7 @@ const D3DComponents = {
 		manager: D3DMeshManager
 	},
 	Camera: {
+		name: 'Camera',
 		fields: {
 			projection: {
 				label: 'Projection',
@@ -898,7 +901,8 @@ const D3DComponents = {
 					{ name: 'dashed',  label: 'Dashed' },
 					{ name: 'dotted',  label: 'Dotted' },
 					{ name: 'dashdot', label: 'Dash-Dot' }
-				]
+				],
+				condition: c => c.properties.line == true
 			},
 			'lineDashLength': {
 				label: 'Dash length',
@@ -911,7 +915,7 @@ const D3DComponents = {
 				// only for dashed + dashdot
 				condition: c => {
 					const s = c.properties.lineStyle;
-					return s === 'dashed' || s === 'dashdot';
+					return c.properties.line == true && (s === 'dashed' || s === 'dashdot');
 				}
 			},
 			'lineDashGap': {
@@ -925,7 +929,7 @@ const D3DComponents = {
 				// only for dashed + dashdot
 				condition: c => {
 					const s = c.properties.lineStyle;
-					return s === 'dashed' || s === 'dashdot';
+					return c.properties.line == true && (s === 'dashed' || s === 'dashdot');
 				}
 			},
 			'lineDotGap': {
@@ -939,7 +943,7 @@ const D3DComponents = {
 				// only for dotted + dashdot
 				condition: c => {
 					const s = c.properties.lineStyle;
-					return s === 'dotted' || s === 'dashdot';
+					return c.properties.line == true && (s === 'dotted' || s === 'dashdot');
 				}
 			},
 			'lineDashOffset': {
@@ -953,7 +957,7 @@ const D3DComponents = {
 				// for anything that actually uses a pattern
 				condition: c => {
 					const s = c.properties.lineStyle;
-					return s === 'dashed' || s === 'dotted' || s === 'dashdot';
+					return c.properties.line == true && (s === 'dashed' || s === 'dotted' || s === 'dashdot');
 				}
 			},
 			
@@ -1983,6 +1987,15 @@ const D3DComponents = {
 				description: 'When true, all mesh children will recursively be included in the simplification',
 				type: 'boolean',
 				def: false
+			},
+			'centerType': {
+				label: 'Center type',
+				type: 'select',
+				def: 'pivot',
+				options: [
+					{ name: 'pivot', label: 'Pivot Point' },
+					{ name: 'center', label: 'Center' }
+				]
 			}
 		},
 		manager: D3DAutoLODManager

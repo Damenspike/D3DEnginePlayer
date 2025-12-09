@@ -92,7 +92,7 @@ export default function ColorPicker({
 				className="color-field"
 				tabIndex={readOnly ? -1 : 0}
 				onKeyDown={readOnly ? undefined : onKeyDown}
-				onClick={() => onClick?.(propHex)}
+				onClick={(e) => onClick?.(e, propHex)}
 				onPointerUp={handleCommitBlur}
 				onBlur={handleCommitBlur}
 				style={readOnly ? { pointerEvents: 'none', opacity: 0.6 } : undefined}

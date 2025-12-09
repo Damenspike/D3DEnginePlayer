@@ -136,7 +136,7 @@ body.dark {
 		}
 		.console-input {
 			.tf {
-				background: rgba(0, 0, 0, 0.4);
+				background: rgba(0, 0, 0, 0.25);
 			}
 		}
 	}
@@ -1181,6 +1181,7 @@ body.dark {
 		
 		.tf {
 			width: calc(100% - 15px) !important;
+			font-size: 13px;
 			background: rgba(0, 0, 0, 0.08);
 			font-family: monospace;
 		}

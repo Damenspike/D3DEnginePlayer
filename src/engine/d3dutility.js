@@ -1001,3 +1001,29 @@ export function forFrames(frames) {
 		requestAnimationFrame(step);
 	});
 }
+export function getObjectsCenter(d3dobjects) {
+	const box = new THREE.Box3();
+	const tmp = new THREE.Box3();
+	let hasBox = false;
+
+	for(const d3d of d3dobjects || []) {
+		const obj3d = d3d && d3d.object3d;
+		if(!obj3d)
+			continue;
+
+		tmp.setFromObject(obj3d);
+
+		if(!hasBox) {
+			box.copy(tmp);
+			hasBox = true;
+		}else{
+			box.union(tmp);
+		}
+	}
+
+	const center = new THREE.Vector3();
+	if(hasBox)
+		box.getCenter(center);
+
+	return center;
+}

@@ -69,6 +69,8 @@ const autoBlur = (e) => {
 	}
 }
 let onSelectFile;
+const sharedInspector = {};
+const DASH = '–';
 
 const Tabs = {
 	All: 'all',
@@ -567,13 +569,6 @@ export default function Inspector() {
 						</div>
 					)
 				}
-				{
-					objects.length > 1 && (
-						<div className='small gray mb'>
-							<i>Multiple objects selected</i>
-						</div>
-					)
-				}
 				
 				<div className="field mt2">
 					{
@@ -802,167 +797,267 @@ export default function Inspector() {
 					}
 				</div>
 				
-				{
-					objects.length === 1 && (
-						<div className="components-editor">
-							{drawComponentsEditor()}
-						</div>
-					)
-				}
+				<div className="components-editor">
+					{drawComponentsEditor()}
+				</div>
 			</InspectorCell>
 		)
 	}
 	const drawComponentsEditor = () => {
 		const rows = [];
-		const object = objects[0];
+		const sharedComponents = [];
 		
-		object.components.forEach(component => {
-			if(!dummyObject.components)
-				return;
-			
+		const canSee = (component) => !component.properties.__editorOnly;
+		
+		objects.forEach(object => {
+			object.components.forEach(component => {
+				const schema = D3DComponents[component.type];
+				
+				if(!canSee(component))
+					return;
+				
+				if(!schema)
+					return;
+				
+				const shared = sharedComponents.find(sc => sc.type == component.type);
+				
+				if(!shared)
+					sharedComponents.push({schema, type: component.type, allEnabled: component.enabled});
+				else {
+					if(!component.enabled)
+						shared.allEnabled = false;
+				}
+			})
+		});
+		
+		sharedComponents.forEach( ({schema, type, allEnabled}) => {
 			const fields = [];
-			const schema = D3DComponents[component.type];
-			const idx = object.components.indexOf(component);
-			const dummyComponent = dummyObject.components[idx];
-			const manager = object.getComponent(component.type);
 			const sections = {};
-			
-			if(!schema) {
-				console.warn(`Unknown component schema for '${component.type}'`);
-				return;
-			}
-			if(!dummyComponent) {
-				console.warn(`Unknown component for '${idx}'`);
-				return;
-			}
 			
 			if(schema.hidden)
 				return;
-				
-			if(component.properties.__editorOnly)
-				return;
 			
-			const deleteComponent = () => {
-				const componentSerialized = object.getSerializedComponent(component);
+			const setComponentEnabled = (enable, addStep = true) => {
+				objects.forEach(object => {
+					const component = object.getComponentObject(type);
+					if(!component || !canSee(component))
+						return;
+					
+					component.enabled = enable;
+				});
 				
-				const doDelete = (addStep = true) => {
-					addStep && _editor.addStep({
-						name: 'Delete component',
-						undo: () => {
-							object.addComponent(
-								component.type,
-								componentSerialized.properties
-							);
-							update();
-						},
-						redo: () => {
-							doDelete(false);
-							update();
-						}
+				addStep && _editor.addStep({
+					name: 'Toggle component',
+					undo: () => setComponentEnabled(!enable, false),
+					redo: () => setComponentEnabled(enable, false)
+				});
+			}
+			const deleteComponent = () => {
+				const doDelete = () => {
+					const serializedComponents = {};
+					
+					objects.forEach(object => {
+						const component = object.getComponentObject(type);
+						if(!component || !canSee(component))
+							return;
+						
+						serializedComponents[object.uuid] = object.getSerializedComponent(component);
 					});
 					
-					object.removeComponent(component.type);
-					_events.invoke('refresh-component', component.type);
+					const deleteComponentFromObjects = () => {
+						objects.forEach(object => {
+							if(!object.hasComponent(type))
+								return;
+							
+							object.removeComponent(type);
+						});
+						
+						update();
+						_events.invoke('refresh-component', type);
+					}
 					
-					update();
+					_editor.addStep({
+						name: 'Delete component',
+						undo: () => {
+							objects.forEach(object => {
+								if(object.hasComponent(type))
+									return;
+								
+								const serializedComponent = serializedComponents[object.uuid];
+								if(!serializedComponent)
+									return;
+								
+								object.addComponent(
+									serializedComponent.type,
+									serializedComponent.properties
+								);
+							});
+							
+							update();
+						},
+						redo: () => deleteComponentFromObjects()
+					})
+					
+					deleteComponentFromObjects();
+					
 				}
 				
 				_editor.showConfirm({
 					title: 'Delete Component',
-					message: `Are you sure you want to delete ${component.type} off this object?`,
+					message: `Are you sure you want to delete ${type} from ${objects.length} object(s)?`,
 					onConfirm: doDelete
 				}) 
+			}
+			const getCurrentValueOf = (fieldId) => {
+				let current;
+				let mixed = false;
+				for(const object of objects) {
+					const dummyComponent = object.getComponentObject(type, { dummy: true });
+					if(!dummyComponent || !canSee(dummyComponent))
+						continue;
+					
+					const val = dummyComponent.properties[fieldId];
+					
+					if(current === undefined) {
+						current = val;
+						continue;
+					}
+					if(JSON.stringify(val) != JSON.stringify(current)) {
+						mixed = true;
+						break;
+					}
+				}
+				return {current, mixed};
+			}
+			const commitValueOf = ({val, fieldId, oldValueOverride = undefined, addStep = true}) => {
+				const serializedComponents = {};
+				
+				objects.forEach(object => {
+					const component = object.getComponentObject(type);
+					if(!component || !canSee(component))
+						return;
+					
+					serializedComponents[object.uuid] = object.getSerializedComponent(component);
+				});
+				
+				const applyValue = () => {
+					objects.forEach(object => {
+						const component = object.getComponentObject(type);
+						const dummyComponent = object.getComponentObject(type, {dummy: true});
+						
+						if(!component || !canSee(component))
+							return;
+						
+						object.setComponentValue(
+							type,
+							fieldId,
+							val
+						);
+						
+						dummyComponent.properties[fieldId] = val;
+					});
+					
+					update();
+				}
+				
+				applyValue();
+				
+				addStep && _editor.addStep({
+					name: 'Update property',
+					undo: () => {
+						objects.forEach(object => {
+							const component = object.getComponentObject(type);
+							const dummyComponent = object.getComponentObject(type, {dummy: true});
+							
+							if(!component || !canSee(component))
+								return;
+							
+							const serializedComponent = serializedComponents[object.uuid];
+							if(!serializedComponent)
+								return;
+							
+							const oldValue = oldValueOverride ?? serializedComponent.properties[fieldId];
+							
+							object.setComponentValue(
+								type,
+								fieldId,
+								oldValue
+							);
+							
+							dummyComponent.properties[fieldId] = oldValue;
+						});
+						
+						update();
+						_events.invoke('refresh-component', type);
+					},
+					redo: () => applyValue()
+				})
 			}
 			
 			for(let fieldId in schema.fields) {
 				const field = schema.fields[fieldId];
-				const current = dummyComponent.properties[fieldId];
-				
-				if(field.hidden)
-					continue;
-					
-				if(field.name == 'materials' && 
-					dummyComponent.properties['minimaterial']?.enabled)
-					continue;
-				
-				if(typeof field.condition == 'function') {
-					if(field.condition(dummyComponent) === false)
-						continue;
-				}
+				const { current, mixed } = getCurrentValueOf(fieldId);
 				
 				let desc = field.description;
 				let sideBySide = true;
-				
-				const addStep = (val) => {
-					const oldValue = component.properties[fieldId];
-					const newValue = val;
-					_editor.addStep({
-						name: 'Update property',
-						undo: () => {
-							object.setComponentValue(
-								component.type,
-								fieldId,
-								oldValue
-							);
-							update();
-						},
-						redo: () => {
-							object.setComponentValue(
-								component.type,
-								fieldId,
-								newValue
-							);
-							update();
-						}
-					});
-				}
-				const addStepManual = (oldValue, newValue) => {
-					_editor.addStep({
-						name: 'Update property',
-						undo: () => {
-							object.setComponentValue(
-								component.type,
-								fieldId,
-								oldValue
-							);
-							update();
-						},
-						redo: () => {
-							object.setComponentValue(
-								component.type,
-								fieldId,
-								newValue
-							);
-							update();
-						}
-					});
-				}
-				
 				let fieldContent;
+				
+				if(field.hidden)
+					continue;
+				
+				if(typeof field.condition == 'function') {
+					let canShow = true;
+					
+					for(const object of objects) {
+						const component = object.getComponentObject(type);
+						if(!component)
+							continue;
+						
+						if(field.condition(component) === false) {
+							canShow = false;
+							break;
+						}
+					}
+					
+					if(!canShow)
+						continue;
+				}
+				
+				const commitValueLight = (val, oldValueOverride) => {
+					if((val === DASH || JSON.stringify(val) === '{"x":"-","y":"-","z":"-"}' || JSON.stringify(val) === '{"x":"-","y":"-"}') && mixed)
+						return; // Ignore ambiguous dash
+					
+					commitValueOf({val, fieldId, oldValueOverride, addStep: false});
+				}
+				const commitValue = (val, oldValueOverride) => {
+					if((val === DASH || JSON.stringify(val) === '{"x":"-","y":"-","z":"-"}' || JSON.stringify(val) === '{"x":"-","y":"-"}') && mixed)
+						return; // Ignore ambiguous dash
+					
+					commitValueOf({val, fieldId, oldValueOverride});
+				}
+				const offerValue = (val) => {
+					objects.forEach(object => {
+						const dummyComponent = object.getComponentObject(type, { dummy: true });
+						if(!dummyComponent || !canSee(dummyComponent))
+							return;
+						
+						dummyComponent.properties[fieldId] = val;
+					});
+					update();
+				}
+				
+				const drawAmbiguous = () => (
+					<div className='small gray mb'>
+						<i>Multiple values</i>
+					</div>
+				)
 				
 				switch(field.type) {
 					case 'vector3': {
 						fieldContent = (
 							<VectorInput 
-								values={[current]} 
-								onSave={vector => {
-									let val = vector;
-									
-									if(field.convert)
-										val = field.convert(val);
-										
-									addStep(val);
-									
-									dummyComponent.properties[fieldId] = val;
-									
-									object.setComponentValue(
-										component.type,
-										fieldId,
-										val
-									);
-									
-									update();
-								}}
+								values={[ (!mixed ? current : {x: '-', y: '-', z: '-'}) ]} 
+								onSave={vector => commitValue(vector)}
 							/>
 						);
 						break;
@@ -972,36 +1067,11 @@ export default function Inspector() {
 							<input 
 								className="tf" 
 								type="text" 
-								value={current ?? ''} 
+								value={ (!mixed ? (current ?? '') : DASH) } 
 								onKeyDown={autoBlur}
 								readOnly={field.readOnly}
-								onChange={e => {
-									let val = e.target.value;
-									
-									if(field.convert)
-										val = field.convert(val);
-									
-									dummyComponent.properties[fieldId] = val;
-									update();
-								}}
-								onBlur={e => {
-									let val = String(e.target.value) || '';
-									
-									if(field.convert)
-										val = field.convert(val);
-										
-									addStep(val);
-									
-									dummyComponent.properties[fieldId] = val;
-									
-									object.setComponentValue(
-										component.type,
-										fieldId,
-										val
-									);
-									
-									update();
-								}}
+								onChange={e => offerValue(e.target.value)}
+								onBlur={e => commitValue(e.target.value)}
 							/>
 						)
 						break;
@@ -1010,36 +1080,11 @@ export default function Inspector() {
 						fieldContent = (
 							<textarea
 								className="tf"
-								value={current ?? ''}
+								value={ (!mixed ? (current ?? '') : DASH) }
 								readOnly={field.readOnly}
 								rows={field.rows ?? 3}
-								onChange={e => {
-									let val = e.target.value;
-									
-									if (field.convert)
-										val = field.convert(val);
-									
-									dummyComponent.properties[fieldId] = val;
-									update();
-								}}
-								onBlur={e => {
-									let val = String(e.target.value) || '';
-									
-									if (field.convert)
-										val = field.convert(val);
-										
-									addStep(val);
-									
-									dummyComponent.properties[fieldId] = val;
-									
-									object.setComponentValue(
-										component.type,
-										fieldId,
-										val
-									);
-									
-									update();
-								}}
+								onChange={e => commitValueLight(e.target.value)}
+								onBlur={e => commitValue(e.target.value)}
 								style={{
 									resize: field.resize ?? 'vertical',
 									width: '100%',
@@ -1056,41 +1101,23 @@ export default function Inspector() {
 							<input 
 								className="tf tf--num" 
 								type="number" 
-								value={Number(current) || 0} 
+								value={ (!mixed ? Number(current) : '') } 
 								onKeyDown={autoBlur}
 								min={field.min}
 								max={field.max}
 								step={field.step || 1}
 								readOnly={field.readOnly}
-								onChange={e => {
-									let val = Number(e.target.value) || 0;
-									
-									dummyComponent.properties[fieldId] = val;
-									update();
-								}}
+								onChange={e => offerValue( Number(e.target.value) || 0 )}
 								onBlur={e => {
 									let val = Number(e.target.value) || 0;
 									
 									if(field.min !== undefined && val < field.min)
 										val = field.min;
 									
-									if(field.min !== undefined && val > field.max)
+									if(field.max !== undefined && val > field.max)
 										val = field.max;
 									
-									if(field.convert)
-										val = field.convert(val);
-										
-									addStep(val);
-									
-									dummyComponent.properties[fieldId] = val;
-									
-									object.setComponentValue(
-										component.type,
-										fieldId,
-										val
-									);
-									
-									update();
+									commitValue(val);
 								}}
 							/>
 						)
@@ -1101,7 +1128,7 @@ export default function Inspector() {
 							<div className='flex'>
 								<input 
 									type="range" 
-									value={Number(current) || 0} 
+									value={ (!mixed ? Number(current) : 0) } 
 									onKeyDown={autoBlur}
 									min={field.min}
 									max={field.max}
@@ -1113,27 +1140,14 @@ export default function Inspector() {
 										if(field.min !== undefined && val < field.min)
 											val = field.min;
 										
-										if(field.min !== undefined && val > field.max)
+										if(field.max !== undefined && val > field.max)
 											val = field.max;
 											
-										if(field.convert)
-											val = field.convert(val);
-											
-										addStep(val);
-										
-										dummyComponent.properties[fieldId] = val;
-										
-										object.setComponentValue(
-											component.type,
-											fieldId,
-											val
-										);
-										
-										update();
+										commitValue(val);
 									}}
 								/>
 								<div className='slider-value'>
-									{Number(current) || 0}
+									{ (!mixed ? Number(current) : DASH) }
 								</div>
 							</div>
 						)
@@ -1144,7 +1158,7 @@ export default function Inspector() {
 							<div className='flex'>
 								<input 
 									type="range" 
-									value={Number(current) || 0} 
+									value={ (!mixed ? Number(current) : 0) } 
 									onKeyDown={autoBlur}
 									min={field.min}
 									max={field.max}
@@ -1156,64 +1170,33 @@ export default function Inspector() {
 										if(field.min !== undefined && val < field.min)
 											val = field.min;
 										
-										if(field.min !== undefined && val > field.max)
+										if(field.max !== undefined && val > field.max)
 											val = field.max;
 											
-										if(field.convert)
-											val = field.convert(val);
-											
-										addStep(val);
-										
-										dummyComponent.properties[fieldId] = val;
-										
-										object.setComponentValue(
-											component.type,
-											fieldId,
-											val
-										);
-										
-										update();
+										commitValue(val);
 									}}
 								/>
 								<div className='slider-value' style={{width: 'auto'}}>
 									<input 
 										className="tf tf--numm" 
 										type="number" 
-										value={Number(current) || 0} 
+										value={ (!mixed ? Number(current) : '') } 
 										onKeyDown={autoBlur}
 										min={field.min}
 										max={field.max}
 										step={field.step || 1}
 										readOnly={field.readOnly}
-										onChange={e => {
-											let val = Number(e.target.value) || 0;
-											
-											dummyComponent.properties[fieldId] = val;
-											update();
-										}}
+										onChange={e => offerValue( Number(e.target.value) || 0 )}
 										onBlur={e => {
 											let val = Number(e.target.value) || 0;
 											
 											if(field.min !== undefined && val < field.min)
 												val = field.min;
 											
-											if(field.min !== undefined && val > field.max)
+											if(field.max !== undefined && val > field.max)
 												val = field.max;
 											
-											if(field.convert)
-												val = field.convert(val);
-												
-											addStep(val);
-											
-											dummyComponent.properties[fieldId] = val;
-											
-											object.setComponentValue(
-												component.type,
-												fieldId,
-												val
-											);
-											
-											update();
+											commitValue(val);
 										}}
 									/>
 								</div>
@@ -1225,24 +1208,9 @@ export default function Inspector() {
 						fieldContent = (
 							<input 
 								type="checkbox" 
-								checked={!!current} 
+								checked={!!current && !mixed} 
 								readOnly={field.readOnly}
-								onKeyDown={autoBlur}
-								onChange={e => {
-									const val = !!e.target.checked;
-									
-									addStep(val);
-									
-									dummyComponent.properties[fieldId] = val;
-									
-									object.setComponentValue(
-										component.type,
-										fieldId,
-										val
-									);
-									
-									update();
-								}}
+								onChange={e => commitValue(!!e.target.checked)}
 							/>
 						)
 						break;
@@ -1251,7 +1219,7 @@ export default function Inspector() {
 						fieldContent = (
 							<input 
 								type="color" 
-								value={String(current).replace('0x', '#')}
+								value={ (!mixed ? String(current).replace('0x', '#') : '#000000') }
 								onKeyDown={autoBlur}
 								readOnly={field.readOnly}
 								onClick={e => {
@@ -1262,21 +1230,12 @@ export default function Inspector() {
 								onChange={e => {
 									const val = (e.target.value || '#ffffff').replace('#', '0x');
 									
-									dummyComponent.properties[fieldId] = val;
-									
-									object.setComponentValue(
-										component.type,
-										fieldId,
-										val
-									);
-									
-									update();
+									offerValue(val);
 								}}
 								onBlur={e => {
 									const val = (e.target.value || '#ffffff').replace('#', '0x');
 									
-									addStepManual(e.target.oldValue, val);
-									e.target.oldValue = val;
+									commitValue(val, e.target.oldValue);
 								}}
 							/>
 						);
@@ -1285,25 +1244,17 @@ export default function Inspector() {
 					case 'colora': {
 						fieldContent = (
 							<ColorPicker
-								value={String(current).replace('0x', '#')}
+								value={ (!mixed ? String(current).replace('0x', '#') : '#000000') }
 								displayMode='small'
 								onKeyDown={autoBlur}
 								readOnly={field.readOnly}
-								onClick={val => {
-									dummyComponent.__oldValue = val;
+								onClick={(e, val) => {
+									sharedInspector.oldValue = val;
 								}}
-								onChange={val => {
-									dummyComponent.properties[fieldId] = val;
-									update();
-									object.setComponentValue(
-										component.type,
-										fieldId,
-										val
-									);
-								}}
+								onChange={val => offerValue(val)}
 								onBlur={val => {
-									addStepManual(dummyComponent.__oldValue, val);
-									dummyComponent.__oldValue = val;
+									commitValue(val, sharedInspector.oldValue);
+									sharedInspector.oldValue = val;
 								}}
 							/>
 						);
@@ -1313,21 +1264,13 @@ export default function Inspector() {
 						fieldContent = (
 							<ColorPickerBest
 								value={hex8ToRgba(current)}
-								onClick={val => {
-									dummyComponent.__oldValue = val;
+								onClick={(e, val) => {
+									sharedInspector.oldValue = val;
 								}}
-								onChange={val => {
-									dummyComponent.properties[fieldId] = val;
-									update();
-									object.setComponentValue(
-										component.type,
-										fieldId,
-										val
-									);
-								}}
+								onChange={val => offerValue(val)}
 								onBlur={val => {
-									addStepManual(dummyComponent.__oldValue, val);
-									dummyComponent.__oldValue = val;
+									commitValue(val, sharedInspector.oldValue);
+									sharedInspector.oldValue = val;
 								}}
 							/>
 						);
@@ -1337,35 +1280,59 @@ export default function Inspector() {
 					case 'file[]': {
 						sideBySide = false;
 						
-						const current = Array.isArray(dummyComponent.properties[fieldId])
-							? dummyComponent.properties[fieldId]
-							: [dummyComponent.properties[fieldId]];
+						let list = field.type == 'file[]'
+						? (Array.isArray(current) ? current : (current ? [current] : []))
+						: (current ? [current] : []);
+						
+						// Allow one empty row always for file
+						if(field.type == 'file' && list.length < 1)
+							list = [null];
 						
 						const browseAndAppend = () => openAssetExplorer({
 							format: field.format,
 							selectedAsset: '',
 							onSelect: (assetPath) => {
 								const uuid = _root.resolveAssetId(assetPath);
-								const val = [...current, uuid];
-								dummyComponent.properties[fieldId] = val;
+								const val = [...list, uuid];
 								
-								addStep(val);
-								
-								object.setComponentValue(
-									component.type,
-									fieldId,
-									val
-								);
-								
-								update();
+								commitValue(val);
 							}
 						});
 						
 						const drawExtra = () => {
 							if(field.label == 'Materials') {
-								const ids = component.properties['materials'];
+								const uuids = [];
+								let match = true;
+								
+								for(const object of objects) {
+									const component = object.getComponentObject(type);
+									if(!component || !canSee(component))
+										return;
+									
+									const ids = component.properties.materials;
+									if(!ids)
+										return;
+									
+									for(let i in ids) {
+										const id = ids[i];
+										if(uuids[i] != id) {
+											match = false;
+											break;
+										}
+										if(!uuids.includes(id))
+											uuids.push(id);
+									}
+									
+									if(!match)
+										break;
+								}
+								
+								// Too ambiguous. Don't draw.
+								if(!match) 
+									return;
+								
 								return drawMaterials(
-									ids.map(id => _root.resolvePathNoAssets(id))
+									uuids.map(uuid => _root.resolvePathNoAssets(uuid))
 								);
 							}
 						}
@@ -1398,14 +1365,19 @@ export default function Inspector() {
 								</div>
 							);
 						}
+						
+						if(mixed) {
+							fieldContent = drawAmbiguous();
+							break;
+						}
 					
 						fieldContent = (
 							<div className="file-array-field mt">
 								<div className="file-array-list">
-									{current.map((uuid, idx) => {
-										const filePath = _root.resolvePathNoAssets(uuid);
-										const fname = fileNameNoExt(filePath);
-										const ext = getExtension(filePath);
+									{list.map((uuid, idx) => {
+										const filePath = uuid ? _root.resolvePathNoAssets(uuid) : '';
+										const fname = uuid ? fileNameNoExt(filePath) : '';
+										const ext = uuid ? getExtension(filePath) : '';
 										
 										const browse = () => {
 											openAssetExplorer({
@@ -1416,29 +1388,16 @@ export default function Inspector() {
 													let val;
 													
 													if(field.type == 'file[]') {
-														val = [...current];
+														val = [...list];
 														val[idx] = uuid;
-													}else
-													if(field.type == 'file') {
+													}else{
 														val = uuid;
 													}
 													
-													addStep(val);
-													
-													dummyComponent.properties[fieldId] = val;
-													
-													object.setComponentValue(
-														component.type,
-														fieldId,
-														val
-													);
-													
-													_events.invoke('refresh-component', component.type);
-													
-													update();
+													commitValue(val);
 												}
 											})
-										}
+										};
 										
 										return (
 											<div key={idx} className="file-array-row">
@@ -1471,21 +1430,9 @@ export default function Inspector() {
 													<button
 														title="Remove"
 														onClick={() => {
-															const val = current.filter((_, i) => i !== idx);
+															const val = list.filter((_, i) => i !== idx);
 															
-															addStep(val);
-															
-															dummyComponent.properties[fieldId] = val;
-															
-															object.setComponentValue(
-																component.type,
-																fieldId,
-																val
-															);
-															
-															_events.invoke('refresh-component', component.type);
-															
-															update();
+															commitValue(val);
 														}}
 													>
 														<MdDelete />
@@ -1515,14 +1462,16 @@ export default function Inspector() {
 						);
 						break;
 					}
-					case 'fonts':
 					case 'select': {
 						const selRows = [];
-						const currentOption = field.options.find(
-							o => o.name == current
-						);
-						
 						const options = [...field.options];
+						
+						if(mixed)
+							options.unshift({ name: DASH, label: DASH })
+						
+						const currentOption = options.find(
+							o => o.name == (!mixed ? current : DASH)
+						);
 						
 						options.forEach(option => {
 							selRows.push(
@@ -1539,29 +1488,14 @@ export default function Inspector() {
 							desc = currentOption.description;
 						
 						fieldContent = (
-							<>
-								<select
-									className='tf'
-									value={current}
-									onChange={e => {
-										const val = e.target.value;
-										
-										addStep(val);
-										
-										dummyComponent.properties[fieldId] = val;
-										
-										object.setComponentValue(
-											component.type,
-											fieldId,
-											val
-										);
-										
-										update();
-									}}
-								>
-									{selRows}
-								</select>
-							</>	
+							<select
+								className='tf'
+								value={ (!mixed ? current : DASH) }
+								onChange={e => commitValue(e.target.value)}
+								readOnly={field.readOnly}
+							>
+								{selRows}
+							</select>
 						)
 						break;
 					}
@@ -1583,6 +1517,13 @@ export default function Inspector() {
 								</div>
 							)
 						}
+						const getVal = fid => {
+							const { current, mixed } = getCurrentValueOf(fid);
+							if(mixed) return DASH;
+							return current;
+						};
+						const setVal = (fid, val) => commitValueOf({fieldId: fid, val});
+						
 						fieldContent = (
 							<>
 								<div className='text-style-row'>
@@ -1590,24 +1531,22 @@ export default function Inspector() {
 										{
 											drawButton(
 												(<b>B</b>),
-												() => dummyComponent.properties.fontWeight == 'bold',
+												() => getVal('fontWeight') == 'bold',
 												() => {
-													const val = dummyComponent.properties.fontWeight;
+													const val = getVal('fontWeight');
 													
-													dummyComponent.properties.fontWeight = val == 'bold' ? 'normal' : 'bold';
-													update();
+													setVal('fontWeight', val == 'bold' ? 'normal' : 'bold');
 												}
 											)
 										}
 										{
 											drawButton(
 												(<i>i</i>),
-												() => dummyComponent.properties.fontStyle == 'italic',
+												() => getVal('fontStyle') == 'italic',
 												() => {
-													const val = dummyComponent.properties.fontStyle;
+													const val = getVal('fontStyle');
 													
-													dummyComponent.properties.fontStyle = val == 'italic' ? 'normal' : 'italic';
-													update();
+													setVal('fontStyle', val == 'italic' ? 'normal' : 'italic');
 												}
 											)
 										}
@@ -1615,31 +1554,22 @@ export default function Inspector() {
 										{
 											drawButton(
 												(<MdFormatAlignLeft />),
-												() => dummyComponent.properties.align == 'left',
-												() => {
-													dummyComponent.properties.align = 'left';
-													update();
-												}
+												() => getVal('align') == 'left',
+												() => setVal('align', 'left')
 											)
 										}
 										{
 											drawButton(
 												(<MdFormatAlignCenter />),
-												() => dummyComponent.properties.align == 'center',
-												() => {
-													dummyComponent.properties.align = 'center';
-													update();
-												}
+												() => getVal('align') == 'center',
+												() => setVal('align', 'center')
 											)
 										}
 										{
 											drawButton(
 												(<MdFormatAlignRight />),
-												() => dummyComponent.properties.align == 'right',
-												() => {
-													dummyComponent.properties.align = 'right';
-													update();
-												}
+												() => getVal('align') == 'right',
+												() => setVal('align', 'right')
 											)
 										}
 									</div>
@@ -1649,31 +1579,22 @@ export default function Inspector() {
 										{
 											drawButton(
 												(<AiOutlineVerticalAlignTop />),
-												() => dummyComponent.properties.valign == 'top',
-												() => {
-													dummyComponent.properties.valign = 'top';
-													update();
-												}
+												() => getVal('valign') == 'top',
+												() => setVal('valign', 'top')
 											)
 										}
 										{
 											drawButton(
 												(<AiOutlineVerticalAlignMiddle />),
-												() => dummyComponent.properties.valign == 'middle',
-												() => {
-													dummyComponent.properties.valign = 'middle';
-													update();
-												}
+												() => getVal('valign') == 'middle',
+												() => setVal('valign', 'middle')
 											)
 										}
 										{
 											drawButton(
 												(<AiOutlineVerticalAlignBottom />),
-												() => dummyComponent.properties.valign == 'bottom',
-												() => {
-													dummyComponent.properties.valign = 'bottom';
-													update();
-												}
+												() => getVal('valign') == 'bottom',
+												() => setVal('valign', 'bottom')
 											)
 										}
 									</div>
@@ -1771,13 +1692,10 @@ export default function Inspector() {
 			rows.push(
 				<ComponentCell 
 					key={rows.length}
-					title={schema.name || component.type}
-					enabled={component.enabled}
+					title={schema.name}
+					enabled={allEnabled}
 					togglable={true}
-					onToggleEnable={(enabled) => {
-						component.enabled = enabled;
-						update();
-					}}
+					onToggleEnable={enabled => setComponentEnabled(enabled)}
 					bar={!schema.persistent && (
 						<div 
 							className='component-delete'
