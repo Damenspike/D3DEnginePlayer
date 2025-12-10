@@ -522,6 +522,13 @@ export default function Inspector() {
 				alwaysOpen={tab != Tabs.All}
 			>
 				{
+					objects.length > 1 && (
+						<div className='small gray mb'>
+							<i>{objects.length} objects selected</i>
+						</div>
+					)
+				}
+				{
 					objects.length === 1 && (
 						<div className="field">
 							<label>Name</label>
@@ -804,10 +811,9 @@ export default function Inspector() {
 		)
 	}
 	const drawComponentsEditor = () => {
-		const rows = [];
-		const sharedComponents = [];
-		
 		const canSee = (component) => !component.properties.__editorOnly;
+		const rows = [];
+		const sharedMap = {};
 		
 		objects.forEach(object => {
 			object.components.forEach(component => {
@@ -819,16 +825,34 @@ export default function Inspector() {
 				if(!schema)
 					return;
 				
-				const shared = sharedComponents.find(sc => sc.type == component.type);
-				
-				if(!shared)
-					sharedComponents.push({schema, type: component.type, allEnabled: component.enabled});
-				else {
+				if(!sharedMap[component.type]) {
+					sharedMap[component.type] = {
+						schema,
+						type: component.type,
+						allEnabled: component.enabled,
+						count: 1
+					};
+				}else{
 					if(!component.enabled)
-						shared.allEnabled = false;
+						sharedMap[component.type].allEnabled = false;
+					
+					sharedMap[component.type].count++;
 				}
-			})
+			});
 		});
+		
+		const sharedComponents = [];
+		
+		for(const type in sharedMap) {
+			const sc = sharedMap[type];
+			if(sc.count === objects.length) {
+				sharedComponents.push({
+					schema: sc.schema,
+					type: sc.type,
+					allEnabled: sc.allEnabled
+				});
+			}
+		}
 		
 		sharedComponents.forEach( ({schema, type, allEnabled}) => {
 			const fields = [];

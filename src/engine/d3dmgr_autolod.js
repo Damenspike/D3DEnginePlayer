@@ -209,7 +209,7 @@ export default class AutoLODManager {
 			changed++;
 		});
 		
-		console.log(`Changed ${changed} meshes to LOD level ${desiredLevel}`);
+		//console.log(`Changed ${changed} meshes to LOD level ${desiredLevel}`);
 		
 		this.currentLODLevel = desiredLevel;
 	}

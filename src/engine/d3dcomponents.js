@@ -119,7 +119,7 @@ const D3DComponents = {
 			clipNear: { 
 				label: 'Minimum distance', 
 				type: 'number',
-				min: 0.0001,
+				min: 0.05,
 				max: 100,
 				def: 0.01
 			},
