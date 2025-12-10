@@ -1988,6 +1988,19 @@ const D3DComponents = {
 				type: 'boolean',
 				def: false
 			},
+			'billboardWhenCulled': {
+				label: 'Render billboards',
+				description: 'When true, the billboard texture will show when meshes are culled',
+				type: 'boolean',
+				def: false
+			},
+			'billboardTexture': {
+				label: 'Billboard texture',
+				type: 'file',
+				def: '',
+				format: 'img',
+				condition: c => c.properties.billboardWhenCulled == true
+			},
 			'centerType': {
 				label: 'Center type',
 				type: 'select',

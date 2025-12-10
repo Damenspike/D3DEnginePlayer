@@ -42,6 +42,7 @@ export default class D3DObject {
 		this.parent = parent; // D3DObject or null for root
 		this.name = name;
 		this._enabled = true;
+		this._visible = true;
 		
 		// INTERNAL SENSITIVE VARS
 		this.__ready = false;
@@ -588,7 +589,9 @@ export default class D3DObject {
 			//////////////////////////////////////////////
 			for(let i in this.__componentInstances) {
 				const mgr = this.__componentInstances[i];
-				mgr?.__onInternalBeforeRender?.();
+				
+				if(mgr?.component?.enabled)
+					mgr?.__onInternalBeforeRender?.();
 			}
 			this.invokeEvent('beforeRender');
 		}
@@ -599,13 +602,17 @@ export default class D3DObject {
 			this.updateVisibility();
 			for(let i in this.__componentInstances) {
 				const mgr = this.__componentInstances[i];
-				mgr?.__onInternalEnterFrame?.();
+				
+				if(mgr?.component?.enabled)
+					mgr?.__onInternalEnterFrame?.();
 				
 				if(mgr && mgr?.component) {
 					if(mgr.__isEnabled !== mgr.component.enabled) {
 						if(mgr.component.enabled) {
+							this.updateComponents();
 							mgr.onEnabled?.();
 						}else{
+							this.updateComponents();
 							mgr.onDisabled?.();
 						}
 						mgr.__isEnabled = mgr.component.enabled;
@@ -620,7 +627,9 @@ export default class D3DObject {
 			//////////////////////////////////////////////
 			for(let i in this.__componentInstances) {
 				const mgr = this.__componentInstances[i];
-				mgr?.__onInternalExitFrame?.();
+				
+				if(mgr?.component?.enabled)
+					mgr?.__onInternalExitFrame?.();
 			}
 			this.invokeEvent('exitFrame');
 		}
@@ -630,7 +639,9 @@ export default class D3DObject {
 			//////////////////////////////////////////////
 			for(let i in this.__componentInstances) {
 				const mgr = this.__componentInstances[i];
-				mgr?.__onInternalPhysicsUpdate?.();
+				
+				if(mgr?.component?.enabled)
+					mgr?.__onInternalPhysicsUpdate?.();
 			}
 			this.invokeEvent('physicsUpdate');
 		}
@@ -1705,7 +1716,7 @@ export default class D3DObject {
 				z: this.scale.z
 			},
 			opacity: this.opacity,
-			visible: this.visible,
+			visible: this._visible,
 			components: this.getSerializedComponents(),
 			children: this.children.map(child => child.getSerializableObject()),
 			script: this.__script

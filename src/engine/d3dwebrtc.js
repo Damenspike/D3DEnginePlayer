@@ -1,3 +1,5 @@
+import D3DConsole from './d3dconsole.js';
+
 export default function D3DWebRTC(signalingUrl) {
 	const state = {
 		signalingUrl,
@@ -16,7 +18,7 @@ export default function D3DWebRTC(signalingUrl) {
 		try {
 			state.onDisconnect?.(reason);
 		} catch (e) {
-			console.error('[D3DWebRTC] onDisconnect handler error:', e);
+			D3DConsole.error('[D3DWebRTC] onDisconnect handler error:', e);
 		}
 	}
 
@@ -32,6 +34,8 @@ export default function D3DWebRTC(signalingUrl) {
 					reject(err);
 				// also treat as disconnect
 				markDisconnected('ws-error');
+				
+				D3DConsole.error('Signaling WS error:', err);
 			};
 
 			ws.onopen = () => {
@@ -40,7 +44,7 @@ export default function D3DWebRTC(signalingUrl) {
 
 			ws.onclose = () => {
 				// signaling server went away
-				markDisconnected('ws-close');
+				//markDisconnected('ws-close');
 			};
 
 			ws.onmessage = async e => {
@@ -52,7 +56,7 @@ export default function D3DWebRTC(signalingUrl) {
 					try {
 						await state.pc.setRemoteDescription(msg.answer);
 					} catch (err) {
-						console.error('setRemoteDescription(answer) failed', err);
+						D3DConsole.error('setRemoteDescription(answer) failed', err);
 					}
 				}
 
@@ -60,7 +64,7 @@ export default function D3DWebRTC(signalingUrl) {
 					try {
 						await state.pc.addIceCandidate(msg.candidate);
 					} catch (err) {
-						console.error('addIceCandidate failed', err);
+						D3DConsole.error('addIceCandidate failed', err);
 					}
 				}
 			};
@@ -69,13 +73,14 @@ export default function D3DWebRTC(signalingUrl) {
 
 	async function begin(resolve, reject) {
 		const pc = new RTCPeerConnection({
-			iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+			iceServers: []
 		});
 		state.pc = pc;
 
 		// ---- watch connection state for disconnects ----
 		pc.onconnectionstatechange = () => {
 			const cs = pc.connectionState;
+			//D3DConsole.log('[RTC client] connectionState =', cs);
 			// 'disconnected' can be temporary, but for D3D it's usually safe to treat as "gone"
 			if (cs === 'failed' || cs === 'disconnected' || cs === 'closed') {
 				markDisconnected(`pc-${cs}`);
@@ -85,6 +90,7 @@ export default function D3DWebRTC(signalingUrl) {
 		// back-compat if you care:
 		pc.oniceconnectionstatechange = () => {
 			const ics = pc.iceConnectionState;
+			//D3DConsole.log('[RTC client] iceConnectionState =', ics);
 			if (ics === 'failed' || ics === 'disconnected' || ics === 'closed') {
 				markDisconnected(`ice-${ics}`);
 			}
@@ -119,6 +125,7 @@ export default function D3DWebRTC(signalingUrl) {
 		};
 
 		dcReliable.onclose = () => {
+			//D3DConsole.log('[RTC] reliable channel closed');
 			markDisconnected('dcReliable-close');
 		};
 
@@ -127,6 +134,7 @@ export default function D3DWebRTC(signalingUrl) {
 		dcUnreliable.onopen = () => {};
 
 		dcUnreliable.onclose = () => {
+			//D3DConsole.log('[RTC] unreliable channel closed');
 			markDisconnected('dcUnreliable-close');
 		};
 

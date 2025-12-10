@@ -67,6 +67,20 @@ export default class AutoLODManager {
 		this.component.properties.applyToChildren = !!v;
 	}
 	
+	get billboardWhenCulled() {
+		return !!this.component.properties.billboardWhenCulled;
+	}
+	set billboardWhenCulled(v) {
+		this.component.properties.billboardWhenCulled = !!v;
+	}
+	
+	get billboardTexture() {
+		return this.component.properties.billboardTexture;
+	}
+	set billboardTexture(v) {
+		this.component.properties.billboardTexture = v ? String(v) : '';
+	}
+	
 	generateLevels() {
 		const modifier = new SimplifyModifier();
 		const levels = this.levels;
