@@ -735,13 +735,13 @@ export default function Inspector() {
 										<label>Visible</label>
 										<input 
 											type="checkbox" 
-											checked={objects[0].visible} 
+											checked={objects[0]._visible} 
 											onChange={e => {
 												const newVisible = e.target.checked;
 												
 												objects.forEach(object => {
-													object.__inspWasVisible = object.visible;
-													object.visible = newVisible;
+													object.__inspWasVisible = object._visible;
+													object._visible = newVisible;
 												});
 												update();
 												
@@ -749,13 +749,13 @@ export default function Inspector() {
 													name: 'Update visibility',
 													undo: () => {
 														objects.forEach(object => {
-															object.visible = object.__inspWasVisible;
+															object._visible = object.__inspWasVisible;
 														});
 														update();
 													},
 													redo: () => {
 														objects.forEach(object => {
-															object.visible = newVisible;
+															object._visible = newVisible;
 														});
 														update();
 													}
@@ -868,6 +868,8 @@ export default function Inspector() {
 						return;
 					
 					component.enabled = enable;
+					
+					update();
 				});
 				
 				addStep && _editor.addStep({

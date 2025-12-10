@@ -194,11 +194,14 @@ export default class AutoLODManager {
 			
 		if(this.currentLODLevel == desiredLevel)
 			return;
-			
+		
+		this.setLevel(desiredLevel);
+	}
+	setLevel(level) {
 		let changed = 0;
 		
 		this.levelStore.forEach(({d3dobj, mesh, geometries}) => {
-			let lodGeom = geometries[desiredLevel] || geometries[desiredLevel-1] || geometries[desiredLevel-2] || geometries[desiredLevel-3] || geometries[0];
+			let lodGeom = geometries[level] || geometries[level-1] || geometries[level-2] || geometries[level-3] || geometries[0];
 			
 			if(!lodGeom) {
 				console.warn(`LOD geometry for ${d3dobj.name} at quality level ${desiredLevel} is not defined`);
@@ -209,8 +212,12 @@ export default class AutoLODManager {
 			changed++;
 		});
 		
-		//console.log(`Changed ${changed} meshes to LOD level ${desiredLevel}`);
+		this.currentLODLevel = level;
 		
-		this.currentLODLevel = desiredLevel;
+		//console.log(`Changed ${changed} meshes to LOD level ${desiredLevel}`);
+	}
+	
+	onDisabled() {
+		this.setLevel(0);
 	}
 }

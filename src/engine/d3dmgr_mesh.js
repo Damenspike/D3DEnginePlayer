@@ -709,4 +709,11 @@ export default class MeshManager {
 			}
 		}
 	}
+	
+	onEnabled() {
+		this.d3dobject.visible2 = true;
+	}
+	onDisabled() {
+		this.d3dobject.visible2 = false;
+	}
 }

@@ -364,10 +364,20 @@ export default class D3DObject {
 	}
 	
 	get visible() {
-		return this._visible ?? true;
+		return (this._visible && this._visible2) ?? true;
 	}
 	set visible(value) {
 		this._visible = !!value;
+		this.onVisibilityChanged?.();
+		this._onVisibilityChanged?.();
+		this.checkSymbols();
+	}
+	
+	get visible2() {
+		return this._visible2 ?? true;
+	}
+	set visible2(value) {
+		this._visible2 = !!value;
 		this.onVisibilityChanged?.();
 		this._onVisibilityChanged?.();
 		this.checkSymbols();
@@ -590,6 +600,17 @@ export default class D3DObject {
 			for(let i in this.__componentInstances) {
 				const mgr = this.__componentInstances[i];
 				mgr?.__onInternalEnterFrame?.();
+				
+				if(mgr && mgr?.component) {
+					if(mgr.__isEnabled !== mgr.component.enabled) {
+						if(mgr.component.enabled) {
+							mgr.onEnabled?.();
+						}else{
+							mgr.onDisabled?.();
+						}
+						mgr.__isEnabled = mgr.component.enabled;
+					}
+				}
 			}
 			this.invokeEvent('enterFrame');
 		}
