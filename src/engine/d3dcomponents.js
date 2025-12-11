@@ -155,10 +155,15 @@ const D3DComponents = {
 	AmbientLight: {
 		name: 'Ambient Light',
 		fields: {
-			'color': {
-				label: 'Color',
+			'skyColor': {
+				label: 'Sky color',
 				type: 'color',
-				def: '#ffffff'
+				def: '0xffffff'
+			},
+			'groundColor': {
+				label: 'Ground color',
+				type: 'color',
+				def: '0xffffff'
 			},
 			'intensity': { 
 				label: 'Intensity', 
@@ -2040,7 +2045,8 @@ const D3DComponents = {
 				min: 0,
 				max: 24,
 				step: 0.01,
-				def: 12
+				def: 12,
+				section: 'time'
 			},
 			sunrise: {
 				label: 'Sunrise',
@@ -2048,7 +2054,8 @@ const D3DComponents = {
 				min: 0,
 				max: 24,
 				step: 0.01,
-				def: 7
+				def: 7,
+				section: 'time'
 			},
 			sunset: {
 				label: 'Sunset',
@@ -2056,31 +2063,64 @@ const D3DComponents = {
 				min: 0,
 				max: 24,
 				step: 0.01,
-				def: 19
+				def: 19,
+				section: 'time'
 			},
 			sunriseTexture: {
 				label: 'Sunrise sky',
 				type: 'file',
 				format: 'img',
-				def: ''
+				def: '',
+				section: 'sunrise'
+			},
+			sunriseTint: {
+				label: 'Sunrise tint',
+				type: 'color',
+				def: '0xFFC2D4',
+				condition: c => !!c.properties.sunriseTexture,
+				section: 'sunrise'
 			},
 			dayTexture: {
 				label: 'Day sky',
 				type: 'file',
 				format: 'img',
-				def: ''
+				def: '',
+				section: 'day'
+			},
+			dayTint: {
+				label: 'Day tint',
+				type: 'color',
+				def: '0xD9F5FF',
+				condition: c => !!c.properties.dayTexture,
+				section: 'day'
 			},
 			sunsetTexture: {
 				label: 'Sunset sky',
 				type: 'file',
 				format: 'img',
-				def: ''
+				def: '',
+				section: 'sunset'
+			},
+			sunsetTint: {
+				label: 'Sunset tint',
+				type: 'color',
+				def: '0xFFC3A3',
+				condition: c => !!c.properties.sunriseTexture,
+				section: 'sunset'
 			},
 			nightTexture: {
 				label: 'Night sky',
 				type: 'file',
 				format: 'img',
-				def: ''
+				def: '',
+				section: 'night'
+			},
+			nightTint: {
+				label: 'Sunset tint',
+				type: 'color',
+				def: '0x000000',
+				condition: c => !!c.properties.nightTexture,
+				section: 'night'
 			},
 			skyDomeRadius: {
 				label: 'Sky dome radius',
@@ -2088,17 +2128,20 @@ const D3DComponents = {
 				min: 10,
 				max: 50000,
 				step: 10,
-				def: 1000
+				def: 1000,
+				section: 'skydome'
 			},
 			skyDomeOffset: {
 				label: 'Sky dome offset',
 				type: 'vector3',
-				def: {x: 0, y: 0, z: 0}
+				def: {x: 0, y: 0, z: 0},
+				section: 'skydome'
 			},
 			sunOffset: {
 				label: 'Sunlight offset',
 				type: 'vector3',
-				def: {x: 0, y: 0, z: 0}
+				def: {x: 0, y: 0, z: 0},
+				section: 'skydome'
 			}
 		},
 		manager: D3DDayNightManager

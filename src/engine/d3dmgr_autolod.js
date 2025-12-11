@@ -207,6 +207,9 @@ export default class AutoLODManager {
 		});
 	}
 	async generateBillboard() {
+		if(this.billboardLoading)
+			return;
+		
 		const parent3d = this.d3dobject.object3d;
 		
 		if(!parent3d) {

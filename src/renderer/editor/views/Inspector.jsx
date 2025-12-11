@@ -814,6 +814,43 @@ export default function Inspector() {
 											}} 
 										/>
 									</div>
+									<div className='ml2'>
+										<label>Layer</label>
+										<input 
+											type="number" 
+											className="tf tf--num"
+											onKeyDown={autoBlur}
+											min={0} 
+											max={31}
+											step={1}
+											value={objects[0].layer} 
+											onChange={e => {
+												const newLayer = Number(e.target.value);
+												
+												objects.forEach(object => {
+													object.__inspOldLayer = object.layer;
+													object.layer = newLayer;
+												});
+												update();
+												
+												_editor.addStep({
+													name: 'Update layer',
+													undo: () => {
+														objects.forEach(object => {
+															object.layer = object.__inspOldLayer;
+														});
+														update();
+													},
+													redo: () => {
+														objects.forEach(object => {
+															object.layer = newLayer;
+														});
+														update();
+													}
+												});
+											}} 
+										/>
+									</div>
 								</div>
 							</>
 						)
@@ -1272,12 +1309,13 @@ export default function Inspector() {
 								onChange={e => {
 									const val = (e.target.value || '#ffffff').replace('#', '0x');
 									
-									offerValue(val);
+									commitValue(val);
 								}}
 								onBlur={e => {
 									const val = (e.target.value || '#ffffff').replace('#', '0x');
 									
 									commitValue(val, e.target.oldValue);
+									e.target.oldValue = val;
 								}}
 							/>
 						);
@@ -1293,7 +1331,7 @@ export default function Inspector() {
 								onClick={(e, val) => {
 									sharedInspector.oldValue = val;
 								}}
-								onChange={val => offerValue(val)}
+								onChange={val => commitValue(val)}
 								onBlur={val => {
 									commitValue(val, sharedInspector.oldValue);
 									sharedInspector.oldValue = val;
@@ -1309,7 +1347,7 @@ export default function Inspector() {
 								onClick={(e, val) => {
 									sharedInspector.oldValue = val;
 								}}
-								onChange={val => offerValue(val)}
+								onChange={val => commitValue(val)}
 								onBlur={val => {
 									commitValue(val, sharedInspector.oldValue);
 									sharedInspector.oldValue = val;
@@ -3068,7 +3106,12 @@ export default function Inspector() {
 	const loaded = !!_root?.zip;
 	
 	return (
-		<div className='insp-view'>
+		<div 
+			className='insp-view' 
+			onMouseDown={e => {
+				e.stopPropagation();
+			}}
+		>
 			{loaded && (
 				<div className='tabs-container'>
 					<div className='tabs no-scrollbar'>

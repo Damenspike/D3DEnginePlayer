@@ -1640,7 +1640,8 @@ ipcMain.on('update-editor-window', (_, { width, height, title }) => {
 		if(width && height)
 			editorWindow.setSize(width, height);
 		
-		editorWindow.setTitle(`${title} - Damen3D Editor ${pkg.editorVersion}`);
+		editorWindow.d3deditortitle = `${title} - Damen3D Editor ${pkg.editorVersion}`;
+		editorWindow.setTitle(editorWindow.d3deditortitle);
 	}
 });
 ipcMain.on('set-dirty', (_, isDirty) => {

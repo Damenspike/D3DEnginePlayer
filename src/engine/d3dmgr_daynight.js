@@ -98,6 +98,34 @@ export default class DayNightManager {
 		this.component.properties.nightTexture = v;
 	}
 	
+	get sunriseTint() {
+		return this.component.properties.sunriseTint;
+	}
+	set sunriseTint(v) {
+		this.component.properties.sunriseTint = v;
+	}
+	
+	get dayTint() {
+		return this.component.properties.dayTint;
+	}
+	set dayTint(v) {
+		this.component.properties.dayTint = v;
+	}
+	
+	get sunsetTint() {
+		return this.component.properties.sunsetTint;
+	}
+	set sunsetTint(v) {
+		this.component.properties.sunsetTint = v;
+	}
+	
+	get nightTint() {
+		return this.component.properties.nightTint;
+	}
+	set nightTint(v) {
+		this.component.properties.nightTint = v;
+	}
+	
 	get skyDomeRadius() {
 		return this.component.properties.skyDomeRadius || 1000;
 	}
@@ -262,7 +290,7 @@ export default class DayNightManager {
 		this.updateLightAngle();
 		this.updateSkyBlend();
 		this.updateSkyRotation();
-		this.updateFogColor();
+		this.updateFogAndLightColor();
 	}
 	
 	updateLightIntensity() {
@@ -290,14 +318,17 @@ export default class DayNightManager {
 			let s = Math.sin(x * Math.PI);  // 0..1..0
 			if(s < 0)
 				s = 0;
-			f = Math.pow(s, 0.6);          // fattened daylight curve
+			f = Math.pow(s, 0.6); // fat daylight curve
 		}
 		
 		if(dir)
 			dir.intensity = 0.1 + 1.9 * f;
-			
-		if(amb)
-			amb.intensity = 0.2 + 0.6 * f * 10; // brighter ambient across whole day
+		
+		if(amb) {
+			const ambientNight = 0.02;  // << night is darker
+			const ambientDay   = 0.8;   // << midday brightness
+			amb.intensity = ambientNight + (ambientDay - ambientNight) * f;
+		}
 	}
 	
 	updateLightAngle() {
@@ -444,59 +475,77 @@ export default class DayNightManager {
 			this.skyDomeOffset.z
 		);
 	}
-	updateFogColor() {
-		const scene = this.d3dobject.root.object3d;
-		if(!scene || !scene.fog)
+	updateFogAndLightColor() {
+		const scene = _root.object3d;
+		if(!scene)
 			return;
 		
-		const sky = this._skyDomes?.meshes;
-		if(!sky)
-			return;
+		const tint = this.getTintForHour();
+		const hex  = '0x' + tint.getHexString();
 		
-		// Pick the mesh with highest opacity as the sky color source
-		let best = null;
-		let bestOp = -1;
+		if(scene.fog)
+			scene.fog.color.copy(tint);
 		
-		for(const k in sky) {
-			const m = sky[k];
-			if(m?.material?.opacity > bestOp) {
-				bestOp = m.material.opacity;
-				best = m;
+		const dirObj = this.dirLight;
+		const ambObj = this.ambLight;
+		
+		const dir = dirObj?.getComponent('DirectionalLight');
+		const amb = ambObj?.getComponent('AmbientLight');
+		
+		if(dir)
+			dir.color = hex;
+		
+		if(amb)
+			amb.skyColor = hex;
+	}
+	
+	getTintForHour() {
+		let h = this.hour;
+		if(h < 0)   h = 0;
+		if(h >= 24) h = 23.9999;
+		
+		const sunriseStart = 5.1;
+		const sunriseEnd   = 7;
+		const sunsetStart  = 17;
+		const sunsetEnd    = 18.75;
+		
+		const nightCol   = new THREE.Color(Number(this.nightTint   || 0x050510));
+		const sunriseCol = new THREE.Color(Number(this.sunriseTint || this.nightTint   || 0xffaa66));
+		const dayCol     = new THREE.Color(Number(this.dayTint     || this.sunriseTint || 0xffffff));
+		const sunsetCol  = new THREE.Color(Number(this.sunsetTint  || this.dayTint     || 0xff8844));
+		
+		// SUNRISE: night → sunrise → day (5–7)
+		if(h >= sunriseStart && h < sunriseEnd) {
+			let f = (h - sunriseStart) / (sunriseEnd - sunriseStart); // 0..1
+			
+			if(f < 0.5) {
+				const ff = f / 0.5;          // 0..1
+				return nightCol.clone().lerp(sunriseCol, ff);
 			}
+			
+			const ff = (f - 0.5) / 0.5;       // 0..1
+			return sunriseCol.clone().lerp(dayCol, ff);
 		}
 		
-		if(!best)
-			return;
-		
-		const tex = best.material.map;
-		if(!tex)
-			return;
-		
-		// Use texture average color-like logic: sample center pixel when loaded
-		const c = tex.image;
-		
-		if(c && c.width && c.height) {
-			// sample center pixel
-			const canvas = document.createElement('canvas');
-			canvas.width = 1;
-			canvas.height = 1;
-			const ctx = canvas.getContext('2d');
+		// SUNSET: day → sunset → night (17–19)
+		if(h >= sunsetStart && h < sunsetEnd) {
+			let f = (h - sunsetStart) / (sunsetEnd - sunsetStart); // 0..1
 			
-			try {
-				ctx.drawImage(tex.image, c.width * 0.5, c.height * 0.5, 1, 1, 0, 0, 1, 1);
-				const d = ctx.getImageData(0,0,1,1).data;
-				
-				scene.fog.color.setRGB(d[0] / 255, d[1] / 255, d[2] / 255);
-			}catch(e) {
-				// fallback: use material color if sampling fails
-				scene.fog.color.copy(best.material.color);
+			if(f < 0.5) {
+				const ff = f / 0.5;
+				return dayCol.clone().lerp(sunsetCol, ff);
 			}
 			
-			return;
+			const ff = (f - 0.5) / 0.5;
+			return sunsetCol.clone().lerp(nightCol, ff);
 		}
 		
-		// fallback if we can't sample
-		scene.fog.color.copy(best.material.color);
+		// FULL DAY
+		if(h >= sunriseEnd && h < sunsetStart)
+			return dayCol.clone();
+		
+		// FULL NIGHT
+		return nightCol.clone();
 	}
 	
 	dispose() {

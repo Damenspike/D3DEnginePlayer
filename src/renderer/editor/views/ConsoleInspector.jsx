@@ -9,6 +9,8 @@ export default function ConsoleInspector() {
 	const scrollRef = useRef();
 	const autoScroll = useRef(true);
 	const codeRef = useRef(null);
+	
+	const loaded = !!window._root?.zip;
 
 	useEffect(() => {
 		_events.on('editor-console', (ec) => {
@@ -156,7 +158,7 @@ export default function ConsoleInspector() {
 				onScroll={onScroll}
 			>
 				{drawConsoleLines()}
-				{drawConsoleInput()}
+				{loaded && drawConsoleInput()}
 			</div>
 		</>
 	);

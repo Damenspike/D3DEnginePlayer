@@ -5,11 +5,19 @@ export default class HemisphereLightManager {
 		this.__setup = false;
 	}
 	
-	get color() {
-		return this.component.properties.color;
+	get skyColor() {
+		return this.component.properties.skyColor;
 	}
-	set color(v) {
-		this.component.properties.color = v;
+	set skyColor(v) {
+		this.component.properties.skyColor = v;
+		this.updateLight();
+	}
+	
+	get groundColor() {
+		return this.component.properties.groundColor;
+	}
+	set groundColor(v) {
+		this.component.properties.groundColor = v;
 		this.updateLight();
 	}
 	
@@ -27,13 +35,12 @@ export default class HemisphereLightManager {
 	}
 	
 	setup() {
-		const c = this.component.properties;
-		const skyColor = new THREE.Color(Number(c.color));
-		const groundColor = new THREE.Color(0x080808);
+		const skyColor = new THREE.Color(Number(this.skyColor));
+		const groundColor = new THREE.Color(Number(this.groundColor));
 		const hemi = new THREE.HemisphereLight(
 			skyColor,
 			groundColor,
-			c.intensity * 100
+			this.intensity
 		);
 		this.d3dobject.replaceObject3D(hemi);
 	
@@ -66,9 +73,9 @@ export default class HemisphereLightManager {
 	
 	updateLight() {
 		if (!this.__setup) return;
-		const c = this.component.properties;
 		const light = this.d3dobject.object3d;
-		light.color.set(Number(c.color));
-		light.intensity = c.intensity * 100;
+		light.color.set(Number(this.skyColor));
+		light.groundColor.set(Number(this.groundColor));
+		light.intensity = this.intensity;
 	}
 }

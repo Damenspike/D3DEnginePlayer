@@ -124,6 +124,27 @@ export default class D3DObject {
 		this.checkSymbols();
 	}
 	
+	get layer() {
+		const obj = this.object3d;
+		if(!obj)
+			return 0;
+		
+		// convert bitmask → layer index
+		const mask = obj.layers.mask;
+		let layer = 0;
+		while(layer < 32 && ((mask & (1 << layer)) === 0))
+			layer++;
+		return layer;
+	}
+	set layer(v) {
+		const obj = this.object3d;
+		if(!obj)
+			return;
+		
+		v = Number(v) || 0;
+		obj.layers.set(v);
+	}
+	
 	get worldPosition() {
 		return this.object3d.getWorldPosition(new THREE.Vector3());
 	}
@@ -671,6 +692,7 @@ export default class D3DObject {
 			objData.components = symbolCopy.components;
 			objData.suuid = symbolCopy.suuid;
 			objData.script = symbolCopy.script;
+			objData.layer = symbolCopy.layer;
 			
 			/*
 				Override-able properties
@@ -704,6 +726,7 @@ export default class D3DObject {
 		child.rotation = objData.rotation ?? {x: 0, y: 0, z: 0};
 		child.scale = objData.scale ?? {x: 1, y: 1, z: 1};
 		child.__script = objData.script;
+		child.layer = objData.layer;
 		
 		child.editorOnly = !!objData.editorOnly || false;
 		child.editorAlwaysVisible = !!objData.editorAlwaysVisible || false;
@@ -1510,6 +1533,7 @@ export default class D3DObject {
 			}
 			
 			d3dobject.__script = objData.script;
+			d3dobject.layer = objData.layer;
 			d3dobject.components = structuredClone(objData.components);
 			
 			await d3dobject.updateComponents();
@@ -1721,6 +1745,7 @@ export default class D3DObject {
 			uuid: this.uuid,
 			suuid: this.suuid,
 			name: this.name,
+			layer: this.layer,
 			enabled: this.enabled,
 			position: {
 				x: this.position.x, 
