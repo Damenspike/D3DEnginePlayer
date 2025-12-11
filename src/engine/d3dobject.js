@@ -954,6 +954,26 @@ export default class D3DObject {
 		}catch(e) {
 			console.error('Apply scene background error', e);
 		}
+		
+		try {
+			if(scene.fog?.enabled) {
+				if(!this.object3d.fog?.isFog) {
+					this.object3d.fog = new THREE.Fog(
+						new THREE.Color(scene.fog.color),
+						Number(scene.fog.near) || 0,
+						Number(scene.fog.far) || 0
+					)
+				}else{
+					this.object3d.fog.color = new THREE.Color(scene.fog.color);
+					this.object3d.fog.near = Number(scene.fog.near) || 0;
+					this.object3d.fog.far = Number(scene.fog.far) || 0;
+				}
+			}else{
+				this.object3d.fog = null;
+			}
+		}catch(e) {
+			console.error('Apply scene fog error', e);
+		}
 	}
 	setSceneBackground(background, apply = true) {
 		if(!this.object3d.isScene)

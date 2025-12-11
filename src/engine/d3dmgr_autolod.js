@@ -286,8 +286,16 @@ export default class AutoLODManager {
 			this.d3dobject.__lodCulled = true;
 			if(this.billboardMesh) {
 				this.billboardMesh.visible = true && this.billboardWhenCulled;
+				
 				if(this.billboardMesh.visible) {
-					this.billboardMesh.quaternion.copy(camera.object3d.quaternion);
+					const desiredWorld = camera.object3d.getWorldQuaternion(new THREE.Quaternion());
+					const parent = this.billboardMesh.parent;
+					
+					if(parent) {
+						const parentWorld = parent.getWorldQuaternion(new THREE.Quaternion());
+						parentWorld.invert();
+						this.billboardMesh.quaternion.copy(parentWorld.multiply(desiredWorld));
+					}
 				}
 			}
 			return;

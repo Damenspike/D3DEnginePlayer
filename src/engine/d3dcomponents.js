@@ -22,6 +22,7 @@ import D3DCameraCollisionManager from './d3dmgr_cameracollision.js';
 import D3DFirstPersonCameraManager from './d3dmgr_firstpersoncamera.js';
 import D3DFirstPersonCharacterController from './d3dmgr_firstpersoncharactercontroller.js';
 import D3DAutoLODManager from './d3dmgr_autolod.js';
+import D3DDayNightManager from './d3dmgr_daynight.js';
 
 import { WebSafeFonts } from './d3dfonts.js';
 
@@ -2029,6 +2030,78 @@ const D3DComponents = {
 			}
 		},
 		manager: D3DAutoLODManager
+	},
+	DayNightCycle: {
+		name: 'Day Night Cycle',
+		fields: {
+			hour: {
+				label: 'Hour',
+				type: 'islider',
+				min: 0,
+				max: 24,
+				step: 0.01,
+				def: 12
+			},
+			sunrise: {
+				label: 'Sunrise',
+				type: 'islider',
+				min: 0,
+				max: 24,
+				step: 0.01,
+				def: 7
+			},
+			sunset: {
+				label: 'Sunset',
+				type: 'islider',
+				min: 0,
+				max: 24,
+				step: 0.01,
+				def: 19
+			},
+			sunriseTexture: {
+				label: 'Sunrise sky',
+				type: 'file',
+				format: 'img',
+				def: ''
+			},
+			dayTexture: {
+				label: 'Day sky',
+				type: 'file',
+				format: 'img',
+				def: ''
+			},
+			sunsetTexture: {
+				label: 'Sunset sky',
+				type: 'file',
+				format: 'img',
+				def: ''
+			},
+			nightTexture: {
+				label: 'Night sky',
+				type: 'file',
+				format: 'img',
+				def: ''
+			},
+			skyDomeRadius: {
+				label: 'Sky dome radius',
+				type: 'number',
+				min: 10,
+				max: 50000,
+				step: 10,
+				def: 1000
+			},
+			skyDomeOffset: {
+				label: 'Sky dome offset',
+				type: 'vector3',
+				def: {x: 0, y: 0, z: 0}
+			},
+			sunOffset: {
+				label: 'Sunlight offset',
+				type: 'vector3',
+				def: {x: 0, y: 0, z: 0}
+			}
+		},
+		manager: D3DDayNightManager
 	}
 }
 

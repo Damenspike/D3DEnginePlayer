@@ -107,6 +107,10 @@ export default function Inspector() {
 	const [bgType, setBgType] = useState('none');
 	const [bgColor, setBgColor] = useState('#000000');
 	const [bgTextureAsset, setBgTextureAsset] = useState('');
+	const [fogEnabled, setFogEnabled] = useState(false);
+	const [fogColor, setFogColor] = useState('#000000');
+	const [fogNear, setFogNear] = useState(0);
+	const [fogFar, setFogFar] = useState(0);
 	
 	// Asset Tree
 	const assetFileInputRef = useRef(null);
@@ -185,6 +189,18 @@ export default function Inspector() {
 		setBgColor(_root.scene.background.color);
 		setBgTextureAsset(_root.scene.background.textureAsset);
 	}, [_root?.scene?.background?.type]);
+	
+	useEffect(() => {
+		if(!_root)
+			return;
+		
+		const enabled = !!_root.scene?.fog;
+		
+		setFogEnabled(enabled);
+		setFogColor(enabled ? _root.scene.fog.color : null);
+		setFogNear(enabled ? _root.scene.fog.near : null);
+		setFogFar(enabled ? _root.scene.fog.far : null);
+	}, [_root?.scene?.fog]);
 	
 	// Right click menu on asset list
 	useEffect(() => {
@@ -2093,6 +2109,12 @@ export default function Inspector() {
 			
 			return rows;
 		}
+		const drawSceneSettings = () => (
+			<>
+				{drawBackgroundSettings()}
+				{drawFogSettings()}
+			</>
+		)
 		const drawBackgroundSettings = () => {
 			const drawBgInput = () => {
 				const bgTexturePath = _root.resolvePathNoAssets(bgTextureAsset);
@@ -2194,6 +2216,98 @@ export default function Inspector() {
 				</div>
 			);
 		};
+		const drawFogSettings = () => {
+			// UI
+			return (
+				<div className="scene-insp-background-settings">
+					<div>
+						{/* Color settings */}
+						<div className="field">
+							<div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+								<div style={{marginRight: 10}}>
+									<label>Fog</label>
+									<input 
+										type="checkbox" 
+										checked={fogEnabled} 
+										style={{height: 27}}
+										onChange={e => {
+											if(!_root.scene.fog)
+												_root.scene.fog = {color: '#ffffff', near: 1, far: 1000};
+											
+											setFogEnabled(!fogEnabled);
+											_root.scene.fog.enabled = !fogEnabled;
+											_root.applyScene(_root.scene);
+											
+											update();
+										}} 
+									/>
+								</div>
+								{
+									fogEnabled && (
+										<>
+											<div style={{marginRight: 10}}>
+												<label>Color</label>
+												<input
+													type="color"
+													value={fogColor}
+													onChange={(e) => {
+														const val = e.target.value || '#000000';
+														setFogColor(val);
+														
+														_root.scene.fog.color = val;
+														_root.applyScene(_root.scene);
+														
+														update();
+													}}
+												/>
+											</div>
+											<div>
+												<label>Near</label>
+												<input
+													type="number"
+													min={0}
+													value={fogNear}
+													className='tf tf--num'
+													onKeyDown={autoBlur}
+													onChange={(e) => {
+														const val = Number(e.target.value) || 0;
+														setFogNear(val);
+														
+														_root.scene.fog.near = val;
+														_root.applyScene(_root.scene);
+														
+														update();
+													}}
+												/>
+											</div>
+											<div>
+												<label>Far</label>
+												<input
+													type="number"
+													min={0}
+													value={fogFar}
+													className='tf tf--num'
+													onKeyDown={autoBlur}
+													onChange={(e) => {
+														const val = Number(e.target.value) || 0;
+														setFogFar(val);
+														
+														_root.scene.fog.far = val;
+														_root.applyScene(_root.scene);
+														
+														update();
+													}}
+												/>
+											</div>
+										</>
+									)
+								}
+							</div>
+						</div>
+					</div>
+				</div>
+			);
+		};
 		
 		return (
 			<InspectorCell 
@@ -2236,7 +2350,7 @@ export default function Inspector() {
 					{drawObjects()}
 				</div>
 				{sceneInspectorExpanded && _editor.focus == _root && _editor.mode == '3D' && (
-					drawBackgroundSettings()
+					drawSceneSettings()
 				)}
 			</InspectorCell>
 		)

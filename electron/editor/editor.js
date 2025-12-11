@@ -1028,6 +1028,10 @@ const menuTemplate = [
 						click: () => sendAddComponent('AutoLOD')
 					},
 					{
+						label: 'Day Night Cycle',
+						click: () => sendAddComponent('DayNightCycle')
+					},
+					{
 						label: 'Rigidbody',
 						submenu: [
 							{
