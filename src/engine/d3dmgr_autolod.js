@@ -217,8 +217,14 @@ export default class AutoLODManager {
 		if(!this.billboardTexture)
 			return;
 		
-		if(this.billboardMesh)
+		if(this.billboardMesh) {
 			parent3d.remove(this.billboardMesh);
+			if(this.billboardMesh.geometry)
+				this.billboardMesh.geometry.dispose();
+			if(this.billboardMesh.material)
+				this.billboardMesh.material.dispose();
+			this.billboardMesh = null;
+		}
 			
 		const zip = this.d3dobject.root.zip;
 		const rel = this.d3dobject.root.resolvePath(this.billboardTexture);

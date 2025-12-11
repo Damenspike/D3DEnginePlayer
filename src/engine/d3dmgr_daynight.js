@@ -269,8 +269,8 @@ export default class DayNightManager {
 		const dirObj = this.dirLight;
 		const ambObj = this.ambLight;
 		
-		const dir = dirObj?.object3d;
-		const amb = ambObj?.object3d;
+		const dir = dirObj.getComponent('DirectionalLight');
+		const amb = ambObj.getComponent('AmbientLight');
 		
 		if(!dir && !amb)
 			return;
@@ -295,9 +295,9 @@ export default class DayNightManager {
 		
 		if(dir)
 			dir.intensity = 0.1 + 1.9 * f;
-		
+			
 		if(amb)
-			amb.intensity = 0.05 + 0.45 * f;
+			amb.intensity = 0.2 + 0.6 * f * 10; // brighter ambient across whole day
 	}
 	
 	updateLightAngle() {
