@@ -1027,3 +1027,69 @@ export function getObjectsCenter(d3dobjects) {
 
 	return center;
 }
+export function hookComposerPasses(composer) {
+	if(!composer || !composer.passes)
+		return;
+	
+	composer.passes.forEach(pass => {
+		if(pass.__wrappedForHooks || typeof pass.render != 'function')
+			return;
+		
+		const baseRender = pass.render.bind(pass);
+		
+		pass.render = function(renderer, writeBuffer, readBuffer, deltaTime, ...rest) {
+			if(typeof pass.beforeRender == 'function')
+				pass.beforeRender(renderer, writeBuffer, readBuffer, deltaTime);
+			
+			baseRender(renderer, writeBuffer, readBuffer, deltaTime, ...rest);
+			
+			if(typeof pass.afterRender == 'function')
+				pass.afterRender(renderer, writeBuffer, readBuffer, deltaTime);
+		};
+		
+		pass.__wrappedForHooks = true;
+	});
+}
+export function getMeshSignature(mesh) {
+	if(!mesh || !mesh.geometry)
+		return null;
+	
+	const g = mesh.geometry;
+	if(g.__sig)
+		return g.__sig;
+	
+	const pos = g.attributes?.position;
+	const nor = g.attributes?.normal;
+	const uv  = g.attributes?.uv;
+	const idx = g.index;
+	
+	const v  = pos ? pos.count : 0;
+	const n  = nor ? nor.count : 0;
+	const u  = uv  ? uv.count  : 0;
+	const ic = idx ? idx.count : 0;
+	
+	if(!g.boundingBox)
+		g.computeBoundingBox();
+	
+	const bb = g.boundingBox;
+	
+	const s =
+		v + '|' +
+		n + '|' +
+		u + '|' +
+		ic + '|' +
+		bb.min.x.toFixed(3) + '|' +
+		bb.min.y.toFixed(3) + '|' +
+		bb.min.z.toFixed(3) + '|' +
+		bb.max.x.toFixed(3) + '|' +
+		bb.max.y.toFixed(3) + '|' +
+		bb.max.z.toFixed(3);
+	
+	let hash = 0;
+	for(let i = 0; i < s.length; i++)
+		hash = ((hash << 5) - hash) + s.charCodeAt(i);
+	
+	hash = (hash >>> 0).toString(36);
+	g.__sig = hash;
+	return hash;
+}

@@ -2286,6 +2286,40 @@ export function worldToScreen(worldPos, camera) {
 
 	return new THREE.Vector3(logicalX, logicalY, ndcZ);
 }
+export async function loadTexture(rel, zip) {
+	if(!rel || !zip)
+		return null;
+	
+	const file = zip.file(rel);
+	if(!file)
+		return null;
+	
+	const buf = await file.async('arraybuffer');
+	
+	let mime = 'image/png';
+	if(/\.(jpe?g)$/i.test(rel)) 
+		mime = 'image/jpeg';
+	else
+	if(/\.webp$/i.test(rel)) 
+		mime = 'image/webp';
+	
+	const blob = new Blob([buf], {type: mime});
+	const url = URL.createObjectURL(blob);
+	
+	const loader = new THREE.TextureLoader();
+	
+	try {
+		const tex = await new Promise((resolve, reject) => {
+			loader.load(url, t => resolve(t), undefined, err => reject(err));
+		});
+		
+		URL.revokeObjectURL(url);
+		return tex;
+	} catch(e) {
+		URL.revokeObjectURL(url);
+		throw e;
+	}
+}
 
 /* ========================= DEFAULT BUNDLE ========================= */
 

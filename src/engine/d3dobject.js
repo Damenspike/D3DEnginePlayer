@@ -1169,6 +1169,8 @@ export default class D3DObject {
 			delete component.properties.__componentEnabled;
 		
 		const inst = new schema.manager(this, component);
+		inst.component = component;
+		inst.d3dobject = this;
 		
 		this.__componentInstances[type] = inst;
 		

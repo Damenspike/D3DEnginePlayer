@@ -23,7 +23,8 @@ import {
 	toggleLight,
 	updateObject,
 	versionToNumber,
-	relNoAssets
+	relNoAssets,
+	hookComposerPasses
 } from './d3dutility.js';
 import {
 	exportAsD3D
@@ -258,6 +259,12 @@ function initComposer() {
 	gtaoPass.kernelRadius = 0.3;
 	gtaoPass.minDistance  = 0;
 	gtaoPass.maxDistance  = 0.3;
+	gtaoPass.beforeRender = () => {
+		camera.layers.disable(2); // layer 2 = sprite materials
+	};
+	gtaoPass.afterRender = () => {
+		camera.layers.enable(2);
+	};
 	composer.addPass(gtaoPass);
 	
 	// Gray Pass
@@ -284,6 +291,8 @@ function initComposer() {
 	outlinePass.pulsePeriod = 0;
 	outlinePass.visibleEdgeColor.set('#0099ff');
 	outlinePass.hiddenEdgeColor.set('#000000');
+	
+	hookComposerPasses(composer);
 	
 	// Assign values if needed
 	_editor.grayPass = grayPass;
@@ -397,6 +406,12 @@ function startAnimationLoop() {
 				'__onInternalEnterFrame',
 				'__onEditorEnterFrame',
 				'onEditorEnterFrame'
+			], _root);
+			
+			updateObject([
+				'__onInternalBeforeRender',
+				'__onEditorBeforeRender',
+				'onEditorBeforeRender'
 			], _root);
 			
 			render();

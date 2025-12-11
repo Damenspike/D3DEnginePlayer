@@ -1,7 +1,12 @@
+import D3DConsole from './d3dconsole.js';
 import { SimplifyModifier } from 'three/examples/jsm/modifiers/SimplifyModifier.js';
 import {
-	getObjectsCenter
+	getObjectsCenter,
+	getMeshSignature
 } from './d3dutility.js';
+import {
+	loadTexture
+} from './d2dutility.js';
 
 const minimumVertexCount = 20;
 
@@ -10,9 +15,15 @@ export default class AutoLODManager {
 		this.d3dobject = d3dobject;
 		this.component = component;
 		
+		if(!this.d3dobject.root.__lodGeoms)
+			this.d3dobject.root.__lodGeoms = {};
+		
 		this.levelStore = [];
 	}
 	
+	get GEOM_SHARED() {
+		return this.d3dobject.root.__lodGeoms;
+	}
 	get center() {
 		const type = this.centerType;
 		
@@ -81,6 +92,26 @@ export default class AutoLODManager {
 		this.component.properties.billboardTexture = v ? String(v) : '';
 	}
 	
+	get billboardOffset() {
+		return this.component.properties.billboardOffset ?? {x: 0, y: 0, z: 0};
+	}
+	set billboardOffset(v) {
+		if(v?.x === undefined || v?.y === undefined || v?.z === undefined)
+			v = {x: 0, y: 0, z: 0};
+		
+		this.component.properties.billboardOffset = v;
+	}
+	
+	get billboardScale() {
+		return this.component.properties.billboardScale ?? {x: 0, y: 0, z: 0};
+	}
+	set billboardScale(v) {
+		if(v?.x === undefined || v?.y === undefined || v?.z === undefined)
+			v = {x: 0, y: 0, z: 0};
+		
+		this.component.properties.billboardScale = v;
+	}
+	
 	generateLevels() {
 		const modifier = new SimplifyModifier();
 		const levels = this.levels;
@@ -107,15 +138,15 @@ export default class AutoLODManager {
 		this.levelStore.forEach(({ d3dobj, mesh, geometries }) => {
 			const baseGeometry = geometries[0];
 			if (!baseGeometry) return;
-		
+			
 			// Normalize for SimplifyModifier: non-indexed clone
 			const source = baseGeometry.index
 				? baseGeometry.toNonIndexed()
 				: baseGeometry.clone();
-		
+			
 			const posAttr = source.attributes?.position;
 			const vertexCount = posAttr?.count || 0;
-		
+			
 			if (!vertexCount || vertexCount < minimumVertexCount || !Number.isFinite(vertexCount)) {
 				console.warn('Skipping LOD gen (bad vertexCount)', {
 					obj: d3dobj.name,
@@ -123,66 +154,125 @@ export default class AutoLODManager {
 				});
 				return;
 			}
-		
+			
 			// Optional: ensure triangles (count % 3 === 0)
 			if (vertexCount % 3 !== 0) {
 				console.warn('Non-triangular geometry, skipping simplify for', d3dobj.name, vertexCount);
 				return;
 			}
-		
+			
 			for (let i = 1; i < levels; i++) {
 				const removeVerts = Math.floor((vertexCount / levels) * i * simplification);
-		
-				if (!Number.isFinite(removeVerts) || removeVerts <= 0) {
-					console.warn('Skipping LOD level (bad removeVerts)', {
-						obj: d3dobj.name,
-						vertexCount,
-						levels,
-						i,
-						removeVerts
-					});
-					break;
+				const meshSig = getMeshSignature(mesh);
+				const sig = `${meshSig}_${removeVerts}`;
+				
+				let lodGeom = this.GEOM_SHARED[sig];
+				
+				if(!lodGeom) {
+					if (!Number.isFinite(removeVerts) || removeVerts <= 0) {
+						console.warn('Skipping LOD level (bad removeVerts)', {
+							obj: d3dobj.name,
+							vertexCount,
+							levels,
+							i,
+							removeVerts
+						});
+						break;
+					}
+					if (removeVerts >= vertexCount) {
+						// No point simplifying to >= original vertex count
+						continue;
+					}
+					
+					try {
+						lodGeom = modifier.modify(source, removeVerts);
+					} catch (e) {
+						console.warn('SimplifyModifier.modify failed for', d3dobj.name, {
+							removeVerts,
+							vertexCount
+						}, e);
+						break;
+					}
+					
+					if (!lodGeom || !lodGeom.attributes?.position) {
+						console.warn('SimplifyModifier produced invalid geometry for', d3dobj.name);
+						break;
+					}
+					
+					this.GEOM_SHARED[sig] = lodGeom;
 				}
-				if (removeVerts >= vertexCount) {
-					// No point simplifying to >= original vertex count
-					continue;
-				}
-		
-				let lodGeom;
-				try {
-					lodGeom = modifier.modify(source, removeVerts);
-				} catch (e) {
-					console.warn('SimplifyModifier.modify failed for', d3dobj.name, {
-						removeVerts,
-						vertexCount
-					}, e);
-					break;
-				}
-		
-				if (!lodGeom || !lodGeom.attributes?.position) {
-					console.warn('SimplifyModifier produced invalid geometry for', d3dobj.name);
-					break;
-				}
-		
+				
 				geometries.push(lodGeom);
 			}
 		});
 	}
+	async generateBillboard() {
+		const parent3d = this.d3dobject.object3d;
+		
+		if(!parent3d) {
+			D3DConsole.error('No parent available to put the billboard sprite');
+			return;
+		}
+		
+		if(!this.billboardTexture)
+			return;
+		
+		if(this.billboardMesh)
+			parent3d.remove(this.billboardMesh);
+			
+		const zip = this.d3dobject.root.zip;
+		const rel = this.d3dobject.root.resolvePath(this.billboardTexture);
+		
+		if(!rel)
+			return;
+			
+		this.billboardLoading = true;
+		
+		const texture = await loadTexture(rel, zip);
+		
+		const geo = new THREE.PlaneGeometry(1, 1);
+		const mat = new THREE.MeshStandardMaterial({
+			map: texture,
+			transparent: true,
+			alphaTest: 0.05,
+			side: THREE.DoubleSide
+		});
+		
+		const mesh = new THREE.Mesh(geo, mat);
+		mesh.name = `${this.d3dobject.name}_billboard`;
+		mesh.visible = false;
+		mesh.layers.set(2);
+		
+		mesh.position.copy(this.billboardOffset);
+		mesh.scale.copy(this.billboardScale);
+		
+		parent3d.add(mesh);
+		
+		this.billboardMesh = mesh;
+		this.billboardLoading = false;
+	}
 	updateComponent() {
 		this.centerBBox = getObjectsCenter([this.d3dobject]);
 		
-		if(!this.lastProperties || JSON.stringify(this.component.properties) != JSON.stringify(this.lastProperties)) {
+		if(!this.lastProperties || JSON.stringify(this.component.properties) != JSON.stringify(this.lastProperties) || this.levelStore.length < 1) {
 			this.generateLevels();
+			
+			if(this.billboardWhenCulled)
+				this.generateBillboard();
+			
 			this.currentLODLevel = -1; // force refresh
-			this.lastProperties = {...this.component.properties};
+			this.lastProperties = structuredClone(this.component.properties);
 		}
 	}
-	
-	__onInternalEnterFrame() {
+	getCamera() {
 		if(window._editor)
-			this.camera = _editor.cameraD3D;
+			return _editor.cameraD3D;
 		
-		const camera = this.camera || this.d3dobject.root.find(this.cameraName);
+		return this.camera || this.d3dobject.root.find(this.cameraName);
+	}
+	
+	__onInternalBeforeRender() {
+		const camera = this.getCamera();
 		const levels = this.levels;
 		const maxDistance = this.maxDistance;
 		
@@ -192,10 +282,20 @@ export default class AutoLODManager {
 		const distToMe = this.center.distanceTo(camera.worldPosition);
 		
 		if(distToMe > maxDistance) {
-			this.d3dobject.visible = false;
+			this.makeAllLevelsVisible(false);
+			this.d3dobject.__lodCulled = true;
+			if(this.billboardMesh) {
+				this.billboardMesh.visible = true && this.billboardWhenCulled;
+				if(this.billboardMesh.visible) {
+					this.billboardMesh.quaternion.copy(camera.object3d.quaternion);
+				}
+			}
 			return;
 		}else{
-			this.d3dobject.visible = true;
+			this.d3dobject.__lodCulled = false;
+			
+			if(this.billboardMesh)
+				this.billboardMesh.visible = false;
 		}
 		
 		let desiredLevel = Math.floor(distToMe / maxDistance * levels);
@@ -222,13 +322,20 @@ export default class AutoLODManager {
 				return;
 			}
 			
+			mesh.visible = true && this.d3dobject.visible;
 			mesh.geometry = lodGeom;
 			changed++;
 		});
 		
 		this.currentLODLevel = level;
+	}
+	makeAllLevelsVisible(visible) {
+		if(!this.d3dobject.visible)
+			visible = false;
 		
-		//console.log(`Changed ${changed} meshes to LOD level ${desiredLevel}`);
+		this.levelStore.forEach(({d3dobj, mesh, geometries}) => {
+			mesh.visible = visible;
+		});
 	}
 	
 	onDisabled() {

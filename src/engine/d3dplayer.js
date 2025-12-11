@@ -5,7 +5,8 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import {
-	updateObject
+	updateObject,
+	hookComposerPasses
 } from './d3dutility.js';
 
 import D2DRenderer from './d2drenderer.js';
@@ -189,10 +190,20 @@ function initComposer() {
 	const gtaoPass = new GTAOPass(scene, camera, width, height);
 	const outputPass = new OutputPass();
 	
+	// GTAO pass toggle
+	gtaoPass.beforeRender = () => {
+		camera.layers.disable(2); // layer 2 = sprite materials
+	};
+	gtaoPass.afterRender = () => {
+		camera.layers.enable(2);
+	};
+	
 	// Add passes
 	composer.addPass(renderPass);
 	composer.addPass(gtaoPass);
 	composer.addPass(outputPass);
+	
+	hookComposerPasses(composer);
 	
 	_player.composer = composer;
 	_player.renderPass = renderPass;

@@ -321,7 +321,7 @@ const D3DComponents = {
 				min: 0,
 				step: 0.1,
 				def: 0, // no limit
-				description: 'Maximum range of the light. 0 = infinite.'
+				description: 'Maximum range of the light. 0 = infinite'
 			},
 			'decay': { 
 				label: 'Decay', 
@@ -329,7 +329,7 @@ const D3DComponents = {
 				min: 0,
 				step: 0.1,
 				def: 2,
-				description: 'Light attenuation over distance (physically correct = 2).'
+				description: 'Light attenuation over distance (physically correct = 2)'
 			},
 			'castShadow': { 
 				label: 'Casts shadows', 
@@ -339,7 +339,7 @@ const D3DComponents = {
 			},
 			'shadowMapSize': {
 				label: 'Shadow map size',
-				description: 'Resolution of the shadow map texture (power of two).',
+				description: 'Resolution of the shadow map texture (power of two)',
 				type: 'number',
 				min: 128,
 				max: 8192,
@@ -366,7 +366,7 @@ const D3DComponents = {
 			},
 			'shadowRadius': {
 				label: 'Shadow blur radius',
-				description: 'Softens shadow edges when using PCFSoftShadowMap.',
+				description: 'Softens shadow edges when using PCFSoftShadowMap',
 				type: 'number',
 				min: 0,
 				step: 0.1,
@@ -589,7 +589,7 @@ const D3DComponents = {
 				type: 'boolean',
 				section: 'shape',
 				def: true,
-				description: 'Automatically derives shape dimensions from the object’s geometry when building the rigidbody.',
+				description: 'Automatically derives shape dimensions from the object’s geometry when building the rigidbody',
 				condition: c => ['box','sphere','capsule'].includes(c.properties.shape)
 			},
 			'shapeOffset': {
@@ -606,7 +606,7 @@ const D3DComponents = {
 				type: 'vector3',
 				section: 'shape',
 				def: { x: 1, y: 1, z: 1 },
-				description: 'Full box dimensions (local space, before world scaling).',
+				description: 'Full box dimensions (local space, before world scaling)',
 				condition: c => c.properties.shape === 'box' && !c.properties.autoCalculateShapes
 			},
 			
@@ -618,7 +618,7 @@ const D3DComponents = {
 				min: 0,
 				step: 0.01,
 				def: 0.5,
-				description: 'Sphere radius before world scaling.',
+				description: 'Sphere radius before world scaling',
 				condition: c => c.properties.shape === 'sphere' && !c.properties.autoCalculateShapes
 			},
 			
@@ -630,7 +630,7 @@ const D3DComponents = {
 				min: 0,
 				step: 0.01,
 				def: 0.5,
-				description: 'Radius of the capsule hemispheres before world scaling.',
+				description: 'Radius of the capsule hemispheres before world scaling',
 				condition: c => c.properties.shape === 'capsule' && !c.properties.autoCalculateShapes
 			},
 			'capsuleHeight': {
@@ -640,7 +640,7 @@ const D3DComponents = {
 				min: 0,
 				step: 0.01,
 				def: 1,
-				description: 'Height of the capsule cylinder (excluding caps) before world scaling.',
+				description: 'Height of the capsule cylinder (excluding caps) before world scaling',
 				condition: c => c.properties.shape === 'capsule' && !c.properties.autoCalculateShapes
 			},
 			
@@ -1496,7 +1496,7 @@ const D3DComponents = {
 				label: 'Prewarm',
 				type: 'boolean',
 				def: false,
-				description: 'Simulate full lifetime on start for seamless startup.'
+				description: 'Simulate full lifetime on start for seamless startup'
 			},
 			simulationSpace: {
 				section: 'Main',
@@ -1607,7 +1607,7 @@ const D3DComponents = {
 			velocityOverLifetimeEntropy: {
 				section: 'Over Lifetime',
 				label: 'Velocity entropy',
-				description: 'Random multiplier applied per particle (no clamp).',
+				description: 'Random multiplier applied per particle (no clamp)',
 				type: 'number',
 				def: 0,
 				step: 0.01
@@ -1615,14 +1615,14 @@ const D3DComponents = {
 			angularVelocityOverLifetime: {
 				section: 'Over Lifetime',
 				label: 'Angular velocity over lifetime',
-				description: 'Billboard spin; uses Z (radians/sec).',
+				description: 'Billboard spin; uses Z (radians/sec)',
 				type: 'vector3',
 				def: { x: 0, y: 0, z: 0 }
 			},
 			angularVelocityOverLifetimeEntropy: {
 				section: 'Over Lifetime',
 				label: 'Angular velocity entropy',
-				description: 'Random multiplier applied per particle (no clamp).',
+				description: 'Random multiplier applied per particle (no clamp)',
 				type: 'number',
 				def: 0,
 				step: 0.01
@@ -1637,7 +1637,7 @@ const D3DComponents = {
 			startRotationEntropy: {
 				section: 'Over Lifetime',
 				label: 'Start rotation entropy',
-				description: 'Random multiplier applied per particle (no clamp).',
+				description: 'Random multiplier applied per particle (no clamp)',
 				type: 'number',
 				def: 0,
 				step: 0.01
@@ -1951,6 +1951,7 @@ const D3DComponents = {
 	},
 	AutoLOD: {
 		name: 'Auto LOD',
+		sectionsLast: true,
 		fields: {
 			'levels': {
 				label: 'Levels',
@@ -1974,7 +1975,7 @@ const D3DComponents = {
 				min: 1,
 				step: 1,
 				def: 100,
-				description: 'Beyond this distance, the object is culled. At half this distance, the object is using the middle level.'
+				description: 'Beyond this distance, the mesh is culled'
 			},
 			'cameraName': {
 				label: 'Camera name',
@@ -1988,19 +1989,6 @@ const D3DComponents = {
 				type: 'boolean',
 				def: false
 			},
-			'billboardWhenCulled': {
-				label: 'Render billboards',
-				description: 'When true, the billboard texture will show when meshes are culled',
-				type: 'boolean',
-				def: false
-			},
-			'billboardTexture': {
-				label: 'Billboard texture',
-				type: 'file',
-				def: '',
-				format: 'img',
-				condition: c => c.properties.billboardWhenCulled == true
-			},
 			'centerType': {
 				label: 'Center type',
 				type: 'select',
@@ -2009,6 +1997,35 @@ const D3DComponents = {
 					{ name: 'pivot', label: 'Pivot Point' },
 					{ name: 'center', label: 'Center' }
 				]
+			},
+			'billboardWhenCulled': {
+				label: 'Render billboard',
+				description: 'When true, the billboard texture will show when meshes are culled',
+				type: 'boolean',
+				section: 'billboard',
+				def: false
+			},
+			'billboardTexture': {
+				label: 'Texture',
+				type: 'file',
+				def: '',
+				format: 'img',
+				section: 'billboard',
+				condition: c => c.properties.billboardWhenCulled == true
+			},
+			'billboardOffset': {
+				label: 'Offset',
+				type: 'vector3',
+				def: {x: 0, y: 0, z: 0},
+				section: 'billboard',
+				condition: c => c.properties.billboardWhenCulled == true
+			},
+			'billboardScale': {
+				label: 'Scale',
+				type: 'vector3',
+				def: {x: 1, y: 1, z: 1},
+				section: 'billboard',
+				condition: c => c.properties.billboardWhenCulled == true
 			}
 		},
 		manager: D3DAutoLODManager
