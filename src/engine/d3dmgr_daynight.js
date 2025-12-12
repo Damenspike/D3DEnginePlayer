@@ -3,6 +3,9 @@ import D3DConsole from './d3dconsole.js';
 import {
 	loadTexture
 } from './d2dutility.js';
+import {
+	forFrames
+} from './d3dutility.js';
 
 export default class DayNightManager {
 	constructor(d3dobject, component) {
@@ -11,6 +14,8 @@ export default class DayNightManager {
 		
 		this._dirLight = null;
 		this._ambLight = null;
+		
+		this._sun = null;
 		this._skyDomes = null;
 	}
 	
@@ -40,6 +45,48 @@ export default class DayNightManager {
 			v = 0;
 		
 		this.component.properties.hour = Number(v);
+	}
+	
+	get sunEnabled() {
+		return this.component.properties.sunEnabled !== false;
+	}
+	set sunEnabled(v) {
+		this.component.properties.sunEnabled = !!v;
+		if(this._sun)
+			this._sun.visible = !!v;
+	}
+	
+	get sunFlareTexture() {
+		return this.component.properties.sunFlareTexture;
+	}
+	set sunFlareTexture(v) {
+		this.component.properties.sunFlareTexture = v;
+	}
+	
+	get sunScale() {
+		return this.component.properties.sunScale ?? {x: 0, y: 0, z: 0};
+	}
+	set sunScale(v) {
+		if(v?.x === undefined || v?.y === undefined || v?.z === undefined)
+			v = {x: 0, y: 0, z: 0};
+		
+		this.component.properties.sunScale = v;
+	}
+	
+	get sunOffset() {
+		const o = this.component.properties.sunOffset;
+		
+		return new THREE.Vector3(
+			(o?.x || 0) * THREE.MathUtils.DEG2RAD,
+			(o?.y || 0) * THREE.MathUtils.DEG2RAD,
+			(o?.z || 0) * THREE.MathUtils.DEG2RAD
+		);
+	}
+	set sunOffset(v) {
+		if(v?.x === undefined || v?.y === undefined || v?.z === undefined)
+			v = {x: 0, y: 0, z: 0};
+		
+		this.component.properties.sunOffset = v;
 	}
 	
 	// Hour that the sun rises
@@ -127,7 +174,7 @@ export default class DayNightManager {
 	}
 	
 	get skyDomeRadius() {
-		return this.component.properties.skyDomeRadius || 1000;
+		return Number(this.component.properties.skyDomeRadius) || 1000;
 	}
 	set skyDomeRadius(v) {
 		this.component.properties.skyDomeRadius = Number(v);
@@ -146,17 +193,18 @@ export default class DayNightManager {
 		this.component.properties.skyDomeOffset = v;
 	}
 	
-	get sunOffset() {
-		const o = this.component.properties.sunOffset;
-		
-		return new THREE.Vector3(
-			(o?.x || 0) * THREE.MathUtils.DEG2RAD,
-			(o?.y || 0) * THREE.MathUtils.DEG2RAD,
-			(o?.z || 0) * THREE.MathUtils.DEG2RAD
-		);
+	get lightMultiplierDir() {
+		return Number(this.component.properties.lightMultiplierDir) || 0;
 	}
-	set sunOffset(v) {
-		this.component.properties.sunOffset = v;
+	set lightMultiplierDir(v) {
+		this.component.properties.lightMultiplierDir = Number(v);
+	}
+	
+	get lightMultiplierAmb() {
+		return Number(this.component.properties.lightMultiplierAmb) || 0;
+	}
+	set lightMultiplierAmb(v) {
+		this.component.properties.lightMultiplierAmb = Number(v);
 	}
 	
 	async updateComponent() {
@@ -183,19 +231,79 @@ export default class DayNightManager {
 			});
 		}
 		
-		if(!this.lastProperties || JSON.stringify(this.component.properties) != JSON.stringify(this.lastProperties) || !this._skyDomes) {
+		if(!this.lastProperties || JSON.stringify(this.component.properties) != JSON.stringify(this.lastProperties) || !this._skyDomes || !this._sun) {
 			if(
+				(this.lastProperties?.skyDomeRadius != this.skyDomeRadius) || 
 				(this.lastProperties?.sunriseTexture != this.sunriseTexture) || 
 				(this.lastProperties?.dayTexture != this.dayTexture) || 
 				(this.lastProperties?.sunsetTexture != this.sunsetTexture) || 
 				(this.lastProperties?.nightTexture != this.nightTexture)
 			)
 				await this.createSkyDomes();
+				
+			if(
+				(this.lastProperties?.sunEnabled != this.sunEnabled) || 
+				(this.lastProperties?.sunFlareTexture != this.sunFlareTexture) || 
+				(this.lastProperties?.sunSize != this.sunSize)
+			) {
+				if(this.sunEnabled) {
+					this.pleaseCreateSun = true;
+				}else{
+					this.disposeSun();
+				}
+			}
 			
 			this.lastProperties = structuredClone(this.component.properties);
 		}
 	}
 	
+	async createSun() {
+		const root = this.d3dobject.root;
+		const zip = root.zip;
+		
+		if(!this.sunFlareTexture) {
+			this._sun = null;
+			return;
+		}
+		
+		this.disposeSun();
+		
+		let texture;
+		
+		try {
+			texture = await loadTexture(root.resolvePath(this.sunFlareTexture), zip);
+		}catch(e) {
+			console.warn(e);
+		}
+		
+		if(!texture) {
+			this._sun = null;
+			return;
+		}
+		
+		texture.colorSpace = THREE.SRGBColorSpace;
+		texture.encoding = THREE.sRGBEncoding;
+		
+		const material = new THREE.SpriteMaterial({
+			map: texture,
+			transparent: true,
+			depthWrite: false,
+			depthTest: true,
+			fog: false,
+			blending: THREE.AdditiveBlending,
+			opacity: 1
+		});
+		
+		const sprite = new THREE.Sprite(material);
+		const s = this.sunSize * 100;
+		sprite.scale.set(s, s, 1);
+		sprite.renderOrder = 9999999999999;
+		sprite.layers.set(2); // No GTAO pass applied on layer 2 to fix the black box glitch
+		
+		root.object3d.add(sprite);
+		
+		this._sun = sprite;
+	}
 	async createSkyDomes() {
 		const root = this.d3dobject.root;
 		const zip = root.zip;
@@ -229,7 +337,7 @@ export default class DayNightManager {
 		let sunsetTexture;
 		let nightTexture;
 		
-		this.dispose();
+		this.disposeSkyDomes();
 		
 		this._skyDomes = {
 			geometry,
@@ -277,22 +385,56 @@ export default class DayNightManager {
 		scene.add(skyDomes.group);
 	}
 	
-	__onEditorEnterFrame() {
-		this.updateSky();
+	__onInternalExitFrame() {
+		if(this.pleaseCreateSun) {
+			this.pleaseCreateSun = false;
+			this.createSun();
+		}
 	}
-	
 	__onInternalEnterFrame() {
 		this.updateSky();
 	}
 	
 	updateSky() {
+		this.updateSun();
 		this.updateLightIntensity();
 		this.updateLightAngle();
 		this.updateSkyBlend();
 		this.updateSkyRotation();
-		this.updateFogAndLightColor();
+		this.updateTints();
 	}
 	
+	updateSun() {
+		const sun = this._sun;
+		if (!sun || !this.sunEnabled) return;
+		
+		let hour = (this.hour - 0.8) % 24;
+		
+		if(hour < 0)
+			hour = 24 + hour;
+		
+		const angle = (hour / 24) * Math.PI * 2 - Math.PI / 2; // -π/2 (midnight) → 3π/2
+		
+		const pos = new THREE.Vector3(Math.cos(angle), Math.sin(angle), 0)
+			.multiplyScalar(this.skyDomeRadius * 0.95);
+			
+		// Optional custom tilt/orientation
+		const off = this.sunOffset;
+		if(off.x || off.y || off.z) {
+			const e = new THREE.Euler(off.x, off.y, off.z, 'XYZ');
+			pos.applyEuler(e);
+		}
+		
+		sun.position.copy(pos);
+		
+		const scale = new THREE.Vector3(
+			this.sunScale.x,
+			this.sunScale.y,
+			this.sunScale.z
+		).multiplyScalar(100);
+		
+		sun.scale.copy(scale);
+	}
 	updateLightIntensity() {
 		const dirObj = this.dirLight;
 		const ambObj = this.ambLight;
@@ -314,20 +456,28 @@ export default class DayNightManager {
 		let f = 0;
 		
 		if(h >= sr && h <= ss) {
-			const x = (h - sr) / dayLength; // 0..1
-			let s = Math.sin(x * Math.PI);  // 0..1..0
+			const x = (h - sr) / dayLength;
+			let s = Math.sin(x * Math.PI);
 			if(s < 0)
 				s = 0;
-			f = Math.pow(s, 0.6); // fat daylight curve
+			f = Math.pow(s, 0.6);
 		}
 		
+		const peak = f * f; // boosts only midday
+		
 		if(dir)
-			dir.intensity = 0.1 + 1.9 * f;
+			dir.intensity =
+				0.1 +
+				(1.9 * f + 0.8 * peak) * this.lightMultiplierDir;
 		
 		if(amb) {
-			const ambientNight = 0.02;  // << night is darker
-			const ambientDay   = 0.8;   // << midday brightness
-			amb.intensity = ambientNight + (ambientDay - ambientNight) * f;
+			const ambientNight = 0.02;
+			const ambientDay   = 0.8;
+			
+			amb.intensity =
+				ambientNight +
+				(ambientDay - ambientNight) * f +
+				0.3 * peak * this.lightMultiplierAmb;
 		}
 	}
 	
@@ -405,10 +555,10 @@ export default class DayNightManager {
 		if(h >= 24) h = 23.9999;
 		
 		// ---- SIMPLE PHASE TIMES ----
-		const sunriseStart = 5;
-		const sunriseEnd   = 7;
-		const sunsetStart  = 17;
-		const sunsetEnd    = 19;
+		const sunriseStart = this.sunrise - 2;
+		const sunriseEnd   = this.sunrise + 2;
+		const sunsetStart  = this.sunset - 2;
+		const sunsetEnd    = this.sunset + 2;
 		
 		// ---- SUNRISE FADE (night → sunrise → day) ----
 		if(h >= sunriseStart && h < sunriseEnd) {
@@ -475,7 +625,7 @@ export default class DayNightManager {
 			this.skyDomeOffset.z
 		);
 	}
-	updateFogAndLightColor() {
+	updateTints() {
 		const scene = _root.object3d;
 		if(!scene)
 			return;
@@ -492,11 +642,16 @@ export default class DayNightManager {
 		const dir = dirObj?.getComponent('DirectionalLight');
 		const amb = ambObj?.getComponent('AmbientLight');
 		
+		const sun = this._sun;
+		
 		if(dir)
 			dir.color = hex;
 		
 		if(amb)
 			amb.skyColor = hex;
+			
+		if(sun)
+			sun.material.color.copy(tint);
 	}
 	
 	getTintForHour() {
@@ -504,10 +659,10 @@ export default class DayNightManager {
 		if(h < 0)   h = 0;
 		if(h >= 24) h = 23.9999;
 		
-		const sunriseStart = 5.1;
-		const sunriseEnd   = 7;
-		const sunsetStart  = 17;
-		const sunsetEnd    = 18.75;
+		const sunriseStart = this.sunrise - 2;
+		const sunriseEnd   = this.sunrise + 2;
+		const sunsetStart  = this.sunset - 2;
+		const sunsetEnd    = this.sunset + 2;
 		
 		const nightCol   = new THREE.Color(Number(this.nightTint   || 0x050510));
 		const sunriseCol = new THREE.Color(Number(this.sunriseTint || this.nightTint   || 0xffaa66));
@@ -548,7 +703,16 @@ export default class DayNightManager {
 		return nightCol.clone();
 	}
 	
-	dispose() {
+	disposeSun() {
+		const sun = this._sun;
+		
+		if(sun) {
+			sun.parent?.remove(sun);
+			sun.material?.dispose();
+			this._sun = null;
+		}
+	}
+	disposeSkyDomes() {
 		const scene = this.d3dobject.root.object3d;
 		const skyDomes = this._skyDomes;
 		
@@ -564,5 +728,9 @@ export default class DayNightManager {
 			
 			this._skyDomes = null;
 		}
+	}
+	dispose() {
+		this.disposeSun();
+		this.disposeSkyDomes();
 	}
 }

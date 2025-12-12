@@ -2066,6 +2066,26 @@ const D3DComponents = {
 				def: 19,
 				section: 'time'
 			},
+			sunEnabled: {
+				label: 'Enable sun',
+				type: 'boolean',
+				def: true,
+				section: 'sun'
+			},
+			sunFlareTexture: {
+				label: 'Sun flare texture',
+				type: 'file',
+				format: 'img',
+				def: '',
+				condition: c => c.properties.sunEnabled !== false,
+				section: 'sun'
+			},
+			sunScale: {
+				label: 'Sun scale',
+				type: 'vector3',
+				def: {x: 1, y: 1, z: 1},
+				section: 'sun'
+			},
 			sunriseTexture: {
 				label: 'Sunrise sky',
 				type: 'file',
@@ -2142,6 +2162,20 @@ const D3DComponents = {
 				type: 'vector3',
 				def: {x: 0, y: 0, z: 0},
 				section: 'skydome'
+			},
+			lightMultiplierDir: {
+				label: 'Directional light intensity',
+				type: 'number',
+				min: 0,
+				def: 1,
+				section: 'light'
+			},
+			lightMultiplierAmb: {
+				label: 'Ambient light intensity',
+				type: 'number',
+				min: 0,
+				def: 1,
+				section: 'light'
 			}
 		},
 		manager: D3DDayNightManager

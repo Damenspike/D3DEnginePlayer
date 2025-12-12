@@ -1354,16 +1354,20 @@ export default class D3DObject {
 		for (const component of components) {
 			const mgr = this.getComponent(component.type);
 			
-			if(mgr) {
-				if(component.enabled)
-					await mgr.updateComponent?.();
-			} else {
-				const schema = D3DComponents[component.type];
-				const inst = new schema.manager(this, component);
-				this.__componentInstances[type] = inst;
-				
-				if(component.enabled)
-					await inst.updateComponent?.();
+			try {
+				if(mgr) {
+					if(component.enabled)
+						await mgr.updateComponent?.();
+				} else {
+					const schema = D3DComponents[component.type];
+					const inst = new schema.manager(this, component);
+					this.__componentInstances[type] = inst;
+					
+					if(component.enabled)
+						await inst.updateComponent?.();
+				}
+			}catch(e) {
+				D3DConsole.error(`[${child.name}][${component.type}]`, 'Error updating component:', e);
 			}
 		}
 	}

@@ -1213,6 +1213,11 @@ export default function Inspector() {
 									max={field.max}
 									step={field.step || 1}
 									readOnly={field.readOnly}
+									onFocus={e => {
+										const val = Number(e.target.value) || 0;
+										
+										e.target.oldValue = val;
+									}}
 									onChange={e => {
 										let val = Number(e.target.value) || 0;
 										
@@ -1222,7 +1227,7 @@ export default function Inspector() {
 										if(field.max !== undefined && val > field.max)
 											val = field.max;
 											
-										commitValue(val);
+										commitValue(val, e.target.oldValue);
 									}}
 								/>
 								<div className='slider-value'>
@@ -1243,6 +1248,11 @@ export default function Inspector() {
 									max={field.max}
 									step={field.step || 1}
 									readOnly={field.readOnly}
+									onFocus={e => {
+										const val = Number(e.target.value) || 0;
+										
+										e.target.oldValue = val;
+									}}
 									onChange={e => {
 										let val = Number(e.target.value) || 0;
 										
@@ -1252,7 +1262,7 @@ export default function Inspector() {
 										if(field.max !== undefined && val > field.max)
 											val = field.max;
 											
-										commitValue(val);
+										commitValue(val, e.target.oldValue);
 									}}
 								/>
 								<div className='slider-value' style={{width: 'auto'}}>
@@ -1301,7 +1311,7 @@ export default function Inspector() {
 								value={ (!mixed ? String(current).replace('0x', '#') : '#000000') }
 								onKeyDown={autoBlur}
 								readOnly={field.readOnly}
-								onClick={e => {
+								onFocus={e => {
 									const val = (e.target.value || '#ffffff').replace('#', '0x');
 									
 									e.target.oldValue = val;
@@ -1328,7 +1338,7 @@ export default function Inspector() {
 								displayMode='small'
 								onKeyDown={autoBlur}
 								readOnly={field.readOnly}
-								onClick={(e, val) => {
+								onFocus={(e, val) => {
 									sharedInspector.oldValue = val;
 								}}
 								onChange={val => commitValue(val)}
@@ -1344,7 +1354,7 @@ export default function Inspector() {
 						fieldContent = (
 							<ColorPickerBest
 								value={hex8ToRgba(current)}
-								onClick={(e, val) => {
+								onFocus={(e, val) => {
 									sharedInspector.oldValue = val;
 								}}
 								onChange={val => commitValue(val)}
