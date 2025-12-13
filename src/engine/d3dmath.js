@@ -22,6 +22,9 @@ Math.norm180 = d => {
 	if (a < 0) a += 360;
 	return a - 180;
 }
+Math.rand = (min, max) => {
+	return Math.floor(Math.random() * (max - min + 1)) + min;
+}
 
 export default class D3DMath {
 	

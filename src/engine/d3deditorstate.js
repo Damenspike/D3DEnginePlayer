@@ -577,21 +577,21 @@ export default class D3DEditorState {
 		if(!zip)
 			throw new Error('Invalid zip');
 		
-		if(!_root.__lodGeoms || !_root.__lodGeomsByObjects) {
+		if(!_root.__lodGeoms) {
 			console.log('Skipping save LOD geometry');
 			return;
 		}
 		
 		// Clear the unused geometry
 		const sigsToDelete = [];
-		for(const sig in _root.__lodGeomsByObjects) {
-			const d3dobject = _root.__lodGeomsByObjects[sig];
+		for(const sig in _root.__lodGeoms) {
 			let isUsed = false;
 			
 			_root.traverse(o => {
-				if(o == d3dobject) {
+				const autoLOD = o.getComponent('AutoLOD');
+				if(autoLOD && autoLOD.sigsInUse.includes(sig)) {
 					isUsed = true;
-					return false; // break the loop
+					return false;
 				}
 			});
 			
@@ -600,6 +600,7 @@ export default class D3DEditorState {
 		}
 		
 		sigsToDelete.forEach(sig => {
+			_root.__lodGeoms[sig] = null;
 			delete _root.__lodGeoms[sig];
 		});
 		
@@ -607,6 +608,8 @@ export default class D3DEditorState {
 		const serializedLODs = {};
 		for(const sig in _root.__lodGeoms) {
 			const lodGeom = _root.__lodGeoms[sig];
+			if(!lodGeom)
+				continue;
 			
 			serializedLODs[sig] = lodGeom.toJSON();
 		}

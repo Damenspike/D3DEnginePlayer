@@ -71,15 +71,20 @@ export default function AnimationInspector() {
 			setSelectedKeys([]);
 		});
 		_events.on('selected-objects', objects => {
-			let obj = objects.length > 0 ? objects[0] : _editor.focus.rootParent;
+			let obj = objects.length > 0 ? objects[0] : _editor.focus;
+			let o = obj;
 			
-			if(
-				obj != _editor.focus.rootParent && 
-				!obj.hasComponent('Animation') &&
-				_editor.focus.rootParent.hasComponent('Animation')
-			)
-				obj = _editor.focus.rootParent;
+			if(!obj.hasComponent('Animation')) {
+				while(o != _root) {
+					o = o.parent;
+					if(o.hasComponent('Animation'))
+						break;
+				}
+			}
 			
+			if(o.hasComponent('Animation') && !obj.hasComponent('Animation'))
+				obj = o;
+				
 			setSelectedObject(obj);
 		});
 		_events.on('refresh-component', (type) => {

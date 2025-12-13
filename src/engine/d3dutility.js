@@ -1055,8 +1055,6 @@ export function getMeshSignature(mesh) {
 		return null;
 	
 	const g = mesh.geometry;
-	if(g.__sig)
-		return g.__sig;
 	
 	const pos = g.attributes?.position;
 	const nor = g.attributes?.normal;
@@ -1067,29 +1065,71 @@ export function getMeshSignature(mesh) {
 	const n  = nor ? nor.count : 0;
 	const u  = uv  ? uv.count  : 0;
 	const ic = idx ? idx.count : 0;
+	const indexed = idx ? 1 : 0;
 	
 	if(!g.boundingBox)
 		g.computeBoundingBox();
 	
 	const bb = g.boundingBox;
 	
-	const s =
+	// use center+size instead of raw min/max (more stable)
+	const cx = (bb.min.x + bb.max.x) * 0.5;
+	const cy = (bb.min.y + bb.max.y) * 0.5;
+	const cz = (bb.min.z + bb.max.z) * 0.5;
+	const sx = (bb.max.x - bb.min.x);
+	const sy = (bb.max.y - bb.min.y);
+	const sz = (bb.max.z - bb.min.z);
+	
+	// less sensitive rounding so identical meshes share cache more often
+	const f = (x) => Number(x).toFixed(2);
+	
+	let s =
 		v + '|' +
 		n + '|' +
 		u + '|' +
 		ic + '|' +
-		bb.min.x.toFixed(3) + '|' +
-		bb.min.y.toFixed(3) + '|' +
-		bb.min.z.toFixed(3) + '|' +
-		bb.max.x.toFixed(3) + '|' +
-		bb.max.y.toFixed(3) + '|' +
-		bb.max.z.toFixed(3);
+		indexed + '|' +
+		f(cx) + '|' +
+		f(cy) + '|' +
+		f(cz) + '|' +
+		f(sx) + '|' +
+		f(sy) + '|' +
+		f(sz);
+	
+	// cheap topology hint: sample a few positions and indices
+	// (stops lots of “same counts + same bbox” collisions)
+	let sample = 0;
+	
+	if(pos && pos.array && pos.count) {
+		const arr = pos.array;
+		const step = Math.max(1, Math.floor(pos.count / 16));
+		
+		for(let i = 0; i < pos.count; i += step) {
+			const p = i * 3;
+			// quantize a bit so float noise doesn't explode signatures
+			const x = (arr[p+0] * 100) | 0;
+			const y = (arr[p+1] * 100) | 0;
+			const z = (arr[p+2] * 100) | 0;
+			
+			sample = ((sample << 5) - sample) + x;
+			sample = ((sample << 5) - sample) + y;
+			sample = ((sample << 5) - sample) + z;
+		}
+	}
+	
+	if(idx && idx.array && idx.count) {
+		const iarr = idx.array;
+		const step = Math.max(1, Math.floor(idx.count / 24));
+		
+		for(let i = 0; i < idx.count; i += step)
+			sample = ((sample << 5) - sample) + (iarr[i] | 0);
+	}
+	
+	s += '|' + ((sample >>> 0).toString(36));
 	
 	let hash = 0;
 	for(let i = 0; i < s.length; i++)
 		hash = ((hash << 5) - hash) + s.charCodeAt(i);
 	
-	hash = (hash >>> 0).toString(36);
-	g.__sig = hash;
-	return hash;
+	return (hash >>> 0).toString(36);
 }

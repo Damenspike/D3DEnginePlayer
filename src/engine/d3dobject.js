@@ -937,6 +937,8 @@ export default class D3DObject {
 		const startScene = this.scenes[this.manifest.startScene];
 		
 		await this.loadScene(startScene);
+		
+		_events.invoke('scene-loaded');
 	}
 	
 	async loadScene(scene) {
@@ -1172,7 +1174,7 @@ export default class D3DObject {
 			console.error(`[${this.name}]`, e);
 		});
 	}
-	setComponentValue(type, field, value) {
+	async setComponentValue(type, field, value) {
 		const component = this.components.find(c => c.type == type);
 		
 		if(!component) {
@@ -1185,7 +1187,7 @@ export default class D3DObject {
 		if(this.is2D)
 			this.invalidateGraphic2D();
 		
-		this.updateComponents();
+		await this.updateComponents();
 		this.checkSymbols();
 	}
 	async addComponent(
@@ -1385,12 +1387,16 @@ export default class D3DObject {
 			
 			try {
 				if(mgr) {
+					mgr.component = component;
+					
 					if(component.enabled)
 						await mgr.updateComponent?.(force);
 				} else {
 					const schema = D3DComponents[component.type];
 					const inst = new schema.manager(this, component);
 					this.__componentInstances[type] = inst;
+					
+					inst.component = component;
 					
 					if(component.enabled)
 						await inst.updateComponent?.(force);

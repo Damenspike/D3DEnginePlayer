@@ -5,6 +5,7 @@ export default function ConsoleInspector() {
 	const [code, setCode] = useState('');
 	const [codeHistory, setCodeHistory] = useState([]);
 	const [stackNumber, setStackNumber] = useState(0);
+	const [sceneLoaded, setSceneLoaded] = useState(false);
 	
 	const scrollRef = useRef();
 	const autoScroll = useRef(true);
@@ -17,6 +18,7 @@ export default function ConsoleInspector() {
 			setEditorConsole([...ec]);
 		});
 		_events.on('clear-console', clearConsole);
+		_events.on('scene-loaded', () => setSceneLoaded(true));
 	}, []);
 
 	useEffect(() => {

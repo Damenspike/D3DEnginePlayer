@@ -235,7 +235,7 @@ export default class D2DRenderer {
 		let renderAnyway = false;
 		
 		if(window._editor) {
-			if(_editor.focus == d3dobject)
+			if(_editor.focus == d3dobject || d3dobject.containsChild(_editor.focus))
 				renderAnyway = true;
 		}
 		
@@ -267,11 +267,12 @@ export default class D2DRenderer {
 			
 		ctx = ctx || this.ctx;
 		
-		// Collect all ancestor nodes that have graphic2d.mask === true
+		// Collect all ancestor nodes that are masked
 		const maskAncestors = [];
 		for (let n = d3dobject.parent; n; n = n.parent) {
 			const g2d = n.graphic2d;
-			if (g2d?.mask === true) 
+			const g2dmgr = n.getComponent('Graphic2D');
+			if (g2dmgr?.shouldMask)
 				maskAncestors.push(n);
 		}
 		

@@ -247,6 +247,14 @@ export default class Graphic2DManager {
 		this.component.properties.lineDashOffset = v;
 		this.refresh();
 	}
+	
+	// Getters only
+	get shouldMask() {
+		if(window._editor && _editor.focus == this.d3dobject)
+			return false;
+		
+		return this.mask;
+	}
 
 	hitTest({ x, y }) {
 		return hitObject(this.d3dobject, x, y);

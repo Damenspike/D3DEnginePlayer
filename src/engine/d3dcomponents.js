@@ -57,6 +57,16 @@ const D3DComponents = {
 				label: 'Receive shadows',
 				type: 'boolean',
 				def: true
+			},
+			'instancing': {
+				label: 'Instancing',
+				type: 'select',
+				def: 'off',
+				options: [
+					{ name: 'auto',  label: 'Auto' },
+					{ name: 'off',   label: 'Off' },
+					{ name: 'force', label: 'Force' }
+				]
 			}
 		},
 		persistent: true,
@@ -85,6 +95,16 @@ const D3DComponents = {
 				label: 'Receive shadows',
 				type: 'boolean',
 				def: true
+			},
+			'instancing': {
+				label: 'Instancing',
+				type: 'select',
+				def: 'off',
+				options: [
+					{ name: 'auto',  label: 'Auto' },
+					{ name: 'off',   label: 'Off' },
+					{ name: 'force', label: 'Force' }
+				]
 			}
 		},
 		manager: D3DMeshManager

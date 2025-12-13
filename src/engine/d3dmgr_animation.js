@@ -368,6 +368,9 @@ function AnimationState({d3dobject, clip}) {
 			if(!d3dtarget || !objectTrack)
 				continue;
 			
+			if(d3dtarget.dontAnimate)
+				continue;
+			
 			const trackPos = interpolateClip(
 				time,
 				objectTrack.position.track.times,

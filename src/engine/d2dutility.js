@@ -1368,7 +1368,8 @@ export function passesAncestorMasks(node, wx, wy) {
 	let n = node;
 	while (n) {
 		const g = n.graphic2d;
-		if (g?.mask === true) {
+		const g2dmgr = n.getComponent('Graphic2D');
+		if (g2dmgr?.shouldMask) {
 			const Minv = worldMatrixInverse(n);
 			const lp = applyMat(Minv, wx, wy);
 			if (!pointInGraphicMaskLocal(g, lp.x, lp.y)) return false;

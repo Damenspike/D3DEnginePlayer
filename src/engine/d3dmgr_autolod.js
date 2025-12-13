@@ -17,18 +17,13 @@ export default class AutoLODManager {
 		
 		if(!this.d3dobject.root.__lodGeoms)
 			this.d3dobject.root.__lodGeoms = {};
-			
-		if(!this.d3dobject.root.__lodGeomsByObjects)
-			this.d3dobject.root.__lodGeomsByObjects = {};
 		
 		this.levelStore = [];
+		this.sigsInUse = [];
 	}
 	
 	get GEOM_SHARED() {
 		return this.d3dobject.root.__lodGeoms;
-	}
-	get GEOM_BYOBJECTS() {
-		return this.d3dobject.root.__lodGeomsByObjects;
 	}
 	get center() {
 		const type = this.centerType;
@@ -124,6 +119,7 @@ export default class AutoLODManager {
 		const simplification = this.simplification;
 		
 		this.levelStore = [];
+		this.sigsInUse = [];
 		
 		const addToLevelStore = (d3dobj) => {
 			if(d3dobj?.object3d?.isMesh && !d3dobj?.object3d?.isSkinnedMesh) {
@@ -206,10 +202,10 @@ export default class AutoLODManager {
 					}
 					
 					this.GEOM_SHARED[sig] = lodGeom;
-					this.GEOM_BYOBJECTS[sig] = this.d3dobject;
 				}
 				
 				geometries.push(lodGeom);
+				this.sigsInUse.push(sig);
 			}
 		});
 	}
