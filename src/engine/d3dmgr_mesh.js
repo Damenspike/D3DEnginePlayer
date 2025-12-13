@@ -51,15 +51,6 @@ export default class MeshManager {
 		this.component.properties.morphTargets = v || {};
 		this._applyMorphTargets();
 	}
-	
-	get instancing() {
-		return this.component.properties?.instancing || 'auto'; // 'auto' | 'off' | 'force'
-	}
-	set instancing(v) {
-		const val = (v === 'off' || v === 'force') ? v : 'auto';
-		this.component.properties.instancing = val;
-		MeshManager._rebuildInstancing(this.d3dobject.root);
-	}
 
 	// =====================================================
 	// HELPER FUNCTIONS
@@ -223,11 +214,6 @@ export default class MeshManager {
 	}
 	async _buildMaterialFromMatUUID(uuid) {
 		if (!uuid) return null;
-		
-		const cache = MeshManager._getRootMatCache(this.d3dobject.root);
-		const cached = cache.get(uuid);
-		if(cached)
-			return cached;
 	
 		const txt = await this._readTextByUUID(uuid);
 		if (!txt) return null;
@@ -365,7 +351,6 @@ export default class MeshManager {
 			}
 	
 			m.needsUpdate = true;
-			cache.set(uuid, m);
 			return m;
 		}
 	
@@ -418,7 +403,6 @@ export default class MeshManager {
 		}
 	
 		m.needsUpdate = true;
-		cache.set(uuid, m);
 		return m;
 	}
 
@@ -560,211 +544,6 @@ export default class MeshManager {
 			}
 		});
 	}
-	
-	// =====================================================
-	// STATIC INSTANCING (per root) + MATERIAL CACHE
-	// =====================================================
-	
-	static _instRoots = new WeakMap(); // root -> { batchRoot, groups: Map, sources: Set }
-	static _matCache  = new WeakMap(); // root -> Map(assetUuid -> THREE.Material)
-	
-	static _getRootMatCache(root) {
-		let m = MeshManager._matCache.get(root);
-		if(!m) {
-			m = new Map();
-			MeshManager._matCache.set(root, m);
-		}
-		return m;
-	}
-	
-	static _getInstState(root) {
-		let st = MeshManager._instRoots.get(root);
-		if(!st) {
-			st = { batchRoot: null, groups: new Map(), sources: new Set() };
-			MeshManager._instRoots.set(root, st);
-		}
-		return st;
-	}
-	
-	static _ensureBatchRoot(root) {
-		const st = MeshManager._getInstState(root);
-	
-		if(st.batchRoot && st.batchRoot.parent)
-			return st.batchRoot;
-	
-		const host = root?.object3d || root?.scene || root; // whatever you use as scene root
-		if(!host) return null;
-	
-		const g = new THREE.Group();
-		g.name = '__D3D_INSTANCING__';
-		g.matrixAutoUpdate = true;
-		host.add(g);
-	
-		st.batchRoot = g;
-		return g;
-	}
-	
-	static _clearBatches(root) {
-		const st = MeshManager._getInstState(root);
-	
-		if(st.batchRoot) {
-			for(let i = st.batchRoot.children.length - 1; i >= 0; i--) {
-				const c = st.batchRoot.children[i];
-				st.batchRoot.remove(c);
-				// do NOT dispose geometry/material here
-			}
-		}
-	
-		st.groups.clear();
-	
-		for(const src of st.sources) {
-			if(src && src.isMesh)
-				src.visible = true;
-		}
-		st.sources.clear();
-	}
-	
-	static _matSig(mat) {
-		if(!mat) return 'null';
-	
-		if(Array.isArray(mat))
-			return mat.map(m => m ? m.uuid : 'null').join(',');
-	
-		return mat.uuid;
-	}
-	
-	static _meshInstKey(mesh) {
-		if(!mesh || !mesh.isMesh) return null;
-		if(!mesh.geometry) return null;
-	
-		// exclude skinned/morph by default (trees usually aren’t skinned)
-		if(mesh.isSkinnedMesh) return null;
-		if(mesh.morphTargetInfluences && mesh.morphTargetInfluences.length) return null;
-	
-		const g = mesh.geometry.uuid;
-		const m = MeshManager._matSig(mesh.material);
-	
-		// include render-state that must match (shadows can differ)
-		const cast = mesh.castShadow ? 1 : 0;
-		const recv = mesh.receiveShadow ? 1 : 0;
-	
-		return `${g}|${m}|${cast}|${recv}`;
-	}
-	
-	static _collectInstanceMeshes(d3d) {
-		// read instancing mode from either Mesh or SubMesh
-		let mode = 'auto';
-	
-		const meshComp = d3d?.getComponent?.('Mesh');
-		const subComp  = d3d?.getComponent?.('SubMesh');
-	
-		if(meshComp?.properties?.instancing) mode = meshComp.properties.instancing;
-		else if(subComp?.properties?.instancing) mode = subComp.properties.instancing;
-	
-		if(mode === 'off') return [];
-	
-		const host = d3d?.modelScene || d3d?.object3d;
-		if(!host) return [];
-	
-		const out = [];
-	
-		host.traverse(o => {
-			if(!o || !o.isMesh) return;
-	
-			const k = MeshManager._meshInstKey(o);
-			if(!k) return;
-	
-			out.push({ key: k, mesh: o, mode });
-		});
-	
-		return out;
-	}
-	
-	static _rebuildInstancing(root) {
-		if(!root) return;
-	
-		const st = MeshManager._getInstState(root);
-		const batchRoot = MeshManager._ensureBatchRoot(root);
-		if(!batchRoot) return;
-	
-		MeshManager._clearBatches(root);
-	
-		// Walk whole root and gather Mesh objects that allow instancing
-		const candidates = [];
-		if(typeof root.traverse === 'function') {
-			root.traverse(o => {
-				// o here is D3D object, not THREE
-				if(!o) return;
-	
-				const list = MeshManager._collectInstanceMeshes(o);
-				if(!list.length) return;
-	
-				for(const item of list)
-					candidates.push({ d3d: o, key: item.key, mesh: item.mesh, mode: item.mode });
-			});
-		} else {
-			// if root.traverse isn't your D3D traverse, you can wire this from outside
-			return;
-		}
-	
-		// Group by instancing key
-		for(const c of candidates) {
-			let g = st.groups.get(c.key);
-			if(!g) {
-				g = { proto: c.mesh, items: [] };
-				st.groups.set(c.key, g);
-			}
-			g.items.push(c);
-		}
-	
-		// Build instanced meshes (threshold: auto => 2+, force => 1+)
-		for(const [key, g] of st.groups.entries()) {
-			const proto = g.proto;
-			if(!proto || !proto.isMesh) {
-				st.groups.delete(key);
-				continue;
-			}
-	
-			const minCount =
-				g.items.some(x => x.mode === 'force') ? 1 : 2;
-	
-			if(g.items.length < minCount) {
-				// don’t instance; leave as normal meshes
-				continue;
-			}
-	
-			const im = new THREE.InstancedMesh(proto.geometry, proto.material, g.items.length);
-			im.name = '__D3D_INST__' + key;
-			im.frustumCulled = true;
-	
-			im.castShadow = !!proto.castShadow;
-			im.receiveShadow = !!proto.receiveShadow;
-	
-			// map instanceId -> owning D3D object (useful for picking)
-			im.userData.__d3dOwners = g.items.map(x => x.d3d);
-	
-			const tmp = new THREE.Matrix4();
-	
-			for(let i = 0; i < g.items.length; i++) {
-				const src = g.items[i].mesh;
-				if(!src) continue;
-	
-				// ensure src matrixWorld is current
-				src.updateWorldMatrix(true, false);
-				tmp.copy(src.matrixWorld);
-	
-				im.setMatrixAt(i, tmp);
-	
-				// hide original source mesh, but keep it in scene so your hierarchy stays intact
-				src.visible = false;
-				st.sources.add(src);
-			}
-	
-			im.instanceMatrix.needsUpdate = true;
-	
-			batchRoot.add(im);
-		}
-	}
 
 	// =====================================================
 	// MAIN LIFECYCLE
@@ -901,8 +680,6 @@ export default class MeshManager {
 		}
 
 		// ---------------- Apply stuff ----------------
-		MeshManager._rebuildInstancing(this.d3dobject.root);
-		
 		this._applyShadows();
 		this._applyMorphTargets();
 		
@@ -1056,8 +833,6 @@ export default class MeshManager {
 			this.d3dobject.modelScene = null;
 			this.d3dobject._loadedMeshUUID = null;
 		}
-		
-		MeshManager._rebuildInstancing(this.d3dobject.root);
 
 		if (this.d3dobject.object3d) {
 			const host = this.d3dobject.object3d;
@@ -1070,10 +845,8 @@ export default class MeshManager {
 	
 	onEnabled() {
 		this.d3dobject.visible2 = true;
-		MeshManager._rebuildInstancing(this.d3dobject.root);
 	}
 	onDisabled() {
 		this.d3dobject.visible2 = false;
-		MeshManager._rebuildInstancing(this.d3dobject.root);
 	}
 }
