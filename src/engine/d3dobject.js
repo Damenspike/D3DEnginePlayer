@@ -8,6 +8,7 @@ import D3DPromise from './d3dpromise.js';
 import D3DWebsocket from './d3dwebsocket.js';
 import D3DWebRTC from './d3dwebrtc.js';
 import D3DLocalStorage from './d3dlocalstorage.js';
+import D3DFileCache from './d3dfilecache.js';
 import Tween from './d3dtween.js';
 import { v4 as uuidv4 } from 'uuid';
 import {
@@ -630,10 +631,10 @@ export default class D3DObject {
 				if(mgr && mgr?.component) {
 					if(mgr.__isEnabled !== mgr.component.enabled) {
 						if(mgr.component.enabled) {
-							this.updateComponents();
+							this.updateComponents(true);
 							mgr.onEnabled?.();
 						}else{
-							this.updateComponents();
+							this.updateComponents(true);
 							mgr.onDisabled?.();
 						}
 						mgr.__isEnabled = mgr.component.enabled;
@@ -781,7 +782,10 @@ export default class D3DObject {
 			if(c.properties)
 				c.properties.__componentEnabled = c.enabled;
 			
-			await child.addComponent(c.type, c.properties, {doUpdateAll: false});
+			await child.addComponent(c.type, c.properties, {
+				doUpdateAll: false,
+				dontRecurseSymbols: true
+			});
 		}
 		
 		if(objData.engineScript)
@@ -846,49 +850,52 @@ export default class D3DObject {
 	
 	async load(uri) {
 		let buffer;
-		
-		this.fileMeta = {
-			bytesTotal: 0,
-			bytesLoaded: 0
-		}
-		
+	
+		this.fileMeta = { bytesTotal: 0, bytesLoaded: 0 };
 		this.__origin = uri;
 		this.__symbols = {};
-		
+	
 		this.removeAllChildren();
+	
+		const isRemote = !_isStandalone || uri.startsWith('http://') || uri.startsWith('https://');
 		
-		if (uri.startsWith('http://') || uri.startsWith('https://') || !_isStandalone) {
-			// Remote URL
-			console.log('Fetching remote .d3d from URL...');
-			const response = await axios.get(uri, { 
-				responseType: 'arraybuffer',
-				onDownloadProgress: progressEvent => {
-					this.fileMeta.bytesTotal = progressEvent.total;
-					this.fileMeta.bytesLoaded = progressEvent.loaded;
-					this.invokeEvent('loadProgress', {...this.fileMeta});
+		buffer = await D3DFileCache.getOrLoad(
+			uri,
+			async () => {
+				if(isRemote) {
+					console.log('Fetching remote .d3d from URL...');
+					const response = await axios.get(uri, {
+						responseType: 'arraybuffer',
+						onDownloadProgress: progressEvent => {
+							this.fileMeta.bytesTotal = progressEvent.total;
+							this.fileMeta.bytesLoaded = progressEvent.loaded;
+							this.invokeEvent('loadProgress', { ...this.fileMeta });
+						}
+					});
+					return new Uint8Array(response.data);
+				} else {
+					console.log('Reading local .d3d file...');
+					return await D3D.readFile(uri);
 				}
-			});
-			buffer = new Uint8Array(response.data);
-		} else {
-			// Local file (Electron only)
-			console.log('Reading local .d3d file...');
-			buffer = await D3D.readFile(uri);
-		}
-		
+			},
+			{ persistent: isRemote } // remote persists; local you can choose
+		);
+	
 		if(buffer) {
 			this.fileMeta.bytesTotal = buffer.length;
 			this.fileMeta.bytesLoaded = buffer.length;
-			
-			// Pass buffer to your next step
+	
+			this.invokeEvent('loadProgress', { ...this.fileMeta });
+	
 			await this.loadFromZip(buffer);
-			
+	
 			console.log('D3D file loaded, size:', buffer.length, 'bytes');
-			
+	
 			this.__loaded = true;
 			this.onLoad?.();
 			this.invokeEvent('load');
 		}
-		
+	
 		return buffer;
 	}
 	
@@ -910,6 +917,9 @@ export default class D3DObject {
 			throw new Error('asset-index.json not found in .d3d file');
 		}
 		this.assetIndex = JSON.parse(assetIndexStr);
+		
+		// Load any LOD geometry data
+		await this.loadLODGeoms();
 		
 		this.updateAssetIndex();
 		
@@ -1004,6 +1014,25 @@ export default class D3DObject {
 		
 		this.scene.background = background;
 		apply && this.applyScene(this.scene);
+	}
+	
+	async loadLODGeoms() {
+		const zip = this.zip;
+		const serializedData = await zip.file('lodgeoms.json')?.async('string');
+		if (!serializedData)
+			return;
+		
+		const loader = new THREE.BufferGeometryLoader();
+		const serializedLODs = JSON.parse(serializedData);
+		
+		this.__lodGeoms = {};
+		
+		for(const sig in serializedLODs) {
+			const data = serializedLODs[sig];
+			const geometry = loader.parse(data);
+			
+			this.__lodGeoms[sig] = geometry;
+		}
 	}
 	
 	async executeScripts() {
@@ -1324,7 +1353,7 @@ export default class D3DObject {
 	disableComponent(type) {
 		this.toggleComponent(type, false);
 	}
-	async updateComponents() {
+	async updateComponents(force = false) {
 		if(!this.enabled)
 			return;
 		
@@ -1357,17 +1386,17 @@ export default class D3DObject {
 			try {
 				if(mgr) {
 					if(component.enabled)
-						await mgr.updateComponent?.();
+						await mgr.updateComponent?.(force);
 				} else {
 					const schema = D3DComponents[component.type];
 					const inst = new schema.manager(this, component);
 					this.__componentInstances[type] = inst;
 					
 					if(component.enabled)
-						await inst.updateComponent?.();
+						await inst.updateComponent?.(force);
 				}
 			}catch(e) {
-				D3DConsole.error(`[${child.name}][${component.type}]`, 'Error updating component:', e);
+				D3DConsole.error(`[${this.name}][${component.type}]`, 'Error updating component:', e);
 			}
 		}
 	}

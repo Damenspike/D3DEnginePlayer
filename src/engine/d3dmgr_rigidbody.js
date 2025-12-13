@@ -219,6 +219,9 @@ export default class RigidbodyManager {
 	}
 	
 	setRotation({ x, y, z, w }, reset = true) {
+		if(isNaN(x) || isNaN(y) || isNaN(z) || isNaN(w))
+			throw new Error('Rigidbody: setRotation expects a valid quaternion');
+		
 		const obj = this.d3dobject.object3d;
 		const rb  = this.component._rb;
 		const p   = obj.position;

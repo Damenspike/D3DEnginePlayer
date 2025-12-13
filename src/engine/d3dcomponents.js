@@ -37,10 +37,10 @@ const D3DComponents = {
 				def: '',
 				readOnly: true
 			},
-			'_meshKeys': {
+			'morphTargets': {
 				label: '',
 				type: 'none',
-				def: []
+				def: {}
 			},
 			'materials': { 
 				label: 'Materials', 
@@ -70,6 +70,11 @@ const D3DComponents = {
 				type: 'file[]',
 				format: 'material',
 				def: []
+			},
+			'morphTargets': {
+				label: '',
+				type: 'none',
+				def: {}
 			},
 			'castShadow': {
 				label: 'Cast shadows',
@@ -603,7 +608,7 @@ const D3DComponents = {
 				type: 'vector3',
 				section: 'shape',
 				def: { x:0, y:0, z:0 },
-				condition: c => ['box','sphere','capsule'].includes(c.properties.shape)
+				condition: c => ['box','sphere','capsule'].includes(c.properties.shape) && !c.properties.autoCalculateShapes
 			},
 			
 			// ---- Box shape dimensions ----

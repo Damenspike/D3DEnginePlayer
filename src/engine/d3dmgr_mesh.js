@@ -43,6 +43,14 @@ export default class MeshManager {
 		this.component.properties.receiveShadow = !!v;
 		this._applyShadows();
 	}
+	
+	get morphTargets() {
+		return this.component.properties?.morphTargets || {};
+	}
+	set morphTargets(v) {
+		this.component.properties.morphTargets = v || {};
+		this._applyMorphTargets();
+	}
 
 	// =====================================================
 	// HELPER FUNCTIONS
@@ -214,6 +222,14 @@ export default class MeshManager {
 		try { params = JSON.parse(txt); } catch { return null; }
 	
 		const type = params.type || 'MeshStandardMaterial';
+		
+		// If it isn't ShaderMaterial, these keys are garbage to three.js and will warn.
+		if (type !== 'ShaderMaterial') {
+			delete params.vertexShader;
+			delete params.fragmentShader;
+			delete params.shaderProps;
+			delete params.flatShading;
+		}
 	
 		// ---- Common fixes (all material types, including ShaderMaterial) ----
 		if ('color' in params)    params.color    = this._fixColor(params.color);
@@ -504,6 +520,30 @@ export default class MeshManager {
 			}
 		});
 	}
+	
+	_applyMorphTargets() {
+		const root = this.d3dobject.modelScene || this.d3dobject.object3d;
+		if (!root) return;
+	
+		const morphs = this.component.properties?.morphTargets || {};
+		const keys = Object.keys(morphs);
+		if (!keys.length) return;
+	
+		root.traverse(o => {
+			if (!o || !(o.isMesh || o.isSkinnedMesh)) return;
+	
+			const dict = o.morphTargetDictionary;
+			const inf  = o.morphTargetInfluences;
+			if (!dict || !inf) return;
+	
+			for (let i = 0; i < keys.length; i++) {
+				const k = keys[i];
+				const idx = dict[k];
+				if (idx === undefined) continue;
+				inf[idx] = Number(morphs[k]) || 0;
+			}
+		});
+	}
 
 	// =====================================================
 	// MAIN LIFECYCLE
@@ -639,8 +679,10 @@ export default class MeshManager {
 			this.d3dobject.traverse(d3d => d3d.updateComponents());
 		}
 
-		// ---------------- Apply shadows ----------------
+		// ---------------- Apply stuff ----------------
 		this._applyShadows();
+		this._applyMorphTargets();
+		
 		this.d3dobject.updateVisibility(true);
 	}
 	
@@ -655,6 +697,97 @@ export default class MeshManager {
 		props.materials = mats;
 		
 		this.d3dobject.updateComponents();
+	}
+	
+	setMorph(name, value) {
+		if(!name)
+			return;
+	
+		const props = this.component.properties;
+		const morphs = { ...(props.morphTargets || {}) };
+	
+		morphs[name] = Number(value) || 0;
+		props.morphTargets = morphs;
+	
+		this._applyMorphTargets();
+	}
+	
+	clearMorph(name) {
+		if(!name)
+			return;
+	
+		const props = this.component.properties;
+		const morphs = { ...(props.morphTargets || {}) };
+	
+		delete morphs[name];
+		props.morphTargets = morphs;
+	
+		this._applyMorphTargets();
+	}
+	
+	getMorph(name) {
+		if(!name)
+			return null;
+	
+		const root = this.d3dobject.modelScene || this.d3dobject.object3d;
+		if(!root)
+			return null;
+	
+		let value = null;
+	
+		root.traverse(o => {
+			if(value !== null)
+				return;
+	
+			if(!o || !(o.isMesh || o.isSkinnedMesh))
+				return;
+	
+			const dict = o.morphTargetDictionary;
+			const inf  = o.morphTargetInfluences;
+			if(!dict || !inf)
+				return;
+	
+			const idx = dict[name];
+			if(idx === undefined)
+				return;
+	
+			const v = inf[idx];
+			if(typeof v === 'number')
+				value = v;
+		});
+	
+		return value;
+	}
+	
+	getMorphs() {
+		const root = this.d3dobject.modelScene || this.d3dobject.object3d;
+		if (!root) return [];
+	
+		const map = new Map();
+	
+		root.traverse(o => {
+			if (!o || !(o.isMesh || o.isSkinnedMesh)) return;
+	
+			const dict = o.morphTargetDictionary;
+			const inf  = o.morphTargetInfluences;
+			if (!dict || !inf) return;
+	
+			for (const name in dict) {
+				const idx = dict[name];
+				if (idx === undefined) continue;
+	
+				if (!map.has(name)) {
+					map.set(name, {
+						name,
+						value: typeof inf[idx] === 'number' ? inf[idx] : 0,
+						min: 0,
+						max: 1
+					});
+				}
+			}
+		});
+	
+		return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
 	}
 
 	// =====================================================

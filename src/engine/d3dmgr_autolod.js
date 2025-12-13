@@ -17,12 +17,18 @@ export default class AutoLODManager {
 		
 		if(!this.d3dobject.root.__lodGeoms)
 			this.d3dobject.root.__lodGeoms = {};
+			
+		if(!this.d3dobject.root.__lodGeomsByObjects)
+			this.d3dobject.root.__lodGeomsByObjects = {};
 		
 		this.levelStore = [];
 	}
 	
 	get GEOM_SHARED() {
 		return this.d3dobject.root.__lodGeoms;
+	}
+	get GEOM_BYOBJECTS() {
+		return this.d3dobject.root.__lodGeomsByObjects;
 	}
 	get center() {
 		const type = this.centerType;
@@ -200,6 +206,7 @@ export default class AutoLODManager {
 					}
 					
 					this.GEOM_SHARED[sig] = lodGeom;
+					this.GEOM_BYOBJECTS[sig] = this.d3dobject;
 				}
 				
 				geometries.push(lodGeom);
@@ -260,10 +267,10 @@ export default class AutoLODManager {
 		this.billboardMesh = mesh;
 		this.billboardLoading = false;
 	}
-	updateComponent() {
+	updateComponent(force = false) {
 		this.centerBBox = getObjectsCenter([this.d3dobject]);
 		
-		if(!this.lastProperties || JSON.stringify(this.component.properties) != JSON.stringify(this.lastProperties) || this.levelStore.length < 1) {
+		if(!this.lastProperties || JSON.stringify(this.component.properties) != JSON.stringify(this.lastProperties) || this.levelStore.length < 1 || force) {
 			this.generateLevels();
 			
 			if(this.billboardWhenCulled)

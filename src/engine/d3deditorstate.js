@@ -498,6 +498,9 @@ export default class D3DEditorState {
 			data: JSON.stringify(manifest)
 		});
 		
+		// Save LOD geometry
+		this.saveLODGeometry(zip);
+		
 		// Save scene graph
 		_root.scene.objects = [];
 		
@@ -569,6 +572,52 @@ export default class D3DEditorState {
 				data: rootScript
 			});
 		}
+	}
+	saveLODGeometry(zip) {
+		if(!zip)
+			throw new Error('Invalid zip');
+		
+		if(!_root.__lodGeoms || !_root.__lodGeomsByObjects) {
+			console.log('Skipping save LOD geometry');
+			return;
+		}
+		
+		// Clear the unused geometry
+		const sigsToDelete = [];
+		for(const sig in _root.__lodGeomsByObjects) {
+			const d3dobject = _root.__lodGeomsByObjects[sig];
+			let isUsed = false;
+			
+			_root.traverse(o => {
+				if(o == d3dobject) {
+					isUsed = true;
+					return false; // break the loop
+				}
+			});
+			
+			if(!isUsed)
+				sigsToDelete.push(sig);
+		}
+		
+		sigsToDelete.forEach(sig => {
+			delete _root.__lodGeoms[sig];
+		});
+		
+		// Serialize the geometry
+		const serializedLODs = {};
+		for(const sig in _root.__lodGeoms) {
+			const lodGeom = _root.__lodGeoms[sig];
+			
+			serializedLODs[sig] = lodGeom.toJSON();
+		}
+		
+		const serializedData = JSON.stringify(serializedLODs);
+		
+		this.writeFile({
+			zip,
+			path: 'lodgeoms.json',
+			data: serializedData
+		});
 	}
 	
 	deleteSelectedObjects(opts) {
@@ -751,7 +800,7 @@ export default class D3DEditorState {
 		selectResult && this.setSelection(pastedObjects, false);
 		
 		for(let o of pastedObjects) {
-			await o.updateComponents();
+			await o.updateComponents(true);
 		}
 		
 		return pastedObjects;

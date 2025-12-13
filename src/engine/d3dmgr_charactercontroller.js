@@ -118,9 +118,6 @@ export default class CharacterControllerManager {
 			}
 			
 			rbMgr.setTransform(nextPos, this._quatFromYaw(state.yaw), false);
-			
-			this.d3dobject.position = nextPos;
-			this.d3dobject.rotation = { x: 0, y: state.yaw, z: 0 };
 		};
 	}
 
@@ -162,7 +159,12 @@ export default class CharacterControllerManager {
 	updateComponent() {
 		if (!_physics?.ready) 
 			return;
-		if (!this.inited) this.setup();
+			
+		if (!window._player)
+			return;
+			
+		if (!this.inited) 
+			this.setup();
 	}
 
 	dispose() {

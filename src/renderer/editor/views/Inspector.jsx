@@ -1991,15 +1991,33 @@ export default function Inspector() {
 		}
 		const drawObjects = () => {
 			const rows = [];
-			let objects = _editor.focus.children
-			.filter(
-				c => !c.editorOnly &&
-				(
-					(_editor.mode == '3D' && c.is3D) || 
-					(_editor.mode == '2D' && c.is2D)
-				) &&
-				(c.name.toLowerCase().includes(sceneFilter.toLowerCase()) || !sceneFilter)
-			);
+			let objects;
+			
+			if(!sceneFilter) {
+				objects = _editor.focus.children
+				.filter(
+					c => !c.editorOnly &&
+					(
+						(_editor.mode == '3D' && c.is3D) || 
+						(_editor.mode == '2D' && c.is2D)
+					) &&
+					(c.name.toLowerCase().includes(sceneFilter.toLowerCase()) || !sceneFilter)
+				);
+			}else{
+				objects = [];
+				_root.traverse(c => {
+					if(c == _root) 
+						return;
+					
+					if(c.editorOnly || (c.is2D && _editor.mode != '2D') || (c.is3D && _editor.mode != '3D'))
+						return;
+					
+					if(!c.name.toLowerCase().includes(sceneFilter.toLowerCase()) && sceneFilter)
+						return;
+						
+					objects.push(c);
+				});
+			}
 			
 			if(_editor.mode == '2D') {
 				objects = objects.sort((a, b) => {
