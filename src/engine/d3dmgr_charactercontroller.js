@@ -5,7 +5,7 @@ export default class CharacterControllerManager {
 		this.d3dobject = d3dobject;
 		this.component = component;
 		
-		this.inited = false;
+		this.__setup = false;
 		
 		this.component._state = {
 			yaw: 0,
@@ -16,109 +16,6 @@ export default class CharacterControllerManager {
 		};
 		
 		this.d3dobject.addEventListener('reset', () => this.reset());
-		
-		this._drive = () => {
-			if (!_physics?.ready || !this.component.enabled) 
-				return;
-				
-			const props = this.component.properties || {};
-			const moveSpeed       = Number(props.moveSpeed ?? 2);
-			const turnSpeed       = Number(props.turnSpeed ?? 8);
-			const jumpHeight      = Number(props.jumpHeight ?? 6);
-			const gravityStrength = Number(props.gravityStrength ?? 1);
-			
-			const state = this.component._state;
-			const camera = this.camera ?? this.d3dobject.root.find(this.cameraName || 'camera');
-			const forward = camera?.forward ?? this.d3dobject.forward;
-			
-			if(!camera && !this._noCameraWarning && _time.sinceStart > 0.5) {
-				D3DConsole.warn(`[${this.d3dobject.name}] No camera referenced by character controller. The character won't know which way to face. It will default to local forward.`);
-				this._noCameraWarning = true;
-			}
-			
-			this._ensureController(state);
-			
-			if (!this.d3dobject.getComponent('Rigidbody')) {
-				this.d3dobject.addComponent('Rigidbody', { kind: 'kinematicPosition' });
-			}
-			
-			const rbMgr = this.d3dobject.getComponent('Rigidbody');
-			const rb = _physics.getBody(this.d3dobject);
-			
-			if (!rbMgr || !rb || !state.kcc || !state.collider) 
-				return;
-				
-			const dt = _time.delta;
-			
-			let fx = forward.x, fz = forward.z;
-			const fl = Math.hypot(fx, fz) || 1;
-			fx /= fl; 
-			fz /= fl;
-			const rx = fz;
-			const rz = -fx;
-			
-			const input = _input.getControllerAxis();
-			
-			// axis.y = forward/back, axis.x = strafe
-			let mx = fx * input.y + rx * input.x;
-			let mz = fz * input.y + rz * input.x;
-			
-			// raw length of stick input projected into world-space
-			const rawLen = Math.hypot(mx, mz);
-			
-			// direction + strength (0..1)
-			let dirX = 0, dirZ = 0;
-			let strength = 0;
-			
-			if (rawLen > 1e-6) {
-				dirX = mx / rawLen;
-				dirZ = mz / rawLen;
-				strength = Math.min(rawLen, 1);
-			}
-			
-			// rotate towards movement direction if any
-			if (strength > 1e-6) {
-				const targetYaw = Math.atan2(dirX, dirZ);
-				let delta = this._wrapAngle(targetYaw - state.yaw);
-				const maxTurn = turnSpeed * dt;
-				if (delta > maxTurn) delta = maxTurn;
-				if (delta < -maxTurn) delta = -maxTurn;
-				state.yaw = this._wrapAngle(state.yaw + delta);
-			}
-			
-			const worldG = (_physics.world?.gravity?.y ?? -9.81);
-			const g = worldG * gravityStrength;
-			
-			if (!state.air && _input.getKeyDown('Space')) {
-				const v0 = Math.sqrt(Math.max(0, -2 * g * Math.max(0, jumpHeight)));
-				state.vy = v0;
-				state.air = true;
-			} else {
-				state.vy += g * dt;
-			}
-			
-			const step = moveSpeed * dt * strength;
-			const dx = (strength > 1e-6 ? dirX * step : 0);
-			const dz = (strength > 1e-6 ? dirZ * step : 0);
-			const dy = state.vy * dt;
-			
-			const currentPos = rb.translation();
-			const mv = _physics.kccMove(state.kcc, state.collider, { x: dx, y: dy, z: dz }, rb);
-			const nextPos = {
-				x: currentPos.x + mv.x,
-				y: currentPos.y + mv.y,
-				z: currentPos.z + mv.z
-			};
-			
-			if (dy < 0 && Math.abs(mv.y - dy) > 0.001) {
-				state.air = false;
-				state.vy = 0;
-			} else if (dy > 0 && Math.abs(mv.y - dy) > 0.001) {
-				state.vy = 0;
-			}
-			
-			rbMgr.setTransform(nextPos, this._quatFromYaw(state.yaw), false);
-		};
 	}
 
 	get moveSpeed() {
@@ -163,22 +60,18 @@ export default class CharacterControllerManager {
 		if (!window._player)
 			return;
 			
-		if (!this.inited) 
+		if (!this.__setup) 
 			this.setup();
 	}
 
 	dispose() {
-		if (this.__onInternalEnterFrame === this._drive) {
-			this.__onInternalEnterFrame = null;
-		}
 		this.component._state.kcc = null;
 		this.component._state.collider = null;
-		this.inited = false;
+		this.__setup = false;
 	}
 
 	setup() {
-		this.__onInternalEnterFrame = this._drive;
-		this.inited = true;
+		this.__setup = true;
 	}
 	
 	reset() {
@@ -199,6 +92,109 @@ export default class CharacterControllerManager {
 			const p = rb.translation();
 			state.kcc.setPosition({ x: p.x, y: p.y, z: p.z });
 		}
+	}
+	
+	__onInternalEnterFrame() {
+		if (!this.__setup || !_physics?.ready || !this.component.enabled) 
+			return;
+			
+		const props = this.component.properties || {};
+		const moveSpeed       = Number(props.moveSpeed ?? 2);
+		const turnSpeed       = Number(props.turnSpeed ?? 8);
+		const jumpHeight      = Number(props.jumpHeight ?? 6);
+		const gravityStrength = Number(props.gravityStrength ?? 1);
+		
+		const state = this.component._state;
+		const camera = this.camera ?? this.d3dobject.root.find(this.cameraName || 'camera');
+		const forward = camera?.forward ?? this.d3dobject.forward;
+		
+		if(!camera && !this._noCameraWarning && _time.sinceStart > 0.5) {
+			D3DConsole.warn(`[${this.d3dobject.name}] No camera referenced by character controller. The character won't know which way to face. It will default to local forward.`);
+			this._noCameraWarning = true;
+		}
+		
+		this._ensureController(state);
+		
+		if (!this.d3dobject.getComponent('Rigidbody')) {
+			this.d3dobject.addComponent('Rigidbody', { kind: 'kinematicPosition' });
+		}
+		
+		const rbMgr = this.d3dobject.getComponent('Rigidbody');
+		const rb = _physics.getBody(this.d3dobject);
+		
+		if (!rbMgr || !rb || !state.kcc || !state.collider) 
+			return;
+			
+		const dt = _time.delta;
+		
+		let fx = forward.x, fz = forward.z;
+		const fl = Math.hypot(fx, fz) || 1;
+		fx /= fl; 
+		fz /= fl;
+		const rx = fz;
+		const rz = -fx;
+		
+		const input = _input.getControllerAxis();
+		
+		// axis.y = forward/back, axis.x = strafe
+		let mx = fx * input.y + rx * input.x;
+		let mz = fz * input.y + rz * input.x;
+		
+		// raw length of stick input projected into world-space
+		const rawLen = Math.hypot(mx, mz);
+		
+		// direction + strength (0..1)
+		let dirX = 0, dirZ = 0;
+		let strength = 0;
+		
+		if (rawLen > 1e-6) {
+			dirX = mx / rawLen;
+			dirZ = mz / rawLen;
+			strength = Math.min(rawLen, 1);
+		}
+		
+		// rotate towards movement direction if any
+		if (strength > 1e-6) {
+			const targetYaw = Math.atan2(dirX, dirZ);
+			let delta = this._wrapAngle(targetYaw - state.yaw);
+			const maxTurn = turnSpeed * dt;
+			if (delta > maxTurn) delta = maxTurn;
+			if (delta < -maxTurn) delta = -maxTurn;
+			state.yaw = this._wrapAngle(state.yaw + delta);
+		}
+		
+		const worldG = (_physics.world?.gravity?.y ?? -9.81);
+		const g = worldG * gravityStrength;
+		
+		if (!state.air && _input.getKeyDown('Space')) {
+			const v0 = Math.sqrt(Math.max(0, -2 * g * Math.max(0, jumpHeight)));
+			state.vy = v0;
+			state.air = true;
+		} else {
+			state.vy += g * dt;
+		}
+		
+		const step = moveSpeed * dt * strength;
+		const dx = (strength > 1e-6 ? dirX * step : 0);
+		const dz = (strength > 1e-6 ? dirZ * step : 0);
+		const dy = state.vy * dt;
+		
+		const currentPos = rb.translation();
+		const mv = _physics.kccMove(state.kcc, state.collider, { x: dx, y: dy, z: dz }, rb);
+		const nextPos = {
+			x: currentPos.x + mv.x,
+			y: currentPos.y + mv.y,
+			z: currentPos.z + mv.z
+		};
+		
+		if (dy < 0 && Math.abs(mv.y - dy) > 0.001) {
+			state.air = false;
+			state.vy = 0;
+		} else if (dy > 0 && Math.abs(mv.y - dy) > 0.001) {
+			state.vy = 0;
+		}
+		
+		rbMgr.setTransform(nextPos, this._quatFromYaw(state.yaw), false);
 	}
 
 	_ensureController(state) {

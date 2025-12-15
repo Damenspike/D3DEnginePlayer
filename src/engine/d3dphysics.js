@@ -2,7 +2,6 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import * as THREE from 'three';
 
 import {
-	updateObject,
 	getHitNormalRotation,
 	isLiveObject
 } from './d3dutility.js';
@@ -35,9 +34,13 @@ export default class D3DPhysics {
 		this.fixedDt = 1 / 60;
 		this._accum = 0;
 		this.delta = 0;
-
-		this._bodies = new Map(); // d3dobj.uuid -> { rb, colliders:[] }
+		
+		this._bodies = new Map(); // d3dobj.uuid -> { rb, colliders:[], kind, batched }
 		this._toObj  = new Map(); // rb.handle -> d3dobj
+		
+		this._toObjCollider = new Map(); // collider.handle -> d3dobj (for batched fixed)
+		this._staticRoot = null;         // single fixed rigidbody for all static colliders
+		
 		this._raycaster = new THREE.Raycaster();
 		this._raycastHits = [];
 	}
@@ -46,13 +49,18 @@ export default class D3DPhysics {
 		await RAPIER.init();
 		this.world = new RAPIER.World(gravity);
 		this.ready = true;
-
-		// Configure physics world for stability
-		this.world.integrationParameters.maxVelocityIterations = 8; // Increase for better constraint solving
+	
+		this.world.integrationParameters.maxVelocityIterations = 8;
 		this.world.integrationParameters.maxPositionIterations = 4;
 		this.world.integrationParameters.maxStabilizationIterations = 2;
-		this.world.integrationParameters.erp = 0.3; // Error reduction parameter for contacts
-		this.world.integrationParameters.maxCcdSubsteps = 4; // Enable CCD with more substeps
+		this.world.integrationParameters.erp = 0.3;
+		this.world.integrationParameters.maxCcdSubsteps = 4;
+	
+		// One fixed RB that never moves; all static colliders attach to this.
+		const desc = RAPIER.RigidBodyDesc.fixed();
+		desc.setTranslation(0, 0, 0);
+		desc.setRotation({ x: 0, y: 0, z: 0, w: 1 });
+		this._staticRoot = this.world.createRigidBody(desc);
 	}
 
 	step(dt) {
@@ -67,11 +75,18 @@ export default class D3DPhysics {
 		}
 		
 		if (didSteps > 0) {
-			// Sync RB -> Three/D3D *after* all substeps this render frame
-			this._bodies.forEach(({ rb }, uuid) => {
-				if(window.__blockPhysTest === true)
+			this._bodies.forEach(({ rb, kind }, uuid) => {
+				if (window.__blockPhysTest === true)
 					return;
-				
+		
+				// batched fixed has no rb, and fixed never moves anyway
+				if (!rb || kind === 'fixed')
+					return;
+		
+				// sleeping dynamics don't change pose; skip transform work
+				if (rb.isSleeping && rb.isSleeping())
+					return;
+		
 				const d3d = this._toObj.get(rb.handle);
 				if (!d3d) return;
 		
@@ -82,22 +97,19 @@ export default class D3DPhysics {
 				const q = rb.rotation();
 		
 				const parent = obj3d.parent;
-				
+		
 				if (parent) {
-					// World pose from Rapier
 					const worldPos  = _TMP_V1.set(t.x, t.y, t.z);
 					const worldQuat = _TMP_Q1.set(q.x, q.y, q.z, q.w);
-					const worldScl  = obj3d.scale; // keep local scale
+					const worldScl  = obj3d.scale;
 		
 					_TMP_M1.compose(worldPos, worldQuat, worldScl);
 		
-					// parent^-1 * world = local
 					parent.updateMatrixWorld(true, false);
 					_TMP_M2.copy(parent.matrixWorld).invert().multiply(_TMP_M1);
 		
 					_TMP_M2.decompose(obj3d.position, obj3d.quaternion, obj3d.scale);
 				} else {
-					// No parent: world == local
 					obj3d.position.set(t.x, t.y, t.z);
 					obj3d.quaternion.set(q.x, q.y, q.z, q.w);
 				}
@@ -110,8 +122,29 @@ export default class D3DPhysics {
 	}
 
 	dispose() {
+		if (this.world) {
+			// Remove everything we created (including batched fixed colliders)
+			this._bodies.forEach((pack) => {
+				for (let i = 0; i < pack.colliders.length; i++)
+					this.world.removeCollider(pack.colliders[i], true);
+	
+				if (pack.rb)
+					this.world.removeRigidBody(pack.rb);
+			});
+	
+			// Remove the static root RB too
+			if (this._staticRoot)
+				this.world.removeRigidBody(this._staticRoot);
+	
+			// Free world memory (rapier3d-compat supports .free())
+			this.world.free?.();
+		}
+	
 		this._bodies.clear();
 		this._toObj.clear();
+		this._toObjCollider.clear();
+	
+		this._staticRoot = null;
 		this.world = null;
 		this.ready = false;
 	}
@@ -119,32 +152,58 @@ export default class D3DPhysics {
 	// -------------------- Rigidbodies / Colliders --------------------
 
 	addRigidBody(d3dobj, opts = {}) {
-		const kind = opts.kind || 'dynamic'; // 'dynamic' | 'fixed' | 'kinematicPosition'
+		const kind = opts.kind || 'dynamic';
+	
+		// default: batch fixed unless explicitly disabled
+		const batchStatic = (opts.batchStatic !== false);
+	
+		const worldPos = _TMP_V1;
+		const worldQuat = _TMP_Q1;
+		d3dobj.object3d.getWorldPosition(worldPos);
+		d3dobj.object3d.getWorldQuaternion(worldQuat);
+	
+		// ---------- FIXED (BATCHED) ----------
+		if (kind === 'fixed' && batchStatic) {
+			const rb = null;
+			const colliders = [];
+	
+			if (opts.shape) {
+				const c = this._createColliderFromShape(opts.shape, this._staticRoot, opts, worldPos, worldQuat, true);
+				colliders.push(c);
+				this._toObjCollider.set(c.handle, d3dobj);
+			}
+	
+			this._bodies.set(d3dobj.uuid, { rb, colliders, kind: 'fixed', batched: true });
+			return null;
+		}
+	
+		// ---------- NORMAL RB (DYNAMIC / KINEMATIC / UNBATCHED FIXED) ----------
 		let desc;
 		if (kind === 'fixed') desc = RAPIER.RigidBodyDesc.fixed();
 		else if (kind === 'kinematicPosition') desc = RAPIER.RigidBodyDesc.kinematicPositionBased();
 		else {
 			desc = RAPIER.RigidBodyDesc.dynamic();
-			desc.setCcdEnabled(true); // Enable continuous collision detection for dynamic bodies
+	
+			// CCD is expensive. Only turn it on if asked.
+			if (opts.ccd !== false)
+				desc.setCcdEnabled(true);
 		}
-
-		const worldPos = new THREE.Vector3();
-		d3dobj.object3d.getWorldPosition(worldPos);
-		const worldQuat = new THREE.Quaternion();
-		d3dobj.object3d.getWorldQuaternion(worldQuat);
+	
 		desc.setTranslation(worldPos.x, worldPos.y, worldPos.z);
 		desc.setRotation({ x: worldQuat.x, y: worldQuat.y, z: worldQuat.z, w: worldQuat.w });
-		desc.setAdditionalMass(Math.max(0.1, opts.density || 1.0)); // Ensure minimum mass
-
+	
+		// this isn't actually density; it's additional mass. keep if you rely on it, otherwise remove.
+		desc.setAdditionalMass(Math.max(0.1, opts.density || 1.0));
+	
 		const rb = this.world.createRigidBody(desc);
 		const colliders = [];
-
+	
 		if (opts.shape) {
-			const c = this._createColliderFromShape(opts.shape, rb, opts);
+			const c = this._createColliderFromShape(opts.shape, rb, opts, worldPos, worldQuat, false);
 			colliders.push(c);
 		}
-
-		this._bodies.set(d3dobj.uuid, { rb, colliders });
+	
+		this._bodies.set(d3dobj.uuid, { rb, colliders, kind, batched: false });
 		this._toObj.set(rb.handle, d3dobj);
 		return rb;
 	}
@@ -152,11 +211,18 @@ export default class D3DPhysics {
 	remove(d3dobj) {
 		const pack = this._bodies.get(d3dobj.uuid);
 		if (!pack) return;
+	
 		for (let i = 0; i < pack.colliders.length; i++) {
-			this.world.removeCollider(pack.colliders[i], true);
+			const c = pack.colliders[i];
+			this._toObjCollider.delete(c.handle);
+			this.world.removeCollider(c, true);
 		}
-		this.world.removeRigidBody(pack.rb);
-		this._toObj.delete(pack.rb.handle);
+	
+		if (pack.rb) {
+			this.world.removeRigidBody(pack.rb);
+			this._toObj.delete(pack.rb.handle);
+		}
+	
 		this._bodies.delete(d3dobj.uuid);
 	}
 
@@ -165,8 +231,9 @@ export default class D3DPhysics {
 		return pack ? pack.rb : null;
 	}
 
-	_createColliderFromShape(shape, rb, opts) {
+	_createColliderFromShape(shape, rb, opts, worldPos, worldQuat, batchedFixed = false) {
 		let desc;
+	
 		switch (shape.type) {
 			case 'box':     desc = RAPIER.ColliderDesc.cuboid(shape.hx, shape.hy, shape.hz); break;
 			case 'sphere':  desc = RAPIER.ColliderDesc.ball(shape.r); break;
@@ -175,13 +242,42 @@ export default class D3DPhysics {
 			case 'convex':  desc = RAPIER.ColliderDesc.convexMesh(shape.vertices); break;
 			default:        desc = RAPIER.ColliderDesc.cuboid(0.5, 0.5, 0.5); break;
 		}
-		if (shape.offset) {
-			desc.setTranslation(shape.offset.x, shape.offset.y, shape.offset.z);
+	
+		// ----- placement -----
+		if (batchedFixed) {
+			// collider local == world because staticRoot is identity at origin
+			let tx = worldPos.x, ty = worldPos.y, tz = worldPos.z;
+	
+			// apply rotated offset (offset is in object local space)
+			if (shape.offset) {
+				_TMP_V1.set(shape.offset.x || 0, shape.offset.y || 0, shape.offset.z || 0);
+				_TMP_V1.applyQuaternion(worldQuat);
+	
+				tx += _TMP_V1.x;
+				ty += _TMP_V1.y;
+				tz += _TMP_V1.z;
+			}
+	
+			desc.setTranslation(tx, ty, tz);
+			if (desc.setRotation)
+				desc.setRotation({ x: worldQuat.x, y: worldQuat.y, z: worldQuat.z, w: worldQuat.w });
+		} else {
+			// normal: rb already has world transform; offset is local
+			if (shape.offset)
+				desc.setTranslation(shape.offset.x, shape.offset.y, shape.offset.z);
 		}
+	
+		// ----- material -----
 		if (opts.friction != null) desc.setFriction(opts.friction);
 		if (opts.restitution != null) desc.setRestitution(opts.restitution);
-		desc.setDensity(Math.max(0.1, opts.density || 1.0)); // Ensure minimum density
-		desc.setCollisionGroups(0xFFFF0001); // Default group for better collision filtering
+	
+		// density is meaningless for fixed; don't set it for batched fixed
+		if (!batchedFixed)
+			desc.setDensity(Math.max(0.1, opts.density || 1.0));
+	
+		// collision groups: do this properly later, but keep your current behavior
+		desc.setCollisionGroups(0xFFFF0001);
+	
 		return this.world.createCollider(desc, rb);
 	}
 
@@ -232,23 +328,26 @@ export default class D3DPhysics {
 		
 		let objects = opts.objects || _root.children;
 		
-		if (filter) {
-			// cheap filter: avoid allocations if possible
-			objects = objects.filter(filter);
-		}
+		if(filter && typeof filter !== 'function')
+			throw new Error('Invalid filter value. Filter must be a Function<boolean>');
 		
-		objects = objects.filter(isLiveObject);
+		const object3ds = [];
+		objects.forEach(o => {
+			if(filter && !filter(o))
+				return;
+			
+			if(o?.object3d && isLiveObject(o))
+				object3ds.push(o.object3d);
+		});
+		objects = object3ds;
 		
-		// Break down to object3d's themselves
-		objects = objects.map(o => o.object3d).filter(Boolean);
-	
 		if (!objects || objects.length === 0) 
 			return null;
 		
 		// reuse raycaster
 		const rc = this._raycaster;
 		rc.ray.origin.copy(origin);
-		rc.ray.direction.copy(direction).normalize();
+		rc.ray.direction.copy(direction);
 		rc.near = 0;
 		rc.far  = maxDist;
 	
@@ -315,6 +414,136 @@ export default class D3DPhysics {
 		const raycaster = new THREE.Raycaster();
 		raycaster.setFromCamera({ x: mouseX, y: mouseY }, camera);
 		return this.raycast(raycaster.ray.origin, raycaster.ray.direction, { maxDistance });
+	}
+	
+	rigidcast(origin, direction, opts = {}) {
+		if(!this.world)
+			return null;
+	
+		const filter  = opts.filter;
+		const all     = !!opts.all;
+		const maxDist = Number(opts.maxDistance);
+		const solid   = (opts.solid !== false);
+	
+		if(filter && typeof filter !== 'function')
+			throw new Error('Invalid filter value. Filter must be a Function<boolean>');
+	
+		if(!Number.isFinite(maxDist) || maxDist <= 0)
+			return null;
+	
+		const ray = this._rapierRay || (this._rapierRay = new RAPIER.Ray(
+			{ x: 0, y: 0, z: 0 },
+			{ x: 0, y: 0, z: 1 }
+		));
+	
+		ray.origin.x = origin.x;
+		ray.origin.y = origin.y;
+		ray.origin.z = origin.z;
+		ray.dir.x = direction.x;
+		ray.dir.y = direction.y;
+		ray.dir.z = direction.z;
+	
+		const resolveD3D = (collider) => {
+			if(!collider)
+				return null;
+	
+			const d3dFixed = this._toObjCollider?.get(collider.handle);
+			if(d3dFixed)
+				return d3dFixed;
+	
+			const rbHandle = collider.parent?.();
+			if(rbHandle != null) {
+				const d3d = this._toObj?.get(rbHandle);
+				if(d3d)
+					return d3d;
+			}
+	
+			return collider.userData?.d3dobject || null;
+		};
+	
+		const predicate = filter
+			? (collider) => {
+				const d3d = resolveD3D(collider);
+				return !!d3d && filter(d3d);
+			}
+			: undefined;
+	
+		const excludeCollider = opts.excludeCollider || null;
+		const excludeRigidBody = opts.excludeRigidBody || null;
+	
+		if(!all) {
+			const hit = this.world.castRayAndGetNormal(
+				ray,
+				maxDist,
+				solid,
+				undefined,
+				undefined,
+				excludeCollider,
+				excludeRigidBody,
+				predicate
+			);
+	
+			if(!hit)
+				return null;
+	
+			const collider = this.world.getCollider(hit.colliderHandle);
+			const d3d = resolveD3D(collider);
+			if(!d3d)
+				return null;
+	
+			return {
+				hit: true,
+				point: new THREE.Vector3(
+					origin.x + direction.x * hit.toi,
+					origin.y + direction.y * hit.toi,
+					origin.z + direction.z * hit.toi
+				),
+				normal: new THREE.Vector3(hit.normal.x, hit.normal.y, hit.normal.z),
+				distance: hit.toi,
+				object: d3d,
+				colliderHandle: hit.colliderHandle
+			};
+		}
+	
+		const out = this._raycastHits;
+		out.length = 0;
+	
+		this.world.intersectionsWithRay(
+			ray,
+			maxDist,
+			solid,
+			(hit) => {
+				const collider = this.world.getCollider(hit.colliderHandle);
+				const d3d = resolveD3D(collider);
+				if(!d3d)
+					return true;
+	
+				out.push({
+					hit: true,
+					point: new THREE.Vector3(
+						origin.x + direction.x * hit.toi,
+						origin.y + direction.y * hit.toi,
+						origin.z + direction.z * hit.toi
+					),
+					distance: hit.toi,
+					object: d3d,
+					colliderHandle: hit.colliderHandle
+				});
+	
+				return true;
+			},
+			undefined,
+			undefined,
+			excludeCollider,
+			excludeRigidBody,
+			predicate
+		);
+	
+		if(out.length < 1)
+			return null;
+	
+		out.sort((a, b) => a.distance - b.distance);
+		return out;
 	}
 	
 	_findD3DObjectFromHit(obj) {
@@ -433,5 +662,38 @@ export default class D3DPhysics {
 		if (!hit) return null;
 		
 		return hit;
+	}
+	
+	setTranslation(d3dobj, pos) {
+		const pack = this._bodies.get(d3dobj.uuid);
+		if (!pack) return;
+	
+		if (pack.rb) {
+			pack.rb.setTranslation(pos, true);
+			return;
+		}
+	
+		// batched fixed: move its collider(s)
+		if (!pack.colliders || pack.colliders.length < 1) return;
+	
+		// assume first collider is the main one
+		const c = pack.colliders[0];
+		c.setTranslation(pos);
+	}
+	
+	setRotation(d3dobj, quat) {
+		const pack = this._bodies.get(d3dobj.uuid);
+		if (!pack) return;
+	
+		if (pack.rb) {
+			pack.rb.setRotation(quat, true);
+			return;
+		}
+	
+		if (!pack.colliders || pack.colliders.length < 1) return;
+	
+		const c = pack.colliders[0];
+		if (c.setRotation)
+			c.setRotation(quat);
 	}
 }

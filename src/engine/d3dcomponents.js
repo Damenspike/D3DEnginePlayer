@@ -57,6 +57,25 @@ const D3DComponents = {
 				label: 'Receive shadows',
 				type: 'boolean',
 				def: true
+			},
+			'instancing': {
+				label: 'Instancing',
+				type: 'boolean',
+				def: false
+			},
+			'instancingId': {
+				label: 'Instancing ID',
+				type: 'string',
+				description: 'All meshes with this ID will draw together',
+				def: '',
+				condition: c => c.properties.instancing == true
+			},
+			'maxInstancesPerGroup': {
+				label: 'Max per group', 
+				type: 'number',
+				min: 1,
+				def: 100,
+				condition: c => c.properties.instancing == true
 			}
 		},
 		persistent: true,
@@ -85,6 +104,25 @@ const D3DComponents = {
 				label: 'Receive shadows',
 				type: 'boolean',
 				def: true
+			},
+			'instancing': {
+				label: 'Instancing',
+				type: 'boolean',
+				def: false
+			},
+			'instancingId': {
+				label: 'Instancing ID',
+				type: 'string',
+				description: 'All meshes with this ID will draw together',
+				def: '',
+				condition: c => c.properties.instancing == true
+			},
+			'maxInstancesPerGroup': {
+				label: 'Max per group', 
+				type: 'number',
+				min: 1,
+				def: 100,
+				condition: c => c.properties.instancing == true
 			}
 		},
 		manager: D3DMeshManager

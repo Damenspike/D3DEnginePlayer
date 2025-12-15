@@ -141,8 +141,6 @@ export default class D3DParticleSystemManager {
 			for (let t=0; t<lifetime; t+=step) this._tick(step, true);
 			this._isPaused = prevPaused;
 		}
-
-		this.__onInternalEnterFrame = () => this.update();
 	}
 
 	// live props
@@ -252,7 +250,6 @@ export default class D3DParticleSystemManager {
 		}
 		this._points?.material?.dispose();
 		this._points = this._geom = this._mat = this._uniforms = null;
-		this.__onInternalEnterFrame = null;
 	}
 
 	// ---------- scene parenting ----------
@@ -705,5 +702,5 @@ export default class D3DParticleSystemManager {
 		if (!p.looping && this._playedOnce && aliveCount === 0) this._isPaused = true;
 	}
 
-	update(dt = _time.delta) { this._tick(dt, false); }
+	__onInternalEnterFrame(dt = _time.delta) { this._tick(dt, false); }
 }

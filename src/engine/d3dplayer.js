@@ -5,7 +5,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import {
-	updateObject,
+	updateObjects,
 	hookComposerPasses
 } from './d3dutility.js';
 
@@ -20,6 +20,8 @@ import D3DDimensions from './d3ddimensions.js';
 import D3DGraphics from './d3dgraphics.js';
 
 window.THREE = THREE;
+window._loopFns = {};
+window._hotObjects = new Set();
 window._events = new D3DEventSystem();
 window._input = new D3DInput();
 window._time = new D3DTime();
@@ -214,74 +216,76 @@ function startAnimationLoop() {
 	function animate(nowMs) {
 		_time.tick(nowMs); // updates _time.delta (seconds) + _time.now
 		
-		_dimensions.update();
-		
-		updateObject([
-			'__onInternalEnterFrame',
-			'__onEnterFrame',
-			'onEnterFrame'
-		], _root);
-		
-		if(_physics.ready) {
-			const didSteps = _physics.step(_time.delta);
+		if(!_player.paused) {
+			_dimensions.update();
 			
-			if(didSteps > 0) {
-				updateObject([
-					'__onInternalPhysicsUpdate',
-					'__onPhysicsUpdate',
-					'onPhysicsUpdate'
-				], _root);
-			}
-		}
-		
-		if(!_player.camera) {
-			_root.traverse(d3dobject => {
-				if(d3dobject.enabled && d3dobject.hasComponent('Camera')) {
-					_player.camera = d3dobject;
-					return false;
-				}
-			});
+			updateObjects([
+				'__onInternalEnterFrame',
+				'__onEnterFrame',
+				'onEnterFrame'
+			]);
 			
-			if(_player.camera) {
-				initComposer();
+			if(_physics.ready) {
+				const didSteps = _physics.step(_time.delta);
 				
-				updateObject([
-					'__onInternalGraphicsReady',
-					'__onGraphicsReady',
-					'onGraphicsReady'
-				], _root);
+				if(didSteps > 0) {
+					updateObjects([
+						'__onInternalPhysicsUpdate',
+						'__onPhysicsUpdate',
+						'onPhysicsUpdate'
+					]);
+				}
 			}
+			
+			if(!_player.camera) {
+				_root.traverse(d3dobject => {
+					if(d3dobject.enabled && d3dobject.hasComponent('Camera')) {
+						_player.camera = d3dobject;
+						return false;
+					}
+				});
+				
+				if(_player.camera) {
+					initComposer();
+					
+					updateObjects([
+						'__onInternalGraphicsReady',
+						'__onGraphicsReady',
+						'onGraphicsReady'
+					]);
+				}
+			}
+			
+			updateObjects([
+				'__onInternalBeforeRender',
+				'__onBeforeRender',
+				'onBeforeRender'
+			]);
+			
+			const camera3d = _player.camera?.object3d;
+			const renderer3d = _player.renderer3d;
+			const renderer2d = _player.renderer2d;
+			
+			if(camera3d)
+				_player.composer.render();
+			
+			renderer2d.render(); // render 2d
+			
+			updateObjects([
+				'__onInternalExitFrame',
+				'__onExitFrame',
+				'onExitFrame'
+			]);
+			
+			_input._afterRenderFrame?.();
 		}
-		
-		updateObject([
-			'__onInternalBeforeRender',
-			'__onBeforeRender',
-			'onBeforeRender'
-		], _root);
-		
-		const camera3d = _player.camera?.object3d;
-		const renderer3d = _player.renderer3d;
-		const renderer2d = _player.renderer2d;
-		
-		if(camera3d)
-			_player.composer.render();
-		
-		renderer2d.render(); // render 2d
-		
-		updateObject([
-			'__onInternalExitFrame',
-			'__onExitFrame',
-			'onExitFrame'
-		], _root);
-		
-		_input._afterRenderFrame?.();
 		
 		requestAnimationFrame(animate);
 	}
 	
 	// init
 	_time.tick(performance.now());
-	updateObject(['__onInternalStart','__onStart','onStart'], _root);
+	updateObjects(['__onInternalStart','__onStart','onStart']);
 	requestAnimationFrame(animate);
 }
 function onConsoleMessage({ level, message }) {

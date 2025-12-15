@@ -1,31 +1,28 @@
+import * as THREE from 'three';
+
 export default class DirectionalLightManager {
 	constructor(d3dobject, component) {
 		this.d3dobject = d3dobject;
 		this.component = component;
+		this.__setup = false;
+
+		this._pos = new THREE.Vector3();
+		this._dir = new THREE.Vector3();
+		this._camPos = new THREE.Vector3();
+		this._target = null;
 	}
 
-	get color() {
-		return this.component.properties.color;
-	}
-	set color(v) {
-		this.component.properties.color = v;
-		this.updateLight();
-	}
+	get color() { return this.component.properties.color; }
+	set color(v) { this.component.properties.color = v; this.updateLight(); }
 
-	get intensity() {
-		return this.component.properties.intensity;
-	}
-	set intensity(v) {
-		this.component.properties.intensity = v;
-		this.updateLight();
-	}
+	get intensity() { return this.component.properties.intensity; }
+	set intensity(v) { this.component.properties.intensity = v; this.updateLight(); }
 
-	// ---- optional convenience getters (wire these from your UI if you want) ----
 	get castShadow() { return !!this.component.properties.castShadow; }
 	set castShadow(v) { this.component.properties.castShadow = !!v; this.updateLight(); }
 
-	get shadowMapSize() { return this.component.properties.shadowMapSize ?? 2048; } // square map
-	set shadowMapSize(v) { this.component.properties.shadowMapSize = v|0; this.updateLight(); }
+	get shadowMapSize() { return this.component.properties.shadowMapSize ?? 2048; }
+	set shadowMapSize(v) { this.component.properties.shadowMapSize = v | 0; this.updateLight(); }
 
 	get shadowNear() { return this.component.properties.shadowNear ?? 0.5; }
 	set shadowNear(v) { this.component.properties.shadowNear = +v; this.updateLight(); }
@@ -33,7 +30,7 @@ export default class DirectionalLightManager {
 	get shadowFar() { return this.component.properties.shadowFar ?? 500; }
 	set shadowFar(v) { this.component.properties.shadowFar = +v; this.updateLight(); }
 
-	get shadowOrthoSize() { return this.component.properties.shadowOrthoSize ?? 50; } // half-extent
+	get shadowOrthoSize() { return this.component.properties.shadowOrthoSize ?? 50; }
 	set shadowOrthoSize(v) { this.component.properties.shadowOrthoSize = +v; this.updateLight(); }
 
 	get shadowBias() { return this.component.properties.shadowBias ?? -0.0005; }
@@ -42,7 +39,7 @@ export default class DirectionalLightManager {
 	get shadowNormalBias() { return this.component.properties.shadowNormalBias ?? 0.02; }
 	set shadowNormalBias(v) { this.component.properties.shadowNormalBias = +v; this.updateLight(); }
 
-	get shadowRadius() { return this.component.properties.shadowRadius ?? 1.0; } // PCF blur hint
+	get shadowRadius() { return this.component.properties.shadowRadius ?? 1.0; }
 	set shadowRadius(v) { this.component.properties.shadowRadius = +v; this.updateLight(); }
 
 	updateComponent() {
@@ -52,67 +49,25 @@ export default class DirectionalLightManager {
 
 	setup() {
 		const c = this.component.properties;
-		const color = new THREE.Color(Number(c.color));
-		const light = new THREE.DirectionalLight(color, c.intensity);
+		const light = new THREE.DirectionalLight(new THREE.Color(Number(c.color)), c.intensity);
 		this.d3dobject.replaceObject3D(light);
 
-		// --- try to ensure renderer has shadows on (best-effort, harmless if absent)
-		try {
-			const r = _host?.renderer3d || _host?.renderer || _root?.renderer; // adapt to your engine
-			if (r && r.shadowMap && r.shadowMap.enabled !== true) {
-				r.shadowMap.enabled = true;
-				if (r.shadowMap.type == null) r.shadowMap.type = THREE.PCFSoftShadowMap;
-			}
-		} catch {}
-
-		// --- hidden target that we keep in front of the light
 		const scene = this.d3dobject.root.object3d;
-		const target = new THREE.Object3D();
-		target.name = '__dirLightTarget';
-		target.visible = false;
-		scene.add(target);
-		light.target = target;
 
-		// --- autorun: keep target in front using the light's forward
-		const _pos = new THREE.Vector3();
-		const _dir = new THREE.Vector3();
-		const DIST = 100;
+		if (!this._target) {
+			const t = new THREE.Object3D();
+			t.name = '__dirLightTarget';
+			t.visible = false;
+			scene.add(t);
+			this._target = t;
+		} else if (!this._target.parent) {
+			scene.add(this._target);
+		}
 
-		const _camPos = new THREE.Vector3();
-		
-		const updateTarget = () => {
-			if (!this.component.enabled) return;
-		
-			const cam = _host?.camera?.object3d;   // editor/player camera
-			if (!cam) return;
-		
-			// Where do we want best shadows? Around the camera:
-			cam.getWorldPosition(_camPos);
-		
-			// Light direction (world)
-			light.getWorldDirection(_dir).normalize();
-		
-			// Center of shadow box = camera position (or offset)
-			const center = _camPos;
-		
-			// Place the light some distance back along its direction
-			// so the shadow box encloses the area around the camera.
-			const distBack = this.shadowOrthoSize * 0.5; // tweak
-			_pos.copy(center).addScaledVector(_dir, -distBack);
-			light.position.copy(_pos);
-		
-			// Target = “look at” the center
-			target.position.copy(center);
-			target.updateMatrixWorld(true);
-		
-			light.updateMatrixWorld(true);
-		};
+		light.target = this._target;
 
-		this.__onInternalEnterFrame = updateTarget;
 		this.__setup = true;
-
-		// --- initial shadow config
-		this._applyShadowProps(light);
+		this.updateLight();
 	}
 
 	updateLight() {
@@ -126,37 +81,55 @@ export default class DirectionalLightManager {
 		this._applyShadowProps(light);
 	}
 
+	__onInternalEnterFrame() {
+		if (!this.__setup || !this.component.enabled)
+			return;
+
+		const cam = _host?.camera?.object3d;
+		if (!cam) return;
+
+		const light = this.d3dobject.object3d;
+		const target = this._target;
+		if (!light || !target) return;
+
+		cam.getWorldPosition(this._camPos);
+		light.getWorldDirection(this._dir).normalize();
+
+		const distBack = this.shadowOrthoSize * 0.5;
+		this._pos.copy(this._camPos).addScaledVector(this._dir, -distBack);
+		light.position.copy(this._pos);
+
+		target.position.copy(this._camPos);
+		target.updateMatrixWorld(true);
+		light.updateMatrixWorld(true);
+	}
+
 	_applyShadowProps(light) {
-		// read with fallbacks so this works even if you don't expose all props in the UI
-		const cast            = this.castShadow;
-		const mapSize         = Math.max(1, this.shadowMapSize|0);
-		const near            = Math.max(0.001, +this.shadowNear);
-		const far             = Math.max(near + 0.001, +this.shadowFar);
-		const orthoHalfExtent = Math.max(0.001, +this.shadowOrthoSize);
-		const bias            = +this.shadowBias;
-		const normalBias      = +this.shadowNormalBias;
-		const radius          = +this.shadowRadius;
+		const cast = this.castShadow;
+		const mapSize = Math.max(1, this.shadowMapSize | 0);
+		const near = Math.max(0.001, +this.shadowNear);
+		const far = Math.max(near + 0.001, +this.shadowFar);
+		const ortho = Math.max(0.001, +this.shadowOrthoSize);
+		const bias = +this.shadowBias;
+		const normalBias = +this.shadowNormalBias;
+		const radius = +this.shadowRadius;
 
 		light.castShadow = cast;
 
-		// map size (square)
-		light.shadow.mapSize.set(mapSize, mapSize);
+		const sh = light.shadow;
+		sh.mapSize.set(mapSize, mapSize);
 
-		// ortho shadow camera bounds
-		const cam = light.shadow.camera;
+		const cam = sh.camera;
 		cam.near = near;
-		cam.far  = far;
-		cam.left   = -orthoHalfExtent;
-		cam.right  =  orthoHalfExtent;
-		cam.top    =  orthoHalfExtent;
-		cam.bottom = -orthoHalfExtent;
+		cam.far = far;
+		cam.left = -ortho;
+		cam.right = ortho;
+		cam.top = ortho;
+		cam.bottom = -ortho;
 		cam.updateProjectionMatrix();
 
-		// acne/peter-panning
-		light.shadow.bias = bias;
-		light.shadow.normalBias = normalBias;
-
-		// PCF blur hint (some shadow types respect this)
-		if ('radius' in light.shadow) light.shadow.radius = radius;
+		sh.bias = bias;
+		sh.normalBias = normalBias;
+		if ('radius' in sh) sh.radius = radius;
 	}
 }

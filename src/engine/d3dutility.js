@@ -702,7 +702,7 @@ export function buildConvexWireGeometry(verts, puff = 1.005) {
 	geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 	return geom;
 }
-export function updateObject(methods, d3dobj) {
+/*export function updateObject(methods, d3dobj) {
 	if (!d3dobj) return;
 	
 	if (d3dobj.enabled) {
@@ -728,6 +728,24 @@ export function updateObject(methods, d3dobj) {
 	
 	for (let i = 0, n = children.length; i < n; i++) {
 		updateObject(methods, children[i]);
+	}
+}*/
+
+export function updateObjects(loopNames) {
+	const idx = window._loopFns;
+	if(!idx)
+		return;
+
+	if(!loopNames || loopNames.length < 1)
+		return;
+
+	for(const loopName of loopNames) {
+		const map = idx[loopName];
+		if(!map || map.size < 1)
+			continue;
+
+		for(const fn of map.values())
+			fn();
 	}
 }
 export function getHitNormalRotation(face, d3dobject) {

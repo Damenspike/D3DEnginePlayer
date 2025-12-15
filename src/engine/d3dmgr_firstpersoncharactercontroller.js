@@ -17,135 +17,6 @@ export default class FirstPersonCharacterControllerManager {
 		};
 		
 		this.d3dobject.addEventListener('reset', () => this.reset());
-
-		this._drive = () => {
-			if (!this.component.enabled)
-				return;
-			if (!_physics?.ready)
-				return;
-
-			const p = this.component.properties || {};
-			const moveSpeed       = Number(p.moveSpeed       ?? 3);
-			const jumpHeight      = Number(p.jumpHeight      ?? 6);
-			const gravityStrength = Number(p.gravityStrength ?? 1);
-
-			const dt = _time.delta;
-			if (!dt || dt <= 0) return;
-
-			// Ensure Rigidbody + KCC setup
-			const state = this.component._state;
-			const camera = this.camera ?? this.d3dobject.root.find(this.cameraName || 'camera');
-			this._ensureRigidbody(state);
-
-			const rbMgr = this.d3dobject.getComponent('Rigidbody');
-			const rb    = _physics.getBody?.(this.d3dobject);
-			if (!rbMgr || !rb) return;
-
-			this._ensureController(state);
-			if (!state.kcc || !state.collider) return;
-
-			const obj = this.d3dobject.object3d;
-
-			const axis = _input.getControllerAxis
-				? _input.getControllerAxis()
-				: { x: 0, y: 0 }; // fallback
-
-			// Get forward from current body rotation (camera manager should already have set this)
-			const worldForward = camera.forward;
-
-			// Horizontal forward (ignore pitch)
-			let fx = worldForward.x;
-			let fz = worldForward.z;
-			const fl = Math.hypot(fx, fz) || 1;
-			fx /= fl;
-			fz /= fl;
-
-			// Right vector on horizontal plane
-			const rx =  fz;
-			const rz = -fx;
-
-			// axis.y = forward/back, axis.x = strafe
-			let mx = fx * axis.y + rx * axis.x;
-			let mz = fz * axis.y + rz * axis.x;
-			
-			// Invert controls if requested
-			if (this.invertFwd)
-				mx = -mx;
-			if (this.invertHoriz)
-				mz = -mz;
-			
-			// Movement magnitude (0..1 normally)
-			const ml = Math.hypot(mx, mz);
-			
-			// Default movement
-			let dxMove = 0;
-			let dzMove = 0;
-			
-			if (ml > 1e-6) {
-				// direction (normalised)
-				const dirX = mx / ml;
-				const dirZ = mz / ml;
-			
-				// stick strength
-				const strength = Math.min(ml, 1);
-			
-				// scaled speed
-				const step = moveSpeed * dt * strength;
-			
-				dxMove = dirX * step;
-				dzMove = dirZ * step;
-			}
-
-			// ----- Gravity + Jump (same pattern as CharacterControllerManager) -----
-			const worldG = (_physics.world?.gravity?.y ?? -9.81); // usually negative
-			const g      = worldG * gravityStrength;
-
-			if (!state.air && _input.getKeyDown('Space')) {
-				const h  = Math.max(0, jumpHeight);
-				const v0 = Math.sqrt(Math.max(0, -2 * g * h));
-				state.vy = v0;
-				state.air = true;
-			} else {
-				state.vy += g * dt;
-			}
-
-			const dyMove = state.vy * dt;
-
-			// Desired motion this frame (includes vertical)
-			const desired = { x: dxMove, y: dyMove, z: dzMove };
-
-			const currentPos = rb.translation();
-			const mv = _physics.kccMove(
-				state.kcc,
-				state.collider,
-				desired,
-				rb
-			);
-
-			const nextPos = {
-				x: currentPos.x + mv.x,
-				y: currentPos.y + mv.y,
-				z: currentPos.z + mv.z
-			};
-
-			// Ground / ceiling detection via comparison with desired y
-			if (dyMove < 0 && Math.abs(mv.y - dyMove) > 0.001) {
-				state.air = false;
-				state.vy  = 0;
-			} else if (dyMove > 0 && Math.abs(mv.y - dyMove) > 0.001) {
-				state.vy = 0;
-			} else {
-				state.air = true;
-			}
-
-			// Use current body orientation (camera already drove rotation)
-			const q = obj.quaternion;
-			rbMgr.setTransform(
-				nextPos, 
-				{ x: q.x, y: q.y, z: q.z, w: q.w },
-				false
-			);
-		};
 	}
 
 	// ---------- Property helpers ----------
@@ -180,8 +51,6 @@ export default class FirstPersonCharacterControllerManager {
 	}
 
 	dispose() {
-		if (this.__onInternalEnterFrame === this._drive)
-			this.__onInternalEnterFrame = null;
 		this._inited = false;
 
 		const s = this.component._state;
@@ -195,7 +64,6 @@ export default class FirstPersonCharacterControllerManager {
 		if (!window._player)
 			return;
 
-		this.__onInternalEnterFrame = this._drive;
 		this._inited = true;
 	}
 	
@@ -213,6 +81,136 @@ export default class FirstPersonCharacterControllerManager {
 			const p = rb.translation();
 			state.kcc.setPosition({ x: p.x, y: p.y, z: p.z });
 		}
+	}
+	
+	__onInternalEnterFrame() {
+		if (!this.component.enabled)
+			return;
+		
+		if (!_physics?.ready)
+			return;
+		
+		const p = this.component.properties || {};
+		const moveSpeed       = Number(p.moveSpeed       ?? 3);
+		const jumpHeight      = Number(p.jumpHeight      ?? 6);
+		const gravityStrength = Number(p.gravityStrength ?? 1);
+		
+		const dt = _time.delta;
+		if (!dt || dt <= 0) return;
+		
+		// Ensure Rigidbody + KCC setup
+		const state = this.component._state;
+		const camera = this.camera ?? this.d3dobject.root.find(this.cameraName || 'camera');
+		this._ensureRigidbody(state);
+		
+		const rbMgr = this.d3dobject.getComponent('Rigidbody');
+		const rb    = _physics.getBody?.(this.d3dobject);
+		if (!rbMgr || !rb) return;
+		
+		this._ensureController(state);
+		if (!state.kcc || !state.collider) return;
+		
+		const obj = this.d3dobject.object3d;
+		
+		const axis = _input.getControllerAxis
+			? _input.getControllerAxis()
+			: { x: 0, y: 0 }; // fallback
+		
+		// Get forward from current body rotation (camera manager should already have set this)
+		const worldForward = camera.forward;
+		
+		// Horizontal forward (ignore pitch)
+		let fx = worldForward.x;
+		let fz = worldForward.z;
+		const fl = Math.hypot(fx, fz) || 1;
+		fx /= fl;
+		fz /= fl;
+		
+		// Right vector on horizontal plane
+		const rx =  fz;
+		const rz = -fx;
+		
+		// axis.y = forward/back, axis.x = strafe
+		let mx = fx * axis.y + rx * axis.x;
+		let mz = fz * axis.y + rz * axis.x;
+		
+		// Invert controls if requested
+		if (this.invertFwd)
+			mx = -mx;
+		if (this.invertHoriz)
+			mz = -mz;
+		
+		// Movement magnitude (0..1 normally)
+		const ml = Math.hypot(mx, mz);
+		
+		// Default movement
+		let dxMove = 0;
+		let dzMove = 0;
+		
+		if (ml > 1e-6) {
+			// direction (normalised)
+			const dirX = mx / ml;
+			const dirZ = mz / ml;
+		
+			// stick strength
+			const strength = Math.min(ml, 1);
+		
+			// scaled speed
+			const step = moveSpeed * dt * strength;
+		
+			dxMove = dirX * step;
+			dzMove = dirZ * step;
+		}
+		
+		// ----- Gravity + Jump (same pattern as CharacterControllerManager) -----
+		const worldG = (_physics.world?.gravity?.y ?? -9.81); // usually negative
+		const g      = worldG * gravityStrength;
+		
+		if (!state.air && _input.getKeyDown('Space')) {
+			const h  = Math.max(0, jumpHeight);
+			const v0 = Math.sqrt(Math.max(0, -2 * g * h));
+			state.vy = v0;
+			state.air = true;
+		} else {
+			state.vy += g * dt;
+		}
+		
+		const dyMove = state.vy * dt;
+		
+		// Desired motion this frame (includes vertical)
+		const desired = { x: dxMove, y: dyMove, z: dzMove };
+		
+		const currentPos = rb.translation();
+		const mv = _physics.kccMove(
+			state.kcc,
+			state.collider,
+			desired,
+			rb
+		);
+		
+		const nextPos = {
+			x: currentPos.x + mv.x,
+			y: currentPos.y + mv.y,
+			z: currentPos.z + mv.z
+		};
+		
+		// Ground / ceiling detection via comparison with desired y
+		if (dyMove < 0 && Math.abs(mv.y - dyMove) > 0.001) {
+			state.air = false;
+			state.vy  = 0;
+		} else if (dyMove > 0 && Math.abs(mv.y - dyMove) > 0.001) {
+			state.vy = 0;
+		} else {
+			state.air = true;
+		}
+		
+		// Use current body orientation (camera already drove rotation)
+		const q = obj.quaternion;
+		rbMgr.setTransform(
+			nextPos, 
+			{ x: q.x, y: q.y, z: q.z, w: q.w },
+			false
+		);
 	}
 
 	// ---------- Internal helpers ----------

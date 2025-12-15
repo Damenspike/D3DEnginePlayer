@@ -39,10 +39,16 @@ export default class RigidbodyManager {
 
 	updateComponent() {
 		if (!this.component.enabled) {
-			this.__onInternalEnterFrame = null;
+			if (this.component.bodySetup) {
+				this._teardownBody();
+				this.component.bodySetup = false;
+				this.component._cache = null;
+			}
+			
 			this._clearHelperGroup();
 			return;
 		}
+
 
 		const inEditor = !!window._editor && !window._player;
 		const inPlay   = !!window._player;
@@ -51,32 +57,6 @@ export default class RigidbodyManager {
 			// No bodies in editor
 			if (this.component._rb) this._teardownBody();
 			this.component.bodySetup = false;
-
-			this.__onInternalEnterFrame = () => {
-				// Only draw when selected
-				const selected = this._isSelected();
-				if (!selected) {
-					if (this.__rbHelper) this.__rbHelper.visible = false;
-					return;
-				}
-			
-				// --- FAST PATH: fixed + trimesh → skip expensive gizmo work ---
-				const props     = this.component.properties || {};
-				const kind      = props.kind  ?? 'dynamic';
-				const shapeType = props.shape ?? 'trimesh';
-			
-				// "Fixed mesh" mode: use the full mesh as collider, no gizmo
-				if (kind === 'fixed' && shapeType === 'trimesh') {
-					// make sure helper is removed/hidden, but don't touch geometry
-					this._clearHelperGroup();
-					return;
-				}
-				// --------------------------------------------------------------
-			
-				const cur = this._readComponent();
-				this._updateGizmo(cur.shape, cur.shapeType, cur.kind);
-			};
-
 			return;
 		}
 		
@@ -96,13 +76,6 @@ export default class RigidbodyManager {
 			this._setupBody(next);
 			this.component._cache = next;
 		}
-		
-		/*this.__onInternalPhysicsUpdate = () => {
-			this._sampleMotion();
-		};*/
-		this.__onInternalEnterFrame = () => {
-			this._sampleMotion();
-		};
 	}
 
 	dispose() {
@@ -111,6 +84,36 @@ export default class RigidbodyManager {
 		this.component._cache = null;
 		this._clearHelperGroup();
 	}
+	
+	__onInternalEnterFrame() {
+		if(window._editor) {
+			// Only draw when selected
+			const selected = this._isSelected();
+			if (!selected) {
+				if (this.__rbHelper) this.__rbHelper.visible = false;
+				return;
+			}
+			
+			// --- FAST PATH: fixed + trimesh → skip expensive gizmo work ---
+			const props     = this.component.properties || {};
+			const kind      = props.kind  ?? 'dynamic';
+			const shapeType = props.shape ?? 'trimesh';
+			
+			// "Fixed mesh" mode: use the full mesh as collider, no gizmo
+			if (kind === 'fixed' && shapeType === 'trimesh') {
+				// make sure helper is removed/hidden, but don't touch geometry
+				this._clearHelperGroup();
+				return;
+			}
+			// --------------------------------------------------------------
+			
+			const cur = this._readComponent();
+			this._updateGizmo(cur.shape, cur.shapeType, cur.kind);
+		}else{
+			if(this.kind !== 'fixed')
+				this._sampleMotion();
+		}
+	};
 
 	/* =========================================================
 	 *  PROPERTIES (schema-backed passthroughs)
@@ -317,8 +320,25 @@ export default class RigidbodyManager {
 			shape:       opts.shape,
 			friction:    this._clamp01(opts.friction),
 			restitution: this._clamp01(opts.restitution),
-			density:     Math.max(1e-6, opts.density)
+			density:     Math.max(1e-6, opts.density),
+			
+			// let physics batch fixed unless you explicitly disable it
+			// batchStatic: true
 		});
+	
+		// Batched fixed: rb is null, but collider exists on the static root.
+		// That's "set up" for our purposes.
+		if (!rb) {
+			this.component._rb = null;
+	
+			this._hadPrevSample = false;
+			this._cachedVelocity.set(0,0,0);
+			this._cachedAngularVelocity.set(0,0,0);
+			this._cachedSpeed = 0;
+	
+			return;
+		}
+	
 		rb.setLinearDamping(Math.max(0, Number(opts.drag) || 0));
 		rb.setAngularDamping(Math.max(0, Number(opts.angularDrag) || 0));
 		this.component._rb = rb;
@@ -337,10 +357,12 @@ export default class RigidbodyManager {
 	}
 
 	_teardownBody() {
-		if (!this.component._rb) return;
-		_physics.remove(this.d3dobject);
+		// If we ever created physics for this component, remove it even if rb is null (batched fixed).
+		if (_physics && _physics.ready)
+			_physics.remove(this.d3dobject);
+	
 		this.component._rb = null;
-
+	
 		// zero-out caches so UI doesn't show stale values
 		this._cachedVelocity.set(0,0,0);
 		this._cachedAngularVelocity.set(0,0,0);

@@ -239,15 +239,19 @@ function createCore(DSyntax, DRuntime) {
 	  });
 	};
 
-	const pushExprTokens = (code) => {
-	  if (!code.trim()) return;
-	  pushPunc('(');
-	  const inner = lex(code);
-	  for (const t of inner) {
-		if (t.type === 'eof') continue;
-		tokens.push(t);
-	  }
-	  pushPunc(')');
+	const pushExprTokens = (code, baseLine, baseCol) => {
+		if(!code.trim()) return;
+		pushPunc('(');
+	
+		const inner = lex(code);
+		for(const t of inner) {
+			if(t.type === 'eof') continue;
+			t.line = baseLine + (t.line - 1);
+			t.col  = (t.line === 1) ? (baseCol + (t.col - 1)) : t.col;
+			tokens.push(t);
+		}
+	
+		pushPunc(')');
 	};
 
 	pushPunc('(');
@@ -383,867 +387,870 @@ function createCore(DSyntax, DRuntime) {
   }
 
   function preflight(code) {
-	const tokens = lex(code);
-	let hasAwait = false;
-	let hasAsync = false;
-
-	for (const t of tokens) {
-	  if ((t.type === 'ident' || t.type === 'kw') && FORBIDDEN_NAMES.has(t.value)) {
-		if (t.value === 'new')     throw DSyntax("DamenScript: 'new' is not supported; use a factory", t.line, t.col);
-		if (t.value === 'import')  throw DSyntax("DamenScript: 'import' is not supported", t.line, t.col);
-		throw DSyntax(`DamenScript: forbidden identifier: ${t.value}`, t.line, t.col);
+	  const tokens = lex(code);
+	  let hasAwait = false;
+	  let hasAsync = false;
+  
+	  for(const t of tokens) {
+		  if((t.type === 'ident' || t.type === 'kw') && FORBIDDEN_NAMES.has(t.value)) {
+			  if(t.value === 'new')     throw DSyntax("DamenScript: 'new' is not supported; use a factory", t.line, t.col);
+			  if(t.value === 'import')  throw DSyntax("DamenScript: 'import' is not supported", t.line, t.col);
+			  throw DSyntax(`DamenScript: forbidden identifier: ${t.value}`, t.line, t.col);
+		  }
+		  if(t.type === 'kw' && t.value === 'await') hasAwait = true;
+		  if(t.type === 'kw' && t.value === 'async') hasAsync = true;
 	  }
-	  if (t.type === 'kw' && t.value === 'await') hasAwait = true;
-	  if (t.type === 'kw' && t.value === 'async') hasAsync = true;
-	}
-	return { tokens, hasAwait, hasAsync };
+	  return { tokens, hasAwait, hasAsync };
   }
 
   /* ========================= PARSER ========================= */
 
-  function parse(code) {
-	const tokens = lex(code);
-	let pos = 0;
-
-	const peek = () => tokens[pos];
-	const next = () => tokens[pos++];
-	const match = (type, value) => {
-	  const t = peek();
-	  if (t.type === type && (value === undefined || t.value === value)) {
-		next(); return true;
+  function parseTokens(tokens) {
+	  let pos = 0;
+	  
+	  const peek = () => tokens[pos];
+	  const next = () => tokens[pos++];
+	  const match = (type, value) => {
+		  const t = peek();
+		  if(t.type === type && (value === undefined || t.value === value)) {
+			  next();
+			  return true;
+		  }
+		  return false;
+	  };
+	  const expect = (type, value) => {
+		  const t = next();
+		  if(!t || t.type !== type || (value !== undefined && t.value !== value)) {
+			  throw DSyntax(`Expected ${value ?? type} but got ${t?.value ?? t?.type}`, t?.line ?? 0, t?.col ?? 0);
+		  }
+		  return t;
+	  };
+  
+	  function Program() {
+		  const body = [];
+		  while(peek().type !== 'eof') body.push(Statement());
+		  return { type: 'Program', body };
 	  }
-	  return false;
-	};
-	const expect = (type, value) => {
-	  const t = next();
-	  if (!t || t.type !== type || (value !== undefined && t.value !== value)) {
-		throw DSyntax(`Expected ${value ?? type} but got ${t?.value ?? t?.type}`, t?.line ?? 0, t?.col ?? 0);
-	  }
-	  return t;
-	};
-
-	function Program() {
-	  const body = [];
-	  while (peek().type !== 'eof') body.push(Statement());
-	  return { type: 'Program', body };
-	}
-
-	function Statement() {
-	  const t = peek();
-	  if (t.type === 'kw' && t.value === 'function') return parsePossiblyAsyncFunction(true);
-	  if (t.type === 'kw' && t.value === 'async' &&
-		  tokens[pos+1] && tokens[pos+1].type === 'kw' && tokens[pos+1].value === 'function') {
-		return parsePossiblyAsyncFunction(true);
-	  }
-	  if (t.type === 'kw' && (t.value === 'let' || t.value === 'const' || t.value === 'var')) return VarDecl();
-	  if (t.type === 'kw' && t.value === 'if') return IfStmt();
-	  if (t.type === 'kw' && t.value === 'while') return WhileStmt();
-	  if (t.type === 'kw' && t.value === 'for') return ForStmt();
-	  if (t.type === 'kw' && t.value === 'try') return TryStmt();
-	  if (t.type === 'kw' && t.value === 'throw') return ThrowStmt();
-	  if (t.type === 'kw' && t.value === 'return') {
-		next();
-		const hasExpr = !(peek().type === 'punc' && peek().value === ';');
-		const argument = hasExpr ? Expression() : null;
+  
+	  function Statement() {
+		const t = peek();
+		if (t.type === 'kw' && t.value === 'function') return parsePossiblyAsyncFunction(true);
+		if (t.type === 'kw' && t.value === 'async' &&
+			tokens[pos+1] && tokens[pos+1].type === 'kw' && tokens[pos+1].value === 'function') {
+		  return parsePossiblyAsyncFunction(true);
+		}
+		if (t.type === 'kw' && (t.value === 'let' || t.value === 'const' || t.value === 'var')) return VarDecl();
+		if (t.type === 'kw' && t.value === 'if') return IfStmt();
+		if (t.type === 'kw' && t.value === 'while') return WhileStmt();
+		if (t.type === 'kw' && t.value === 'for') return ForStmt();
+		if (t.type === 'kw' && t.value === 'try') return TryStmt();
+		if (t.type === 'kw' && t.value === 'throw') return ThrowStmt();
+		if (t.type === 'kw' && t.value === 'return') {
+		  next();
+		  const hasExpr = !(peek().type === 'punc' && peek().value === ';');
+		  const argument = hasExpr ? Expression() : null;
+		  match('punc',';');
+		  return { type:'ReturnStatement', argument };
+		}
+		if (t.type === 'punc' && t.value === '{') return Block();
+		const expr = Expression();
 		match('punc',';');
-		return { type:'ReturnStatement', argument };
+		return { type:'ExpressionStatement', expression:expr };
 	  }
-	  if (t.type === 'punc' && t.value === '{') return Block();
-	  const expr = Expression();
-	  match('punc',';');
-	  return { type:'ExpressionStatement', expression:expr };
-	}
-
-	function Block() {
-	  expect('punc','{');
-	  const body = [];
-	  while (!(peek().type === 'punc' && peek().value === '}')) body.push(Statement());
-	  expect('punc','}');
-	  return { type:'BlockStatement', body };
-	}
-
-	function VarDecl() {
-	  const kind = next().value;
-	  const declarations = [];
-	  do {
-		let idNode;
-		if (peek().type === 'punc' && (peek().value === '{' || peek().value === '[')) {
-		  idNode = BindingPattern();
-		} else {
-		  const idTok = expect('ident');
-		  idNode = { type:'Identifier', name:idTok.value, line:idTok.line, col:idTok.col };
-		}
-		let init = null;
-		if (match('op','=')) init = Expression();
-		declarations.push({ type:'VariableDeclarator', id:idNode, init });
-	  } while (match('punc',','));
-	  match('punc',';');
-	  return { type:'VariableDeclaration', kind, declarations };
-	}
-
-	function IfStmt() {
-	  expect('kw','if');
-	  expect('punc','(');
-	  const test = Expression();
-	  expect('punc',')');
-	  const consequent = Statement();
-	  let alternate = null;
-	  if (match('kw','else')) alternate = Statement();
-	  return { type:'IfStatement', test, consequent, alternate };
-	}
-
-	function WhileStmt() {
-	  expect('kw','while');
-	  expect('punc','(');
-	  const test = Expression();
-	  expect('punc',')');
-	  const body = Statement();
-	  return { type:'WhileStatement', test, body };
-	}
-
-	function ForStmt() {
-	  expect('kw','for');
-	  expect('punc','(');
-
-	  let init = null;
-	  let test = null;
-	  let update = null;
-	  let body = null;
-	  const savePos = pos;
-
-	  if (peek().type === 'kw' && (peek().value === 'let' || peek().value === 'const' || peek().value === 'var')) {
-		const kind = next().value;
-		if (peek().type === 'ident') {
-		  const idTok = next();
-		  const id = { type:'Identifier', name:idTok.value, line:idTok.line, col:idTok.col };
-
-		  if (peek().type === 'kw' && peek().value === 'in') {
-			next();
-			const right = Expression();
-			expect('punc',')');
-			body = Statement();
-			return { type:'ForInStatement', left:{ kind, id }, right, body };
-		  }
-
-		  if (peek().type === 'kw' && peek().value === 'of') {
-			next();
-			const right = Expression();
-			expect('punc',')');
-			body = Statement();
-			return { type:'ForOfStatement', left:{ kind, id }, right, body };
-		  }
-		}
-		pos = savePos;
-		init = VarDecl();
-	  } else {
-		if (peek().type === 'ident') {
-		  const idTok = next();
-		  const id = { type:'Identifier', name:idTok.value, line:idTok.line, col:idTok.col };
-
-		  if (peek().type === 'kw' && (peek().value === 'in' || peek().value === 'of')) {
-			const mode = next().value;
-			const right = Expression();
-			expect('punc',')');
-			body = Statement();
-			return {
-			  type: mode === 'in' ? 'ForInStatement' : 'ForOfStatement',
-			  left: id,
-			  right,
-			  body
-			};
-		  }
-		  pos--;
-		}
-
-		if (!match('punc',';')) {
-		  init = Expression();
-		  expect('punc',';');
-		}
-	  }
-
-	  if (!match('punc',';')) {
-		test = Expression();
-		expect('punc',';');
-	  }
-
-	  if (!match('punc',')')) {
-		update = Expression();
-		expect('punc',')');
-	  }
-
-	  body = Statement();
-	  return { type:'ForStatement', init, test, update, body };
-	}
-
-	function TryStmt() {
-	  expect('kw','try');
-	  const block = Block();
-	  let handler = null;
-	  let finalizer = null;
-
-	  if (match('kw','catch')) {
-		let param = null;
-		if (match('punc','(')) {
-		  const idTok = expect('ident');
-		  param = { type:'Identifier', name:idTok.value, line:idTok.line, col:idTok.col };
-		  expect('punc',')');
-		}
-		const body = Block();
-		handler = { type:'CatchClause', param, body };
-	  }
-
-	  if (match('kw','finally')) {
-		finalizer = Block();
-	  }
-
-	  if (!handler && !finalizer) {
-		const t = peek();
-		throw DSyntax('Missing catch or finally after try', t.line, t.col);
-	  }
-
-	  return { type:'TryStatement', block, handler, finalizer };
-	}
-
-	function ThrowStmt() {
-	  expect('kw','throw');
-	  const argument = Expression();
-	  match('punc',';');
-	  return { type:'ThrowStatement', argument };
-	}
-
-	function parseParam() {
-	  let pattern;
-	  if (peek().type === 'punc' && (peek().value === '{' || peek().value === '[')) {
-		pattern = BindingPattern();
-	  } else if (peek().type === 'ident') {
-		pattern = BindingPattern();
-	  } else {
-		const t = peek();
-		throw DSyntax(`Unexpected token in parameter list: ${t.value}`, t.line, t.col);
-	  }
-
-	  let def = null;
-	  if (match('op','=')) {
-		def = Expression();
-	  }
-
-	  return { type:'Param', pattern, default: def };
-	}
-
-	function parseParamList() {
-	  const params = [];
-	  if (!(peek().type === 'punc' && peek().value === ')')) {
-		do {
-		  params.push(parseParam());
-		} while (match('punc',','));
-	  }
-	  expect('punc',')');
-	  return params;
-	}
-
-	function parsePossiblyAsyncFunction(isDeclaration) {
-	  let isAsync = false;
-	  if (peek().type === 'kw' && peek().value === 'async') {
-		next(); isAsync = true;
-	  }
-	  expect('kw','function');
-	  let id = null;
-	  if (isDeclaration) {
-		const nameTok = expect('ident');
-		id = { type:'Identifier', name:nameTok.value, line:nameTok.line, col:nameTok.col };
-	  } else if (peek().type === 'ident') {
-		const nameTok = next();
-		id = { type:'Identifier', name:nameTok.value, line:nameTok.line, col:nameTok.col };
-	  }
-	  expect('punc','(');
-	  const params = parseParamList();
-	  expect('punc','{');
-	  const body = [];
-	  while (!(peek().type === 'punc' && peek().value === '}')) body.push(Statement());
-	  expect('punc','}');
-	  return isDeclaration
-		? { type:'FunctionDeclaration', id, params, body:{type:'BlockStatement', body}, async:isAsync }
-		: { type:'FunctionExpression', id, params, body:{type:'BlockStatement', body}, async:isAsync };
-	}
-
-	function Expression() { return Assignment(); }
-
-	function Assignment() {
-	  const left = Conditional();
-	  const t = peek();
-	  if (t.type === 'op' && ['=','+=','-=','*=','/=','%='].includes(t.value)) {
-		next();
-		const right = Assignment();
-		if (t.value !== '=') {
-		  if (!(left.type === 'Identifier' || left.type === 'MemberExpression'))
-			throw DSyntax('Invalid assignment target for compound operator', t.line, t.col);
-		  return { type:'AssignmentExpression', operator:t.value, left, right };
-		}
-		if (left.type === 'Identifier' || left.type === 'MemberExpression') {
-		  return { type:'AssignmentExpression', operator:'=', left, right };
-		}
-		if (left.type === 'ObjectExpression' || left.type === 'ArrayExpression') {
-		  const pattern = ExpressionToBindingPattern(left);
-		  return { type:'DestructuringAssignment', pattern, right };
-		}
-		throw DSyntax('Invalid assignment target', t.line, t.col);
-	  }
-	  return left;
-	}
-
-	function Conditional() {
-	  let test = Nullish();
-	  if (match('punc','?')) {
-		const consequent = Expression();
-		expect('punc',':');
-		const alternate = Conditional();
-		return { type:'ConditionalExpression', test, consequent, alternate };
-	  }
-	  return test;
-	}
-
-	function Nullish() {
-	  let n = LogicalOr();
-	  while (true) {
-		const t = peek();
-		if (t.type === 'op' && t.value === '??') {
-		  next();
-		  n = { type:'NullishCoalesceExpression', left:n, right:LogicalOr() };
-		  continue;
-		}
-		break;
-	  }
-	  return n;
-	}
-
-	function LogicalOr() {
-	  let n = LogicalAnd();
-	  while (match('op','||')) n = { type:'LogicalExpression', operator:'||', left:n, right:LogicalAnd() };
-	  return n;
-	}
-
-	function LogicalAnd() {
-	  let n = Equality();
-	  while (match('op','&&')) n = { type:'LogicalExpression', operator:'&&', left:n, right:Equality() };
-	  return n;
-	}
-
-	function Equality() {
-	  let n = Relational();
-	  while (true) {
-		const t = peek();
-		if (t.type === 'op' && ['==','!=','===','!=='].includes(t.value)) {
-		  next();
-		  n = { type:'BinaryExpression', operator:t.value, left:n, right:Relational() };
-		} else break;
-	  }
-	  return n;
-	}
-
-	function Relational() {
-	  let n = Additive();
-	  while (true) {
-		const t = peek();
-		if (t.type === 'op' && ['<','<=','>','>='].includes(t.value)) {
-		  next();
-		  n = { type:'BinaryExpression', operator:t.value, left:n, right:Additive() };
-		} else break;
-	  }
-	  return n;
-	}
-
-	function Additive() {
-	  let n = Multiplicative();
-	  while (true) {
-		const t = peek();
-		if (t.type === 'op' && ['+','-'].includes(t.value)) {
-		  next();
-		  n = { type:'BinaryExpression', operator:t.value, left:n, right:Multiplicative() };
-		} else break;
-	  }
-	  return n;
-	}
-
-	function Multiplicative() {
-	  let n = Unary();
-	  while (true) {
-		const t = peek();
-		if (t.type === 'op' && ['*','/','%'].includes(t.value)) {
-		  next();
-		  n = { type:'BinaryExpression', operator:t.value, left:n, right:Unary() };
-		} else break;
-	  }
-	  return n;
-	}
-
-	function Unary() {
-	  const t = peek();
-
-	  if (t.type === 'kw' && t.value === 'await') {
-		next();
-		const arg = Unary();
-		return { type:'AwaitExpression', argument: arg };
-	  }
-
-	  if (t.type === 'kw' && t.value === 'delete') {
-		next();
-		const arg = Unary();
-		return { type:'UnaryExpression', operator:'delete', argument: arg };
-	  }
-
-	  if (t.type === 'op' && (t.value === '!' || t.value === '+' || t.value === '-')) {
-		next();
-		return { type:'UnaryExpression', operator:t.value, argument: Unary() };
-	  }
-
-	  if (t.type === 'op' && (t.value === '++' || t.value === '--')) {
-		next();
-		const arg = Postfix();
-		if (!(arg.type === 'Identifier' || arg.type === 'MemberExpression'))
-		  throw DSyntax('Invalid update target', t.line, t.col);
-		return { type:'UpdateExpression', operator:t.value, argument:arg, prefix:true };
-	  }
-
-	  return Postfix();
-	}
-
-	function Postfix() {
-	  let node = Primary();
-
-	  if (peek().type === 'op' && (peek().value === '++' || peek().value === '--')) {
-		const t = next();
-		if (!(node.type === 'Identifier' || node.type === 'MemberExpression'))
-		  throw DSyntax('Invalid update target', t.line, t.col);
-		node = { type:'UpdateExpression', operator:t.value, argument:node, prefix:false };
-	  }
-
-	  while (true) {
-		if (peek().type === 'punc' && peek().value === '?' &&
-			tokens[pos+1]?.type === 'punc' && tokens[pos+1]?.value === '.' &&
-			tokens[pos+2]?.type === 'ident') {
-		  next(); next();
-		  const id = expect('ident');
-		  node = {
-			type:'MemberExpression',
-			object: node,
-			property: { type:'Identifier', name:id.value, line:id.line, col:id.col },
-			computed:false,
-			optional:true
-		  };
-		  continue;
-		}
-
-		if (peek().type === 'punc' && peek().value === '?' &&
-			tokens[pos+1]?.type === 'punc' && tokens[pos+1]?.value === '.' &&
-			tokens[pos+2]?.type === 'punc' && tokens[pos+2]?.value === '[') {
-		  next(); next();
-		  expect('punc','[');
-		  const prop = Expression();
-		  expect('punc',']');
-		  node = {
-			type:'MemberExpression',
-			object: node,
-			property: prop,
-			computed:true,
-			optional:true
-		  };
-		  continue;
-		}
-
-		if (peek().type === 'punc' && peek().value === '?' &&
-			tokens[pos+1]?.type === 'punc' && tokens[pos+1]?.value === '.' &&
-			tokens[pos+2]?.type === 'punc' && tokens[pos+2]?.value === '(') {
-		  next(); next();
-		  expect('punc','(');
-		  const args = [];
-		  if (!(peek().type === 'punc' && peek().value === ')')) {
-			do {
-			  if (match('spread','...')) args.push({ type:'SpreadElement', argument:Expression() });
-			  else args.push(Expression());
-			} while (match('punc',','));
-		  }
-		  expect('punc',')');
-		  node = { type:'CallExpression', callee:node, arguments:args, optional:true };
-		  continue;
-		}
-
-		if (match('punc','.')) {
-		  const id = expect('ident');
-		  node = {
-			type:'MemberExpression',
-			object:node,
-			property:{ type:'Identifier', name:id.value, line:id.line, col:id.col },
-			computed:false
-		  };
-		  continue;
-		}
-
-		if (match('punc','[')) {
-		  const prop = Expression();
-		  expect('punc',']');
-		  node = { type:'MemberExpression', object:node, property:prop, computed:true };
-		  continue;
-		}
-
-		if (match('punc','(')) {
-		  const args = [];
-		  if (!(peek().type === 'punc' && peek().value === ')')) {
-			do {
-			  if (match('spread','...')) args.push({ type:'SpreadElement', argument:Expression() });
-			  else args.push(Expression());
-			} while (match('punc',','));
-		  }
-		  expect('punc',')');
-		  node = { type:'CallExpression', callee:node, arguments:args };
-		  continue;
-		}
-
-		break;
-	  }
-	  return node;
-	}
-
-	function ArrowFromParams(params, isAsync = false) {
-	  expect('op','=>');
-	  if (match('punc','{')) {
+  
+	  function Block() {
+		expect('punc','{');
 		const body = [];
 		while (!(peek().type === 'punc' && peek().value === '}')) body.push(Statement());
 		expect('punc','}');
-		return {
-		  type:'ArrowFunctionExpression',
-		  params,
-		  body:{ type:'BlockStatement', body },
-		  expression:false,
-		  async:isAsync
-		};
-	  } else {
-		const bodyExpr = Expression();
-		return {
-		  type:'ArrowFunctionExpression',
-		  params,
-		  body:bodyExpr,
-		  expression:true,
-		  async:isAsync
-		};
+		return { type:'BlockStatement', body };
 	  }
-	}
-
-	function Primary() {
-	  const t = peek();
-
-	  if (t.type === 'num') { next(); return { type:'Literal', value:t.value }; }
-	  if (t.type === 'str') { next(); return { type:'Literal', value:t.value }; }
-	  if (t.type === 'kw' && t.value === 'true')  { next(); return { type:'Literal', value:true }; }
-	  if (t.type === 'kw' && t.value === 'false') { next(); return { type:'Literal', value:false }; }
-	  if (t.type === 'kw' && t.value === 'null')  { next(); return { type:'Literal', value:null }; }
-	  if (t.type === 'kw' && t.value === 'undefined') { next(); return { type:'Literal', value:undefined }; }
-	  if (t.type === 'kw' && t.value === 'NaN') { next(); return { type:'Literal', value:NaN }; }
-	  if (t.type === 'kw' && t.value === 'Infinity') { next(); return { type:'Literal', value:Infinity }; }
-
-	  if (t.type === 'kw' && t.value === 'async' &&
-		  tokens[pos+1]?.type === 'ident' &&
-		  tokens[pos+2]?.type === 'op' && tokens[pos+2]?.value === '=>') {
-		next();
-		const id = next();
-		const pattern = { type:'Identifier', name:id.value, line:id.line, col:id.col };
-		return ArrowFromParams([{ type:'Param', pattern, default:null }], true);
+  
+	  function VarDecl() {
+		const kind = next().value;
+		const declarations = [];
+		do {
+		  let idNode;
+		  if (peek().type === 'punc' && (peek().value === '{' || peek().value === '[')) {
+			idNode = BindingPattern();
+		  } else {
+			const idTok = expect('ident');
+			idNode = { type:'Identifier', name:idTok.value, line:idTok.line, col:idTok.col };
+		  }
+		  let init = null;
+		  if (match('op','=')) init = Expression();
+		  declarations.push({ type:'VariableDeclarator', id:idNode, init });
+		} while (match('punc',','));
+		match('punc',';');
+		return { type:'VariableDeclaration', kind, declarations };
 	  }
-
-	  if (t.type === 'kw' && t.value === 'async' &&
-		  tokens[pos+1]?.type === 'punc' && tokens[pos+1]?.value === '(') {
-		next();
+  
+	  function IfStmt() {
+		expect('kw','if');
 		expect('punc','(');
-		const params = parseParamList();
-		return ArrowFromParams(params, true);
-	  }
-
-	  if (t.type === 'kw' && t.value === 'async' &&
-		  tokens[pos+1]?.type === 'kw' && tokens[pos+1]?.value === 'function') {
-		return parsePossiblyAsyncFunction(false);
-	  }
-
-	  if (t.type === 'kw' && t.value === 'function') return parsePossiblyAsyncFunction(false);
-
-	  if (t.type === 'ident' &&
-		  tokens[pos+1]?.type === 'op' && tokens[pos+1]?.value === '=>') {
-		const id = next();
-		const pattern = { type:'Identifier', name:id.value, line:id.line, col:id.col };
-		return ArrowFromParams([{ type:'Param', pattern, default:null }]);
-	  }
-
-	  if (t.type === 'ident') {
-		const tok = next();
-		return { type:'Identifier', name:tok.value, line:tok.line, col:tok.col };
-	  }
-
-	  if (match('punc','(')) {
-		if (peek().type === 'punc' && peek().value === ')' &&
-			tokens[pos+1]?.type === 'op' && tokens[pos+1]?.value === '=>') {
-		  expect('punc',')');
-		  return ArrowFromParams([]);
-		}
-
-		const save = pos;
-		try {
-		  const tmpParams = [];
-		  if (!(peek().type === 'punc' && peek().value === ')')) {
-			do {
-			  tmpParams.push(parseParam());
-			} while (match('punc',','));
-		  }
-		  if (match('punc',')') && peek().type === 'op' && peek().value === '=>') {
-			return ArrowFromParams(tmpParams);
-		  }
-		} catch (_) { /* fall through */ }
-		pos = save;
-		const e = Expression();
+		const test = Expression();
 		expect('punc',')');
-		return e;
+		const consequent = Statement();
+		let alternate = null;
+		if (match('kw','else')) alternate = Statement();
+		return { type:'IfStatement', test, consequent, alternate };
 	  }
-
-	  if (match('punc','[')) {
-		const elements = [];
-		if (!(peek().type === 'punc' && peek().value === ']')) {
-		  do {
-			if (match('spread','...')) {
-			  elements.push({ type:'SpreadElement', argument:Expression() });
-			} else {
-			  elements.push(Expression());
+  
+	  function WhileStmt() {
+		expect('kw','while');
+		expect('punc','(');
+		const test = Expression();
+		expect('punc',')');
+		const body = Statement();
+		return { type:'WhileStatement', test, body };
+	  }
+  
+	  function ForStmt() {
+		expect('kw','for');
+		expect('punc','(');
+  
+		let init = null;
+		let test = null;
+		let update = null;
+		let body = null;
+		const savePos = pos;
+  
+		if (peek().type === 'kw' && (peek().value === 'let' || peek().value === 'const' || peek().value === 'var')) {
+		  const kind = next().value;
+		  if (peek().type === 'ident') {
+			const idTok = next();
+			const id = { type:'Identifier', name:idTok.value, line:idTok.line, col:idTok.col };
+  
+			if (peek().type === 'kw' && peek().value === 'in') {
+			  next();
+			  const right = Expression();
+			  expect('punc',')');
+			  body = Statement();
+			  return { type:'ForInStatement', left:{ kind, id }, right, body };
 			}
+  
+			if (peek().type === 'kw' && peek().value === 'of') {
+			  next();
+			  const right = Expression();
+			  expect('punc',')');
+			  body = Statement();
+			  return { type:'ForOfStatement', left:{ kind, id }, right, body };
+			}
+		  }
+		  pos = savePos;
+		  init = VarDecl();
+		} else {
+		  if (peek().type === 'ident') {
+			const idTok = next();
+			const id = { type:'Identifier', name:idTok.value, line:idTok.line, col:idTok.col };
+  
+			if (peek().type === 'kw' && (peek().value === 'in' || peek().value === 'of')) {
+			  const mode = next().value;
+			  const right = Expression();
+			  expect('punc',')');
+			  body = Statement();
+			  return {
+				type: mode === 'in' ? 'ForInStatement' : 'ForOfStatement',
+				left: id,
+				right,
+				body
+			  };
+			}
+			pos--;
+		  }
+  
+		  if (!match('punc',';')) {
+			init = Expression();
+			expect('punc',';');
+		  }
+		}
+  
+		if (!match('punc',';')) {
+		  test = Expression();
+		  expect('punc',';');
+		}
+  
+		if (!match('punc',')')) {
+		  update = Expression();
+		  expect('punc',')');
+		}
+  
+		body = Statement();
+		return { type:'ForStatement', init, test, update, body };
+	  }
+  
+	  function TryStmt() {
+		expect('kw','try');
+		const block = Block();
+		let handler = null;
+		let finalizer = null;
+  
+		if (match('kw','catch')) {
+		  let param = null;
+		  if (match('punc','(')) {
+			const idTok = expect('ident');
+			param = { type:'Identifier', name:idTok.value, line:idTok.line, col:idTok.col };
+			expect('punc',')');
+		  }
+		  const body = Block();
+		  handler = { type:'CatchClause', param, body };
+		}
+  
+		if (match('kw','finally')) {
+		  finalizer = Block();
+		}
+  
+		if (!handler && !finalizer) {
+		  const t = peek();
+		  throw DSyntax('Missing catch or finally after try', t.line, t.col);
+		}
+  
+		return { type:'TryStatement', block, handler, finalizer };
+	  }
+  
+	  function ThrowStmt() {
+		expect('kw','throw');
+		const argument = Expression();
+		match('punc',';');
+		return { type:'ThrowStatement', argument };
+	  }
+  
+	  function parseParam() {
+		let pattern;
+		if (peek().type === 'punc' && (peek().value === '{' || peek().value === '[')) {
+		  pattern = BindingPattern();
+		} else if (peek().type === 'ident') {
+		  pattern = BindingPattern();
+		} else {
+		  const t = peek();
+		  throw DSyntax(`Unexpected token in parameter list: ${t.value}`, t.line, t.col);
+		}
+  
+		let def = null;
+		if (match('op','=')) {
+		  def = Expression();
+		}
+  
+		return { type:'Param', pattern, default: def };
+	  }
+  
+	  function parseParamList() {
+		const params = [];
+		if (!(peek().type === 'punc' && peek().value === ')')) {
+		  do {
+			params.push(parseParam());
 		  } while (match('punc',','));
 		}
-		expect('punc',']');
-		return { type:'ArrayExpression', elements };
+		expect('punc',')');
+		return params;
 	  }
-
-	  if (match('punc','{')) {
-		const properties = [];
+  
+	  function parsePossiblyAsyncFunction(isDeclaration) {
+		let isAsync = false;
+		if (peek().type === 'kw' && peek().value === 'async') {
+		  next(); isAsync = true;
+		}
+		expect('kw','function');
+		let id = null;
+		if (isDeclaration) {
+		  const nameTok = expect('ident');
+		  id = { type:'Identifier', name:nameTok.value, line:nameTok.line, col:nameTok.col };
+		} else if (peek().type === 'ident') {
+		  const nameTok = next();
+		  id = { type:'Identifier', name:nameTok.value, line:nameTok.line, col:nameTok.col };
+		}
+		expect('punc','(');
+		const params = parseParamList();
+		expect('punc','{');
+		const body = [];
+		while (!(peek().type === 'punc' && peek().value === '}')) body.push(Statement());
+		expect('punc','}');
+		return isDeclaration
+		  ? { type:'FunctionDeclaration', id, params, body:{type:'BlockStatement', body}, async:isAsync }
+		  : { type:'FunctionExpression', id, params, body:{type:'BlockStatement', body}, async:isAsync };
+	  }
+  
+	  function Expression() { return Assignment(); }
+  
+	  function Assignment() {
+		const left = Conditional();
+		const t = peek();
+		if (t.type === 'op' && ['=','+=','-=','*=','/=','%='].includes(t.value)) {
+		  next();
+		  const right = Assignment();
+		  if (t.value !== '=') {
+			if (!(left.type === 'Identifier' || left.type === 'MemberExpression'))
+			  throw DSyntax('Invalid assignment target for compound operator', t.line, t.col);
+			return { type:'AssignmentExpression', operator:t.value, left, right };
+		  }
+		  if (left.type === 'Identifier' || left.type === 'MemberExpression') {
+			return { type:'AssignmentExpression', operator:'=', left, right };
+		  }
+		  if (left.type === 'ObjectExpression' || left.type === 'ArrayExpression') {
+			const pattern = ExpressionToBindingPattern(left);
+			return { type:'DestructuringAssignment', pattern, right };
+		  }
+		  throw DSyntax('Invalid assignment target', t.line, t.col);
+		}
+		return left;
+	  }
+  
+	  function Conditional() {
+		let test = Nullish();
+		if (match('punc','?')) {
+		  const consequent = Expression();
+		  expect('punc',':');
+		  const alternate = Conditional();
+		  return { type:'ConditionalExpression', test, consequent, alternate };
+		}
+		return test;
+	  }
+  
+	  function Nullish() {
+		let n = LogicalOr();
+		while (true) {
+		  const t = peek();
+		  if (t.type === 'op' && t.value === '??') {
+			next();
+			n = { type:'NullishCoalesceExpression', left:n, right:LogicalOr() };
+			continue;
+		  }
+		  break;
+		}
+		return n;
+	  }
+  
+	  function LogicalOr() {
+		let n = LogicalAnd();
+		while (match('op','||')) n = { type:'LogicalExpression', operator:'||', left:n, right:LogicalAnd() };
+		return n;
+	  }
+  
+	  function LogicalAnd() {
+		let n = Equality();
+		while (match('op','&&')) n = { type:'LogicalExpression', operator:'&&', left:n, right:Equality() };
+		return n;
+	  }
+  
+	  function Equality() {
+		let n = Relational();
+		while (true) {
+		  const t = peek();
+		  if (t.type === 'op' && ['==','!=','===','!=='].includes(t.value)) {
+			next();
+			n = { type:'BinaryExpression', operator:t.value, left:n, right:Relational() };
+		  } else break;
+		}
+		return n;
+	  }
+  
+	  function Relational() {
+		let n = Additive();
+		while (true) {
+		  const t = peek();
+		  if (t.type === 'op' && ['<','<=','>','>='].includes(t.value)) {
+			next();
+			n = { type:'BinaryExpression', operator:t.value, left:n, right:Additive() };
+		  } else break;
+		}
+		return n;
+	  }
+  
+	  function Additive() {
+		let n = Multiplicative();
+		while (true) {
+		  const t = peek();
+		  if (t.type === 'op' && ['+','-'].includes(t.value)) {
+			next();
+			n = { type:'BinaryExpression', operator:t.value, left:n, right:Multiplicative() };
+		  } else break;
+		}
+		return n;
+	  }
+  
+	  function Multiplicative() {
+		let n = Unary();
+		while (true) {
+		  const t = peek();
+		  if (t.type === 'op' && ['*','/','%'].includes(t.value)) {
+			next();
+			n = { type:'BinaryExpression', operator:t.value, left:n, right:Unary() };
+		  } else break;
+		}
+		return n;
+	  }
+  
+	  function Unary() {
+		const t = peek();
+  
+		if (t.type === 'kw' && t.value === 'await') {
+		  next();
+		  const arg = Unary();
+		  return { type:'AwaitExpression', argument: arg };
+		}
+  
+		if (t.type === 'kw' && t.value === 'delete') {
+		  next();
+		  const arg = Unary();
+		  return { type:'UnaryExpression', operator:'delete', argument: arg };
+		}
+  
+		if (t.type === 'op' && (t.value === '!' || t.value === '+' || t.value === '-')) {
+		  next();
+		  return { type:'UnaryExpression', operator:t.value, argument: Unary() };
+		}
+  
+		if (t.type === 'op' && (t.value === '++' || t.value === '--')) {
+		  next();
+		  const arg = Postfix();
+		  if (!(arg.type === 'Identifier' || arg.type === 'MemberExpression'))
+			throw DSyntax('Invalid update target', t.line, t.col);
+		  return { type:'UpdateExpression', operator:t.value, argument:arg, prefix:true };
+		}
+  
+		return Postfix();
+	  }
+  
+	  function Postfix() {
+		let node = Primary();
+  
+		if (peek().type === 'op' && (peek().value === '++' || peek().value === '--')) {
+		  const t = next();
+		  if (!(node.type === 'Identifier' || node.type === 'MemberExpression'))
+			throw DSyntax('Invalid update target', t.line, t.col);
+		  node = { type:'UpdateExpression', operator:t.value, argument:node, prefix:false };
+		}
+  
+		while (true) {
+		  if (peek().type === 'punc' && peek().value === '?' &&
+			  tokens[pos+1]?.type === 'punc' && tokens[pos+1]?.value === '.' &&
+			  tokens[pos+2]?.type === 'ident') {
+			next(); next();
+			const id = expect('ident');
+			node = {
+			  type:'MemberExpression',
+			  object: node,
+			  property: { type:'Identifier', name:id.value, line:id.line, col:id.col },
+			  computed:false,
+			  optional:true
+			};
+			continue;
+		  }
+  
+		  if (peek().type === 'punc' && peek().value === '?' &&
+			  tokens[pos+1]?.type === 'punc' && tokens[pos+1]?.value === '.' &&
+			  tokens[pos+2]?.type === 'punc' && tokens[pos+2]?.value === '[') {
+			next(); next();
+			expect('punc','[');
+			const prop = Expression();
+			expect('punc',']');
+			node = {
+			  type:'MemberExpression',
+			  object: node,
+			  property: prop,
+			  computed:true,
+			  optional:true
+			};
+			continue;
+		  }
+  
+		  if (peek().type === 'punc' && peek().value === '?' &&
+			  tokens[pos+1]?.type === 'punc' && tokens[pos+1]?.value === '.' &&
+			  tokens[pos+2]?.type === 'punc' && tokens[pos+2]?.value === '(') {
+			next(); next();
+			expect('punc','(');
+			const args = [];
+			if (!(peek().type === 'punc' && peek().value === ')')) {
+			  do {
+				if (match('spread','...')) args.push({ type:'SpreadElement', argument:Expression() });
+				else args.push(Expression());
+			  } while (match('punc',','));
+			}
+			expect('punc',')');
+			node = { type:'CallExpression', callee:node, arguments:args, optional:true };
+			continue;
+		  }
+  
+		  if (match('punc','.')) {
+			const id = expect('ident');
+			node = {
+			  type:'MemberExpression',
+			  object:node,
+			  property:{ type:'Identifier', name:id.value, line:id.line, col:id.col },
+			  computed:false
+			};
+			continue;
+		  }
+  
+		  if (match('punc','[')) {
+			const prop = Expression();
+			expect('punc',']');
+			node = { type:'MemberExpression', object:node, property:prop, computed:true };
+			continue;
+		  }
+  
+		  if (match('punc','(')) {
+			const args = [];
+			if (!(peek().type === 'punc' && peek().value === ')')) {
+			  do {
+				if (match('spread','...')) args.push({ type:'SpreadElement', argument:Expression() });
+				else args.push(Expression());
+			  } while (match('punc',','));
+			}
+			expect('punc',')');
+			node = { type:'CallExpression', callee:node, arguments:args };
+			continue;
+		  }
+  
+		  break;
+		}
+		return node;
+	  }
+  
+	  function ArrowFromParams(params, isAsync = false) {
+		expect('op','=>');
+		if (match('punc','{')) {
+		  const body = [];
+		  while (!(peek().type === 'punc' && peek().value === '}')) body.push(Statement());
+		  expect('punc','}');
+		  return {
+			type:'ArrowFunctionExpression',
+			params,
+			body:{ type:'BlockStatement', body },
+			expression:false,
+			async:isAsync
+		  };
+		} else {
+		  const bodyExpr = Expression();
+		  return {
+			type:'ArrowFunctionExpression',
+			params,
+			body:bodyExpr,
+			expression:true,
+			async:isAsync
+		  };
+		}
+	  }
+  
+	  function Primary() {
+		const t = peek();
+  
+		if (t.type === 'num') { next(); return { type:'Literal', value:t.value }; }
+		if (t.type === 'str') { next(); return { type:'Literal', value:t.value }; }
+		if (t.type === 'kw' && t.value === 'true')  { next(); return { type:'Literal', value:true }; }
+		if (t.type === 'kw' && t.value === 'false') { next(); return { type:'Literal', value:false }; }
+		if (t.type === 'kw' && t.value === 'null')  { next(); return { type:'Literal', value:null }; }
+		if (t.type === 'kw' && t.value === 'undefined') { next(); return { type:'Literal', value:undefined }; }
+		if (t.type === 'kw' && t.value === 'NaN') { next(); return { type:'Literal', value:NaN }; }
+		if (t.type === 'kw' && t.value === 'Infinity') { next(); return { type:'Literal', value:Infinity }; }
+  
+		if (t.type === 'kw' && t.value === 'async' &&
+			tokens[pos+1]?.type === 'ident' &&
+			tokens[pos+2]?.type === 'op' && tokens[pos+2]?.value === '=>') {
+		  next();
+		  const id = next();
+		  const pattern = { type:'Identifier', name:id.value, line:id.line, col:id.col };
+		  return ArrowFromParams([{ type:'Param', pattern, default:null }], true);
+		}
+  
+		if (t.type === 'kw' && t.value === 'async' &&
+			tokens[pos+1]?.type === 'punc' && tokens[pos+1]?.value === '(') {
+		  next();
+		  expect('punc','(');
+		  const params = parseParamList();
+		  return ArrowFromParams(params, true);
+		}
+  
+		if (t.type === 'kw' && t.value === 'async' &&
+			tokens[pos+1]?.type === 'kw' && tokens[pos+1]?.value === 'function') {
+		  return parsePossiblyAsyncFunction(false);
+		}
+  
+		if (t.type === 'kw' && t.value === 'function') return parsePossiblyAsyncFunction(false);
+  
+		if (t.type === 'ident' &&
+			tokens[pos+1]?.type === 'op' && tokens[pos+1]?.value === '=>') {
+		  const id = next();
+		  const pattern = { type:'Identifier', name:id.value, line:id.line, col:id.col };
+		  return ArrowFromParams([{ type:'Param', pattern, default:null }]);
+		}
+  
+		if (t.type === 'ident') {
+		  const tok = next();
+		  return { type:'Identifier', name:tok.value, line:tok.line, col:tok.col };
+		}
+  
+		if (match('punc','(')) {
+		  if (peek().type === 'punc' && peek().value === ')' &&
+			  tokens[pos+1]?.type === 'op' && tokens[pos+1]?.value === '=>') {
+			expect('punc',')');
+			return ArrowFromParams([]);
+		  }
+  
+		  const save = pos;
+		  try {
+			const tmpParams = [];
+			if (!(peek().type === 'punc' && peek().value === ')')) {
+			  do {
+				tmpParams.push(parseParam());
+			  } while (match('punc',','));
+			}
+			if (match('punc',')') && peek().type === 'op' && peek().value === '=>') {
+			  return ArrowFromParams(tmpParams);
+			}
+		  } catch (_) { /* fall through */ }
+		  pos = save;
+		  const e = Expression();
+		  expect('punc',')');
+		  return e;
+		}
+  
+		if (match('punc','[')) {
+		  const elements = [];
+		  if (!(peek().type === 'punc' && peek().value === ']')) {
+			do {
+			  if (match('spread','...')) {
+				elements.push({ type:'SpreadElement', argument:Expression() });
+			  } else {
+				elements.push(Expression());
+			  }
+			} while (match('punc',','));
+		  }
+		  expect('punc',']');
+		  return { type:'ArrayExpression', elements };
+		}
+  
+		if (match('punc','{')) {
+		  const properties = [];
+		  if (!(peek().type === 'punc' && peek().value === '}')) {
+			do {
+			  if (match('spread','...')) {
+				properties.push({ type:'SpreadElement', argument: Expression() });
+			  } else {
+				const keyTok = next();
+				if (keyTok.type !== 'ident' && keyTok.type !== 'str')
+				  throw DSyntax('Invalid object key (identifier/string required)', keyTok.line, keyTok.col);
+				const keyName = keyTok.value;
+  
+				if (peek().type === 'punc' && peek().value === '(') {
+				  expect('punc','(');
+				  const params = [];
+				  if (!(peek().type === 'punc' && peek().value === ')')) {
+					do {
+					  const p = expect('ident');
+					  let def = null;
+					  if (match('op','=')) def = Expression();
+					  params.push({
+						type:'Param',
+						pattern:{ type:'Identifier', name:p.value, line:p.line, col:p.col },
+						default:def
+					  });
+					} while (match('punc',','));
+				  }
+				  expect('punc',')');
+				  expect('punc','{');
+				  const body = [];
+				  while (!(peek().type === 'punc' && peek().value === '}')) body.push(Statement());
+				  expect('punc','}');
+				  properties.push({
+					type:'Property',
+					key:{ type:'Identifier', name:keyName, line:keyTok.line, col:keyTok.col },
+					value:{ type:'FunctionExpression', id:null, params, body:{ type:'BlockStatement', body } },
+					computed:false,
+					shorthand:false
+				  });
+				} else if (match('punc',':')) {
+				  const value = Expression();
+				  properties.push({
+					type:'Property',
+					key:{ type:'Identifier', name:keyName, line:keyTok.line, col:keyTok.col },
+					value,
+					computed:false,
+					shorthand:false
+				  });
+				} else {
+				  properties.push({
+					type:'Property',
+					key:{ type:'Identifier', name:keyName, line:keyTok.line, col:keyTok.col },
+					value:{ type:'Identifier', name:keyName, line:keyTok.line, col:keyTok.col },
+					computed:false,
+					shorthand:true
+				  });
+				}
+			  }
+			} while (match('punc',','));
+		  }
+		  expect('punc','}');
+		  return { type:'ObjectExpression', properties };
+		}
+  
+		throw DSyntax(`Unexpected token ${t.value}`, t.line, t.col);
+	  }
+  
+	  function BindingIdentifier() {
+		const idTok = expect('ident');
+		return { type:'Identifier', name:idTok.value, line:idTok.line, col:idTok.col };
+	  }
+  
+	  function BindingPattern() {
+		const t = peek();
+		if (t.type === 'punc' && t.value === '{') return ObjectBindingPattern();
+		if (t.type === 'punc' && t.value === '[') return ArrayBindingPattern();
+		return BindingIdentifier();
+	  }
+  
+	  function ObjectBindingPattern() {
+		expect('punc','{');
+		const props = [];
 		if (!(peek().type === 'punc' && peek().value === '}')) {
 		  do {
 			if (match('spread','...')) {
-			  properties.push({ type:'SpreadElement', argument: Expression() });
-			} else {
-			  const keyTok = next();
-			  if (keyTok.type !== 'ident' && keyTok.type !== 'str')
-				throw DSyntax('Invalid object key (identifier/string required)', keyTok.line, keyTok.col);
-			  const keyName = keyTok.value;
-
-			  if (peek().type === 'punc' && peek().value === '(') {
-				expect('punc','(');
-				const params = [];
-				if (!(peek().type === 'punc' && peek().value === ')')) {
-				  do {
-					const p = expect('ident');
-					let def = null;
-					if (match('op','=')) def = Expression();
-					params.push({
-					  type:'Param',
-					  pattern:{ type:'Identifier', name:p.value, line:p.line, col:p.col },
-					  default:def
-					});
-				  } while (match('punc',','));
-				}
-				expect('punc',')');
-				expect('punc','{');
-				const body = [];
-				while (!(peek().type === 'punc' && peek().value === '}')) body.push(Statement());
-				expect('punc','}');
-				properties.push({
-				  type:'Property',
-				  key:{ type:'Identifier', name:keyName, line:keyTok.line, col:keyTok.col },
-				  value:{ type:'FunctionExpression', id:null, params, body:{ type:'BlockStatement', body } },
-				  computed:false,
-				  shorthand:false
-				});
-			  } else if (match('punc',':')) {
-				const value = Expression();
-				properties.push({
-				  type:'Property',
-				  key:{ type:'Identifier', name:keyName, line:keyTok.line, col:keyTok.col },
-				  value,
-				  computed:false,
-				  shorthand:false
-				});
-			  } else {
-				properties.push({
-				  type:'Property',
-				  key:{ type:'Identifier', name:keyName, line:keyTok.line, col:keyTok.col },
-				  value:{ type:'Identifier', name:keyName, line:keyTok.line, col:keyTok.col },
-				  computed:false,
-				  shorthand:true
-				});
-			  }
+			  const arg = BindingIdentifier();
+			  props.push({ type:'RestElement', argument: arg });
+			  break;
 			}
+  
+			const keyTok = next();
+			if (keyTok.type !== 'ident' && keyTok.type !== 'str')
+			  throw DSyntax('Invalid object binding key', keyTok.line, keyTok.col);
+			const keyName = keyTok.value;
+  
+			let target;
+			if (match('punc',':')) {
+			  target = BindingPattern();
+			} else {
+			  target = { type:'Identifier', name:keyName, line:keyTok.line, col:keyTok.col };
+			}
+  
+			let def = null;
+			if (match('op','=')) def = Expression();
+  
+			props.push({ type:'PatternProperty', key:keyName, target, default:def });
+  
 		  } while (match('punc',','));
 		}
 		expect('punc','}');
-		return { type:'ObjectExpression', properties };
-	  }
-
-	  throw DSyntax(`Unexpected token ${t.value}`, t.line, t.col);
-	}
-
-	function BindingIdentifier() {
-	  const idTok = expect('ident');
-	  return { type:'Identifier', name:idTok.value, line:idTok.line, col:idTok.col };
-	}
-
-	function BindingPattern() {
-	  const t = peek();
-	  if (t.type === 'punc' && t.value === '{') return ObjectBindingPattern();
-	  if (t.type === 'punc' && t.value === '[') return ArrayBindingPattern();
-	  return BindingIdentifier();
-	}
-
-	function ObjectBindingPattern() {
-	  expect('punc','{');
-	  const props = [];
-	  if (!(peek().type === 'punc' && peek().value === '}')) {
-		do {
-		  if (match('spread','...')) {
-			const arg = BindingIdentifier();
-			props.push({ type:'RestElement', argument: arg });
-			break;
-		  }
-
-		  const keyTok = next();
-		  if (keyTok.type !== 'ident' && keyTok.type !== 'str')
-			throw DSyntax('Invalid object binding key', keyTok.line, keyTok.col);
-		  const keyName = keyTok.value;
-
-		  let target;
-		  if (match('punc',':')) {
-			target = BindingPattern();
-		  } else {
-			target = { type:'Identifier', name:keyName, line:keyTok.line, col:keyTok.col };
-		  }
-
-		  let def = null;
-		  if (match('op','=')) def = Expression();
-
-		  props.push({ type:'PatternProperty', key:keyName, target, default:def });
-
-		} while (match('punc',','));
-	  }
-	  expect('punc','}');
-	  return { type:'ObjectPattern', properties: props };
-	}
-
-	function ArrayBindingPattern() {
-	  expect('punc','[');
-	  const elements = [];
-	  if (!(peek().type === 'punc' && peek().value === ']')) {
-		do {
-		  if (peek().type === 'punc' && peek().value === ',') {
-			elements.push(null);
-			continue;
-		  }
-		  if (match('spread','...')) {
-			const arg = BindingPattern();
-			elements.push({ type:'RestElement', argument: arg });
-			break;
-		  }
-		  let target = BindingPattern();
-		  let def = null;
-		  if (match('op','=')) def = Expression();
-		  elements.push({ type:'PatternElement', target, default:def });
-		} while (match('punc',','));
-	  }
-	  expect('punc',']');
-	  return { type:'ArrayPattern', elements };
-	}
-
-	function ExpressionToBindingPattern(node) {
-	  if (node.type === 'ObjectExpression') {
-		const props = [];
-		for (const p of node.properties) {
-		  if (p.type === 'SpreadElement') {
-			if (p.argument.type !== 'Identifier')
-			  throw DSyntax('Object rest element must be an identifier');
-			props.push({
-			  type:'RestElement',
-			  argument:{ type:'Identifier', name:p.argument.name, line:p.argument.line, col:p.argument.col }
-			});
-		  } else {
-			const key = p.key.name;
-			let target;
-			let def = null;
-
-			if (p.value.type === 'Identifier') {
-			  target = { type:'Identifier', name:p.value.name, line:p.value.line, col:p.value.col };
-			} else if (p.value.type === 'AssignmentExpression' && p.value.operator === '=') {
-			  if (p.value.left.type === 'Identifier') {
-				target = {
-				  type:'Identifier',
-				  name:p.value.left.name,
-				  line:p.value.left.line,
-				  col:p.value.left.col
-				};
-				def = p.value.right;
-			  } else {
-				throw DSyntax('Invalid default in object destructuring');
-			  }
-			} else if (p.value.type === 'ObjectExpression' || p.value.type === 'ArrayExpression') {
-			  target = ExpressionToBindingPattern(p.value);
-			} else {
-			  throw DSyntax('Invalid object destructuring target');
-			}
-
-			props.push({ type:'PatternProperty', key, target, default:def });
-		  }
-		}
 		return { type:'ObjectPattern', properties: props };
 	  }
-
-	  if (node.type === 'ArrayExpression') {
+  
+	  function ArrayBindingPattern() {
+		expect('punc','[');
 		const elements = [];
-		for (const el of node.elements) {
-		  if (!el) { elements.push(null); continue; }
-		  if (el.type === 'SpreadElement') {
-			if (el.argument.type !== 'Identifier')
-			  throw DSyntax('Array rest element must be an identifier');
-			elements.push({
-			  type:'RestElement',
-			  argument:{ type:'Identifier', name:el.argument.name, line:el.argument.line, col:el.argument.col }
-			});
-			continue;
-		  }
-		  if (el.type === 'AssignmentExpression' && el.operator === '=') {
-			let target;
-			if (el.left.type === 'Identifier') {
-			  target = { type:'Identifier', name:el.left.name, line:el.left.line, col:el.left.col };
-			} else if (el.left.type === 'ObjectExpression' || el.left.type === 'ArrayExpression') {
-			  target = ExpressionToBindingPattern(el.left);
-			} else {
-			  throw DSyntax('Invalid array destructuring target with default');
+		if (!(peek().type === 'punc' && peek().value === ']')) {
+		  do {
+			if (peek().type === 'punc' && peek().value === ',') {
+			  elements.push(null);
+			  continue;
 			}
-			elements.push({ type:'PatternElement', target, default:el.right });
-			continue;
-		  }
-		  if (el.type === 'Identifier') {
-			elements.push({
-			  type:'PatternElement',
-			  target:{ type:'Identifier', name:el.name, line:el.line, col:el.col },
-			  default:null
-			});
-		  } else if (el.type === 'ObjectExpression' || el.type === 'ArrayExpression') {
-			elements.push({
-			  type:'PatternElement',
-			  target:ExpressionToBindingPattern(el),
-			  default:null
-			});
-		  } else {
-			throw DSyntax('Invalid array destructuring element');
-		  }
+			if (match('spread','...')) {
+			  const arg = BindingPattern();
+			  elements.push({ type:'RestElement', argument: arg });
+			  break;
+			}
+			let target = BindingPattern();
+			let def = null;
+			if (match('op','=')) def = Expression();
+			elements.push({ type:'PatternElement', target, default:def });
+		  } while (match('punc',','));
 		}
+		expect('punc',']');
 		return { type:'ArrayPattern', elements };
 	  }
-
-	  throw DSyntax('Invalid destructuring left-hand side');
+  
+	  function ExpressionToBindingPattern(node) {
+		if (node.type === 'ObjectExpression') {
+		  const props = [];
+		  for (const p of node.properties) {
+			if (p.type === 'SpreadElement') {
+			  if (p.argument.type !== 'Identifier')
+				throw DSyntax('Object rest element must be an identifier');
+			  props.push({
+				type:'RestElement',
+				argument:{ type:'Identifier', name:p.argument.name, line:p.argument.line, col:p.argument.col }
+			  });
+			} else {
+			  const key = p.key.name;
+			  let target;
+			  let def = null;
+  
+			  if (p.value.type === 'Identifier') {
+				target = { type:'Identifier', name:p.value.name, line:p.value.line, col:p.value.col };
+			  } else if (p.value.type === 'AssignmentExpression' && p.value.operator === '=') {
+				if (p.value.left.type === 'Identifier') {
+				  target = {
+					type:'Identifier',
+					name:p.value.left.name,
+					line:p.value.left.line,
+					col:p.value.left.col
+				  };
+				  def = p.value.right;
+				} else {
+				  throw DSyntax('Invalid default in object destructuring');
+				}
+			  } else if (p.value.type === 'ObjectExpression' || p.value.type === 'ArrayExpression') {
+				target = ExpressionToBindingPattern(p.value);
+			  } else {
+				throw DSyntax('Invalid object destructuring target');
+			  }
+  
+			  props.push({ type:'PatternProperty', key, target, default:def });
+			}
+		  }
+		  return { type:'ObjectPattern', properties: props };
+		}
+  
+		if (node.type === 'ArrayExpression') {
+		  const elements = [];
+		  for (const el of node.elements) {
+			if (!el) { elements.push(null); continue; }
+			if (el.type === 'SpreadElement') {
+			  if (el.argument.type !== 'Identifier')
+				throw DSyntax('Array rest element must be an identifier');
+			  elements.push({
+				type:'RestElement',
+				argument:{ type:'Identifier', name:el.argument.name, line:el.argument.line, col:el.argument.col }
+			  });
+			  continue;
+			}
+			if (el.type === 'AssignmentExpression' && el.operator === '=') {
+			  let target;
+			  if (el.left.type === 'Identifier') {
+				target = { type:'Identifier', name:el.left.name, line:el.left.line, col:el.left.col };
+			  } else if (el.left.type === 'ObjectExpression' || el.left.type === 'ArrayExpression') {
+				target = ExpressionToBindingPattern(el.left);
+			  } else {
+				throw DSyntax('Invalid array destructuring target with default');
+			  }
+			  elements.push({ type:'PatternElement', target, default:el.right });
+			  continue;
+			}
+			if (el.type === 'Identifier') {
+			  elements.push({
+				type:'PatternElement',
+				target:{ type:'Identifier', name:el.name, line:el.line, col:el.col },
+				default:null
+			  });
+			} else if (el.type === 'ObjectExpression' || el.type === 'ArrayExpression') {
+			  elements.push({
+				type:'PatternElement',
+				target:ExpressionToBindingPattern(el),
+				default:null
+			  });
+			} else {
+			  throw DSyntax('Invalid array destructuring element');
+			}
+		  }
+		  return { type:'ArrayPattern', elements };
+		}
+  
+		throw DSyntax('Invalid destructuring left-hand side');
+	  }
+  
+	  return Program();
 	}
-
-	return Program();
-  }
+	function parse(code) {
+		return parseTokens(lex(code));
+	}
 
   /* ========================= RUNTIME ========================= */
 
@@ -2666,12 +2673,13 @@ function createCore(DSyntax, DRuntime) {
   }
 
   return {
-	lex,
-	preflight,
-	parse,
-	evalProgram,
-	evalProgramAsync,
-	hasTopLevelAwait
+	  lex,
+	  preflight,
+	  parse,
+	  parseTokens,
+	  evalProgram,
+	  evalProgramAsync,
+	  hasTopLevelAwait
   };
 }
 
@@ -2683,30 +2691,73 @@ function createCore(DSyntax, DRuntime) {
 const defaultErrors = makeErrorFactory(null);
 const defaultCore = createCore(defaultErrors.DSyntax, defaultErrors.DRuntime);
 
+const DS_COMPILE_CACHE = new Map(); // key -> { pf, ast, isAsync }
+const DS_CORE_CACHE = new Map();
+
+function getCoreForContext(contextId) {
+	const key = contextId ?? '';
+	let core = DS_CORE_CACHE.get(key);
+	if(core)
+		return core;
+
+	const errs = makeErrorFactory(contextId ?? null);
+	core = createCore(errs.DSyntax, errs.DRuntime);
+
+	DS_CORE_CACHE.set(key, core);
+	return core;
+}
+function compile(code, opts = {}) {
+	const {
+		contextId = null
+	} = opts || {};
+
+	const core = getCoreForContext(contextId);
+
+	// cache key: context + exact code
+	const key = (contextId ?? '') + '\n' + code;
+
+	let c = DS_COMPILE_CACHE.get(key);
+	if(c)
+		return c;
+
+	const pf = core.preflight(code);
+	const ast = core.parseTokens ? core.parseTokens(pf.tokens) : core.parse(code);
+
+	c = {
+		contextId,
+		pf,
+		ast,
+		isAsync: !!(pf.hasAwait || pf.hasAsync)
+	};
+
+	DS_COMPILE_CACHE.set(key, c);
+	return c;
+}
+
 async function run(code, env = {}, opts = {}) {
-  const {
-	contextId = null,
-	maxSteps = 50_000,
-	maxMillis = null
-  } = opts || {};
+	const {
+		contextId = null,
+		maxSteps = 50_000,
+		maxMillis = null
+	} = opts || {};
 
-  const { DSyntax, DRuntime } = makeErrorFactory(contextId);
-  const core = createCore(DSyntax, DRuntime);
+	const core = getCoreForContext(contextId);
+	const c = compile(code, { contextId });
 
-  const pf = core.preflight(code);
-  const ast = core.parse(code);
+	// cheaper than spread (also avoids creating intermediate objects)
+	const mergedEnv = Object.create(null);
+	Object.assign(mergedEnv, BASIC_ENV, env);
 
-  env = { ...BASIC_ENV, ...env };
+	if(c.isAsync)
+		return await core.evalProgramAsync(c.ast, mergedEnv, { maxSteps, maxMillis });
 
-  if (pf.hasAwait || pf.hasAsync) {
-	return await core.evalProgramAsync(ast, env, { maxSteps, maxMillis });
-  }
-  return core.evalProgram(ast, env, { maxSteps, maxMillis });
+	return core.evalProgram(c.ast, mergedEnv, { maxSteps, maxMillis });
 }
 
 const DamenScript = {
-  parse: defaultCore.parse,
-  run
+	parse: defaultCore.parse,
+	compile,
+	run
 };
 
 export default DamenScript;

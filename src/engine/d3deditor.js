@@ -21,7 +21,7 @@ import {
 	upperFirst,
 	toggleAllLights,
 	toggleLight,
-	updateObject,
+	updateObjects,
 	versionToNumber,
 	relNoAssets,
 	hookComposerPasses
@@ -64,6 +64,7 @@ import D3DGraphics from './d3dgraphics.js';
 import D3DConsole from './d3dconsole.js';
 
 window.THREE = THREE;
+window._loopFns = {};
 window._editor = new D3DEditorState();
 window._events = new D3DEventSystem();
 window._input = new D3DInput();
@@ -402,25 +403,25 @@ function startAnimationLoop() {
 		_time.tick(nowMs); // updates _time.delta (seconds) + _time.now
 
 		if(!_editor.__saving) {
-			updateObject([
+			updateObjects([
 				'__onInternalEnterFrame',
 				'__onEditorEnterFrame',
 				'onEditorEnterFrame'
-			], _root);
+			]);
 			
-			updateObject([
+			updateObjects([
 				'__onInternalBeforeRender',
 				'__onEditorBeforeRender',
 				'onEditorBeforeRender'
-			], _root);
+			]);
 			
 			render();
 			
-			updateObject([
+			updateObjects([
 				'__onInternalExitFrame',
 				'__onEditorExitFrame',
 				'onEditorExitFrame'
-			], _root);
+			]);
 			
 			_input._afterRenderFrame?.();
 		}
@@ -485,7 +486,7 @@ function startAnimationLoop() {
 
 	// init
 	_time.tick(performance.now());
-	updateObject(['onEditorStart','__onEditorStart'], _root);
+	updateObjects(['onEditorStart','__onEditorStart']);
 	requestAnimationFrame(animate);
 }
 
@@ -1223,7 +1224,8 @@ async function publishProject(publishURI, buildURI, opts) {
 function onEditorFocusChanged() {
 	const inFocusMode = _editor.focus != _root;
 	
-	_editor.grayPass.enabled = inFocusMode;
+	if(_editor.grayPass)
+		_editor.grayPass.enabled = inFocusMode;
 }
 function onAssetsUpdated() {
 	_editor.onAssetsUpdatedInspector?.();

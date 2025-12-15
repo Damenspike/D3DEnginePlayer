@@ -23,10 +23,9 @@ import {
 import {
 	worldToScreen
 } from './d2dutility.js';
-
-const protectedNames = [
-	'_root', 'Input', 'position', 'rotation', 'scale', 'name', 'parent', 'children', 'threeObj', 'scenes', 'zip', 'forward', 'right', 'up', 'quaternion', 'onEnterFrame', 'onAddedToScene', 'manifest', 'scenes', '__origin', '__componentInstances', '__onInternalEnterFrame', '__onEditorEnterFrame', '__deleted', '__animatedTransformChange', '_mesh', '_animation', '__self__', '_camera', '_directionallight', '_ambientlight', '_pointlight', 'isClicked', 'isMouseOver', '__runInSandbox', '__loaded', 'fileMeta'
-]
+import {
+	protectedNames
+} from './d3dmetaobject.js'
 
 export default class D3DObject {
 	constructor(name = 'object', parent = null) {
@@ -49,12 +48,236 @@ export default class D3DObject {
 		this.__ready = false;
 		this.__componentInstances = {};
 		this.__events = {};
+		this.__loops = {};
 		
 		this.object3d = this.parent ? new THREE.Object3D() : new THREE.Scene();
 		this.object3d.userData.d3dobject = this;
 		this.__d3d = true;
 		
 		this.setupDefaultMethods();
+	}
+	
+	/* 
+	 * =========================
+	 * LOOPS
+	 * ======================= 
+	 */
+	get __onInternalStart() {
+		return this.__loops.__onInternalStart;
+	}
+	set __onInternalStart(f) {
+		this._setLoop('__onInternalStart', f);
+	}
+	
+	get __onStart() {
+		return this.__loops.__onStart;
+	}
+	set __onStart(f) {
+		this._setLoop('__onStart', f);
+	}
+	
+	get onStart() {
+		return this.__loops.onStart;
+	}
+	set onStart(f) {
+		this._setLoop('onStart', f);
+	}
+	
+	/* =========================
+	 * EDITOR: START
+	 * ======================= */
+	
+	get __onEditorStart() {
+		return this.__loops.__onEditorStart;
+	}
+	set __onEditorStart(f) {
+		this._setLoop('__onEditorStart', f);
+	}
+	
+	get onEditorStart() {
+		return this.__loops.onEditorStart;
+	}
+	set onEditorStart(f) {
+		this._setLoop('onEditorStart', f);
+	}
+	
+	/* =========================
+	 * GRAPHICS READY
+	 * ======================= */
+	
+	get __onInternalGraphicsReady() {
+		return this.__loops.__onInternalGraphicsReady;
+	}
+	set __onInternalGraphicsReady(f) {
+		this._setLoop('__onInternalGraphicsReady', f);
+	}
+	
+	get __onGraphicsReady() {
+		return this.__loops.__onGraphicsReady;
+	}
+	set __onGraphicsReady(f) {
+		this._setLoop('__onGraphicsReady', f);
+	}
+	
+	get onGraphicsReady() {
+		return this.__loops.onGraphicsReady;
+	}
+	set onGraphicsReady(f) {
+		this._setLoop('onGraphicsReady', f);
+	}
+	
+	/* =========================
+	 * PHYSICS UPDATE
+	 * ======================= */
+	
+	get __onInternalPhysicsUpdate() {
+		return this.__loops.__onInternalPhysicsUpdate;
+	}
+	set __onInternalPhysicsUpdate(f) {
+		this._setLoop('__onInternalPhysicsUpdate', f);
+	}
+	
+	get __onPhysicsUpdate() {
+		return this.__loops.__onPhysicsUpdate;
+	}
+	set __onPhysicsUpdate(f) {
+		this._setLoop('__onPhysicsUpdate', f);
+	}
+	
+	get onPhysicsUpdate() {
+		return this.__loops.onPhysicsUpdate;
+	}
+	set onPhysicsUpdate(f) {
+		this._setLoop('onPhysicsUpdate', f);
+	}
+	
+	/* =========================
+	 * ENTER FRAME
+	 * ======================= */
+	
+	get __onInternalEnterFrame() {
+		return this.__loops.__onInternalEnterFrame;
+	}
+	set __onInternalEnterFrame(f) {
+		this._setLoop('__onInternalEnterFrame', f);
+	}
+	
+	get __onEnterFrame() {
+		return this.__loops.__onEnterFrame;
+	}
+	set __onEnterFrame(f) {
+		this._setLoop('__onEnterFrame', f);
+	}
+	
+	get onEnterFrame() {
+		return this.__loops.onEnterFrame;
+	}
+	set onEnterFrame(f) {
+		this._setLoop('onEnterFrame', f);
+	}
+	
+	/* =========================
+	 * BEFORE RENDER
+	 * ======================= */
+	
+	get __onInternalBeforeRender() {
+		return this.__loops.__onInternalBeforeRender;
+	}
+	set __onInternalBeforeRender(f) {
+		this._setLoop('__onInternalBeforeRender', f);
+	}
+	
+	get __onBeforeRender() {
+		return this.__loops.__onBeforeRender;
+	}
+	set __onBeforeRender(f) {
+		this._setLoop('__onBeforeRender', f);
+	}
+	
+	get onBeforeRender() {
+		return this.__loops.onBeforeRender;
+	}
+	set onBeforeRender(f) {
+		this._setLoop('onBeforeRender', f);
+	}
+	
+	/* =========================
+	 * EXIT FRAME
+	 * ======================= */
+	
+	get __onInternalExitFrame() {
+		return this.__loops.__onInternalExitFrame;
+	}
+	set __onInternalExitFrame(f) {
+		this._setLoop('__onInternalExitFrame', f);
+	}
+	
+	get __onExitFrame() {
+		return this.__loops.__onExitFrame;
+	}
+	set __onExitFrame(f) {
+		this._setLoop('__onExitFrame', f);
+	}
+	
+	get onExitFrame() {
+		return this.__loops.onExitFrame;
+	}
+	set onExitFrame(f) {
+		this._setLoop('onExitFrame', f);
+	}
+	
+	/* =========================
+	 * EDITOR: ENTER FRAME
+	 * ======================= */
+	
+	get __onEditorEnterFrame() {
+		return this.__loops.__onEditorEnterFrame;
+	}
+	set __onEditorEnterFrame(f) {
+		this._setLoop('__onEditorEnterFrame', f);
+	}
+	
+	get onEditorEnterFrame() {
+		return this.__loops.onEditorEnterFrame;
+	}
+	set onEditorEnterFrame(f) {
+		this._setLoop('onEditorEnterFrame', f);
+	}
+	
+	/* =========================
+	 * EDITOR: BEFORE RENDER
+	 * ======================= */
+	
+	get __onEditorBeforeRender() {
+		return this.__loops.__onEditorBeforeRender;
+	}
+	set __onEditorBeforeRender(f) {
+		this._setLoop('__onEditorBeforeRender', f);
+	}
+	
+	get onEditorBeforeRender() {
+		return this.__loops.onEditorBeforeRender;
+	}
+	set onEditorBeforeRender(f) {
+		this._setLoop('onEditorBeforeRender', f);
+	}
+	
+	/* =========================
+	 * EDITOR: EXIT FRAME
+	 * ======================= */
+	
+	get __onEditorExitFrame() {
+		return this.__loops.__onEditorExitFrame;
+	}
+	set __onEditorExitFrame(f) {
+		this._setLoop('__onEditorExitFrame', f);
+	}
+	
+	get onEditorExitFrame() {
+		return this.__loops.onEditorExitFrame;
+	}
+	set onEditorExitFrame(f) {
+		this._setLoop('onEditorExitFrame', f);
 	}
 	
 	///////////////////////////////
@@ -80,7 +303,7 @@ export default class D3DObject {
 				this.updateComponents();
 			}else
 			if(!this._enabled && this.parent.object3d.children.includes(this.object3d)) {
-				this.disposeAllRigidbodies();
+				this.disposeAllComponents();
 				this.parent.object3d.remove(this.object3d);
 			}
 		}
@@ -391,6 +614,7 @@ export default class D3DObject {
 	}
 	set visible(value) {
 		this._visible = !!value;
+		this.updateVisibility();
 		this.onVisibilityChanged?.();
 		this._onVisibilityChanged?.();
 		this.checkSymbols();
@@ -401,6 +625,7 @@ export default class D3DObject {
 	}
 	set visible2(value) {
 		this._visible2 = !!value;
+		this.updateVisibility();
 		this.onVisibilityChanged?.();
 		this._onVisibilityChanged?.();
 		this.checkSymbols();
@@ -542,45 +767,68 @@ export default class D3DObject {
 	
 	setupDefaultMethods() {
 		if(window._editor) {
+			this.__tmpPos ??= new THREE.Vector3();
+			this.__tmpRot ??= new THREE.Quaternion();
+			this.__tmpScl ??= new THREE.Vector3();
+		
+			this.__tmpLastPos ??= new THREE.Vector3();
+			this.__tmpLastRot ??= new THREE.Quaternion();
+			this.__tmpLastScl ??= new THREE.Vector3();
+		
+			this.lastMatrixLocal ??= new THREE.Matrix4();
+		
 			this.__onEditorEnterFrame = () => {
 				if(!this.object3d)
 					return;
-				
-				this.updateVisibility();
-				
-				if(!this.lastMatrixLocal) {
-					this.lastMatrixLocal = new THREE.Matrix4().copy(this.object3d.matrix);
+		
+				// first frame seed
+				if(!this.__hasLastMatrixLocal) {
+					this.lastMatrixLocal.copy(this.object3d.matrix);
+					this.__hasLastMatrixLocal = true;
 					return;
 				}
-			
-				const pos = new THREE.Vector3();
-				const rot = new THREE.Quaternion();
-				const scl = new THREE.Vector3();
-				
-				const lastPos = new THREE.Vector3();
-				const lastRot = new THREE.Quaternion();
-				const lastScl = new THREE.Vector3();
-				
+		
+				// cheap early-out (no decompose, no allocations)
+				if(this.object3d.matrix.equals(this.lastMatrixLocal)) {
+					if(this.__finishedSyncing) {
+						this.__syncing = false;
+						this.__finishedSyncing = false;
+					}
+					if(this.symbol && this.__dirtySymbol && !this.__syncing) {
+						this.syncToSymbol();
+						this.__dirtySymbol = false;
+					}
+					return;
+				}
+		
+				// only now do the decomposes
+				const pos = this.__tmpPos;
+				const rot = this.__tmpRot;
+				const scl = this.__tmpScl;
+		
+				const lastPos = this.__tmpLastPos;
+				const lastRot = this.__tmpLastRot;
+				const lastScl = this.__tmpLastScl;
+		
 				this.object3d.matrix.decompose(pos, rot, scl);
 				this.lastMatrixLocal.decompose(lastPos, lastRot, lastScl);
-				
-				const changed = [];
-				if (!pos.equals(lastPos)) changed.push('pos');
-				if (!rot.equals(lastRot)) changed.push('rot');
-				if (!scl.equals(lastScl)) changed.push('scl');
-				
-				if(!this.object3d.matrix.equals(this.lastMatrixLocal)) {
-					this.__onTransformationChange(changed);
+		
+				let changed = null;
+		
+				if(!pos.equals(lastPos)) (changed ??= []).push('pos');
+				if(!rot.equals(lastRot)) (changed ??= []).push('rot');
+				if(!scl.equals(lastScl)) (changed ??= []).push('scl');
+		
+				if(changed) {
+					this.__onTransformationChange?.(changed);
 					this.onTransformationChange?.(changed);
-					
-					if(window._editor)
-						window._editor.updateInspector?.();
-					
+		
+					window._editor?.updateInspector?.();
 					this.invokeEvent('matrixChanged', changed);
 				}
-				
-				this.lastMatrixLocal = new THREE.Matrix4().copy(this.object3d.matrix);
-				
+		
+				this.lastMatrixLocal.copy(this.object3d.matrix);
+		
 				if(this.__finishedSyncing) {
 					this.__syncing = false;
 					this.__finishedSyncing = false;
@@ -589,83 +837,89 @@ export default class D3DObject {
 					this.syncToSymbol();
 					this.__dirtySymbol = false;
 				}
-			}
+			};
+		
 			this.__onTransformationChange = () => {
 				this.checkSymbols();
-			}
+			};
 		}
 		
-		this.__onInternalStart = () => {
-			//////////////////////////////////////////////
-			//// ENGINE OBJ START EVENT USED FOR INTERNALS
-			//////////////////////////////////////////////
-			for(let i in this.__componentInstances) {
-				const mgr = this.__componentInstances[i];
-				mgr?.__onInternalStart?.();
-			}
-			this.invokeEvent('start');
-		}
-		this.__onInternalBeforeRender = () => {
-			//////////////////////////////////////////////
-			//// ENGINE LOOP USED FOR INTERNALS
-			//////////////////////////////////////////////
-			for(let i in this.__componentInstances) {
-				const mgr = this.__componentInstances[i];
-				
-				if(mgr?.component?.enabled)
-					mgr?.__onInternalBeforeRender?.();
-			}
-			this.invokeEvent('beforeRender');
-		}
-		this.__onInternalEnterFrame = () => {
-			//////////////////////////////////////////////
-			//// ENGINE LOOP USED FOR INTERNALS
-			//////////////////////////////////////////////
-			this.updateVisibility();
-			for(let i in this.__componentInstances) {
-				const mgr = this.__componentInstances[i];
-				
-				if(mgr?.component?.enabled)
-					mgr?.__onInternalEnterFrame?.();
-				
-				if(mgr && mgr?.component) {
-					if(mgr.__isEnabled !== mgr.component.enabled) {
-						if(mgr.component.enabled) {
-							this.updateComponents(true);
-							mgr.onEnabled?.();
-						}else{
-							this.updateComponents(true);
-							mgr.onDisabled?.();
-						}
-						mgr.__isEnabled = mgr.component.enabled;
+		this.__onInternalStart = null;
+		this.__onInternalBeforeRender = null;
+		this.__onInternalEnterFrame = null;
+		this.__onInternalExitFrame = null;
+		this.__onInternalPhysicsUpdate = null;
+		
+		const managers = Object.values(this.__componentInstances);
+		
+		if(managers.length > 0) {
+			if(managers.find(mgr => !!mgr.__onInternalStart)) {
+				this.__onInternalStart = () => {
+					//////////////////////////////////////////////
+					//// ENGINE OBJ START EVENT USED FOR INTERNALS
+					//////////////////////////////////////////////
+					for(let i in this.__componentInstances) {
+						const mgr = this.__componentInstances[i];
+						mgr?.__onInternalStart?.();
 					}
 				}
 			}
-			this.invokeEvent('enterFrame');
-		}
-		this.__onInternalExitFrame = () => {
-			//////////////////////////////////////////////
-			//// ENGINE LOOP USED FOR INTERNALS
-			//////////////////////////////////////////////
-			for(let i in this.__componentInstances) {
-				const mgr = this.__componentInstances[i];
-				
-				if(mgr?.component?.enabled)
-					mgr?.__onInternalExitFrame?.();
+			
+			if(managers.find(mgr => !!mgr.__onInternalBeforeRender)) {
+				this.__onInternalBeforeRender = () => {
+					//////////////////////////////////////////////
+					//// ENGINE LOOP USED FOR INTERNALS
+					//////////////////////////////////////////////
+					for(let i in this.__componentInstances) {
+						const mgr = this.__componentInstances[i];
+						
+						if(mgr?.component?.enabled)
+							mgr?.__onInternalBeforeRender?.();
+					}
+				}
 			}
-			this.invokeEvent('exitFrame');
-		}
-		this.__onInternalPhysicsUpdate = () => {
-			//////////////////////////////////////////////
-			//// ENGINE LOOP USED FOR INTERNALS
-			//////////////////////////////////////////////
-			for(let i in this.__componentInstances) {
-				const mgr = this.__componentInstances[i];
-				
-				if(mgr?.component?.enabled)
-					mgr?.__onInternalPhysicsUpdate?.();
+			
+			if(managers.find(mgr => !!mgr.__onInternalEnterFrame)) {
+				this.__onInternalEnterFrame = () => {
+					//////////////////////////////////////////////
+					//// ENGINE LOOP USED FOR INTERNALS
+					//////////////////////////////////////////////
+					for(let i in this.__componentInstances) {
+						const mgr = this.__componentInstances[i];
+						
+						if(mgr?.component?.enabled)
+							mgr?.__onInternalEnterFrame?.();
+					}
+				}
 			}
-			this.invokeEvent('physicsUpdate');
+			
+			if(managers.find(mgr => !!mgr.__onInternalExitFrame)) {
+				this.__onInternalExitFrame = () => {
+					//////////////////////////////////////////////
+					//// ENGINE LOOP USED FOR INTERNALS
+					//////////////////////////////////////////////
+					for(let i in this.__componentInstances) {
+						const mgr = this.__componentInstances[i];
+						
+						if(mgr?.component?.enabled)
+							mgr?.__onInternalExitFrame?.();
+					}
+				}
+			}
+			
+			if(managers.find(mgr => !!mgr.__onInternalPhysicsUpdate)) {
+				this.__onInternalPhysicsUpdate = () => {
+					//////////////////////////////////////////////
+					//// ENGINE LOOP USED FOR INTERNALS
+					//////////////////////////////////////////////
+					for(let i in this.__componentInstances) {
+						const mgr = this.__componentInstances[i];
+						
+						if(mgr?.component?.enabled)
+							mgr?.__onInternalPhysicsUpdate?.();
+					}
+				}
+			}
 		}
 	}
 	
@@ -1246,6 +1500,28 @@ export default class D3DObject {
 		inst.component = component;
 		inst.d3dobject = this;
 		
+		Object.defineProperty(inst, 'enabled', {
+			configurable: true,
+			enumerable: true,
+			get() {
+				return component.enabled;
+			},
+			set(v) {
+				v = !!v;
+				if(v === component.enabled)
+					return;
+				
+				component.enabled = v;
+				
+				inst.d3dobject.updateComponents(true);
+				
+				if(v)
+					inst.onEnabled?.();
+				else
+					inst.onDisabled?.();
+			}
+		});
+		
 		this.__componentInstances[type] = inst;
 		
 		if(unshift)
@@ -1258,6 +1534,7 @@ export default class D3DObject {
 		}
 		
 		doUpdateAll && this.updateComponents();
+		this.setupDefaultMethods();
 		
 		if(this.symbol && !dontRecurseSymbols) {
 			// Add instances of this component to symbols
@@ -1277,13 +1554,13 @@ export default class D3DObject {
 			dontRecurseSymbols = false
 		} = {}
 	) {
-		const component = this.getComponent(type);
+		const mgr = this.getComponent(type);
 		
-		if(!component)
+		if(!mgr)
 			return;
 			
-		if(typeof component.dispose == 'function')
-			await component.dispose();
+		if(typeof mgr.dispose == 'function')
+			await mgr.dispose();
 		
 		this.components.splice(this.components.findIndex(c => c.type == type), 1);
 		delete this.__componentInstances[type];
@@ -1346,7 +1623,7 @@ export default class D3DObject {
 			return;
 		
 		component.enabled = enabled;
-		this.updateComponents();
+		this.updateComponents(true);
 		this.checkSymbols();
 	}
 	enableComponent(type) {
@@ -1909,9 +2186,6 @@ export default class D3DObject {
 		return dir.clone().applyQuaternion(this.quaternion);
 	}
 	
-	disposeAllRigidbodies() {
-		this.traverse(o => o._rigidbody?.dispose());
-	}
 	removeAllChildren(force = true) {
 		const children = [...this.children];
 		children.forEach(d3dobj => d3dobj.remove(force));
@@ -1946,7 +2220,11 @@ export default class D3DObject {
 			return;
 		}
 		
-		this.disposeAllRigidbodies();
+		[...this.children].forEach(d3dchild => {
+			d3dchild.remove(true);
+		});
+		
+		this.disposeAllComponents();
 		
 		const idx = this.parent.children.indexOf(this);
 		
@@ -1962,10 +2240,18 @@ export default class D3DObject {
 		
 		delete this.parent[this.name];
 		delete _root.superIndex[this.uuid];
+		this._removeFromAllLoops();
 		
 		_root.updateSuperIndex();
 		
 		this.checkSymbols();
+	}
+	disposeAllComponents() {
+		for(let i in this.__componentInstances) {
+			const mgr = this.__componentInstances[i];
+			mgr?.dispose?.();
+		}
+		this.__componentInstances = {};
 	}
 	async readFile(path) {
 		const zip = this.zip;
@@ -2327,5 +2613,46 @@ export default class D3DObject {
 		}
 		
 		return true;
+	}
+	
+	_updateLoopIndex(k, f) {
+		const idx = window._loopFns;
+		if(!idx)
+			return;
+	
+		let map = idx[k];
+		if(!map)
+			map = idx[k] = new Map();
+	
+		if(f == null) {
+			map.delete(this);
+			return;
+		}
+	
+		map.set(this, f);
+	}
+	_setLoop(k, f) {
+		if(f == null) {
+			this.__loops[k] = null;
+			this._updateLoopIndex(k, null);
+			return;
+		}
+	
+		if(typeof f !== 'function')
+			throw new Error('This property must be of type Function');
+	
+		this.__loops[k] = f;
+		this._updateLoopIndex(k, f);
+	}
+	_removeFromAllLoops() {
+		const idx = window._loopFns;
+		if(!idx)
+			return;
+	
+		for(const k in idx) {
+			const map = idx[k];
+			if(map)
+				map.delete(this);
+		}
 	}
 }

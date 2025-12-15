@@ -916,11 +916,11 @@ export default function Inspector() {
 			
 			const setComponentEnabled = (enable, addStep = true) => {
 				objects.forEach(object => {
-					const component = object.getComponentObject(type);
-					if(!component || !canSee(component))
+					const mgr = object.getComponent(type);
+					if(!mgr || !canSee(mgr.component))
 						return;
-					
-					component.enabled = enable;
+						
+					mgr.enabled = enable;
 					
 					update();
 				});

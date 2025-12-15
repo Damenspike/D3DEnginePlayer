@@ -41,4 +41,7 @@ export default class D3DTime {
 	clock(seconds) {
 		return clockStr(seconds);
 	}
+	setPlaying(playing) {
+		_host.paused = !playing;
+	}
 }

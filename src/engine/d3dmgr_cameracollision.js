@@ -40,7 +40,6 @@ export default class CameraCollisionManager {
 	}
 	
 	setup() {
-		this.__onInternalBeforeRender = this.updateCollision;
 		this.__setup = true;
 		
 		_events.on('super-index-update', () => this.updateObjects());
@@ -60,7 +59,10 @@ export default class CameraCollisionManager {
 		));
 	}
 	
-	updateCollision() {
+	__onInternalBeforeRender() {
+		if(!this.__setup)
+			return;
+		
 		const radius = Number(this.radius);
 		const target = this.target ?? this.d3dobject.root.find(this.targetName);
 		const targetOffset = new THREE.Vector3(

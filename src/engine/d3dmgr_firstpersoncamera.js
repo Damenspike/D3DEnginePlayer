@@ -12,47 +12,6 @@ export default class FirstPersonCameraManager {
 
 		// Reusable Euler (YXZ order avoids roll)
 		this._euler = new THREE.Euler(0, 0, 0, 'YXZ');
-
-		this._drive = () => {
-			if (!this.component.enabled)
-				return;
-
-			const p = this.component.properties || {};
-			const rotateSpeed = Number(p.rotateSpeed ?? 1) * 0.002;
-			const invertX     = !!p.invertX;
-			const invertY     = !!p.invertY;
-
-			// Pitch limits
-			const minPitchDeg = Number(p.minPitchDeg ?? -80);
-			const maxPitchDeg = Number(p.maxPitchDeg ??  80);
-			const MIN_PITCH   = THREE.MathUtils.degToRad(minPitchDeg);
-			const MAX_PITCH   = THREE.MathUtils.degToRad(maxPitchDeg);
-
-			const mouse = _input.getMouseDelta();
-
-			// ----- ROTATION INPUT -----
-			let dx = mouse.x * rotateSpeed;
-			let dy = mouse.y * rotateSpeed;
-
-			if (invertX) dx = -dx;
-			if (invertY) dy = -dy;
-
-			// FPS-style rotation: yaw around world-up, pitch around local X
-			this._yaw   -= dx;
-			this._pitch -= dy;
-
-			// Clamp pitch
-			this._pitch = Math.max(MIN_PITCH, Math.min(MAX_PITCH, this._pitch));
-
-			// Wrap yaw
-			if (this._yaw >  Math.PI) this._yaw -= Math.PI * 2;
-			if (this._yaw < -Math.PI) this._yaw += Math.PI * 2;
-
-			// Apply via YXZ euler to avoid roll
-			this._euler.set(this._pitch, this._yaw, 0, 'YXZ');
-			const obj = this.d3dobject.object3d;
-			obj.quaternion.setFromEuler(this._euler);
-		};
 	}
 
 	// ---------- Property helpers ----------
@@ -86,8 +45,6 @@ export default class FirstPersonCameraManager {
 	}
 
 	dispose() {
-		if (this.__onInternalEnterFrame === this._drive)
-			this.__onInternalEnterFrame = null;
 		this._inited = false;
 	}
 
@@ -107,8 +64,47 @@ export default class FirstPersonCameraManager {
 
 		this._yaw   = this._euler.y;
 		this._pitch = this._euler.x;
-
-		this.__onInternalEnterFrame = this._drive;
 		this._inited = true;
+	}
+	
+	__onInternalEnterFrame() {
+		if (!this.component.enabled)
+			return;
+		
+		const p = this.component.properties || {};
+		const rotateSpeed = Number(p.rotateSpeed ?? 1) * 0.002;
+		const invertX     = !!p.invertX;
+		const invertY     = !!p.invertY;
+		
+		// Pitch limits
+		const minPitchDeg = Number(p.minPitchDeg ?? -80);
+		const maxPitchDeg = Number(p.maxPitchDeg ??  80);
+		const MIN_PITCH   = THREE.MathUtils.degToRad(minPitchDeg);
+		const MAX_PITCH   = THREE.MathUtils.degToRad(maxPitchDeg);
+		
+		const mouse = _input.getMouseDelta();
+		
+		// ----- ROTATION INPUT -----
+		let dx = mouse.x * rotateSpeed;
+		let dy = mouse.y * rotateSpeed;
+		
+		if (invertX) dx = -dx;
+		if (invertY) dy = -dy;
+		
+		// FPS-style rotation: yaw around world-up, pitch around local X
+		this._yaw   -= dx;
+		this._pitch -= dy;
+		
+		// Clamp pitch
+		this._pitch = Math.max(MIN_PITCH, Math.min(MAX_PITCH, this._pitch));
+		
+		// Wrap yaw
+		if (this._yaw >  Math.PI) this._yaw -= Math.PI * 2;
+		if (this._yaw < -Math.PI) this._yaw += Math.PI * 2;
+		
+		// Apply via YXZ euler to avoid roll
+		this._euler.set(this._pitch, this._yaw, 0, 'YXZ');
+		const obj = this.d3dobject.object3d;
+		obj.quaternion.setFromEuler(this._euler);
 	}
 }

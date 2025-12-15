@@ -111,10 +111,14 @@ export default class Layout2DManager {
 		this.updateOffset();
 		this.updateLayout();
 		
-		if(window._player)
-			this.__onInternalEnterFrame = () => this.updateLayout();
-		
 		this.__setup = true;
+	}
+	updateLayout() {
+		if(!window._player)
+			return;
+		
+		this.updateAnchoring();
+		this.updateSizing();
 	}
 	updateOffset() {
 		const properties = this.component.properties;
@@ -173,12 +177,8 @@ export default class Layout2DManager {
 			}
 		}
 	}
-	updateLayout() {
-		if(!window._player)
-			return;
-		
-		this.updateAnchoring();
-		this.updateSizing();
+	__onInternalEnterFrame() {
+		this.updateLayout();
 	}
 	updateAnchoring() {
 		if(this.anchor !== true)

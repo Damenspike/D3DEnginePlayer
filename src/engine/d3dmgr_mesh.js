@@ -51,6 +51,27 @@ export default class MeshManager {
 		this.component.properties.morphTargets = v || {};
 		this._applyMorphTargets();
 	}
+	
+	get instancing() {
+		return !!this.component.properties.instancing;
+	}
+	set instancing(v) {
+		this.component.properties.instancing = !!v;
+	}
+	
+	get instancingId() {
+		return this.component.properties.instancingId;
+	}
+	set instancingId(v) {
+		this.component.properties.instancingId = v;
+	}
+	
+	get maxInstancesPerGroup() {
+		return this.component.properties.maxInstancesPerGroup;
+	}
+	set maxInstancesPerGroup(v) {
+		this.component.properties.maxInstancesPerGroup = Number(v);
+	}
 
 	// =====================================================
 	// HELPER FUNCTIONS
