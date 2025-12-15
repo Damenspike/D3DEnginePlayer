@@ -18,12 +18,36 @@ export async function moveZipEntry(zip, srcPath, destDir, { updateIndex }) {
 	const nd = p => (p.endsWith('/') ? p : p + '/');
 	const nf = p => p.replace(/\/+$/, '');
 	const base = p => nf(p).split('/').pop();
-	
+
 	const entry = zip.files[srcPath] ?? zip.files[srcPath + '/'];
-	
+
 	if(!entry)
 		throw new Error(`${srcPath} not found for move`);
-	
+
+	// Build a path->symbol lookup once so folder moves can update symbol.file too
+	const symbolsByPath = {};
+	Object.values(_root.__symbols).forEach(s => {
+		const p = s?.file?.name;
+		if(p)
+			symbolsByPath[nf(p)] = s;
+	});
+
+	const applyIndex = (oldPath, newPath, isDir) => {
+		if(!updateIndex)
+			return;
+
+		const from = isDir ? nd(oldPath) : nf(oldPath);
+		const to   = isDir ? nd(newPath) : nf(newPath);
+
+		updateIndex(from, to);
+	};
+
+	const applySymbolFile = (oldPath, newFile) => {
+		const symbol = symbolsByPath[nf(oldPath)];
+		if(symbol)
+			symbol.file = newFile;
+	};
+
 	if(entry.dir) {
 		const name = base(srcPath);
 		const trueDestDir = nd(destDir + name);
@@ -54,15 +78,20 @@ export async function moveZipEntry(zip, srcPath, destDir, { updateIndex }) {
 
 		await Promise.all(paths.map(async path => {
 			const file = zip.files[path];
-			const destPath = (path == srcPath) ? trueDestDir : (trueDestDir + path.slice(srcPath.length));
+			const destPath =
+				(path == srcPath)
+					? trueDestDir
+					: (trueDestDir + path.slice(srcPath.length));
 
 			if (file.dir) {
 				zip.folder(destPath);
-				updateIndex?.(path, destPath);
+				applyIndex(path, destPath, true);
 			} else {
 				const data = await file.async('arraybuffer');
-				zip.file(destPath, data, { date: file.date, comment: file.comment });
-				updateIndex?.(path, destPath);
+				const newFile = zip.file(destPath, data, { date: file.date, comment: file.comment });
+
+				applyIndex(path, destPath, false);
+				applySymbolFile(path, newFile);
 			}
 		}));
 
@@ -72,7 +101,7 @@ export async function moveZipEntry(zip, srcPath, destDir, { updateIndex }) {
 			dir: destDir,
 			path: trueDestDir
 		}
-	}else{
+	} else {
 		const data = await entry.async('arraybuffer');
 		const fname = fileName(srcPath);
 		const destPath = `${destDir}${fname}`;
@@ -80,20 +109,18 @@ export async function moveZipEntry(zip, srcPath, destDir, { updateIndex }) {
 		// guard: already in destination (same parent)
 		const srcParent = nf(srcPath).slice(0, nf(srcPath).lastIndexOf('/') + 1);
 		const destDirN = nd(destDir);
-		
+
 		if (srcParent == destDirN) {
 			return {
 				dir: destDir,
 				path: srcPath
 			}
 		}
-
-		const newFile = zip.file(destPath, data, { date: entry.date, comment: entry.comment });
-		updateIndex?.(srcPath, destPath);
 		
-		const symbol = Object.values(_root.__symbols).find(s => s.file.name == srcPath);
-		if(symbol)
-			symbol.file = newFile;
+		const newFile = zip.file(destPath, data, { date: entry.date, comment: entry.comment });
+
+		applyIndex(srcPath, destPath, false);
+		applySymbolFile(srcPath, newFile);
 
 		zip.remove(srcPath);
 
@@ -104,13 +131,18 @@ export async function moveZipEntry(zip, srcPath, destDir, { updateIndex }) {
 	}
 }
 export async function renameZipFile(zip, oldPath, newBaseName, updateIndex) {
-	// validate source
 	const src = zip.file(oldPath);
 	if (!src || src.dir) throw new Error('File not found (or is a directory)');
 
-	// keep original extension unless user typed one
+	const symbolsByPath = {};
+	Object.values(_root.__symbols).forEach(s => {
+		const p = s?.file?.name;
+		if(p)
+			symbolsByPath[p.replace(/\/+$/, '')] = s;
+	});
+
 	const lastSlash = oldPath.lastIndexOf('/') + 1;
-	const dir = oldPath.slice(0, lastSlash).replace(/\/$/, ''); // e.g. "assets/img"
+	const dir = oldPath.slice(0, lastSlash).replace(/\/$/, '');
 	const oldName = oldPath.slice(lastSlash);
 	const dot = oldName.lastIndexOf('.');
 	const ext = dot > 0 ? oldName.slice(dot) : '';
@@ -121,19 +153,21 @@ export async function renameZipFile(zip, oldPath, newBaseName, updateIndex) {
 	const hasDot = safe.includes('.');
 	const desiredName = hasDot ? safe : (safe + ext);
 
-	// compute a unique sibling file path in same folder
 	const targetPath = uniqueFilePath(zip, dir, desiredName);
 
-	// no-op if unchanged
 	if (targetPath === oldPath) return oldPath;
 
-	// read → write → remove
 	const data = await src.async('arraybuffer');
-	zip.file(targetPath, data);
+	const newFile = zip.file(targetPath, data, { date: src.date, comment: src.comment });
+
 	zip.remove(oldPath);
-	
-	updateIndex(oldPath, targetPath);
-	
+
+	updateIndex?.(oldPath, targetPath);
+
+	const symbol = symbolsByPath[oldPath.replace(/\/+$/, '')];
+	if(symbol)
+		symbol.file = newFile;
+
 	_root.updateSymbolStore();
 
 	return targetPath;
@@ -142,26 +176,31 @@ export async function renameZipDirectory(zip, oldDirPath, newBaseName, updateInd
 	if (typeof updateIndex !== 'function')
 		throw new Error('renameZipDirectory requires updateIndex callback');
 
-	// normalize to have trailing slash
+	const nd = p => (p.endsWith('/') ? p : p + '/');
+	const nf = p => p.replace(/\/+$/, '');
+
 	if (!oldDirPath.endsWith('/')) oldDirPath += '/';
 
-	// must exist (at least one entry with this prefix)
 	let found = false;
 	zip.forEach((rel) => { if (rel.startsWith(oldDirPath)) found = true; });
 	if (!found) throw new Error('Folder not found');
 
+	const symbolsByPath = {};
+	Object.values(_root.__symbols).forEach(s => {
+		const p = s?.file?.name;
+		if(p)
+			symbolsByPath[nf(p)] = s;
+	});
+
 	const parentSlash = oldDirPath.lastIndexOf('/', oldDirPath.length - 2) + 1;
-	const parentPath = oldDirPath.slice(0, parentSlash).replace(/\/$/, ''); // e.g. "assets"
+	const parentPath = oldDirPath.slice(0, parentSlash).replace(/\/$/, '');
 	const safe = makeSafeFilename(newBaseName);
 	if (!safe) throw new Error('Empty name');
 
-	// compute a unique sibling directory path
 	const newDirPath = uniqueDirPath(zip, parentPath, safe); // ends with '/'
 
-	// no-op if unchanged
 	if (newDirPath === oldDirPath) return oldDirPath;
 
-	// collect all entries under the old dir
 	const toRemove = [];
 	const copyPromises = [];
 	const remaps = [];
@@ -175,11 +214,19 @@ export async function renameZipDirectory(zip, oldDirPath, newBaseName, updateInd
 		if (file.dir) {
 			if (!pathExists(zip, target)) zip.folder(target);
 		} else {
-			copyPromises.push(file.async('arraybuffer').then(buf => zip.file(target, buf)));
+			copyPromises.push(
+				file.async('arraybuffer').then(buf => {
+					const newFile = zip.file(target, buf, { date: file.date, comment: file.comment });
+
+					const symbol = symbolsByPath[nf(rel)];
+					if(symbol)
+						symbol.file = newFile;
+				})
+			);
 		}
 
 		toRemove.push(rel);
-		remaps.push({ oldRel: rel, newRel: target });
+		remaps.push({ oldRel: rel, newRel: target, isDir: !!file.dir });
 	});
 
 	await Promise.all(copyPromises);
@@ -187,13 +234,13 @@ export async function renameZipDirectory(zip, oldDirPath, newBaseName, updateInd
 	toRemove.forEach(p => zip.remove(p));
 	zip.remove(oldDirPath);
 
-	// remap the directory stub itself
-	remaps.push({ oldRel: oldDirPath, newRel: newDirPath });
+	remaps.push({ oldRel: oldDirPath, newRel: newDirPath, isDir: true });
 
-	// apply remaps
-	for (const { oldRel, newRel } of remaps) {
-		updateIndex(oldRel, newRel);
+	for (const r of remaps) {
+		updateIndex(r.isDir ? nd(r.oldRel) : nf(r.oldRel), r.isDir ? nd(r.newRel) : nf(r.newRel));
 	}
+
+	_root.updateSymbolStore();
 
 	return newDirPath;
 }

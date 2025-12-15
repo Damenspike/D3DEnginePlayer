@@ -108,4 +108,13 @@ export default class D3DDimensions {
 			this.gameHeight = this.bottom - this.top;    // == this.height
 		}
 	}
+	setSize(width, height) {
+		if(!width || !height || isNaN(width) || isNaN(height))
+			throw new Error('Invalid width or height');
+		
+		_root.manifest.width = width;
+		_root.manifest.height = height;
+		
+		_host.renderer2d.refreshSize();
+	}
 }

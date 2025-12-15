@@ -935,10 +935,12 @@ export default class D3DObject {
 			const symbol = root.__symbols[objData.symbolId];
 			
 			if(!symbol) {
-				throw new Error(`Symbol doesn't exist ${objData.symbolId}`)
+				console.warn(`Symbol doesn't exist ${objData.symbolId}`)
+				return;
 			}
 			if(!symbol.objData) {
-				throw new Error(`Symbol data is missing ${objData.symbolId}`)
+				console.warn(`Symbol data is missing ${objData.symbolId}`)
+				return;
 			}
 			
 			const symbolCopy = structuredClone(symbol.objData);
@@ -1747,7 +1749,7 @@ export default class D3DObject {
 		if(!window._editor)
 			return;
 		
-		if(this.__syncing)
+		if(this.__syncing || this.__lockSymbols)
 			return;
 		
 		const treeSymbolUpdate = (d3dobject) => {
@@ -2205,7 +2207,7 @@ export default class D3DObject {
 	destroyChildren() {
 		this.removeAllChildren(true);
 	}
-	remove(force = false) {
+	remove(force = false, shouldCheckSymbols = true) {
 		if(this.parent == null)
 			throw new Error("Can't delete _root");
 			
@@ -2221,7 +2223,9 @@ export default class D3DObject {
 		}
 		
 		[...this.children].forEach(d3dchild => {
-			d3dchild.remove(true);
+			d3dchild.__lockSymbols = true; // MUST NOT ALLOW ANY SYMBOL SYNCING
+			d3dchild.remove(true, false); // DO NOT DO SYMBOL CHECKS HERE
+			d3dchild.__lockSymbols = false;
 		});
 		
 		this.disposeAllComponents();
@@ -2244,7 +2248,8 @@ export default class D3DObject {
 		
 		_root.updateSuperIndex();
 		
-		this.checkSymbols();
+		if(shouldCheckSymbols)
+			this.checkSymbols();
 	}
 	disposeAllComponents() {
 		for(let i in this.__componentInstances) {

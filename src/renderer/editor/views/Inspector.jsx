@@ -453,6 +453,18 @@ export default function Inspector() {
 		}
 	}, [sceneListRef, _editor.selectedObjects]);
 	
+	// Auto clear filter
+	useEffect(() => {
+		if(!sceneInspectorExpanded)
+			setSceneFilter('');
+		
+		if(!assetsInspectorExpanded)
+			setAssetFilter('');
+	}, [
+		sceneInspectorExpanded,
+		assetsInspectorExpanded
+	]);
+	
 	const update = () => {
 		setDummyObject({...dummyObject});
 		setDummyProject({...dummyProject});
@@ -2485,6 +2497,9 @@ export default function Inspector() {
 				const movedTo = normPath(res?.dir || res?.file || joinPath(dst, baseName(src)));
 				moved.push(movedTo);
 			}
+			
+			// Ensure structure of symbol store
+			_root.updateSymbolStore();
 		
 			return moved;
 		};
@@ -3154,7 +3169,7 @@ export default function Inspector() {
 				{(tab == 'scene' || tab == 'all') && loaded && drawSceneInspector()}
 				{(tab == 'object' || tab == 'all') && loaded && objects.length > 0 && drawObjectInspector()}
 				{selectedAssetPaths.size == 1 && loaded &&  drawMediaInspector()}
-				{(tab == 'project' || tab == 'all') && loaded && _editor.project && _editor.focus == _root && drawProjectInspector()}
+				{(tab == 'project' || tab == 'all') && loaded && _editor.project && (_editor.focus == _root || tab == 'project') && drawProjectInspector()}
 				
 				<div style={{height: 45}} />
 			</div>
