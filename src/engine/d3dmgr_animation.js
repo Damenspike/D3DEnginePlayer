@@ -424,6 +424,6 @@ function AnimationState({d3dobject, clip}) {
 	this.findAnimationTarget = (name) => {
 		return (name == this.d3dobject.name || name == '__self__') ? 
 			this.d3dobject : 
-			this.d3dobject.findDeep(name)[0]; // TODO: Support . path finding
+			this.d3dobject.findDeep(name);
 	}
 }

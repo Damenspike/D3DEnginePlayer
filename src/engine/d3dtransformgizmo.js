@@ -508,12 +508,27 @@ export default class D3DTransformGizmo {
 	}
 
 	_scaleToCamera() {
-		if (!this._scaleWithDistance) return;
+		if(!this._scaleWithDistance)
+			return;
+	
 		const cam = this.camera;
-		this._tmpV.copy(this._group.position).project(cam);
-		const dist = this.camera.getWorldPosition(this._tmpV2).distanceTo(this._group.position);
-		const scale = Math.max(0.001, dist * 0.15);
-		this._group.scale.setScalar(scale);
+	
+		const dist = cam
+			.getWorldPosition(this._tmpV2)
+			.distanceTo(this._group.position);
+	
+		const base = Math.max(0.001, dist * 0.15);
+	
+		// preserve sign per axis
+		const sx = Math.sign(this._group.scale.x) || 1;
+		const sy = Math.sign(this._group.scale.y) || 1;
+		const sz = Math.sign(this._group.scale.z) || 1;
+	
+		this._group.scale.set(
+			base * sx,
+			base * sy,
+			base * sz
+		);
 	}
 	
 	_updateRotateArcs() {
@@ -989,10 +1004,12 @@ export default class D3DTransformGizmo {
 		
 			// Convert pixels → world units at pivot, then to a unit-less multiplier by dividing by a ref length
 			const deltaW = alongPx * d.wuPerPx;
+			
 			let s = 1 + (deltaW / d.refLen);
-		
-			// Prevent runaway / inversion near zero
-			s = Math.max(1e-4, s);
+			
+			// allow negative; just avoid an exact/near zero multiplier
+			s = this._safeScale(s);
+			
 			// Optional soft cap to avoid accidental huge numbers; comment out if you prefer no cap
 			// s = Math.min(1000, s);
 			
@@ -1003,7 +1020,7 @@ export default class D3DTransformGizmo {
 				const start = d.targets[0];
 				const newScale = start.startLocalScale.clone();
 				
-				newScale.setComponent(d.axisIndex, Math.max(1e-4, newScale.getComponent(d.axisIndex) * s));
+				newScale.setComponent(d.axisIndex, this._safeScale(newScale.getComponent(d.axisIndex) * s));
 				
 				this.object.scale.copy(newScale);
 				this.object.updateMatrixWorld();
@@ -1029,7 +1046,7 @@ export default class D3DTransformGizmo {
 			// Map pixels → world → unitless via ref length; exponential for smoothness (Unity-like feel)
 			const deltaW = alongPx * d.wuPerPx;
 			let s = 1 + (deltaW / d.refLen);
-			s = Math.max(1e-4, s);
+			s = this._safeScale(s);
 		
 			// Optional soft cap
 			// s = Math.min(1000, s);
@@ -1046,7 +1063,13 @@ export default class D3DTransformGizmo {
 				this._applyToTargetsScaleUniform(d.pivotStartPosW, s);
 			} else {
 				const startScale = d.targets?.[0]?.startLocalScale || this.object.scale.clone();
-				this.object.scale.copy(startScale.clone().multiplyScalar(s));
+				
+				this.object.scale.set(
+					this._safeScale(startScale.x * s),
+					this._safeScale(startScale.y * s),
+					this._safeScale(startScale.z * s)
+				);
+				
 				this.object.updateMatrixWorld();
 			}
 		}
@@ -1299,16 +1322,19 @@ export default class D3DTransformGizmo {
 	}
 	
 	_applyToTargetsScaleUniform(pivotW, s) {
-		const ss = Math.max(1e-4, s);
+		const ss = this._safeScale(s);
 		for (const it of this._targetsInfo) {
 			const rel = it.startPosW.clone().sub(pivotW).multiplyScalar(ss);
 			const posW = pivotW.clone().add(rel);
 			// scale object uniformly in local space too
-			const newLocalScale = it.startLocalScale.clone().multiplyScalar(ss).set(
-				Math.max(1e-4, it.startLocalScale.x * ss),
-				Math.max(1e-4, it.startLocalScale.y * ss),
-				Math.max(1e-4, it.startLocalScale.z * ss)
+			const newLocalScale = it.startLocalScale.clone();
+			
+			newLocalScale.set(
+				this._safeScale(newLocalScale.x * ss),
+				this._safeScale(newLocalScale.y * ss),
+				this._safeScale(newLocalScale.z * ss)
 			);
+			
 			// Keep world rotation the same
 			_applyWorldTRS(it.obj, posW, it.startQuatW, it.startScaleW.clone()); // place via world
 			// then set local uniform scale (safer for hierarchy)
@@ -1318,7 +1344,7 @@ export default class D3DTransformGizmo {
 	}
 	
 	_applyToTargetsScaleAxis(axisW, pivotW, s, axisIndex) {
-		const ss = Math.max(1e-4, s);
+		const ss = this._safeScale(s);
 		const n = axisW.clone().normalize(); // world axis unit vector
 		for (const it of this._targetsInfo) {
 			// Move position by scaling only the component along the axis
@@ -1329,7 +1355,7 @@ export default class D3DTransformGizmo {
 	
 			// Scale object along the corresponding local axis
 			const newLocalScale = it.startLocalScale.clone();
-			newLocalScale.setComponent(axisIndex, Math.max(1e-4, newLocalScale.getComponent(axisIndex) * ss));
+			newLocalScale.setComponent(axisIndex, this._safeScale(newLocalScale.getComponent(axisIndex) * ss));
 	
 			_applyWorldTRS(it.obj, posW, it.startQuatW, it.startScaleW.clone());
 			it.obj.scale.copy(newLocalScale);
@@ -1362,6 +1388,16 @@ export default class D3DTransformGizmo {
 		const a = this._worldToScreenPx(p);
 		const b = this._worldToScreenPx(p.clone().add(new THREE.Vector3(rWorld, 0, 0)));
 		return Math.max(1, Math.hypot(b.x - a.x, b.y - a.y));
+	}
+	
+	_safeScale(v) {
+		const s = Math.sign(v) || 1;
+		const a = Math.abs(v);
+	
+		if(a < 1e-4)
+			return 1e-4 * s;
+	
+		return v;
 	}
 }
 

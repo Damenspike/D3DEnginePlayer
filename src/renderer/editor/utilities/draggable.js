@@ -49,10 +49,14 @@ export function attachDraggable(panelEl, {
 		// clamp to viewport
 		const vw = window.innerWidth, vh = window.innerHeight;
 		const rect = panelEl.getBoundingClientRect();
-		const maxLeft = vw - rect.width  - padding;
-		const maxTop  = vh - rect.height - padding;
-		left = Math.max(padding, Math.min(left, maxLeft));
-		top  = Math.max(padding, top);
+		
+		const minLeft = padding - (rect.width - 60)
+		const minTop  = padding;
+		
+		const maxLeft = vw - 60 - padding;
+		const maxTop  = vh - 60 - padding;
+		left = Math.max(minLeft, Math.min(left, maxLeft));
+		top  = Math.max(minTop, Math.min(top, maxTop));
 
 		panelEl.style.left = left + 'px';
 		panelEl.style.top  = top  + 'px';

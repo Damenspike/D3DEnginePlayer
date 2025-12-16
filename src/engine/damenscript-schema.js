@@ -1,7 +1,7 @@
 export const KEYWORDS = [
 	'var', 'let','const','function','return','if','else','for','while','break','continue', 'delete', 'async', 'await',
 	'true','false','null','undefined','Infinity', 'NaN','import','from','export','struct','enum','match', 'typeOf',
-	'case','default','try','catch','finally','throw', 'this', 'root', '_root', 'parent', 
+	'case','default','try','catch','finally','throw', 'this', 'root', 'rootParent', '_rootParent', '_root', 'parent', 
 	'_time', '_physics', '_input', '_dimensions', '_graphics', '_global'
 ]
 export const TYPE_KEYWORDS = [
@@ -148,6 +148,10 @@ export const D3D_OBJECT_SCHEMA = {
 	children: {
 		type: 'D3DObject[]',
 		doc: 'Immediate children of this object.'
+	},
+	_rootParent: {
+		type: 'D3DObject',
+		doc: 'Highest ancestor of this object under `_root` (absolute root).'
 	},
 	rootParent: {
 		type: 'D3DObject',
@@ -424,6 +428,14 @@ export const D3D_OBJECT_SCHEMA = {
 	updateComponents: {
 		type: 'Function():Promise<void>',
 		doc: 'Rebuilds or updates all component manager instances. Called automatically when needed.'
+	},
+	findComponent: {
+		type: 'Function(type:string):ComponentManager|null',
+		doc: 'Searches this object and its children and returns the first component of the given type.'
+	},
+	findAllComponents: {
+		type: 'Function(type:string):ComponentManager[]',
+		doc: 'Searches this object and its children and returns all components of the given type.'
 	},
 
 	// ---------- traversal / search ----------

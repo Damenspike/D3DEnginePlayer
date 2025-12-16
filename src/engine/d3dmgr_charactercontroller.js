@@ -65,8 +65,11 @@ export default class CharacterControllerManager {
 	}
 
 	dispose() {
-		this.component._state.kcc = null;
-		this.component._state.collider = null;
+		if(this.component._state) {
+			this.component._state.kcc = null;
+			this.component._state.collider = null;
+		}
+		
 		this.__setup = false;
 	}
 

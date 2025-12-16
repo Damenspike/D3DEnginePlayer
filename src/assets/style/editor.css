@@ -42,6 +42,7 @@ body.dark {
 		.code-editor__window {
 			background: #121212;
 			color: white;
+			user-select: none;
 		}
 		.code-editor__file__btn {
 			color: white; 
@@ -65,6 +66,12 @@ body.dark {
 		}
 		.tab:hover {
 			background: rgba(0, 0, 0, 1);
+		}
+		.tab--draggable { 
+			cursor: grab; 
+		}
+		.tab--dragging { 
+			cursor: grabbing; opacity: 0.6; 
 		}
 	}
 	.asset-dialog {

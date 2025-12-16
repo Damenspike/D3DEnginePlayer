@@ -826,43 +826,91 @@ export default function Inspector() {
 											}} 
 										/>
 									</div>
-									<div className='ml2'>
+								</div>
+								<div style={{height: 20}}></div>
+								<div className="vector-input vector-input--top">
+									<div>
 										<label>Layer</label>
-										<input 
-											type="number" 
-											className="tf tf--num"
-											onKeyDown={autoBlur}
-											min={0} 
-											max={31}
-											step={1}
-											value={objects[0].layer} 
+										<select
+											className="tf"
+											value={objects[0].layer}
+											style={{width: 100}}
 											onChange={e => {
 												const newLayer = Number(e.target.value);
 												
 												objects.forEach(object => {
-													object.__inspOldLayer = object.layer;
-													object.layer = newLayer;
+													object.__inspOldLayerMask = object.layer;
 												});
-												update();
 												
+												const apply = () => {
+													objects.forEach(object => {
+														object.layer = newLayer;
+													});
+													update();
+												};
+									
+												const undo = () => {
+													objects.forEach(object => {
+														object.layer = object.__inspOldLayerMask;
+													});
+													update();
+												};
+									
+												apply();
+									
 												_editor.addStep({
 													name: 'Update layer',
-													undo: () => {
-														objects.forEach(object => {
-															object.layer = object.__inspOldLayer;
-														});
-														update();
-													},
-													redo: () => {
-														objects.forEach(object => {
-															object.layer = newLayer;
-														});
-														update();
-													}
+													undo,
+													redo: apply
 												});
-											}} 
-										/>
+											}}
+										>
+											{Array.from({ length: 32 }).map((_, i) => (
+												<option key={i} value={i}>
+													{i}
+												</option>
+											))}
+										</select>
 									</div>
+									{
+										_editor.mode == '3D' && (
+											<div className='ml2'>
+												<label>Index</label>
+												<input 
+													type="number" 
+													className="tf tf--num"
+													onKeyDown={autoBlur}
+													step={1}
+													value={objects[0].hindex || 0} 
+													onChange={e => {
+														const newIndex = Number(e.target.value) || 0;
+														
+														objects.forEach(object => {
+															object.__inspOldIndex = object.hindex;
+															object.hindex = newIndex;
+														});
+														update();
+														
+														_editor.addStep({
+															name: 'Update index',
+															undo: () => {
+																objects.forEach(object => {
+																	object.hindex = object.__inspOldIndex;
+																});
+																update();
+															},
+															redo: () => {
+																objects.forEach(object => {
+																	object.hindex = newIndex;
+																});
+																update();
+															}
+														});
+													}} 
+												/>
+											</div>
+										)
+									}
 								</div>
 							</>
 						)
@@ -2038,6 +2086,17 @@ export default function Inspector() {
 					else
 					if(a.position.z < b.position.z)
 						return 1;
+					else
+						return 0;
+				});
+			}else
+			if(_editor.mode == '3D') {
+				objects = objects.sort((a, b) => {
+					if(a.hindex > b.hindex)
+						return 1;
+					else
+					if(a.hindex < b.hindex)
+						return -1;
 					else
 						return 0;
 				});

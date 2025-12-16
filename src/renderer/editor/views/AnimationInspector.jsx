@@ -989,6 +989,12 @@ export default function AnimationInspector() {
 						{selectedObject.name} is not animated
 					</p>
 					<button onClick={() => {
+						if(_editor.selectedObjects.length < 1) {
+							const f = _editor.focus;
+							_editor.focus = _editor.focus.parent ?? _root;
+							_editor.setSelection([f]);
+						}
+						
 						D3D.invoke('add-component', 'Animation');
 						_editor.probeSelection();
 					}}>

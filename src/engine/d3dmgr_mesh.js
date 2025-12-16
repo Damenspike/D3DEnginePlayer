@@ -704,6 +704,12 @@ export default class MeshManager {
 		this._applyShadows();
 		this._applyMorphTargets();
 		
+		this.d3dobject.onMeshReady?.();
+		this.d3dobject.root.onChildMeshReady?.(this.d3dobject);
+		
+		this.d3dobject.invokeEvent('meshReady');
+		this.d3dobject.root.invokeEvent('onChildMeshReady', this.d3dobject);
+		
 		this.d3dobject.updateVisibility(true);
 	}
 	
@@ -809,59 +815,6 @@ export default class MeshManager {
 		});
 	
 		return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
-	}
-
-	// =====================================================
-	// DISPOSE
-	// =====================================================
-
-	async dispose() {
-		if (Array.isArray(this.d3dobject.children)) {
-			for (const child of [...this.d3dobject.children]) {
-				if (!child || child.__auto_gltf !== true) continue;
-				try { if (child.hasComponent && child.hasComponent('SubMesh')) child.removeComponent('SubMesh'); } catch {}
-				try {
-					if (typeof this.d3dobject.deleteChild === 'function') await this.d3dobject.deleteChild(child);
-					else if (typeof this.d3dobject.removeChild === 'function') this.d3dobject.removeChild(child);
-					else {
-						const i = this.d3dobject.children.indexOf(child);
-						if (i !== -1) this.d3dobject.children.splice(i, 1);
-					}
-				} catch {}
-			}
-		}
-
-		const scene = this.d3dobject.modelScene;
-		if (scene) {
-			try { if (scene.parent) scene.parent.remove(scene); } catch {}
-			try {
-				scene.traverse(o => {
-					if (!(o && (o.isMesh || o.isSkinnedMesh))) return;
-					try { o.geometry?.dispose?.(); } catch {}
-					const mats = Array.isArray(o.material) ? o.material : [o.material];
-					for (const m of mats) {
-						if (!m) continue;
-						try {
-							for (const k in m) {
-								const v = m[k];
-								if (v && v.isTexture) { try { v.dispose?.(); } catch {} }
-							}
-							m.dispose?.();
-						} catch {}
-					}
-				});
-			} catch {}
-			this.d3dobject.modelScene = null;
-			this.d3dobject._loadedMeshUUID = null;
-		}
-
-		if (this.d3dobject.object3d) {
-			const host = this.d3dobject.object3d;
-			for (let i = host.children.length - 1; i >= 0; i--) {
-				const o = host.children[i];
-				if (o && (o.isGroup || o.isMesh || o.isSkinnedMesh)) host.remove(o);
-			}
-		}
 	}
 	
 	onEnabled() {

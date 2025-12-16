@@ -43,6 +43,7 @@ export default class D3DObject {
 		this.name = name;
 		this._enabled = true;
 		this._visible = true;
+		this.hindex = 0;
 		
 		// INTERNAL SENSITIVE VARS
 		this.__ready = false;
@@ -656,6 +657,15 @@ export default class D3DObject {
 		return par;
 	}
 	
+	get _rootParent() {
+		let par = this;
+		
+		while(par.parent && par.parent != _root)
+			par = par.parent;
+		
+		return par;
+	}
+	
 	get __visible() {
 		return this.object3d.visible;
 	}
@@ -984,6 +994,7 @@ export default class D3DObject {
 		child.scale = objData.scale ?? {x: 1, y: 1, z: 1};
 		child.__script = objData.script;
 		child.layer = objData.layer;
+		child.hindex = Number(objData.hindex) || 0;
 		
 		child.editorOnly = !!objData.editorOnly || false;
 		child.editorAlwaysVisible = !!objData.editorAlwaysVisible || false;
@@ -1673,7 +1684,7 @@ export default class D3DObject {
 				} else {
 					const schema = D3DComponents[component.type];
 					const inst = new schema.manager(this, component);
-					this.__componentInstances[type] = inst;
+					this.__componentInstances[component.type] = inst;
 					
 					inst.component = component;
 					
@@ -2064,7 +2075,8 @@ export default class D3DObject {
 			suuid: this.suuid,
 			name: this.name,
 			layer: this.layer,
-			enabled: this.enabled,
+			hindex: this.hindex,
+			enabled: this._enabled,
 			position: {
 				x: this.position.x, 
 				y: this.position.y, 
@@ -2136,6 +2148,20 @@ export default class D3DObject {
 		return node;
 	}
 	findDeep(name) {
+		let res;
+		if(this.name == name)
+			res = this;
+		else {
+			this.traverse(d3dobject => {
+				if(d3dobject.name == name) {
+					res = d3dobject;
+					return false;
+				}
+			});
+		}
+		return res;
+	}
+	findAllDeep(name) {
 		const res = [];
 		if(this.name == name)
 			res.push(this);
@@ -2143,6 +2169,34 @@ export default class D3DObject {
 			if(d3dobject.name == name)
 				res.push(d3dobject);
 		});
+		return res;
+	}
+	findComponent(type) {
+		let res = this.getComponent(type);
+		if(res)
+			return res;
+		
+		this.traverse(d3dobject => {
+			res = d3dobject.getComponent(type);
+			if(res)
+				return false;
+		});
+		
+		return res;
+	}
+	findAllComponents(type) {
+		const res = [];
+		
+		const c = this.getComponent(type);
+		if(c)
+			res.push(c);
+		
+		this.traverse(d3dobject => {
+			const c = d3dobject.getComponent(type);
+			if(c)
+				res.push(c);
+		});
+		
 		return res;
 	}
 	traverse(callback) {
@@ -2224,7 +2278,7 @@ export default class D3DObject {
 		
 		[...this.children].forEach(d3dchild => {
 			d3dchild.__lockSymbols = true; // MUST NOT ALLOW ANY SYMBOL SYNCING
-			d3dchild.remove(true, false); // DO NOT DO SYMBOL CHECKS HERE
+			d3dchild.disposeAllComponents(); // DISPOSE CHILDREN COMPONENTS DO NOT SYNC
 			d3dchild.__lockSymbols = false;
 		});
 		
@@ -2244,7 +2298,7 @@ export default class D3DObject {
 		
 		delete this.parent[this.name];
 		delete _root.superIndex[this.uuid];
-		this._removeFromAllLoops();
+		this.removeFromAllLoops();
 		
 		_root.updateSuperIndex();
 		
@@ -2649,7 +2703,7 @@ export default class D3DObject {
 		this.__loops[k] = f;
 		this._updateLoopIndex(k, f);
 	}
-	_removeFromAllLoops() {
+	removeFromAllLoops() {
 		const idx = window._loopFns;
 		if(!idx)
 			return;
