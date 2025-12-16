@@ -18,7 +18,8 @@ import {
 	forSeconds,
 	forFrames,
 	relNoAssets,
-	relNoExt
+	relNoExt,
+	makeRegexAdapter
 } from './d3dutility.js';
 import {
 	worldToScreen
@@ -1398,6 +1399,7 @@ export default class D3DObject {
 			WebSocket: Object.freeze(D3DWebsocket),
 			WebRTC: Object.freeze(D3DWebRTC),
 			LocalStorage: Object.freeze(D3DLocalStorage),
+			RegEx: Object.freeze(makeRegexAdapter()),
 			typeOf: Object.freeze((val) => typeof val),
 			worldToScreen: Object.freeze(worldToScreen),
 			

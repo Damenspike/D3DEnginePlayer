@@ -1198,3 +1198,81 @@ export function getMeshSignature(mesh) {
 	
 	return (hash >>> 0).toString(36);
 }
+export function makeRegexAdapter() {
+	const parse = (pattern, flags) => {
+		pattern = String(pattern ?? '');
+
+		// support /pattern/flags form
+		if(flags == null && pattern[0] === '/') {
+			const last = pattern.lastIndexOf('/');
+			if(last > 0) {
+				flags = pattern.slice(last + 1);
+				pattern = pattern.slice(1, last);
+			}
+		}
+
+		flags = String(flags ?? '');
+
+		// keep flags sane (native JS flags only)
+		// g i m s u y d (d = indices)
+		flags = flags.replace(/[^gimsuyd]/g, '');
+
+		return { pattern, flags };
+	};
+
+	const compile = (pattern, flags) => {
+		const p = parse(pattern, flags);
+		const re = new RegExp(p.pattern, p.flags);
+
+		// adapter object (plain methods, no RegExp exposure)
+		return {
+			pattern: p.pattern,
+			flags: p.flags,
+
+			test: (text) => re.test(String(text ?? '')),
+
+			exec: (text) => {
+				const m = re.exec(String(text ?? ''));
+				if(!m) return null;
+
+				// return a plain serializable match object
+				return {
+					match: m[0],
+					groups: Array.from(m),
+					index: m.index,
+					input: m.input
+				};
+			},
+
+			match: (text) => {
+				const m = String(text ?? '').match(re);
+				return m ? Array.from(m) : null;
+			},
+
+			replace: (text, replacement) => {
+				return String(text ?? '').replace(re, String(replacement ?? ''));
+			},
+
+			split: (text, limit) => {
+				if(limit == null)
+					return String(text ?? '').split(re);
+
+				return String(text ?? '').split(re, Number(limit));
+			},
+
+			// optional: reset lastIndex for global/sticky regex
+			reset: () => {
+				re.lastIndex = 0;
+				return true;
+			}
+		};
+	};
+
+	// callable adapter: regex(pattern, flags?)
+	const regex = (pattern, flags) => compile(pattern, flags);
+
+	// helper: directly compile /.../flags
+	regex.from = (literal) => compile(literal);
+
+	return regex;
+}

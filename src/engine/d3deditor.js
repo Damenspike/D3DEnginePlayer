@@ -466,7 +466,7 @@ function startAnimationLoop() {
 			_editor.__lastLightsEnabled = lightsOn;
 		}
 		
-		if (_editor.focus != _root) {
+		if (_editor.focus != _root && !_root.flatFocus) {
 			afterRenderHideObjects();
 			renderer3d.autoClear = false;
 			renderer3d.render(_editor._overlayScene, _editor._overlayCam);
@@ -1222,7 +1222,7 @@ async function publishProject(publishURI, buildURI, opts) {
 
 // Editor events
 function onEditorFocusChanged() {
-	const inFocusMode = _editor.focus != _root;
+	const inFocusMode = _editor.focus != _root && !_root.flatFocus;
 	
 	if(_editor.grayPass)
 		_editor.grayPass.enabled = inFocusMode;

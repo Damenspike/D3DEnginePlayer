@@ -21,7 +21,7 @@ export const TYPE_KEYWORDS = [
 	'createObject', 'createFromSymbol',
 	'destroy', 'destroyChildren',
 	'addComponent', 'removeComponent', 'getComponent', 'hasComponent',
-	'worldToScreen',
+	'worldToScreen', 'RegEx'
 ]
 export const FORBIDDEN_KEYWORDS = [
 	'window','document','globalThis',
@@ -103,7 +103,9 @@ export const NO_OBFUSCATE = [
 	"Float32Array",
 	"Float64Array",
 	"typeOf",
-	"worldToScreen"
+	"worldToScreen",
+	"_rootParent",
+	"RegEx"
 ]
 export const D3D_OBJECT_SCHEMA = {
 	// ---------- identity & basic state ----------
