@@ -1,5 +1,5 @@
 // importer.js
-import JSZip from 'jszip';
+import D3DZip from './d3dzip.js';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
@@ -235,8 +235,8 @@ export async function handleImportFile(file, destDir) {
 			// Import assets from .d3d file
 			// ============================
 			
-			// Load the dropped .d3d as its own JSZip
-			const srcZip = await new JSZip().loadAsync(buf);
+			// Load the dropped .d3d as its own D3DZip
+			const srcZip = await new D3DZip().loadAsync(buf);
 			
 			// Read the source asset-index.json
 			const assetIndexFile = srcZip.file('asset-index.json');

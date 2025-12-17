@@ -12,16 +12,19 @@ import {
 } from "react-icons/md";
 import { PiHandGrabbingFill } from "react-icons/pi";
 import { BiExpand } from "react-icons/bi";
+import { RiStackLine } from "react-icons/ri";
 
 import smallLogoLight from '../../../assets/images/d3dicon-small.png';
 import smallLogoDark from '../../../assets/images/d3dicon-small-dark.png';
 
 export default function Topbar() {
+	const [projectBuilding, setProjectBuilding] = useState(false);
 	const [_tool, setTool] = useState(_editor.tool);
 	const [_transformTool, setTransformTool] = useState(_editor.transformTool);
 	const [_mode, setMode] = useState(_editor.mode);
 	const [_lightsEnabled, setLightsEnabled] = useState(_editor.lightsEnabled);
-	const [projectBuilding, setProjectBuilding] = useState(false);
+	const [_flatFocus, setFlatFocus] = useState(false);
+	const [_focus, setFocus] = useState();
 	
 	useEffect(() => {
 		function onKey(e) {
@@ -41,6 +44,7 @@ export default function Topbar() {
 		_events.on('editor-transform-tool', tool => setTransformTool(tool));
 		_events.on('editor-mode', mode => setMode(mode));
 		_events.on('editor-building', s => setProjectBuilding(!!s));
+		_events.on('editor-focus', o => setFocus(o));
 	}, []);
 	
 	useEffect(() => {
@@ -62,6 +66,14 @@ export default function Topbar() {
 	useEffect(() => {
 		setLightsEnabled(_editor.lightsEnabled);
 	}, [_editor.lightsEnabled]);
+	
+	useEffect(() => {
+		_editor.flatFocus = !!_flatFocus;
+		window._root && _editor.onEditorFocusChanged?.();
+	}, [_flatFocus]);
+	useEffect(() => {
+		setFlatFocus(!!_editor.flatFocus);
+	}, [_editor.flatFocus]);
 	
 	const openDamen3DWebsite = () => {
 		D3D.openWebsite();
@@ -190,6 +202,15 @@ export default function Topbar() {
 						() => _lightsEnabled,
 						() => setLightsEnabled(!_lightsEnabled),
 						'Lights'
+					)
+				}
+				{
+					drawToolButton(
+						(<RiStackLine />),
+						() => !_flatFocus,
+						() => setFlatFocus(!_flatFocus),
+						'Focus',
+						!(window._root && _editor.focus != _root)
 					)
 				}
 			</div>

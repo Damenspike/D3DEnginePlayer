@@ -1,26 +1,89 @@
-const { 
-	app, 
-	BrowserWindow, 
-	Menu, 
-	dialog, 
-	ipcMain, 
-	nativeTheme, 
+// main-editor.cjs
+
+const {
+	app,
+	BrowserWindow,
+	Menu,
+	dialog,
+	ipcMain,
+	nativeTheme,
 	screen,
 	shell
 } = require('electron');
+
 const path = require('path');
 const fs = require('fs');
 const pkg = require('../../package.json');
+
 const isDev = !app.isPackaged;
 const isMac = process.platform === 'darwin';
 
-let editorDirty = false;
+// ----------------------------
+// Global singleton windows
+// ----------------------------
 let startWindow;
 let newProjectWindow;
-let editorWindow;
-let gameWindow;
 let splashWindow;
 
+let pendingFile;
+
+// ----------------------------
+// Multi-project sessions
+// ----------------------------
+const sessions = new Map();       // projectId -> session
+const winToProject = new Map();   // browserWindow.id -> projectId
+
+function makeProjectId(uri) {
+	return String(uri || '').toLowerCase();
+}
+
+function getFileFromArgv(argv) {
+	return argv.find(arg => /\.d3dproj$/i.test(arg));
+}
+
+function resolvePath(...segments) {
+	const base = app.getAppPath();
+	return path.join(base, ...segments);
+}
+
+function getFocusedWindow() {
+	return BrowserWindow.getFocusedWindow();
+}
+
+function getFocusedSession() {
+	const bw = getFocusedWindow();
+	if(!bw) return null;
+
+	const projectId = winToProject.get(bw.id);
+	if(!projectId) return null;
+
+	return sessions.get(projectId) || null;
+}
+
+function getSessionFromEvent(event) {
+	const bw = BrowserWindow.fromWebContents(event.sender);
+	if(!bw) return null;
+
+	const projectId = winToProject.get(bw.id);
+	if(!projectId) return null;
+
+	return sessions.get(projectId) || null;
+}
+
+function isEditorWindow(bw) {
+	if(!bw || bw.isDestroyed()) return false;
+	return !!winToProject.get(bw.id);
+}
+
+function getEditorBusy() {
+	const session = getFocusedSession();
+	if(!session) return false;
+	return !!session.inputFieldActive;
+}
+
+// ----------------------------
+// Tool windows definitions
+// ----------------------------
 const toolWindows = {
 	bitmapTrace: {
 		title: 'Trace Bitmap',
@@ -50,79 +113,87 @@ const toolWindows = {
 		resizable: false,
 		html: 'graphic-simplify.html'
 	}
-}
+};
 
-let lastOpenedProjectUri;
-let playerURI;
-let projectOpen = false;
-let inputFieldActive = false;
-let codeEditorActive = false;
-let pendingFile;
-
-function getEditorBusy() {
-	return inputFieldActive;
-}
-function resolvePath(...segments) {
-	// In prod, app.getAppPath() points inside app.asar
-	const base = app.getAppPath();
-	return path.join(base, ...segments);
-}
-function getFileFromArgv(argv) {
-	return argv.find(arg => /\.d3dproj$/i.test(arg));
-}
-
-async function start() {
-	setupAbout();
-	if(pendingFile) {
-		openProject(pendingFile);
-		pendingFile = null;
-	}else{
-		createStartWindow();
-	}
-	
-	try {
-		const res = await fetch(`https://damen3d.com/api/v1/splash.php?origin=editor&v=${pkg.editorVersion}&theme=${nativeTheme.shouldUseDarkColors ? 'dark' : 'light'}`);
-		
-		if(res.ok) {
-			const splashData = await res.json();
-			if(splashData?.splash) {
-				createSplashScreen(splashData.splash);
-			}
+// ----------------------------
+// Theme helper
+// ----------------------------
+function setupTheme(browserWindow) {
+	browserWindow.webContents.on('did-finish-load', () => {
+		if(browserWindow && !browserWindow.isDestroyed()) {
+			browserWindow.webContents.send(
+				'theme-changed',
+				nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
+			);
 		}
-	}catch(e) { 
-		console.error('Splash error', e); 
+	});
+}
+
+function broadcastTheme() {
+	const theme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
+
+	[ startWindow, newProjectWindow, splashWindow ].forEach(win => {
+		if(win && !win.isDestroyed())
+			win.webContents.send('theme-changed', theme);
+	});
+
+	// sessions (editor/game/tools)
+	for(const session of sessions.values()) {
+		const list = [];
+
+		if(session.editorWindow) list.push(session.editorWindow);
+		if(session.gameWindow) list.push(session.gameWindow);
+
+		for(const w of session.toolWindows.values())
+			list.push(w);
+
+		list.forEach(win => {
+			if(win && !win.isDestroyed())
+				win.webContents.send('theme-changed', theme);
+		});
 	}
 }
+
+// ----------------------------
+// App About
+// ----------------------------
 function setupAbout() {
 	app.setAboutPanelOptions({
 		applicationName: 'Damen3D Editor',
 		applicationVersion: pkg.editorVersion,
-		
+
 		copyright:
 		`© 2025 Damen3D Engine. Property of Drake Hall. damen3d.com`,
-		
+
 		website: 'https://damen3d.com',
 		websiteLabel: 'Visit Damen3D Website'
 	});
 }
 
+// ----------------------------
+// Splash
+// ----------------------------
 async function createSplashScreen({origin, title, width, height, resizable}) {
 	splashWindow = new BrowserWindow({
 		title, width, height,
 		resizable: !!resizable
 	});
-	
+
 	await splashWindow.loadURL(origin);
-	
+
 	splashWindow.on('closed', () => {
 		splashWindow = null;
 	});
-	
+
 	if(!isMac)
 		splashWindow.setMenu(null);
-	
+
 	setupTheme(splashWindow);
 }
+
+// ----------------------------
+// Start / New Project windows
+// ----------------------------
 async function createStartWindow() {
 	startWindow = new BrowserWindow({
 		title: 'Damen3D Editor',
@@ -138,27 +209,44 @@ async function createStartWindow() {
 			sandbox: false
 		}
 	});
-	
-	if (isDev) {
-		await startWindow.loadURL('http://localhost:5173/editorstart.html');
-	} else {
-		await startWindow.loadFile(resolvePath('dist', 'editor', 'editorstart.html'));
-	}
+
+	if(isDev) await startWindow.loadURL('http://localhost:5173/editorstart.html');
+	else await startWindow.loadFile(resolvePath('dist', 'editor', 'editorstart.html'));
 
 	startWindow.on('closed', () => {
 		startWindow = null;
 	});
+
 	startWindow.webContents.on('preload-error', (_event, preloadPath, error) => {
 		console.error('❌ Preload failed:', preloadPath, error);
 	});
-	
+
 	setupTheme(startWindow);
 
-	// Send initial theme
 	startWindow.webContents.on('did-finish-load', () => {
 		startWindow.webContents.send('theme-changed', nativeTheme.shouldUseDarkColors ? 'dark' : 'light');
 	});
 }
+
+if(isMac) {
+	app.on('new-window-for-tab', (event) => {
+		// stop Electron/macOS creating a blank new tab window
+		event.preventDefault();
+
+		// only do this when the user is in an editor tab/window
+		const bw = BrowserWindow.getFocusedWindow();
+		const projectId = bw ? winToProject.get(bw.id) : null;
+
+		if(!projectId)
+			return;
+
+		if(!startWindow) createStartWindow();
+		else startWindow.show();
+
+		startWindow.focus();
+	});
+}
+
 async function createNewProjectWindow() {
 	newProjectWindow = new BrowserWindow({
 		title: 'New Project',
@@ -175,33 +263,158 @@ async function createNewProjectWindow() {
 		}
 	});
 
-	if (isDev) {
-		await newProjectWindow.loadURL('http://localhost:5173/editornew.html');
-	} else {
-		await newProjectWindow.loadFile(resolvePath('dist', 'editor', 'editornew.html'));
-	}
+	if(isDev) await newProjectWindow.loadURL('http://localhost:5173/editornew.html');
+	else await newProjectWindow.loadFile(resolvePath('dist', 'editor', 'editornew.html'));
 
 	newProjectWindow.on('closed', () => {
 		newProjectWindow = null;
 	});
-	
+
 	setupTheme(newProjectWindow);
-	
+
 	if(!isMac)
 		newProjectWindow.setMenu(null);
 	else
 		Menu.setApplicationMenu(appMenuBase);
 
-	// Send initial theme
 	newProjectWindow.webContents.on('did-finish-load', () => {
 		newProjectWindow.webContents.send('theme-changed', nativeTheme.shouldUseDarkColors ? 'dark' : 'light');
 	});
 }
-async function createGameWindow() {
-	await closeGameWindow();
-	
-	// In-editor game window
-	gameWindow = new BrowserWindow({
+
+function closeNewProjectWindow() {
+	return new Promise(resolve => {
+		if(!newProjectWindow) return resolve();
+
+		if(newProjectWindow.isDestroyed()) {
+			newProjectWindow = null;
+			return resolve();
+		}
+
+		newProjectWindow.once('closed', () => {
+			newProjectWindow = null;
+			resolve();
+		});
+
+		newProjectWindow.close();
+	});
+}
+
+// ----------------------------
+// Session windows
+// ----------------------------
+async function createEditorWindow(session) {
+	if(session.editorWindow && !session.editorWindow.isDestroyed()) {
+		session.editorWindow.show();
+		session.editorWindow.focus();
+		return;
+	}
+
+	const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+
+	const win = new BrowserWindow({
+		title: 'Damen3D Editor',
+		width,
+		height,
+		minWidth: 1200,
+		minHeight: 600,
+		resizable: true,
+
+		// macOS native tab grouping (optional)
+		tabbingIdentifier: 'damen3d-editor',
+
+		webPreferences: {
+			preload: path.join(__dirname, 'preload-editor.cjs'),
+			contextIsolation: true,
+			nodeIntegration: false,
+			enableRemoteModule: false,
+			sandbox: false,
+			spellcheck: false
+		}
+	});
+
+	session.editorWindow = win;
+	winToProject.set(win.id, session.projectId);
+
+	win.on('close', async (e) => {
+		if(!session.dirty)
+			return;
+
+		e.preventDefault();
+
+		const { response } = await dialog.showMessageBox(win, {
+			type: 'question',
+			buttons: ['Save', "Don’t Save", 'Cancel'],
+			defaultId: 0,
+			cancelId: 2,
+			message: 'Do you want to save your changes before closing this project?',
+		});
+
+		if(response === 0) {
+			win.webContents.send('request-save-and-close', session.uri);
+		}else
+		if(response === 1) {
+			session.dirty = false;
+			win.destroy();
+		}
+	});
+
+	win.on('closed', () => {
+		winToProject.delete(win.id);
+
+		// close game + tools for this project
+		closeSessionGameWindow(session);
+		closeAllSessionToolWindows(session);
+
+		session.editorWindow = null;
+
+		// remove session when fully closed
+		sessions.delete(session.projectId);
+
+		updateEditorMenusEnabled();
+	});
+
+	win.webContents.on('before-input-event', (event, input) => {
+		const wc = win.webContents;
+
+		if(!session.inputFieldActive)
+			return;
+
+		const mod = (input.meta || input.control) && !input.alt;
+		if(!mod) return;
+
+		switch(input.key.toLowerCase()) {
+			case 'c': wc.copy();      event.preventDefault(); return;
+			case 'v': wc.paste();     event.preventDefault(); return;
+			case 'x': wc.cut();       event.preventDefault(); return;
+			case 'a': wc.selectAll(); event.preventDefault(); return;
+			case 'z':
+				if(input.shift) wc.redo(); else wc.undo();
+				return;
+		}
+	});
+
+	if(isDev) await win.loadURL('http://localhost:5173');
+	else await win.loadFile(resolvePath('dist', 'editor', 'index.html'));
+
+	setupTheme(win);
+
+	Menu.setApplicationMenu(appMenu);
+
+	await new Promise(resolve => {
+		win.webContents.once('did-finish-load', resolve);
+	});
+
+	// tell renderer what project it is
+	win.webContents.send('open-project-uri', session.uri);
+
+	updateEditorMenusEnabled();
+}
+
+async function createGameWindow(session) {
+	await closeSessionGameWindow(session);
+
+	const win = new BrowserWindow({
 		useContentSize: true,
 		width: 800,
 		height: 600,
@@ -215,112 +428,57 @@ async function createGameWindow() {
 		}
 	});
 	
+	session.gameWindow = win;
+	winToProject.set(win.id, session.projectId);
+
 	if(!isMac)
-		gameWindow.setMenu(null);
-	
-	if (isDev) {
-		await gameWindow.loadURL('http://localhost:5173/player.html');
-	} else {
-		await gameWindow.loadFile(resolvePath('dist', 'editor', 'player.html'));
-	}
-	
-	gameWindow.on('closed', () => { gameWindow = null; });
+		win.setMenu(null);
+
+	if(isDev) await win.loadURL('http://localhost:5173/player.html');
+	else await win.loadFile(resolvePath('dist', 'editor', 'player.html'));
+
+	win.on('closed', () => {
+		winToProject.delete(win.id);
+		session.gameWindow = null;
+	});
+
+	setupTheme(win);
 }
 
-async function createEditorWindow() {
-	const { width, height } = screen.getPrimaryDisplay().workAreaSize;
-
-	await closeEditorWindow();
-
-	// Use safer prefs for the React/Vite editor window
-	editorWindow = new BrowserWindow({
-		title: 'Damen3D Editor',
-		width,
-		height,
-		minWidth: 1200,
-		minHeight: 600,
-		resizable: true,
-		webPreferences: {
-			preload: path.join(__dirname, 'preload-editor.cjs'),
-			contextIsolation: true,
-			nodeIntegration: false,
-			enableRemoteModule: false,
-			sandbox: false,
-			spellcheck: false
-		}
-	});
-	
-	editorWindow.on('close', async (e) => {
-		if (!editorDirty) 
-			return;
-		
-		e.preventDefault();
-		
-		const { response } = await dialog.showMessageBox(editorWindow, {
-			type: 'question',
-			buttons: ['Save', "Don’t Save", 'Cancel'],
-			defaultId: 0,
-			cancelId: 2,
-			message: 'Do you want to save your changes before closing this project?',
-		});
-	
-		if(response === 0) {
-			editorWindow.webContents.send('request-save-and-close', lastOpenedProjectUri);
-		}else
-		if (response === 1) {
-			editorDirty = false;
-			editorWindow.destroy();
-		}
-	});
-	
-	editorWindow.on('closed', () => {
-		Menu.setApplicationMenu(appMenuBase);
-	});
-	
-	editorWindow.webContents.on('before-input-event', (event, input) => {
-		const wc = editorWindow.webContents;
-		
-		if (!inputFieldActive) 
-			return;
-	
-		const mod = (input.meta || input.control) && !input.alt;
-		
-		if (!mod) 
-			return;
-			
-		switch (input.key.toLowerCase()) {
-			case 'c': wc.copy();      event.preventDefault(); return;
-			case 'v': wc.paste();     event.preventDefault(); return;
-			case 'x': wc.cut();       event.preventDefault(); return;
-			case 'a': wc.selectAll(); event.preventDefault(); return;
-			case 'z':
-				if (input.shift) wc.redo(); else wc.undo();
-				return;
-		}
-	});
-	
-	if (isDev) {
-		await editorWindow.loadURL('http://localhost:5173');
-	} else {
-		await editorWindow.loadFile(resolvePath('dist', 'editor', 'index.html'));
-	}
-
-	setupTheme(editorWindow);
-	
-	Menu.setApplicationMenu(appMenu);
-	
+function closeSessionGameWindow(session) {
 	return new Promise(resolve => {
-		editorWindow.webContents.once('did-finish-load', resolve);
+		if(!session.gameWindow) return resolve();
+
+		if(session.gameWindow.isDestroyed()) {
+			session.gameWindow = null;
+			return resolve();
+		}
+
+		session.gameWindow.once('closed', () => {
+			session.gameWindow = null;
+			resolve();
+		});
+
+		session.gameWindow.close();
 	});
 }
-async function createToolWindow(toolWindow) {
-	await closeToolWindow(toolWindow.name);
-	
-	const browserWindow = new BrowserWindow({
-		title: toolWindow.title ?? 'Tool Window',
-		width: toolWindow.width ?? 100,
-		height: toolWindow.height ?? 100,
-		resizable: toolWindow.resizable ?? true,
+
+async function createToolWindow(session, name) {
+	const def = toolWindows[name];
+	if(!def || !def.title)
+		throw new Error(`Tool window ${name} does not exist`);
+
+	// close existing tool window for this project
+	const old = session.toolWindows.get(name);
+	if(old && !old.isDestroyed())
+		old.close();
+
+	const win = new BrowserWindow({
+		title: def.title ?? 'Tool Window',
+		width: def.width ?? 100,
+		height: def.height ?? 100,
+		resizable: def.resizable ?? true,
+		parent: session.editorWindow || undefined,
 		webPreferences: {
 			preload: path.join(__dirname, 'preload-editor.cjs'),
 			contextIsolation: true,
@@ -330,317 +488,179 @@ async function createToolWindow(toolWindow) {
 			spellcheck: false
 		}
 	});
-	
-	if (isDev) {
-		await browserWindow.loadURL(`http://localhost:5173/tool-windows/${toolWindow.html}`);
-	} else {
-		await browserWindow.loadFile(resolvePath('dist', 'editor', 'tool-windows', toolWindow.html));
-	}
 
-	browserWindow.on('closed', () => {
-		toolWindow._window = null;
+	session.toolWindows.set(name, win);
+	winToProject.set(win.id, session.projectId);
+
+	if(isDev) await win.loadURL(`http://localhost:5173/tool-windows/${def.html}`);
+	else await win.loadFile(resolvePath('dist', 'editor', 'tool-windows', def.html));
+
+	win.on('closed', () => {
+		winToProject.delete(win.id);
+		session.toolWindows.delete(name);
 	});
-	
-	setupTheme(browserWindow);
-	
+
+	setupTheme(win);
+
 	if(!isMac)
-		browserWindow.setMenu(null);
+		win.setMenu(null);
 	else
 		Menu.setApplicationMenu(appMenuBase);
-	
-	// Send initial theme
-	browserWindow.webContents.on('did-finish-load', () => {
-		browserWindow.webContents.send('theme-changed', nativeTheme.shouldUseDarkColors ? 'dark' : 'light');
-	});
-	
-	toolWindow._window = browserWindow;
 }
 
-function setupTheme(browserWindow) {
-	// Send initial theme once page loads
-	browserWindow.webContents.on('did-finish-load', () => {
-		if (browserWindow && !browserWindow.isDestroyed()) {
-			browserWindow.webContents.send(
-				'theme-changed',
-				nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
-			);
-		}
-	});
+function closeAllSessionToolWindows(session) {
+	for(const w of session.toolWindows.values()) {
+		if(w && !w.isDestroyed())
+			w.close();
+	}
+	session.toolWindows.clear();
 }
-function closeEditorWindow() {
-	Menu.setApplicationMenu(appMenuBase);
-	
-	return new Promise(resolve => {
-		if (!editorWindow) return resolve();
-		
-		// If already destroyed, just cleanup and resolve
-		if (editorWindow.isDestroyed()) {
-			editorWindow = null;
-			return resolve();
-		}
-		
-		editorWindow.once('closed', () => {
-			editorWindow = null;
-			resolve();
-		});
-		editorWindow.close();
-	});
-}
-function closeGameWindow() {
-	return new Promise(resolve => {
-		if (!gameWindow) return resolve();
-		
-		// If already destroyed, just cleanup and resolve
-		if (gameWindow.isDestroyed()) {
-			gameWindow = null;
-			return resolve();
-		}
-		
-		gameWindow.once('closed', () => {
-			gameWindow = null;
-			resolve();
-		});
-		gameWindow.close();
-	});
-}
-function closeNewProjectWindow() {
-	return new Promise(resolve => {
-		if (!newProjectWindow) return resolve();
-		
-		// If already destroyed, just cleanup and resolve
-		if (newProjectWindow.isDestroyed()) {
-			newProjectWindow = null;
-			return resolve();
-		}
-		
-		newProjectWindow.once('closed', () => {
-			newProjectWindow = null;
-			resolve();
-		});
-		newProjectWindow.close();
-	});
-}
+
+// ----------------------------
+// Project open / browse
+// ----------------------------
 async function openBrowse() {
 	const { canceled, filePaths } = await dialog.showOpenDialog({
 		title: 'Select a D3D project file',
 		filters: [{ name: 'Damen3D Project Files', extensions: ['d3dproj'] }],
 		properties: ['openFile']
 	});
-	if (canceled || filePaths.length === 0) return null;
+
+	if(canceled || filePaths.length === 0)
+		return null;
+
 	openProject(filePaths[0]);
 }
+
 async function openProject(uri) {
 	console.log('Open project', uri);
-	lastOpenedProjectUri = uri;
-	projectOpen = true;
-	
-	await createEditorWindow();
-	
-	updateEditorMenusEnabled();
-}
-function openToolWindow(name) {
-	const toolWindow = toolWindows[name];
-	
-	toolWindow.name = name;
-	
-	if(!toolWindow || !toolWindow.title) { // ensure its a toolWindow
-		throw new Error(`Tool window ${name} does not exist`);
+
+	const projectId = makeProjectId(uri);
+
+	let session = sessions.get(projectId);
+	if(!session) {
+		session = {
+			projectId,
+			uri,
+
+			dirty: false,
+			inputFieldActive: false,
+			codeEditorActive: false,
+
+			editorWindow: null,
+			gameWindow: null,
+
+			toolWindows: new Map(),
+
+			editorTitleBase: null,
+			playerURI: null
+		};
+
+		sessions.set(projectId, session);
 	}
-	
-	createToolWindow(toolWindow);
+
+	await createEditorWindow(session);
 }
-function closeToolWindow(name) {
-	const toolWindow = toolWindows[name];
-	
-	if(!toolWindow || !toolWindow.title) { // ensure its a toolWindow
-		throw new Error(`Tool window ${name} does not exist`);
-	}
-	if(!toolWindow._window || typeof toolWindow._window.close !== 'function') {
-		return;
-	}
-	
-	return new Promise(resolve => {
-		if (!toolWindow._window) return resolve();
-		
-		// If already destroyed, just cleanup and resolve
-		if (toolWindow._window.isDestroyed()) {
-			toolWindow._window = null;
-			return resolve();
-		}
-		
-		editorWindow.once('closed', () => {
-			toolWindow._window = null;
-			resolve();
-		});
-		toolWindow._window.close();
-	});
-}
+
 function startNewProject() {
 	Menu.setApplicationMenu(appMenuBase);
-	
-	if(!newProjectWindow) createNewProjectWindow()
-	else newProjectWindow.show()
+
+	if(!newProjectWindow) createNewProjectWindow();
+	else newProjectWindow.show();
 }
-function sendSelectAll() {
-	if (!editorWindow?.isFocused()) return;
-	editorWindow.webContents.send('select-all');
+
+// ----------------------------
+// Send helpers (focused project only)
+// ----------------------------
+function sendToEditor(channel, ...args) {
+	const session = getFocusedSession();
+	if(!session || !session.editorWindow || session.editorWindow.isDestroyed())
+		return;
+
+	session.editorWindow.webContents.send(channel, ...args);
 }
-function sendDelete() {
-	if (!editorWindow?.isFocused()) return;
-	editorWindow.webContents.send('delete');
+
+function sendSelectAll() { sendToEditor('select-all'); }
+function sendDelete() { sendToEditor('delete'); }
+function sendUndo() { sendToEditor('undo'); }
+function sendRedo() { sendToEditor('redo'); }
+function sendDupe() { sendToEditor('dupe'); }
+function sendAddObject(type) { sendToEditor('add-object', type); }
+function sendSymboliseObject() { sendToEditor('symbolise-object'); }
+function sendDesymboliseObject() { sendToEditor('desymbolise-object'); }
+function sendFocusObject() { sendToEditor('focus-object'); }
+function sendSetTool(type) { sendToEditor('set-tool', type); }
+function sendSetTransformTool(type) { sendToEditor('set-transform-tool', type); }
+function sendNewFolder() { sendToEditor('new-folder'); }
+function sendNewFile(extension) { sendToEditor('new-asset', extension); }
+function sendEditCode() { sendToEditor('edit-code'); }
+function sendExportSelectedAssets() { sendToEditor('menu-export-assets'); }
+function sendAddComponent(type, properties) { sendToEditor('add-component', type, properties); }
+function sendCopySpecial(type) { sendToEditor('copy-special', type); }
+function sendPasteSpecial(type) { sendToEditor('paste-special', type); }
+function sendGroupObjects() { sendToEditor('group'); }
+function sendUngroupObjects() { sendToEditor('ungroup'); }
+function sendMergeObjects() { sendToEditor('merge'); }
+function sendMoveToView() { sendToEditor('move-sel-view'); }
+function sendAlignToView() { sendToEditor('align-sel-view'); }
+function sendDropToGround() { sendToEditor('drop-to-ground'); }
+function sendZoomStep(step) { sendToEditor('zoom-step', step); }
+function sendResetView() { sendToEditor('reset-view'); }
+function sendExportAsD3D() { sendToEditor('export-as-d3d'); }
+function sendExportAsD3DProj() { sendToEditor('export-as-d3dproj'); }
+function sendModify(type) { sendToEditor('modify', type); }
+function sendPasteInPlace() { sendToEditor('paste-in-place'); }
+
+function sendImportAssets(paths) {
+	sendToEditor('menu-import-assets', paths);
 }
-function sendUndo() {
-	if (!editorWindow?.isFocused()) return;
-	editorWindow.webContents.send('undo');
-}
-function sendRedo() {
-	if (!editorWindow?.isFocused()) return;
-	editorWindow.webContents.send('redo');
-}
-function sendDupe() {
-	if (!editorWindow?.isFocused()) return;
-	editorWindow.webContents.send('dupe');
-}
-function sendAddObject(type) {
-	if (!editorWindow?.isFocused()) return;
-	editorWindow.webContents.send('add-object', type);
-}
-function sendSymboliseObject() {
-	if (!editorWindow?.isFocused()) return;
-	editorWindow.webContents.send('symbolise-object');
-}
-function sendDesymboliseObject() {
-	if (!editorWindow?.isFocused()) return;
-	editorWindow.webContents.send('desymbolise-object');
-}
-function sendFocusObject() {
-	if (!editorWindow?.isFocused()) return;
-	editorWindow.webContents.send('focus-object');
-}
+
 function sendSaveProject() {
-	if (!editorWindow?.isFocused()) return;
-	editorWindow.webContents.send('save-project', lastOpenedProjectUri);
+	const session = getFocusedSession();
+	if(!session) return;
+
+	sendToEditor('save-project', session.uri);
 }
+
 function sendSaveProjectAs() {
-	if (!editorWindow?.isFocused()) return;
-	dialog.showSaveDialog(editorWindow, {
+	const session = getFocusedSession();
+	if(!session || !session.editorWindow || session.editorWindow.isDestroyed())
+		return;
+
+	dialog.showSaveDialog(session.editorWindow, {
 		title: 'Save Project As',
-		defaultPath: lastOpenedProjectUri,
+		defaultPath: session.uri,
 		buttonLabel: 'Save',
 		filters: [
 			{ name: 'Damen3D Project', extensions: ['d3dproj'] }
 		],
 		properties: ['showOverwriteConfirmation']
 	}).then(result => {
-		if (!result.canceled && result.filePath) {
-			lastOpenedProjectUri = result.filePath;
-			editorWindow.webContents.send('save-project', result.filePath);
+		if(!result.canceled && result.filePath) {
+			session.uri = result.filePath;
+			session.editorWindow.webContents.send('save-project', result.filePath);
 		}
 	}).catch(err => {
 		console.error('Save As dialog failed:', err);
 	});
 }
-function sendSetTool(type) {
-	if (!editorWindow?.isFocused()) return;
-	editorWindow.webContents.send('set-tool', type);
-}
-function sendSetTransformTool(type) {
-	if (!editorWindow?.isFocused()) return;
-	editorWindow.webContents.send('set-transform-tool', type);
-}
-function sendNewFolder() {
-	if (!editorWindow?.isFocused()) return;
-	editorWindow.webContents.send('new-folder');
-}
-function sendNewFile(extension) {
-	if (!editorWindow?.isFocused()) return;
-	editorWindow.webContents.send('new-asset', extension);
-}
-function sendEditCode() {
-	if (!editorWindow?.isFocused()) return;
-	editorWindow.webContents.send('edit-code');
-}
-function sendImportAssets(paths) {
-	if (!editorWindow?.isFocused()) return;
-	editorWindow.webContents.send('menu-import-assets', paths);
-}
-function sendExportSelectedAssets() {
-	if (!editorWindow?.isFocused()) return;
-	editorWindow.webContents.send('menu-export-assets');
-}
-function sendAddComponent(type, properties) {
-	if (!editorWindow?.isFocused()) return;
-	editorWindow.webContents.send('add-component', type, properties);
-}
-function sendCopySpecial(type) {
-	if (!editorWindow?.isFocused()) return;
-	editorWindow.webContents.send('copy-special', type);
-}
-function sendPasteSpecial(type) {
-	if (!editorWindow?.isFocused()) return;
-	editorWindow.webContents.send('paste-special', type);
-}
-function sendGroupObjects() {
-	if (!editorWindow?.isFocused()) return;
-	editorWindow.webContents.send('group');
-}
-function sendUngroupObjects() {
-	if (!editorWindow?.isFocused()) return;
-	editorWindow.webContents.send('ungroup');
-}
-function sendMergeObjects() {
-	if (!editorWindow?.isFocused()) return;
-	editorWindow.webContents.send('merge');
-}
-function sendMoveToView() {
-	if (!editorWindow?.isFocused()) return;
-	editorWindow.webContents.send('move-sel-view');
-}
-function sendAlignToView() {
-	if (!editorWindow?.isFocused()) return;
-	editorWindow.webContents.send('align-sel-view');
-}
-function sendDropToGround() {
-	if (!editorWindow?.isFocused()) return;
-	editorWindow.webContents.send('drop-to-ground');
-}
-function sendZoomStep(step) {
-	if (!editorWindow?.isFocused()) return;
-	editorWindow.webContents.send('zoom-step', step);
-}
-function sendResetView() {
-	if (!editorWindow?.isFocused()) return;
-	editorWindow.webContents.send('reset-view');
-}
-function sendExportAsD3D() {
-	if (!editorWindow?.isFocused()) return;
-	editorWindow.webContents.send('export-as-d3d');
-}
-function sendExportAsD3DProj() {
-	if (!editorWindow?.isFocused()) return;
-	editorWindow.webContents.send('export-as-d3dproj');
-}
-function sendModify(type) {
-	if (!editorWindow?.isFocused()) return;
-	editorWindow.webContents.send('modify', type);
-}
-function sendPasteInPlace(type) {
-	if (!editorWindow?.isFocused()) return;
-	editorWindow.webContents.send('paste-in-place', type);
-}
 
 function sendBuild({prompt, play}) {
-	if (!editorWindow?.isFocused()) return;
-	let uri = lastOpenedProjectUri;
-	if (uri.endsWith('.d3dproj'))
+	const session = getFocusedSession();
+	if(!session || !session.editorWindow || session.editorWindow.isDestroyed())
+		return;
+
+	let uri = session.uri;
+
+	if(uri.endsWith('.d3dproj'))
 		uri = uri.slice(0, -'.d3dproj'.length) + '.d3d';
-	
+
 	if(uri && !prompt) {
-		editorWindow.webContents.send('build', uri, play);
+		session.editorWindow.webContents.send('build', uri, play);
 		return;
 	}
-	
-	dialog.showSaveDialog(editorWindow, {
+
+	dialog.showSaveDialog(session.editorWindow, {
 		title: 'Build',
 		defaultPath: uri,
 		buttonLabel: 'Save',
@@ -649,18 +669,22 @@ function sendBuild({prompt, play}) {
 		],
 		properties: ['showOverwriteConfirmation']
 	}).then(result => {
-		if (!result.canceled && result.filePath) {
-			editorWindow.webContents.send('build', result.filePath, play);
+		if(!result.canceled && result.filePath) {
+			session.editorWindow.webContents.send('build', result.filePath, play);
 		}
 	}).catch(err => {
 		console.error('Build dialog failed:', err);
 	});
 }
+
 function sendPublish(opts = {}) {
-	if (!editorWindow?.isFocused()) return;
+	const session = getFocusedSession();
+	if(!session || !session.editorWindow || session.editorWindow.isDestroyed())
+		return;
+
 	let ext = '';
 	let fname = '';
-	
+
 	if(opts.html) {
 		ext = 'html';
 		fname = 'HTML file';
@@ -678,19 +702,19 @@ function sendPublish(opts = {}) {
 		fname = 'Player Package';
 	}else
 		return;
-	
-	let uri = lastOpenedProjectUri;
-	let d3duri = lastOpenedProjectUri;
-	
-	if (d3duri.endsWith('.d3dproj'))
+
+	let uri = session.uri;
+	let d3duri = session.uri;
+
+	if(d3duri.endsWith('.d3dproj'))
 		d3duri = d3duri.slice(0, -'.d3dproj'.length) + '.d3d';
-	
-	if (uri.endsWith('.d3dproj'))
+
+	if(uri.endsWith('.d3dproj'))
 		uri = uri.slice(0, -'.d3dproj'.length) + `${ext != '' ? `.${ext}` : ''}`;
-	else 
+	else
 		return;
-	
-	dialog.showSaveDialog(editorWindow, {
+
+	dialog.showSaveDialog(session.editorWindow, {
 		title: 'Publish',
 		defaultPath: uri,
 		buttonLabel: 'Publish',
@@ -699,15 +723,60 @@ function sendPublish(opts = {}) {
 		],
 		properties: ['showOverwriteConfirmation']
 	}).then(result => {
-		if (!result.canceled && result.filePath) {
-			editorWindow.webContents.send('publish', result.filePath, d3duri, opts);
+		if(!result.canceled && result.filePath) {
+			session.editorWindow.webContents.send('publish', result.filePath, d3duri, opts);
 		}
 	}).catch(err => {
 		console.error('Publish dialog failed:', err);
 	});
 }
 
-// --- Menu ---
+function openToolWindow(name) {
+	const session = getFocusedSession();
+	if(!session) return;
+	createToolWindow(session, name);
+}
+
+// ----------------------------
+// Menu enabling
+// ----------------------------
+function setItemEnabledDeep(item, enabled) {
+	if(!item)
+		return;
+
+	if(item.type !== 'separator')
+		item.enabled = enabled;
+
+	if(item.submenu) {
+		for(const child of item.submenu.items)
+			setItemEnabledDeep(child, enabled);
+	}
+}
+
+function updateEditorMenusEnabled() {
+	const session = getFocusedSession();
+	const projectOpen = !!session;
+
+	const toggleForSwitch = (ids, toggle) => {
+		ids.forEach(id => {
+			const item = appMenu.getMenuItemById(id);
+			if(!item) return;
+			setItemEnabledDeep(item, toggle);
+		});
+	};
+
+	toggleForSwitch(
+		['save', 'assets', 'object'],
+		projectOpen
+	);
+
+	if(isMac)
+		Menu.setApplicationMenu(projectOpen ? appMenu : appMenuBase);
+}
+
+// ----------------------------
+// Menus
+// ----------------------------
 const standardMenu = [
 	...(isMac ? [{
 		label: app.productName,
@@ -717,9 +786,7 @@ const standardMenu = [
 			{ role: 'quit', id: 'quit' }
 		]
 	}] : []),
-	{
-		role: 'editMenu', // adds Cut/Copy/Paste/Select All automatically
-	},
+	{ role: 'editMenu' },
 	...(isDev ? [{
 		label: 'View',
 		submenu: [
@@ -728,7 +795,7 @@ const standardMenu = [
 				label: 'Toggle DevTools',
 				accelerator: 'Alt+Cmd+I',
 				click: (_, browserWindow) => {
-					if (browserWindow)
+					if(browserWindow)
 						browserWindow.webContents.toggleDevTools();
 				}
 			}
@@ -740,23 +807,25 @@ const standardMenu = [
 		submenu: [
 			{ role: 'minimize', id: 'minimize' },
 			{ role: 'zoom', id: 'zoom' },
-			...(isMac
-				? [
-					{ type: 'separator' },
-					{ role: 'front', id: 'front' },
-					{ type: 'separator' },
-					{ role: 'window', id: 'windowRole' }
-				]
-				: []),
+			...(isMac ? [
+				{ type: 'separator' },
+				{ role: 'front', id: 'front' },
+				{ type: 'separator' },
+				{ role: 'window', id: 'windowRole' }
+			] : []),
 			{
 				id: 'closeWindow',
 				label: 'Close',
 				accelerator: 'CmdOrCtrl+W',
-				click: () => BrowserWindow.getFocusedWindow().close()
+				click: () => {
+					const bw = getFocusedWindow();
+					if(bw) bw.close();
+				}
 			}
 		]
 	}
 ];
+
 const menuTemplate = [
 	...(isMac ? [{
 		label: app.productName,
@@ -821,39 +890,7 @@ const menuTemplate = [
 						label: 'HTML Page',
 						accelerator: 'CmdOrCtrl+P',
 						click: () => sendPublish({html: true})
-					},
-					/*
-					{ type: 'separator' },
-					{
-						label: 'Standalone',
-						submenu: [
-							{
-								label: 'Windows (Intel)',
-								click: () => sendPublish({windows: true, x64: true})
-							},
-							{
-								label: 'Windows (ARM)',
-								click: () => sendPublish({windows: true, arm64: true})
-							},
-							{
-								label: 'Mac (Apple Silicon)',
-								click: () => sendPublish({mac: true, arm64: true})
-							},
-							{
-								label: 'Mac (Intel)',
-								click: () => sendPublish({mac: true, x64: true})
-							},
-							{
-								label: 'Linux (Intel)',
-								click: () => sendPublish({linux: true, x64: true})
-							},
-							{
-								label: 'Linux (ARM)',
-								click: () => sendPublish({linux: true, arm64: true})
-							}
-						]
 					}
-					*/
 				]
 			},
 		]
@@ -861,18 +898,8 @@ const menuTemplate = [
 	{
 		label: 'Edit',
 		submenu: [
-			{
-				id: 'undo',
-				label: 'Undo',
-				accelerator: 'CmdOrCtrl+Z',
-				click: () => sendUndo()
-			},
-			{
-				id: 'redo',
-				label: 'Redo',
-				accelerator: 'CmdOrCtrl+Shift+Z',
-				click: () => sendRedo()
-			},
+			{ id: 'undo', label: 'Undo', accelerator: 'CmdOrCtrl+Z', click: () => sendUndo() },
+			{ id: 'redo', label: 'Redo', accelerator: 'CmdOrCtrl+Shift+Z', click: () => sendRedo() },
 			{ type: 'separator' },
 			{ role: 'cut', id: 'cut' },
 			{ role: 'copy', id: 'copy' },
@@ -890,23 +917,10 @@ const menuTemplate = [
 			{
 				label: 'Paste Transform',
 				submenu: [
-					{
-						label: 'All',
-						accelerator: 'CmdOrCtrl+Shift+V',
-						click: () => sendPasteSpecial('all')
-					},
-					{
-						label: 'Position',
-						click: () => sendPasteSpecial('position')
-					},
-					{
-						label: 'Rotation',
-						click: () => sendPasteSpecial('rotation')
-					},
-					{
-						label: 'Scale',
-						click: () => sendPasteSpecial('scale')
-					}
+					{ label: 'All', accelerator: 'CmdOrCtrl+Shift+V', click: () => sendPasteSpecial('all') },
+					{ label: 'Position', click: () => sendPasteSpecial('position') },
+					{ label: 'Rotation', click: () => sendPasteSpecial('rotation') },
+					{ label: 'Scale', click: () => sendPasteSpecial('scale') }
 				]
 			},
 			{
@@ -922,12 +936,7 @@ const menuTemplate = [
 				click: () => sendDupe()
 			},
 			{ type: 'separator' },
-			{
-				id: 'selectAll',
-				label: 'Select All',
-				accelerator: 'CmdOrCtrl+A',
-				click: () => sendSelectAll()
-			}
+			{ id: 'selectAll', label: 'Select All', accelerator: 'CmdOrCtrl+A', click: () => sendSelectAll() }
 		]
 	},
 	{
@@ -938,222 +947,83 @@ const menuTemplate = [
 				id: 'newObject',
 				label: 'New Object',
 				submenu: [
-					{
-						label: 'Empty Object',
-						click: () => sendAddObject('empty')
-					},
+					{ label: 'Empty Object', click: () => sendAddObject('empty') },
 					{ type: 'separator' },
-					{
-						label: 'Cube',
-						click: () => sendAddObject('cube')
-					},
-					{
-						label: 'Capsule',
-						click: () => sendAddObject('capsule')
-					},
-					{
-						label: 'Sphere',
-						click: () => sendAddObject('sphere')
-					},
-					{
-						label: 'Cone',
-						click: () => sendAddObject('cone')
-					},
-					{
-						label: 'Pyramid',
-						click: () => sendAddObject('pyramid')
-					},
-					{
-						label: 'Plane',
-						click: () => sendAddObject('plane')
-					},
+					{ label: 'Cube', click: () => sendAddObject('cube') },
+					{ label: 'Capsule', click: () => sendAddObject('capsule') },
+					{ label: 'Sphere', click: () => sendAddObject('sphere') },
+					{ label: 'Cone', click: () => sendAddObject('cone') },
+					{ label: 'Pyramid', click: () => sendAddObject('pyramid') },
+					{ label: 'Plane', click: () => sendAddObject('plane') },
 					{ type: 'separator' },
-					{
-						label: 'Camera',
-						click: () => sendAddObject('camera')
-					},
-					{
-						label: 'Ambient Light',
-						click: () => sendAddObject('amblight')
-					},
-					{
-						label: 'Directional Light',
-						click: () => sendAddObject('dirlight')
-					},
-					{
-						label: 'Point Light',
-						click: () => sendAddObject('pntlight')
-					},
-					{
-						label: 'Spot Light',
-						click: () => sendAddObject('spotlight')
-					},
+					{ label: 'Camera', click: () => sendAddObject('camera') },
+					{ label: 'Ambient Light', click: () => sendAddObject('amblight') },
+					{ label: 'Directional Light', click: () => sendAddObject('dirlight') },
+					{ label: 'Point Light', click: () => sendAddObject('pntlight') },
+					{ label: 'Spot Light', click: () => sendAddObject('spotlight') },
 					{ type: 'separator' },
-					{
-						label: 'Particle System',
-						click: () => sendAddObject('particlesys')
-					},
-					{
-						label: 'Audio Source',
-						click: () => sendAddObject('audiosrc')
-					}
+					{ label: 'Particle System', click: () => sendAddObject('particlesys') },
+					{ label: 'Audio Source', click: () => sendAddObject('audiosrc') }
 				]
 			},
 			{
 				id: 'addcomponent',
 				label: 'Add Component',
 				submenu: [
-					{
-						label: 'Animation',
-						click: () => sendAddComponent('Animation')
-					},
-					{
-						label: 'Camera Collision',
-						click: () => sendAddComponent('CameraCollision')
-					},
-					{
-						label: 'Particle System',
-						click: () => sendAddComponent('ParticleSystem')
-					},
-					{
-						label: 'Audio Listener',
-						click: () => sendAddComponent('AudioListener')
-					},
-					{
-						label: 'Audio Source',
-						click: () => sendAddComponent('AudioSource')
-					},
-					{
-						label: 'Auto LOD',
-						click: () => sendAddComponent('AutoLOD')
-					},
-					{
-						label: 'Day Night Cycle',
-						click: () => sendAddComponent('DayNightCycle')
-					},
+					{ label: 'Animation', click: () => sendAddComponent('Animation') },
+					{ label: 'Camera Collision', click: () => sendAddComponent('CameraCollision') },
+					{ label: 'Particle System', click: () => sendAddComponent('ParticleSystem') },
+					{ label: 'Audio Listener', click: () => sendAddComponent('AudioListener') },
+					{ label: 'Audio Source', click: () => sendAddComponent('AudioSource') },
+					{ label: 'Auto LOD', click: () => sendAddComponent('AutoLOD') },
+					{ label: 'Day Night Cycle', click: () => sendAddComponent('DayNightCycle') },
 					{
 						label: 'Rigidbody',
 						submenu: [
-							{
-								label: 'Dynamic',
-								click: () => sendAddComponent('Rigidbody', {kind: 'dynamic'})
-							},
-							{
-								label: 'Fixed',
-								click: () => sendAddComponent('Rigidbody', {kind: 'fixed'})
-							},
-							{
-								label: 'Kinematic',
-								click: () => sendAddComponent('Rigidbody', {kind: 'kinematic'})
-							},
+							{ label: 'Dynamic', click: () => sendAddComponent('Rigidbody', {kind: 'dynamic'}) },
+							{ label: 'Fixed', click: () => sendAddComponent('Rigidbody', {kind: 'fixed'}) },
+							{ label: 'Kinematic', click: () => sendAddComponent('Rigidbody', {kind: 'kinematic'}) },
 						]
 					},
-					
 					{ type: 'separator' },
 					{
 						label: 'First Person',
 						submenu: [
-							{
-								label: 'Character Controller',
-								click: () => sendAddComponent('FirstPersonCharacterController')
-							},
-							{
-								label: 'Camera Controller',
-								click: () => sendAddComponent('FirstPersonCamera')
-							},
+							{ label: 'Character Controller', click: () => sendAddComponent('FirstPersonCharacterController') },
+							{ label: 'Camera Controller', click: () => sendAddComponent('FirstPersonCamera') }
 						]
 					},
 					{
 						label: 'Third Person',
 						submenu: [
-							{
-								label: 'Character Controller',
-								click: () => sendAddComponent('CharacterController')
-							},
-							{
-								label: 'Camera Controller',
-								click: () => sendAddComponent('ThirdPersonCamera')
-							}
+							{ label: 'Character Controller', click: () => sendAddComponent('CharacterController') },
+							{ label: 'Camera Controller', click: () => sendAddComponent('ThirdPersonCamera') }
 						]
 					},
-					
 					{
 						label: '2D',
 						submenu: [
-							{
-								label: 'Layout 2D',
-								click: () => sendAddComponent('Layout2D')
-							},
-							{
-								label: 'Filter 2D',
-								click: () => sendAddComponent('Filter2D')
-							}
+							{ label: 'Layout 2D', click: () => sendAddComponent('Layout2D') },
+							{ label: 'Filter 2D', click: () => sendAddComponent('Filter2D') }
 						]
-					},
+					}
 				]
 			},
 			{ type: 'separator' },
-			{
-				id: 'focusObject',
-				label: 'Focus',
-				accelerator: 'F',
-				click: () => sendFocusObject()
-			},
-			{
-				label: 'Move to View',
-				accelerator: 'CmdOrCtrl+Alt+M',
-				click: () => sendMoveToView()
-			},
-			{
-				label: 'Align to View',
-				accelerator: 'CmdOrCtrl+Alt+A',
-				click: () => sendAlignToView()
-			},
-			{
-				label: 'Drop to Ground',
-				accelerator: 'CmdOrCtrl+G',
-				click: () => sendDropToGround()
-			},
+			{ id: 'focusObject', label: 'Focus', accelerator: 'F', click: () => sendFocusObject() },
+			{ label: 'Move to View', accelerator: 'CmdOrCtrl+Alt+M', click: () => sendMoveToView() },
+			{ label: 'Align to View', accelerator: 'CmdOrCtrl+Alt+A', click: () => sendAlignToView() },
+			{ label: 'Drop to Ground', accelerator: 'CmdOrCtrl+G', click: () => sendDropToGround() },
 			{ type: 'separator' },
-			{
-				id: 'symbolise',
-				label: 'Symbolise',
-				accelerator: 'CmdOrCtrl+Shift+Y',
-				click: () => sendSymboliseObject()
-			},
-			{
-				id: 'desymbolise',
-				label: 'Desymbolise',
-				accelerator: 'CmdOrCtrl+Shift+D',
-				click: () => sendDesymboliseObject()
-			},
+			{ id: 'symbolise', label: 'Symbolise', accelerator: 'CmdOrCtrl+Shift+Y', click: () => sendSymboliseObject() },
+			{ id: 'desymbolise', label: 'Desymbolise', accelerator: 'CmdOrCtrl+Shift+D', click: () => sendDesymboliseObject() },
 			{ type: 'separator' },
-			{
-				label: 'Group',
-				accelerator: 'CmdOrCtrl+Alt+G',
-				click: () => sendGroupObjects()
-			},
-			{
-				label: 'Ungroup',
-				accelerator: 'CmdOrCtrl+Alt+U',
-				click: () => sendUngroupObjects()
-			},
+			{ label: 'Group', accelerator: 'CmdOrCtrl+Alt+G', click: () => sendGroupObjects() },
+			{ label: 'Ungroup', accelerator: 'CmdOrCtrl+Alt+U', click: () => sendUngroupObjects() },
 			{ type: 'separator' },
-			{
-				id: 'code',
-				label: 'Code',
-				accelerator: 'CmdOrCtrl+Shift+C',
-				click: () => sendEditCode()
-			},
-			{
-				label: 'Export As D3D...',
-				accelerator: 'CmdOrCtrl+Shift+E',
-				click: () => sendExportAsD3D()
-			},
-			{
-				label: 'Export As Project...',
-				click: () => sendExportAsD3DProj()
-			}
+			{ id: 'code', label: 'Code', accelerator: 'CmdOrCtrl+Shift+C', click: () => sendEditCode() },
+			{ label: 'Export As D3D...', accelerator: 'CmdOrCtrl+Shift+E', click: () => sendExportAsD3D() },
+			{ label: 'Export As Project...', click: () => sendExportAsD3DProj() }
 		]
 	},
 	{
@@ -1162,76 +1032,35 @@ const menuTemplate = [
 			{
 				label: 'Graphic',
 				submenu: [
-					{
-						label: 'Smooth',
-						click: () => openToolWindow('graphicSmooth')
-					},
-					{
-						label: 'Straighten',
-						click: () => openToolWindow('graphicStraighten')
-					},
-					{
-						label: 'Simplify',
-						click: () => openToolWindow('graphicSimplify')
-					},
+					{ label: 'Smooth', click: () => openToolWindow('graphicSmooth') },
+					{ label: 'Straighten', click: () => openToolWindow('graphicStraighten') },
+					{ label: 'Simplify', click: () => openToolWindow('graphicSimplify') },
 					{ type: 'separator' },
-					{
-						label: 'Merge',
-						click: () => sendMergeObjects()
-					},
+					{ label: 'Merge', click: () => sendMergeObjects() },
 					{ type: 'separator' },
-					{
-						label: 'Convert To Bitmap',
-						click: () => sendModify('convert-bitmap')
-					},
-					{
-						label: 'Export As PNG...',
-						click: () => sendModify('export-png')
-					}
+					{ label: 'Convert To Bitmap', click: () => sendModify('convert-bitmap') },
+					{ label: 'Export As PNG...', click: () => sendModify('export-png') }
 				]
 			},
 			{
 				label: 'Bitmap',
 				submenu: [
-					{
-						label: 'Trace Bitmap',
-						accelerator: 'Shift+Alt+T',
-						click: () => openToolWindow('bitmapTrace')
-					},
-					{
-						label: 'Export Bitmap...',
-						click: () => sendModify('export-bitmap')
-					}
+					{ label: 'Trace Bitmap', accelerator: 'Shift+Alt+T', click: () => openToolWindow('bitmapTrace') },
+					{ label: 'Export Bitmap...', click: () => sendModify('export-bitmap') }
 				]
 			},
 			{ type: 'separator' },
-			{
-				label: 'Flip Vertically',
-				click: () => sendModify('flip-vertical')
-			},
-			{
-				label: 'Flip Horizontally',
-				click: () => sendModify('flip-horizontal')
-			},
-			{
-				label: 'Rotate 90 Degrees',
-				click: () => sendModify('rotate+90')
-			},
-			{
-				label: 'Rotate -90 Degrees',
-				click: () => sendModify('rotate-90')
-			},
+			{ label: 'Flip Vertically', click: () => sendModify('flip-vertical') },
+			{ label: 'Flip Horizontally', click: () => sendModify('flip-horizontal') },
+			{ label: 'Rotate 90 Degrees', click: () => sendModify('rotate+90') },
+			{ label: 'Rotate -90 Degrees', click: () => sendModify('rotate-90') },
 		]
 	},
 	{
 		label: 'Assets',
 		id: 'assets',
 		submenu: [
-			{
-				label: 'New Folder',
-				accelerator: 'CmdOrCtrl+Shift+N',
-				click: () => sendNewFolder()
-			},
+			{ label: 'New Folder', accelerator: 'CmdOrCtrl+Shift+N', click: () => sendNewFolder() },
 			{
 				label: 'New Asset',
 				submenu: [
@@ -1244,19 +1073,18 @@ const menuTemplate = [
 				label: 'Import Assets…',
 				accelerator: 'CmdOrCtrl+I',
 				click: async () => {
-					const { canceled, filePaths } = await dialog.showOpenDialog(editorWindow, {
+					const session = getFocusedSession();
+					if(!session || !session.editorWindow) return;
+
+					const { canceled, filePaths } = await dialog.showOpenDialog(session.editorWindow, {
 						properties: ['openFile', 'multiSelections'],
 					});
-					if (!canceled && filePaths.length) {
+
+					if(!canceled && filePaths.length)
 						sendImportAssets(filePaths);
-					}
 				}
 			},
-			{
-				label: 'Export Assets…',
-				accelerator: 'CmdOrCtrl+E',
-				click: () => sendExportSelectedAssets()
-			}
+			{ label: 'Export Assets…', accelerator: 'CmdOrCtrl+E', click: () => sendExportSelectedAssets() }
 		]
 	},
 	{
@@ -1272,108 +1100,36 @@ const menuTemplate = [
 					sendSetTransformTool('translate');
 				}
 			},
-			{
-				id: 'toolPan',
-				label: 'Pan',
-				accelerator: '[',
-				click: () => sendSetTool('pan')
-			},
-			{
-				label: 'Look',
-				accelerator: 'o',
-				click: () => sendSetTool('look')
-			},
+			{ id: 'toolPan', label: 'Pan', accelerator: '[', click: () => sendSetTool('pan') },
+			{ label: 'Look', accelerator: 'o', click: () => sendSetTool('look') },
 			{ type: 'separator' },
-			{ 
-				id: 'toolTranslate', 
-				label: 'Translate', 
-				click: () => sendSetTransformTool('translate') 
-			},
-			{ 
-				id: 'toolRotate', 
-				label: 'Rotate', 
-				accelerator: 'r',
-				click: () => sendSetTransformTool('rotate') 
-			},
-			{ 
-				id: 'toolScale',
-				label: 'Scale', 
-				accelerator: 's', 
-				click: () => sendSetTransformTool('scale') 
-			},
-			
+			{ id: 'toolTranslate', label: 'Translate', click: () => sendSetTransformTool('translate') },
+			{ id: 'toolRotate', label: 'Rotate', accelerator: 'r', click: () => sendSetTransformTool('rotate') },
+			{ id: 'toolScale', label: 'Scale', accelerator: 's', click: () => sendSetTransformTool('scale') },
 			{ type: 'separator' },
 			{ label: '2D Tools', type: 'header' },
-			{
-				label: 'Transform', 
-				accelerator: 'q', 
-				click: () => sendSetTool('transform') 
-			},
-			{
-				label: 'Pencil', 
-				accelerator: 'p', 
-				click: () => sendSetTool('pencil') 
-			},
-			{
-				label: 'Brush', 
-				accelerator: 'b', 
-				click: () => sendSetTool('brush') 
-			},
-			{
-				label: 'Line', 
-				accelerator: 'l', 
-				click: () => sendSetTool('line') 
-			},
-			{
-				label: 'Text', 
-				accelerator: 't', 
-				click: () => sendSetTool('text') 
-			},
-			{
-				label: 'Polygon', 
-				accelerator: 'g', 
-				click: () => sendSetTool('polygon') 
-			},
-			{
-				label: 'Rectangle', 
-				accelerator: 'Alt+R', 
-				click: () => sendSetTool('square') 
-			},
-			{
-				label: 'Circle', 
-				accelerator: 'Alt+C', 
-				click: () => sendSetTool('circle') 
-			},
-			{
-				label: 'Fill', 
-				accelerator: 'k', 
-				click: () => sendSetTool('fill') 
-			}
+			{ label: 'Transform', accelerator: 'q', click: () => sendSetTool('transform') },
+			{ label: 'Pencil', accelerator: 'p', click: () => sendSetTool('pencil') },
+			{ label: 'Brush', accelerator: 'b', click: () => sendSetTool('brush') },
+			{ label: 'Line', accelerator: 'l', click: () => sendSetTool('line') },
+			{ label: 'Text', accelerator: 't', click: () => sendSetTool('text') },
+			{ label: 'Polygon', accelerator: 'g', click: () => sendSetTool('polygon') },
+			{ label: 'Rectangle', accelerator: 'Alt+R', click: () => sendSetTool('square') },
+			{ label: 'Circle', accelerator: 'Alt+C', click: () => sendSetTool('circle') },
+			{ label: 'Fill', accelerator: 'k', click: () => sendSetTool('fill') }
 		]
 	},
 	{
 		label: 'View',
 		submenu: [
-			{
-				label: 'Zoom In', 
-				accelerator: 'CmdOrCtrl+=', 
-				click: () => sendZoomStep(+1)
-			},
-			{
-				label: 'Zoom Out', 
-				accelerator: 'CmdOrCtrl+-', 
-				click: () => sendZoomStep(-1)
-			},
-			{
-				label: 'Reset View', 
-				accelerator: 'CmdOrCtrl+Shift+R', 
-				click: () => sendResetView()
-			},
+			{ label: 'Zoom In', accelerator: 'CmdOrCtrl+=', click: () => sendZoomStep(+1) },
+			{ label: 'Zoom Out', accelerator: 'CmdOrCtrl+-', click: () => sendZoomStep(-1) },
+			{ label: 'Reset View', accelerator: 'CmdOrCtrl+Shift+R', click: () => sendResetView() },
 			...(isDev ? [{
 				label: 'Toggle DevTools',
 				accelerator: 'Alt+Cmd+I',
 				click: (_, browserWindow) => {
-					if (browserWindow)
+					if(browserWindow)
 						browserWindow.webContents.toggleDevTools();
 				}
 			}] : [])
@@ -1385,19 +1141,20 @@ const menuTemplate = [
 		submenu: [
 			{ role: 'minimize', id: 'minimize' },
 			{ role: 'zoom', id: 'zoom' },
-			...(isMac
-				? [
-					{ type: 'separator' },
-					{ role: 'front', id: 'front' },
-					{ type: 'separator' },
-					{ role: 'window', id: 'windowRole' }
-				]
-				: []),
+			...(isMac ? [
+				{ type: 'separator' },
+				{ role: 'front', id: 'front' },
+				{ type: 'separator' },
+				{ role: 'window', id: 'windowRole' }
+			] : []),
 			{
 				id: 'closeWindow',
 				label: 'Close',
 				accelerator: 'CmdOrCtrl+W',
-				click: () => editorWindow.close()
+				click: () => {
+					const bw = getFocusedWindow();
+					if(bw) bw.close();
+				}
 			}
 		]
 	},
@@ -1405,19 +1162,10 @@ const menuTemplate = [
 		label: 'Help',
 		role: 'help',
 		submenu: [
-			{
-				label: 'Damen3D Engine Help',
-				click: () => shell.openExternal('https://damen3d.com/help?origin=editor-help')
-			},
-			{
-				label: 'Scripting Documentation',
-				click: () => shell.openExternal('https://damen3d.com/scripting?origin=editor-help')
-			},
+			{ label: 'Damen3D Engine Help', click: () => shell.openExternal('https://damen3d.com/help?origin=editor-help') },
+			{ label: 'Scripting Documentation', click: () => shell.openExternal('https://damen3d.com/scripting?origin=editor-help') },
 			{ type: 'separator' },
-			{
-				label: 'Drake Hall Forums',
-				click: () => shell.openExternal('https://drakehall.co.uk/?origin=d3d-editor')
-			}
+			{ label: 'Drake Hall Forums', click: () => shell.openExternal('https://drakehall.co.uk/?origin=d3d-editor') }
 		]
 	}
 ];
@@ -1427,75 +1175,61 @@ const appMenuBase = Menu.buildFromTemplate(standardMenu);
 
 Menu.setApplicationMenu(appMenuBase);
 
-function setItemEnabledDeep(item, enabled) {
-	if (!item) 
-		return;
-		
-	if (item.type !== 'separator') 
-		item.enabled = enabled;
-		
-	if (item.submenu) {
-		for (const child of item.submenu.items) {
-			setItemEnabledDeep(child, enabled);
+// ----------------------------
+// Start
+// ----------------------------
+async function start() {
+	setupAbout();
+
+	if(pendingFile) {
+		openProject(pendingFile);
+		pendingFile = null;
+	}else{
+		createStartWindow();
+	}
+
+	try {
+		const res = await fetch(
+			`https://damen3d.com/api/v1/splash.php?origin=editor&v=${pkg.editorVersion}&theme=${nativeTheme.shouldUseDarkColors ? 'dark' : 'light'}`
+		);
+
+		if(res.ok) {
+			const splashData = await res.json();
+			if(splashData?.splash)
+				createSplashScreen(splashData.splash);
 		}
-	}
-}
-function updateEditorMenusEnabled() {
-	const toggleForSwitch = (ids, toggle) => {
-		ids.forEach(id => {
-			const item = appMenu.getMenuItemById(id);
-			
-			if (!item) 
-				return;
-				
-			setItemEnabledDeep(item, toggle);
-		});
-	}
-	
-	toggleForSwitch(
-		['save', 'assets', 'object'],
-		projectOpen
-	);
-	
-	if (isMac) {
-		Menu.setApplicationMenu(appMenu);
+	}catch(e) {
+		console.error('Splash error', e);
 	}
 }
 
-// --- Native theme ---
+// ----------------------------
+// Theme events
+// ----------------------------
 nativeTheme.on('updated', () => {
-	[ startWindow, newProjectWindow, editorWindow ].forEach(win => {
-		if (win && !win.isDestroyed()) {
-			win.webContents.send(
-				'theme-changed',
-				nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
-			);
-		}
-	});
+	broadcastTheme();
 });
 
-// --- App events ---
-if (!isMac) {
+// ----------------------------
+// App events
+// ----------------------------
+if(!isMac) {
 	const gotLock = app.requestSingleInstanceLock();
-	
-	if (!gotLock) {
+
+	if(!gotLock) {
 		app.quit();
 	} else {
-		app.on('second-instance', (event, argv, workingDirectory) => {
+		app.on('second-instance', (event, argv) => {
 			const filePath = getFileFromArgv(argv);
-			if (!filePath) return;
-			
-			if (app.isReady()) {
-				openProject(filePath);
-			} else {
-				pendingFile = filePath;
-			}
+			if(!filePath) return;
+
+			if(app.isReady()) openProject(filePath);
+			else pendingFile = filePath;
 		});
-		
+
 		const firstFile = getFileFromArgv(process.argv);
-		if (firstFile) {
+		if(firstFile)
 			pendingFile = firstFile;
-		}
 	}
 }
 
@@ -1503,22 +1237,28 @@ app.whenReady().then(() => start());
 
 app.on('open-file', (event, filePath) => {
 	event.preventDefault();
-	
-	if(app.isReady()) {
-		openProject(filePath);
-	}else{
-		pendingFile = filePath;
-	}
+
+	if(app.isReady()) openProject(filePath);
+	else pendingFile = filePath;
 });
+
+app.on('browser-window-focus', () => {
+	updateEditorMenusEnabled();
+});
+
 app.on('window-all-closed', () => {
 	app.quit();
 });
+
 app.on('activate', () => {
-	if (!startWindow) 
+	if(!startWindow)
 		createStartWindow();
 });
 
-// --- IPC handlers ---
+// ----------------------------
+// IPC handlers
+// ----------------------------
+
 // Theme
 ipcMain.handle('get-theme', () => nativeTheme.shouldUseDarkColors ? 'dark' : 'light');
 
@@ -1528,8 +1268,11 @@ ipcMain.handle('new-project', () => startNewProject());
 // Browse D3D Project
 ipcMain.handle('open-project', () => openBrowse());
 
-// Get project URI
-ipcMain.handle('get-current-project-uri', () => lastOpenedProjectUri);
+// Get project URI (per-window)
+ipcMain.handle('get-current-project-uri', (event) => {
+	const session = getSessionFromEvent(event);
+	return session?.uri || null;
+});
 
 // Get editor version
 ipcMain.handle('get-editor-version', () => pkg.editorVersion);
@@ -1537,57 +1280,68 @@ ipcMain.handle('get-editor-version', () => pkg.editorVersion);
 // Get player version
 ipcMain.handle('get-player-version', () => pkg.playerVersion);
 
-// Set editor status
-ipcMain.on('editor-status', (_, { inputFocussed, codeEditorOpen, activeElement }) => {
+// Editor status (per project window)
+ipcMain.on('editor-status', (event, { inputFocussed, codeEditorOpen, activeElement }) => {
+	const session = getSessionFromEvent(event);
+	if(!session) return;
+
 	if(typeof inputFocussed === 'boolean')
-		inputFieldActive = inputFocussed;
-	
+		session.inputFieldActive = inputFocussed;
+
 	if(typeof codeEditorOpen === 'boolean')
-		codeEditorActive = codeEditorOpen;
-	
-	if (editorWindow && !editorWindow.isDestroyed()) {
-		const wc = editorWindow.webContents;
-		if (wc && !wc.isDestroyed()) {
+		session.codeEditorActive = codeEditorOpen;
+
+	const bw = BrowserWindow.fromWebContents(event.sender);
+	if(bw && !bw.isDestroyed()) {
+		const wc = bw.webContents;
+		if(wc && !wc.isDestroyed()) {
 			const shouldIgnore = (
 				activeElement?.tag === 'TEXTAREA' ||
 				(activeElement?.tag === 'INPUT' && (activeElement?.type === 'text' || activeElement?.type === 'search'))
 			);
+
 			wc.setIgnoreMenuShortcuts(shouldIgnore);
 		}
 	}
-		
+
 	updateEditorMenusEnabled();
 });
 
-// Close editor
-ipcMain.on('close-editor', () => closeEditorWindow());
+// Close new project window
 ipcMain.on('close-new-proj-window', () => closeNewProjectWindow());
 
+// Close editor (close the session window that sent it)
+ipcMain.on('close-editor', (event) => {
+	const bw = BrowserWindow.fromWebContents(event.sender);
+	if(bw) bw.close();
+});
+
 // Show error dialog
-ipcMain.on('show-error', async (_, { title, message, closeEditorWhenDone }) => {
-	const focused = BrowserWindow.getFocusedWindow();
-	if (!focused) return;
-	await dialog.showMessageBox(focused, {
+ipcMain.on('show-error', async (event, { title, message, closeEditorWhenDone }) => {
+	const win =
+		BrowserWindow.fromWebContents(event.sender) ||
+		BrowserWindow.getFocusedWindow();
+
+	if(!win) return;
+
+	await dialog.showMessageBox(win, {
 		type: 'error',
 		title: title || 'Error',
 		message: message || 'Unknown error',
 		buttons: ['OK']
 	});
-	
+
 	if(closeEditorWhenDone)
-		closeEditorWindow();
+		win.close();
 });
 
 // Show confirm dialog
-ipcMain.handle('show-confirm', async (
-	event, 
-	{ title = 'Confirm', message = 'Are you sure?' }
-) => {
+ipcMain.handle('show-confirm', async (event, { title = 'Confirm', message = 'Are you sure?' }) => {
 	const win =
 		BrowserWindow.fromWebContents(event.sender) ||
 		BrowserWindow.getFocusedWindow();
 
-	if (!win) return false;
+	if(!win) return false;
 
 	const { response } = await dialog.showMessageBox(win, {
 		type: 'question',
@@ -1599,18 +1353,24 @@ ipcMain.handle('show-confirm', async (
 		normalizeAccessKeys: true
 	});
 
-	return response === 0; // true if "Yes"
+	return response === 0;
 });
+
+// Resolve path
 ipcMain.handle('resolve-path', (_e, ...args) => {
 	return !isDev ? resolvePath(...args) : null;
 });
+
+// Show save dialog
 ipcMain.handle('show-save-dialog', async (_e, opts) => {
 	return await dialog.showSaveDialog(opts || {});
 });
+
+// Export multiple files
 ipcMain.handle('export-multiple-files', async (event, files) => {
 	const wc = event.sender;
 	const bw = BrowserWindow.fromWebContents(wc);
-	
+
 	const { canceled, filePaths } = await dialog.showOpenDialog(bw, {
 		title: "Choose output folder",
 		properties: ["openDirectory", "createDirectory"]
@@ -1620,93 +1380,146 @@ ipcMain.handle('export-multiple-files', async (event, files) => {
 		return { canceled: true };
 
 	const outDir = filePaths[0];
-	
+
 	for(const f of files) {
 		const buf = Buffer.from(f.data.data || f.data);
 		const outPath = path.join(outDir, f.name);
-		
+
 		await fs.promises.mkdir(path.dirname(outPath), { recursive: true });
 		await fs.promises.writeFile(outPath, buf);
 	}
-	
+
 	return { canceled: false, count: files.length };
 });
 
-// Get player URI
-ipcMain.handle('get-current-game-uri', () => playerURI);
+// Update editor window title/size (per sender)
+ipcMain.on('update-editor-window', (event, { width, height, title }) => {
+	const bw = BrowserWindow.fromWebContents(event.sender);
+	const session = getSessionFromEvent(event);
 
-ipcMain.on('update-editor-window', (_, { width, height, title }) => {
-	if (editorWindow && !editorWindow.isDestroyed()) {
-		if(width && height)
-			editorWindow.setSize(width, height);
-		
-		editorWindow.d3deditortitle = `${title} - Damen3D Editor ${pkg.editorVersion}`;
-		editorWindow.setTitle(editorWindow.d3deditortitle);
-	}
+	if(!bw || bw.isDestroyed() || !session)
+		return;
+
+	if(width && height)
+		bw.setSize(width, height);
+
+	session.editorTitleBase = `${title} - Damen3D Editor ${pkg.editorVersion}`;
+	bw.setTitle(session.editorTitleBase + (session.dirty ? ' *' : ''));
 });
-ipcMain.on('set-dirty', (_, isDirty) => {
-	editorDirty = isDirty;
-	editorWindow.setDocumentEdited(editorDirty);
-	
-	if(!editorWindow.d3deditortitle)
-		editorWindow.d3deditortitle = editorWindow.getTitle();
-	
-	editorWindow.setTitle(editorWindow.d3deditortitle + (isDirty ? ' *' : ''));
+
+// Dirty flag (per sender)
+ipcMain.on('set-dirty', (event, isDirty) => {
+	const bw = BrowserWindow.fromWebContents(event.sender);
+	const session = getSessionFromEvent(event);
+
+	if(!bw || bw.isDestroyed() || !session)
+		return;
+
+	session.dirty = !!isDirty;
+
+	bw.setDocumentEdited(session.dirty);
+
+	if(!session.editorTitleBase)
+		session.editorTitleBase = bw.getTitle();
+
+	bw.setTitle(session.editorTitleBase + (session.dirty ? ' *' : ''));
 });
-ipcMain.on('show-in-finder', (_, uri) => {
+
+// Finder
+ipcMain.on('show-in-finder', (_event, uri) => {
 	shell.showItemInFolder(uri);
 });
-ipcMain.on('update-window', (_, { width, height, title }) => {
-	if (gameWindow && !gameWindow.isDestroyed()) {
-		gameWindow.setContentSize(width, height);
-		gameWindow.setTitle(title);
-	}
+
+// Game window update (per session)
+ipcMain.on('update-window', (event, { width, height, title }) => {
+	const session = getSessionFromEvent(event);
+	if(!session || !session.gameWindow || session.gameWindow.isDestroyed())
+		return;
+
+	if(width && height)
+		session.gameWindow.setContentSize(width, height);
+
+	if(title)
+		session.gameWindow.setTitle(title);
 });
-ipcMain.on('open-player', (_, uri) => {
-	playerURI = uri;
-	createGameWindow();
+
+// Open player (per session)
+ipcMain.on('open-player', (event, uri) => {
+	const session = getSessionFromEvent(event);
+	if(!session) return;
+
+	session.playerURI = uri;
+	createGameWindow(session);
 });
-ipcMain.on('console-message', (_, {level, message}) => {
-	console.log('csm', level, message);
-	editorWindow.webContents.send('csm', {level, message});
+
+// Get player URI (per sender session)
+ipcMain.handle('get-current-game-uri', (event) => {
+	const session = getSessionFromEvent(event);
+	return session?.playerURI || null;
 });
-ipcMain.on('echo-save', () => {
-	sendSaveProject();
-})
-ipcMain.on('echo-build', (_, {prompt, play}) => {
-	sendBuild({prompt, play});
+
+// Console message (route back to sender's editor)
+ipcMain.on('console-message', (event, {level, message}) => {
+	const session = getSessionFromEvent(event);
+	if(!session || !session.editorWindow || session.editorWindow.isDestroyed())
+		return;
+
+	session.editorWindow.webContents.send('csm', {level, message});
 });
+
+// Echoes
+ipcMain.on('echo-save', () => sendSaveProject());
+ipcMain.on('echo-build', (_event, {prompt, play}) => sendBuild({prompt, play}));
+
+// Context menu (route action to that project’s editor + game)
 ipcMain.on('ctx-menu', (event, {template, x, y}) => {
+	const session = getSessionFromEvent(event);
+	if(!session) return;
+
 	template.forEach(t => {
 		t.click = () => {
-			editorWindow.webContents.send('ctx-menu-action', t.id);
-			
-			if(gameWindow?.webContents && !gameWindow.isDestroyed())
-				gameWindow.webContents.send('ctx-menu-action', t.id); // for player test
+			if(session.editorWindow && !session.editorWindow.isDestroyed())
+				session.editorWindow.webContents.send('ctx-menu-action', t.id);
+
+			if(session.gameWindow && !session.gameWindow.isDestroyed())
+				session.gameWindow.webContents.send('ctx-menu-action', t.id);
 		};
 	});
-	
+
 	const menu = Menu.buildFromTemplate(template);
 	const bw = BrowserWindow.fromWebContents(event.sender);
-	
-	menu.popup({ 
-		window: bw, 
-		x, y, 
+
+	menu.popup({
+		window: bw,
+		x, y,
 		callback: () => event.sender.send('ctx-menu-close')
 	});
 });
-ipcMain.on('open-project-uri', (_, uri) => {
+
+// Open project uri (from renderer)
+ipcMain.on('open-project-uri', (_event, uri) => {
 	openProject(uri);
 });
-ipcMain.on('open-tool-window', (_, name) => {
+
+// Tool windows (focused project)
+ipcMain.on('open-tool-window', (_event, name) => {
 	openToolWindow(name);
 });
-ipcMain.on('close-tool-window', (_, name) => {
-	closeToolWindow(name);
+
+ipcMain.on('close-tool-window', (event, name) => {
+	const session = getSessionFromEvent(event);
+	if(!session) return;
+
+	const w = session.toolWindows.get(name);
+	if(w && !w.isDestroyed())
+		w.close();
 });
-ipcMain.on('send-message', (_, name, ...params) => {
-	if(editorWindow.isDestroyed())
+
+// Send message (to sender’s editor window)
+ipcMain.on('send-message', (event, name, ...params) => {
+	const session = getSessionFromEvent(event);
+	if(!session || !session.editorWindow || session.editorWindow.isDestroyed())
 		return;
-	
-	editorWindow.webContents.send('send-message', name, ...params);
+
+	session.editorWindow.webContents.send('send-message', name, ...params);
 });

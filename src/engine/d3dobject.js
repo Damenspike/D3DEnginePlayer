@@ -1,6 +1,6 @@
 // d3dobject.js
 import axios from 'axios';
-import JSZip from 'jszip';
+import D3DZip from './d3dzip.js';
 import DamenScript from './damenscript.js';
 import D3DComponents from './d3dcomponents.js';
 import D3DConsole from './d3dconsole.js';
@@ -1157,7 +1157,7 @@ export default class D3DObject {
 	
 			await this.loadFromZip(buffer);
 	
-			console.log('D3D file loaded, size:', buffer.length, 'bytes');
+			console.log('D3D file loaded, size:', uri, buffer.length, 'bytes');
 	
 			this.__loaded = true;
 			this.onLoad?.();
@@ -1169,7 +1169,7 @@ export default class D3DObject {
 	
 	async loadFromZip(buffer) {
 		// No need for await import, using required modules
-		const zip = await new JSZip().loadAsync(buffer);
+		const zip = await new D3DZip().loadAsync(buffer);
 		this.zip = zip;
 		
 		// Parse manifest.json for metadata

@@ -239,7 +239,7 @@ export default class D2DRenderer {
 				renderAnyway = true;
 		}
 		
-		if((!d3dobject.visible || d3dobject.__editorState.hidden || !d3dobject.enabled) && !renderAnyway)
+		if((!d3dobject.visible || (window._editor && d3dobject.__editorState?.hidden) || !d3dobject.enabled) && !renderAnyway)
 			return;
 		
 		this.draw(d3dobject, ctx);

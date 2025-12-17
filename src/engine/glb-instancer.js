@@ -1,5 +1,5 @@
 // gltf-instancer.js
-// Robust GLB/GLTF importer for Three.js + JSZip
+// Robust GLB/GLTF importer for Three.js + D3DZip
 // - Extension-first type detect; magic-byte fallback
 // - GLB: normal parse -> repair skins -> parse; if still failing, THROW (no null scene)
 // - GLTF JSON: resolves external deps from zip; repairs skins on retry; throws on failure (strict)
@@ -257,7 +257,7 @@ function _extractTRSFromGLTFJSON(doc) {
 ========================== */
 
 /**
- * Import a model from a JSZip (strict by default).
+ * Import a model from a D3DZip (strict by default).
  * Throws on failure (no silent {scene:null} for GLB).
  */
 export async function importModelFromZip(zip, relPath, opts = { strict: true }) {

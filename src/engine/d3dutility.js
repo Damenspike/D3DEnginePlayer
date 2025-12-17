@@ -1,6 +1,6 @@
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { ConvexHull } from 'three/addons/math/ConvexHull.js';
-import JSZip from 'jszip';
+import D3DZip from './d3dzip.js';
 import D3DConsole from './d3dconsole.js';
 
 export const MIME_D3D_ROW = "application/x-d3d-objectrow";
@@ -12,7 +12,7 @@ export function arraysEqual(a, b) {
 export async function cloneZip(zip) {
 	if(!zip) return;
 	const raw = await zip.generateAsync({ type: 'arraybuffer' });
-	return await JSZip.loadAsync(raw);
+	return await D3DZip.loadAsync(raw);
 }
 export async function moveZipEntry(zip, srcPath, destDir, { updateIndex }) {
 	const nd = p => (p.endsWith('/') ? p : p + '/');

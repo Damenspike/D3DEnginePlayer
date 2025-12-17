@@ -30,7 +30,7 @@ export const BITMAP_TRACE_DEFAULTS = Object.freeze({
  * Trace a Bitmap2D on the given object into a new container with Graphic2D children.
  *
  * @param {D3DObject} d3dobject  Object with a Bitmap2D component.
- * @param {JSZip}     zip        JSZip instance for the current project.
+ * @param {D3DZip}     zip        zip instance for the current project.
  * @param {object}    [options]  { colorThreshold, minArea }
  * @returns {Promise<D3DObject|null>}  Container object ("Dog Traced") or null.
  */
@@ -42,7 +42,7 @@ export async function traceBitmap2DToGraphic2D(d3dobject, zip, options = {}) {
 	if (!d3dobject)
 		throw new Error('traceBitmap2DToGraphic2D: d3dobject is required');
 	if (!zip)
-		throw new Error('traceBitmap2DToGraphic2D: JSZip instance is required');
+		throw new Error('traceBitmap2DToGraphic2D: D3DZip instance is required');
 
 	// --- 0) Grab Bitmap2D and source UUID ---
 	const bitmap = d3dobject.getComponent('Bitmap2D');
@@ -75,11 +75,11 @@ export async function traceBitmap2DToGraphic2D(d3dobject, zip, options = {}) {
 	const zipKey = internalPath.replace(/^\/+/, '');
 	const file = zip.file(zipKey);
 	if (!file) {
-		console.warn('[BitmapTrace] JSZip has no file for path:', zipKey);
+		console.warn('[BitmapTrace] D3DZip has no file for path:', zipKey);
 		return null;
 	}
 
-	// --- 1) Load image from JSZip ---
+	// --- 1) Load image from D3DZip ---
 	const img = await _loadImageFromZipFile(file);
 	if (!img || !img.width || !img.height) {
 		console.warn('[BitmapTrace] Failed to decode image');

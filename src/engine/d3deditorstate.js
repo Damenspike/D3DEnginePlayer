@@ -120,6 +120,7 @@ export default class D3DEditorState {
 		this._mode = '3D';
 		this._lightsEnabled = false;
 		this.pastes = 0;
+		this.flatFocus = false;
 		this.draw2d = {
 			fill: true,
 			line: true,
@@ -487,6 +488,7 @@ export default class D3DEditorState {
 				manifest.editorConfig.objectStates
 			);
 			manifest.editorConfig.lastMode = _editor.mode;
+			manifest.editorConfig.flatFocus = !!_editor.flatFocus;
 		}else{
 			delete manifest.editorConfig;
 		}

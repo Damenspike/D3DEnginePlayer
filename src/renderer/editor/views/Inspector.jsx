@@ -1,4 +1,4 @@
-import React, { forwardRef, useState, useEffect, useRef } from 'react';
+import React, { forwardRef, useState, useEffect, useRef, useCallback } from 'react';
 import D3DComponents from '../../../engine/d3dcomponents.js';
 import InspectorCell from './InspectorCell.jsx';
 import ComponentCell from './ComponentCell.jsx';
@@ -121,6 +121,41 @@ export default function Inspector() {
 	const [currentAssetFolder, setCurrentAssetFolder] = useState('assets');
 	const [newFolderOpen, setNewFolderOpen] = useState(false);
 	const [newFolderName, setNewFolderName] = useState('');
+	
+	// Unpack drop mime
+	const unpackMime = useCallback((e) => {
+		try {
+			return JSON.parse(e.dataTransfer.getData(MIME_D3D_ROW) || '{}');
+		} catch {
+			return null;
+		}
+	}, []);
+	
+	const onDropScene = useCallback((e) => {
+		e.preventDefault();
+		const payload = unpackMime(e);
+		
+		if (!payload)
+			return;
+			
+		const path = payload.paths?.[0];
+			
+		if (!path) {
+			console.error('No path associated with payload', payload);
+			return;
+		}
+		
+		_editor.onAssetDroppedIntoGameView(path);
+	}, [unpackMime]);
+	
+	const onDragOverScene = useCallback((e) => {
+		const types = e.dataTransfer?.types;
+		if (!types || !Array.from(types).includes('application/x-d3d-objectrow'))
+			return;
+	
+		e.preventDefault();
+		e.dataTransfer.dropEffect = 'copy';
+	}, []);
 	
 	useEffect(() => {
 		_events.on('deselect-assets', () => {
@@ -2482,6 +2517,8 @@ export default function Inspector() {
 				</div>
 				<div 
 					ref={sceneListRef}
+					onDrop={onDropScene}
+					onDragOver={onDragOverScene}
 					className="scene-objects-list shade"
 				>
 					{drawObjects()}

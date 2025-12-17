@@ -21,6 +21,7 @@ export const TYPE_KEYWORDS = [
 	'createObject', 'createFromSymbol',
 	'destroy', 'destroyChildren',
 	'addComponent', 'removeComponent', 'getComponent', 'hasComponent',
+	'findComponent', 'findAllComponents',
 	'worldToScreen', 'RegEx'
 ]
 export const FORBIDDEN_KEYWORDS = [
@@ -105,7 +106,9 @@ export const NO_OBFUSCATE = [
 	"typeOf",
 	"worldToScreen",
 	"_rootParent",
-	"RegEx"
+	"RegEx",
+	"findComponent",
+	"findAllComponents"
 ]
 export const D3D_OBJECT_SCHEMA = {
 	// ---------- identity & basic state ----------

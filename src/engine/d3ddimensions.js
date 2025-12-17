@@ -14,6 +14,13 @@ export default class D3DDimensions {
 		return window._root?.manifest?.height;
 	}
 	
+	get clientWidth3D() {
+		return window._container3d.clientWidth;
+	}
+	get clientHeight3D() {
+		return window._container3d.clientHeight;
+	}
+	
 	get pixelScale2D() {
 		return _host.renderer2d?.getPixelScale() ?? 1;
 	}

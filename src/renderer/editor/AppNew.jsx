@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import JSZip from 'jszip';
+import D3DZip from '../../engine/d3dzip.js';
 import useSystemTheme from './hooks/useSystemTheme.js';
 
 import '../../assets/style/main.css';
@@ -20,10 +20,10 @@ export default function AppNew() {
 		document.body.classList.add(theme);
 	}, [theme]);
 
-	// All JSZip logic lives here now
+	// All D3DZip logic lives here now
 	const jszipCreateProject = async ({ data, name, author, width, height }) => {
 		// data is Uint8Array coming from preload
-		const zip = await JSZip.loadAsync(data);
+		const zip = await D3DZip.loadAsync(data);
 	
 		const manifestPath = 'manifest.json';
 		const file = zip.file(manifestPath);

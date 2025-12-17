@@ -238,15 +238,20 @@ function startAnimationLoop() {
 			}
 			
 			if(!_player.camera) {
-				_root.traverse(d3dobject => {
-					if(d3dobject.enabled && d3dobject.hasComponent('Camera')) {
-						_player.camera = d3dobject;
-						return false;
-					}
-				});
+				if(_player.mainCamera)
+					_player.camera = _player.mainCamera;
+				else {
+					_root.traverse(d3dobject => {
+						if(d3dobject.enabled && d3dobject.hasComponent('Camera')) {
+							_player.camera = d3dobject;
+							return false;
+						}
+					});
+				}
 				
 				if(_player.camera) {
 					initComposer();
+					resizeRenderers();
 					
 					updateObjects([
 						'__onInternalGraphicsReady',

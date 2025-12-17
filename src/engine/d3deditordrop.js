@@ -1,4 +1,4 @@
-import JSZip from 'jszip';
+import D3DZip from './d3dzip.js';
 import { readLocalTRSFromZip } from './glb-instancer.js';
 import { 
 	getExtension, 
@@ -34,7 +34,10 @@ export async function onAssetDroppedIntoGameView(path, screenPos) {
 			}
 			
 			const d3dobject = await _editor.focus.createObject({ symbolId: symbol.symbolId });
-			_editor.moveObjectToCameraView(d3dobject);
+			
+			if(screenPos)
+				_editor.moveObjectToCameraView(d3dobject);
+			
 			_editor.setSelection([d3dobject]);
 			break;
 		}
@@ -96,7 +99,10 @@ export async function onAssetDroppedIntoGameView(path, screenPos) {
 					}
 				}
 			}
-			_editor.moveObjectToCameraView(d3dparent);
+			
+			if(screenPos)
+				_editor.moveObjectToCameraView(d3dparent);
+			
 			_editor.setSelection([d3dparent]);
 			break;
 		}
@@ -107,7 +113,10 @@ export async function onAssetDroppedIntoGameView(path, screenPos) {
 				_editor.mode = '3D';
 			
 			const d3d = await spawnModelFromZip(path, zip);
-			_editor.moveObjectToCameraView(d3d);
+			
+			if(screenPos)
+				_editor.moveObjectToCameraView(d3d);
+			
 			_editor.setSelection([d3d]);
 			break;
 		}

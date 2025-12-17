@@ -1278,6 +1278,7 @@ body.dark {
 	color: white;
 	padding: 5px;
 	border-radius: 10px;
+	user-select: none;
 }
 .noanim-placeholder {
 	width: 100%;
