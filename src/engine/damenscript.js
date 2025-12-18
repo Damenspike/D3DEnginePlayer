@@ -2010,6 +2010,9 @@ function createCore(DSyntax, DRuntime) {
   async function evalProgramAsync(ast, rootEnv, { maxSteps = 50_000, maxMillis = null } = {}) {
 	let steps = 0;
 	let start = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+	let _awaitDepth = 0;
+	
+	const inAwait = () => _awaitDepth > 0;
 	const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 	const bump = () => {
 	  steps++;
@@ -2045,6 +2048,17 @@ function createCore(DSyntax, DRuntime) {
 	};
 
 	const RETURN = Symbol('return');
+	const DS_PROMISE_BOX = Symbol('ds.promiseBox');
+	
+	function boxPromise(p) {
+		return { __kind: DS_PROMISE_BOX, promise: p };
+	}
+	function isPromiseBox(v) {
+		return !!(v && v.__kind === DS_PROMISE_BOX);
+	}
+	function unboxPromise(v) {
+		return isPromiseBox(v) ? v.promise : v;
+	}
 
 	async function bindPatternDeclare(kind, pattern, value, scope) {
 	  if (pattern.type === 'ObjectPattern') {
@@ -2247,8 +2261,15 @@ function createCore(DSyntax, DRuntime) {
 		  return createCallable(node.params, node.body, scope, isAsync);
 		}
 
-		case 'AwaitExpression':
-		  return await evalNode(node.argument, scope);
+		case 'AwaitExpression': {
+			_awaitDepth++;
+			try {
+				const v = await evalNode(node.argument, scope);
+				return await unboxPromise(v);
+			} finally {
+				_awaitDepth--;
+			}
+		}
 
 		case 'VariableDeclaration': {
 		  for (const d of node.declarations) {
@@ -2397,8 +2418,19 @@ function createCore(DSyntax, DRuntime) {
 
 			const args = await evalArgs();
 			const result = fn.apply(obj, args);
-			if (result && typeof result.then === 'function')
-			  return await result;
+			
+			if (result && typeof result.then === 'function') {
+				// Only block if we are *actually* inside an `await ...`
+				if (inAwait()) return await result;
+			
+				// Fire-and-forget: do NOT let the interpreter await it implicitly.
+				// Return a non-thenable box so outer `await evalNode(...)` doesn't block.
+				// Also prevent "red error" unhandled rejections from leaking noisily.
+				result.catch(e => console.error('DamenScript async error (unawaited):', e));
+			
+				return boxPromise(result);
+			}
+			
 			return result;
 		  }
 
@@ -2408,8 +2440,19 @@ function createCore(DSyntax, DRuntime) {
 
 		  const args = await evalArgs();
 		  const result = fn.apply(undefined, args);
-		  if (result && typeof result.then === 'function')
-			return await result;
+		  
+		  if (result && typeof result.then === 'function') {
+			  // Only block if we are *actually* inside an `await ...`
+			  if (inAwait()) return await result;
+		  
+			  // Fire-and-forget: do NOT let the interpreter await it implicitly.
+			  // Return a non-thenable box so outer `await evalNode(...)` doesn't block.
+			  // Also prevent "red error" unhandled rejections from leaking noisily.
+			  result.catch(e => console.error('DamenScript async error (unawaited):', e));
+		  
+			  return boxPromise(result);
+		  }
+		  
 		  return result;
 		}
 

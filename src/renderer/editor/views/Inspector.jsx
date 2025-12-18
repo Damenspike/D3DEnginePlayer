@@ -4,6 +4,7 @@ import InspectorCell from './InspectorCell.jsx';
 import ComponentCell from './ComponentCell.jsx';
 import VectorInput from './VectorInput.jsx';
 import AssetExplorerDialog from './AssetExplorerDialog.jsx';
+import ScriptFindReplaceDialog  from './ScriptFindAndReplaceDialog.jsx';
 import ObjectRow from './ObjectRow.jsx';
 import MaterialEditor from './MaterialEditor.jsx';
 import ColorPicker from './ColorPicker.jsx';
@@ -96,6 +97,7 @@ export default function Inspector() {
 	const [assetExplorerOpen, setAssetExplorerOpen] = useState(false);
 	const [assetExplorerFilter, setAssetExplorerFilter] = useState('all');
 	const [assetExplorerSelected, setAssetExplorerSelected] = useState();
+	const [scriptFindDialogOpen, setScriptFindDialogOpen] = useState(false);
 	const [sceneInspectorExpanded, setSceneInspectorExpanded] = useState(false);
 	const [objectInspectorExpanded, setObjectInspectorExpanded] = useState(false);
 	const [assetsInspectorExpanded, setAssetsInspectorExpanded] = useState(false);
@@ -177,6 +179,7 @@ export default function Inspector() {
 				setDummyObject(prev => prev ? { ...prev } : {});
 			};
 		});
+		_events.on('open-script-find-dialog', () => setScriptFindDialogOpen(true));
 		
 		_editor.onProjectLoaded = () => {
 			setDummyProject({..._editor.project});
@@ -3280,6 +3283,10 @@ export default function Inspector() {
 				allowChangeFormat={false}
 				allowImport={true}
 				selectedAsset={assetExplorerSelected}
+			/>
+			<ScriptFindReplaceDialog
+				isOpen={scriptFindDialogOpen}
+				onClose={() => setScriptFindDialogOpen(false)}
 			/>
 		</div>
 	)

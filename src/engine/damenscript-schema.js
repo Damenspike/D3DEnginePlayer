@@ -6,7 +6,7 @@ export const KEYWORDS = [
 ]
 export const TYPE_KEYWORDS = [
 	'Number','String','Boolean','Uint8Array','Uint16Array','Uint32Array','Int8Array','Int16Array','Int32Array','Float32Array','Float64Array',
-	'Vector2','Vector3','Vector4','MathUtils','Box3','Quaternion',
+	'Vector2','Vector3','Vector4','Matrix4','MathUtils','Box3','Quaternion',
 	'Raycaster','Color','Euler','Box4','Sphere','Plane',
 	'crypto','Math','JSON','Promise','console',
 	'WebSocket','LocalStorage','WebRTC','fileMeta',
@@ -450,7 +450,11 @@ export const D3D_OBJECT_SCHEMA = {
 	},
 	findDeep: {
 		type: 'Function(name:string):D3DObject[]',
-		doc: 'Returns all descendants (including self) matching a given name.'
+		doc: 'Returns descendant (can be self) matching given name.'
+	},
+	findAllDeep: {
+		type: 'Function(name:string):D3DObject[]',
+		doc: 'Returns all descendants (can include self) matching given name.'
 	},
 	traverse: {
 		type: 'Function(callback:(obj:D3DObject)=>boolean|void):boolean',

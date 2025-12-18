@@ -200,6 +200,7 @@ async function createStartWindow() {
 		width: 400,
 		height: 250,
 		resizable: false,
+		fullScreenable: false,
 		titleBarStyle: 'hidden',
 		webPreferences: {
 			preload: path.join(__dirname, 'preload-editor.cjs'),
@@ -253,6 +254,7 @@ async function createNewProjectWindow() {
 		width: 380,
 		height: isMac ? 430 : 450,
 		resizable: false,
+		fullScreenable: false,
 		webPreferences: {
 			preload: path.join(__dirname, 'preload-editor.cjs'),
 			contextIsolation: true,

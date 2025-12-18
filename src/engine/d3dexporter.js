@@ -1,4 +1,4 @@
-import D3DZip from './d3dzip.js';
+import JSZip from 'jszip';
 
 export async function exportAsD3D(d3dobjects, opts = {}) {
 	if(!Array.isArray(d3dobjects)) {
@@ -15,7 +15,7 @@ export async function exportAsD3D(d3dobjects, opts = {}) {
 	const files = [];
 	
 	for(const d3dobject of d3dobjects) {
-		const zip = new D3DZip();
+		const zip = new JSZip();
 		
 		// Build manifest
 		const manifestFile = srcZip.file('manifest.json');

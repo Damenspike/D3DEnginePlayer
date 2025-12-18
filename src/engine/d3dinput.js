@@ -276,6 +276,7 @@ export default class D3DInput {
 	getCursorOverGame3D() {
 		if (window._editor) {
 			if (this.assetExplorerOpen) return false;
+			if (this.scriptFindOpen) return false;
 			if (_editor.mode !== '3D')  return false;
 		}
 		return this.getCursorOverGameBound();

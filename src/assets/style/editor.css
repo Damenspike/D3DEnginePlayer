@@ -831,7 +831,7 @@ body.dark {
 }
 
 /* label look consistent */
-.material-editor-label{
+.material-editor-label, .minititle {
 	opacity:.85;
 	text-transform:uppercase;
 	font-size:.75rem;
@@ -1344,14 +1344,17 @@ body.dark {
 	justify-items: right;
 	margin-bottom: 10px;
 }
-.small-logo {
+.top-bar__right {
 	position: absolute;
 	right: 5px;
 	top: 5px;
 	
-	img {
-		width: 50px;
+	.tools-section {
+		transform: translateY(-6px);
 	}
+}
+.small-logo {
+	width: 50px;
 }
 .small-logo:hover {
 	cursor: pointer;
@@ -1375,5 +1378,101 @@ body.dark {
 .code-not-present:hover {
 	svg {
 		opacity: 1;
+	}
+}
+
+.script-dialog {
+
+	.asset-dialog__window {
+		width: 90%;
+		max-width: 1200px;
+		height: 800px;
+		display: flex;
+		flex-direction: column;
+	}
+
+	.asset-dialog__header,
+	.asset-dialog__toolbar,
+	.asset-dialog__footer {
+		flex: 0 0 auto;
+	}
+
+	.asset-dialog__body {
+		flex: 1 1 auto;
+		min-height: 0;
+		display: flex;
+	}
+
+	.asset-dialog__list {
+		flex: 1 1 0;
+		min-height: 0;
+		overflow: auto;
+	}
+
+	.asset-dialog__preview {
+		flex: 1 1 0;
+		min-height: 0;
+		overflow: hidden;
+		padding: 0;
+	}
+
+	.script-hit {
+		font-weight: 700;
+		text-decoration: underline;
+	}
+
+	.script-preview {
+		width: 100%;
+		height: 100%;
+		display: flex;
+		flex-direction: column;
+	}
+
+	.script-preview__header {
+		flex: 0 0 auto;
+		padding: 10px;
+		border-bottom: 1px solid rgba(255,255,255,0.08);
+		display: flex;
+		align-items: center;
+	}
+
+	.script-preview__nav {
+		margin-left: auto;
+	}
+
+	.script-preview__scroller {
+		flex: 1 1 auto;
+		min-height: 0;
+		overflow: auto;
+		background: rgba(0,0,0,0.35);
+	}
+	
+	.object-result-row {
+		margin-bottom: 3px;
+		font-size: 15px;
+	}
+
+	.script-preview__code {
+		margin: 0;
+		padding: 10px;
+		white-space: pre;
+		color: #ddd;
+		font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+		font-size: 12px;
+		line-height: 1.4;
+	}
+	
+	.options {
+		align-content: center;
+	}
+
+	.script-preview__hit {
+		background: rgba(255, 220, 100, 0.25);
+		border-radius: 2px;
+	}
+
+	.script-preview__hit.is-current {
+		background: rgba(255, 220, 100, 0.55);
+		outline: 1px solid rgba(255, 255, 255, 0.25);
 	}
 }

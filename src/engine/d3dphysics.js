@@ -461,10 +461,32 @@ export default class D3DPhysics {
 			return collider.userData?.d3dobject || null;
 		};
 	
-		const predicate = filter
+		// OPTIONAL: respect opts.objects like your THREE raycast does
+		let allow = null;
+		if(Array.isArray(opts.objects) && opts.objects.length > 0) {
+			allow = new Set();
+			for(let i = 0; i < opts.objects.length; i++) {
+				const o = opts.objects[i];
+				if(o?.uuid && o?.object3d) allow.add(o.uuid);
+				else if(o?.userData?.d3dobject?.uuid) allow.add(o.userData.d3dobject.uuid);
+				else if(o?.object3d?.userData?.d3dobject?.uuid) allow.add(o.object3d.userData.d3dobject.uuid);
+			}
+			if(allow.size < 1) allow = null;
+		}
+	
+		const predicate = (filter || allow)
 			? (collider) => {
 				const d3d = resolveD3D(collider);
-				return !!d3d && filter(d3d);
+				if(!d3d)
+					return false;
+	
+				if(allow && !allow.has(d3d.uuid))
+					return false;
+	
+				if(filter)
+					return !!filter(d3d);
+	
+				return true;
 			}
 			: undefined;
 	
@@ -486,7 +508,8 @@ export default class D3DPhysics {
 			if(!hit)
 				return null;
 	
-			const collider = this.world.getCollider(hit.colliderHandle);
+			const collider = hit.collider;                 // <-- FIX
+			const toi = hit.timeOfImpact;                  // <-- FIX
 			const d3d = resolveD3D(collider);
 			if(!d3d)
 				return null;
@@ -494,14 +517,14 @@ export default class D3DPhysics {
 			return {
 				hit: true,
 				point: new THREE.Vector3(
-					origin.x + direction.x * hit.toi,
-					origin.y + direction.y * hit.toi,
-					origin.z + direction.z * hit.toi
+					origin.x + direction.x * toi,
+					origin.y + direction.y * toi,
+					origin.z + direction.z * toi
 				),
 				normal: new THREE.Vector3(hit.normal.x, hit.normal.y, hit.normal.z),
-				distance: hit.toi,
+				distance: toi,
 				object: d3d,
-				colliderHandle: hit.colliderHandle
+				colliderHandle: collider?.handle
 			};
 		}
 	
@@ -512,8 +535,9 @@ export default class D3DPhysics {
 			ray,
 			maxDist,
 			solid,
-			(hit) => {
-				const collider = this.world.getCollider(hit.colliderHandle);
+			(intersect) => {
+				const collider = intersect.collider;        // <-- FIX
+				const toi = intersect.timeOfImpact;         // <-- FIX
 				const d3d = resolveD3D(collider);
 				if(!d3d)
 					return true;
@@ -521,13 +545,13 @@ export default class D3DPhysics {
 				out.push({
 					hit: true,
 					point: new THREE.Vector3(
-						origin.x + direction.x * hit.toi,
-						origin.y + direction.y * hit.toi,
-						origin.z + direction.z * hit.toi
+						origin.x + direction.x * toi,
+						origin.y + direction.y * toi,
+						origin.z + direction.z * toi
 					),
-					distance: hit.toi,
+					distance: toi,
 					object: d3d,
-					colliderHandle: hit.colliderHandle
+					colliderHandle: collider?.handle
 				});
 	
 				return true;
@@ -561,36 +585,45 @@ export default class D3DPhysics {
 	 * @param {THREE.Vector3} center - Sphere center (world space)
 	 * @param {number} radius - Sphere radius
 	 * @param {object} [opts={}] - { objects?: Object3D[], filter?: (o)=>boolean }
-	 * @returns {Array<{object:any, distance:number, centerDistance:number}>}
+	 * @returns {Array<{object:any, distance:number, centerDistance:number, point:THREE.Vector3}>}
 	 */
 	overlapSphere(center, radius, opts = {}) {
 		const filter = opts.filter;
-		let objects = opts.objects || _root?.superObjectsThree || [];
-		if (filter) objects = objects.filter(filter);
+		let objects = opts.objects || _root.children;
 		
-		objects = objects.filter(isLiveObject);
-	
+		if(filter && typeof filter !== 'function')
+			throw new Error('Invalid filter value. Filter must be a Function<boolean>');
+		
+		const object3ds = [];
+		objects.forEach(o => {
+			if(filter && !filter(o))
+				return;
+			
+			if(o?.object3d && isLiveObject(o))
+				object3ds.push(o.object3d);
+		});
+		objects = object3ds;
+		
 		const querySphere = new THREE.Sphere(center.clone(), radius);
 	
 		// --- reusable temps to avoid GC
 		const tmpBox = new THREE.Box3();
 		const tmpSphere = new THREE.Sphere();
 		const tmpV = new THREE.Vector3();
+		const tmpDir = new THREE.Vector3();
+		const tmpHit = new THREE.Vector3();
 	
 		const out = [];
 	
 		for (let obj of objects) {
-			// Skip invisible or no world matrix
 			if (!obj || !obj.visible) continue;
 	
 			let hit = false;
 			let centerDistance;
 			let surfaceDistance;
 	
-			// Fast path: Mesh with geometry boundingSphere
 			const geo = obj.geometry;
 			if (geo && (geo.boundingSphere || geo.boundingBox)) {
-				// make sure bounds exist
 				if (!geo.boundingSphere && !geo.boundingBox) geo.computeBoundingSphere?.();
 	
 				if (geo.boundingSphere) {
@@ -602,31 +635,56 @@ export default class D3DPhysics {
 	
 					// distances
 					centerDistance = tmpSphere.center.distanceTo(center);
-					// distance from the query sphere surface to this object sphere surface (>= 0 if disjoint, 0 if overlapping)
 					surfaceDistance = Math.max(0, centerDistance - (tmpSphere.radius + querySphere.radius));
+	
+					if (hit) {
+						// hit point = closest point on object sphere to query center
+						tmpDir.subVectors(center, tmpSphere.center);
+						if (tmpDir.lengthSq() === 0) tmpDir.set(0, 1, 0);
+						else tmpDir.normalize();
+	
+						tmpHit.copy(tmpSphere.center).addScaledVector(tmpDir, tmpSphere.radius);
+					}
 				} else {
 					// fallback to box if sphere missing
 					tmpBox.copy(geo.boundingBox).applyMatrix4(obj.matrixWorld);
+	
 					hit = tmpBox.intersectsSphere(querySphere);
 					centerDistance = tmpBox.getCenter(tmpV).distanceTo(center);
-					// Box3.distanceToPoint is exact to the box surface; subtract the query radius
+	
 					const dToBox = tmpBox.distanceToPoint(center);
 					surfaceDistance = Math.max(0, dToBox - querySphere.radius);
+	
+					if (hit) {
+						// hit point = closest point on box to query center
+						tmpBox.clampPoint(center, tmpHit);
+					}
 				}
 			} else {
 				// Generic path: compute a world box from the object hierarchy
 				tmpBox.setFromObject(obj);
+	
 				if (!tmpBox.isEmpty()) {
 					hit = tmpBox.intersectsSphere(querySphere);
 					centerDistance = tmpBox.getCenter(tmpV).distanceTo(center);
+	
 					const dToBox = tmpBox.distanceToPoint(center);
 					surfaceDistance = Math.max(0, dToBox - querySphere.radius);
+	
+					if (hit) {
+						tmpBox.clampPoint(center, tmpHit);
+					}
 				} else {
 					// As a last resort, treat object's world position as a point
 					obj.getWorldPosition(tmpV);
 					centerDistance = tmpV.distanceTo(center);
+	
 					hit = centerDistance <= querySphere.radius;
 					surfaceDistance = Math.max(0, centerDistance - querySphere.radius);
+	
+					if (hit) {
+						tmpHit.copy(tmpV);
+					}
 				}
 			}
 	
@@ -634,12 +692,12 @@ export default class D3DPhysics {
 				out.push({
 					object: obj.userData?.d3dobject || obj,
 					distance: surfaceDistance,     // 0 if overlapping/inside
-					centerDistance                 // distance to object bounds center
+					centerDistance,
+					point: tmpHit.clone()          // world-space hit point
 				});
 			}
 		}
 	
-		// nearest first
 		out.sort((a, b) => a.centerDistance - b.centerDistance);
 		return out;
 	}
@@ -654,7 +712,7 @@ export default class D3DPhysics {
 	 */
 	linecast(start, end, opts = {}) {
 		// Compute direction & distance (exactly like raycast does internally)
-		const direction = new THREE.Vector3().subVectors(end, start);
+		const direction = new THREE.Vector3().subVectors(end, start).normalize();
 		const maxDistance = start.distanceTo(end);
 		
 		const hit = this.raycast(start, direction, {...opts, maxDistance});
@@ -662,6 +720,148 @@ export default class D3DPhysics {
 		if (!hit) return null;
 		
 		return hit;
+	}
+	
+	rigidline(start, end, opts = {}) {
+		// Compute direction & distance (exactly like raycast does internally)
+		const direction = new THREE.Vector3().subVectors(end, start).normalize();
+		const maxDistance = start.distanceTo(end);
+		
+		const hit = this.rigidcast(start, direction, {...opts, maxDistance});
+		
+		if (!hit) return null;
+		
+		return hit;
+	}
+	
+	rigidsphere(center, radius, opts = {}) {
+		if(!this.world)
+			return null;
+	
+		const filter = opts.filter;
+		const all = (opts.all !== false); // default all for overlaps
+		const solid = (opts.solid !== false);
+	
+		if(filter && typeof filter !== 'function')
+			throw new Error('Invalid filter value. Filter must be a Function<boolean>');
+	
+		const r = Number(radius);
+		if(!Number.isFinite(r) || r <= 0)
+			return null;
+	
+		// optional: limit like your THREE overlapSphere did
+		let allow = null;
+		if(Array.isArray(opts.objects) && opts.objects.length > 0) {
+			allow = new Set();
+			for(let i = 0; i < opts.objects.length; i++) {
+				const o = opts.objects[i];
+				if(o?.uuid && o?.object3d) allow.add(o.uuid);
+				else if(o?.userData?.d3dobject?.uuid) allow.add(o.userData.d3dobject.uuid);
+				else if(o?.object3d?.userData?.d3dobject?.uuid) allow.add(o.object3d.userData.d3dobject.uuid);
+			}
+			if(allow.size < 1) allow = null;
+		}
+	
+		const resolveD3D = (collider) => {
+			if(!collider)
+				return null;
+	
+			const d3dFixed = this._toObjCollider?.get(collider.handle);
+			if(d3dFixed)
+				return d3dFixed;
+	
+			const rbHandle = collider.parent?.();
+			if(rbHandle != null) {
+				const d3d = this._toObj?.get(rbHandle);
+				if(d3d)
+					return d3d;
+			}
+	
+			return collider.userData?.d3dobject || null;
+		};
+	
+		// Reuse a ball shape object (no GC)
+		const shape = this._rapierBall || (this._rapierBall = new RAPIER.Ball(r));
+		if(shape.radius !== r) {
+			// rapier shapes are immutable-ish; easiest is recreate when radius changes
+			this._rapierBall = new RAPIER.Ball(r);
+		}
+	
+		const pos = { x: center.x, y: center.y, z: center.z };
+		const rot = { x: 0, y: 0, z: 0, w: 1 };
+	
+		// results
+		const out = this._raycastHits;
+		out.length = 0;
+	
+		// temp output point
+		const tmpP = _TMP_V1;
+		const tmpHit = new THREE.Vector3();
+	
+		const excludeCollider = opts.excludeCollider || null;
+		const excludeRigidBody = opts.excludeRigidBody || null;
+	
+		// Rapier gives you intersecting colliders; we then compute a contact-ish point
+		this.world.intersectionsWithShape(
+			pos,
+			rot,
+			this._rapierBall,
+			(collider) => {
+				if(excludeCollider && collider.handle === excludeCollider)
+					return true;
+	
+				if(excludeRigidBody) {
+					const rbHandle = collider.parent?.();
+					if(rbHandle != null && rbHandle === excludeRigidBody)
+						return true;
+				}
+	
+				const d3d = resolveD3D(collider);
+				if(!d3d)
+					return true;
+	
+				if(allow && !allow.has(d3d.uuid))
+					return true;
+	
+				if(filter && !filter(d3d))
+					return true;
+	
+				// closest point on collider to sphere center (world space)
+				// NOTE: Rapier has `collider.shape` + `collider.translation/rotation`.
+				// Best lightweight approach: use Rapier’s own point projection:
+				const proj = collider.projectPoint(pos, solid); // returns { point, isInside }
+				const px = proj.point.x, py = proj.point.y, pz = proj.point.z;
+	
+				tmpHit.set(px, py, pz);
+	
+				// distance from sphere surface to collider (0 if overlapping/inside)
+				// if proj.isInside => center is inside collider => distance 0 for overlap purposes
+				const dCenterToPoint = tmpHit.distanceTo(center);
+				const surfaceDistance = proj.isInside ? 0 : Math.max(0, dCenterToPoint - r);
+	
+				out.push({
+					hit: true,
+					object: d3d,
+					point: tmpHit.clone(),
+					distance: surfaceDistance,
+					colliderHandle: collider.handle
+				});
+	
+				return true;
+			},
+			undefined,
+			undefined,
+			excludeCollider,
+			excludeRigidBody
+		);
+	
+		if(out.length < 1)
+			return null;
+	
+		// nearest first
+		out.sort((a, b) => a.distance - b.distance);
+	
+		return all ? out : out[0];
 	}
 	
 	setTranslation(d3dobj, pos) {

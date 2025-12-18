@@ -8,7 +8,8 @@ import {
 	MdCode,
 	MdPlayArrow,
 	MdBackHand,
-	MdLightbulb
+	MdLightbulb,
+	MdSearch
 } from "react-icons/md";
 import { PiHandGrabbingFill } from "react-icons/pi";
 import { BiExpand } from "react-icons/bi";
@@ -178,6 +179,14 @@ export default function Topbar() {
 			<div className="tools-section">
 				{
 					drawToolButton(
+						(<MdSearch />),
+						() => false,
+						() => _events.invoke('open-script-find-dialog'),
+						'Find & Replace'
+					)
+				}
+				{
+					drawToolButton(
 						(<MdCode />),
 						() => false,
 						() => _editor.editCode(),
@@ -215,8 +224,11 @@ export default function Topbar() {
 				}
 			</div>
 			
-			<div className="small-logo no-select" onClick={openDamen3DWebsite}>
-				<img src={_host.theme == 'dark' ? smallLogoLight : smallLogoDark} className='no-select' />
+			<div className="top-bar__right">
+				<img 
+					src={_host.theme == 'dark' ? smallLogoLight : smallLogoDark} 
+					className='small-logo no-select' 
+				/>
 			</div>
 		</div>
 	);

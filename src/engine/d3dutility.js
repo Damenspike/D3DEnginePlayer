@@ -1276,3 +1276,9 @@ export function makeRegexAdapter() {
 
 	return regex;
 }
+export function limitString(str, maxLength) {
+	if(!str) return '';
+	if(str.length < maxLength) return str;
+	
+	return str.substr(0, maxLength-3) + '...';
+}

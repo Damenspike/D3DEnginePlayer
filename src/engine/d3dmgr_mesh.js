@@ -817,6 +817,96 @@ export default class MeshManager {
 		return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
 	}
 	
+	getBones() {
+		const root = this.d3dobject.modelScene || this.d3dobject.object3d;
+		if(!root)
+			throw new Error('MeshManager.getBones: no root');
+	
+		let bones = null;
+	
+		root.traverse(o => {
+			if(bones)
+				return;
+	
+			if(o && o.isSkinnedMesh && o.skeleton && Array.isArray(o.skeleton.bones)) {
+				bones = o.skeleton.bones;
+			}
+		});
+	
+		if(!bones)
+			throw new Error('MeshManager.getBones: no SkinnedMesh with skeleton found');
+	
+		return bones;
+	}
+	setBones(bones) {
+		if(!Array.isArray(bones) || bones.length === 0)
+			throw new Error('MeshManager.setBones: invalid bones array');
+	
+		const root = this.d3dobject.modelScene || this.d3dobject.object3d;
+		if(!root)
+			throw new Error('MeshManager.setBones: no root');
+	
+		let didAny = false;
+	
+		root.traverse(o => {
+			if(!o || !o.isSkinnedMesh)
+				return;
+	
+			const sk = o.skeleton;
+			if(!sk)
+				return;
+	
+			if(sk.bones.length !== bones.length)
+				throw new Error(
+					`MeshManager.setBones: bone count mismatch (${sk.bones.length} != ${bones.length})`
+				);
+	
+			const boneInverses =
+				Array.isArray(sk.boneInverses) && sk.boneInverses.length === bones.length
+					? sk.boneInverses
+					: null;
+	
+			const newSkeleton = new THREE.Skeleton(bones, boneInverses);
+	
+			o.bind(newSkeleton, o.bindMatrix);
+	
+			o.updateMatrixWorld(true);
+			newSkeleton.update();
+	
+			didAny = true;
+		});
+	
+		if(!didAny)
+			throw new Error('MeshManager.setBones: no SkinnedMesh rebound');
+	
+		return true;
+	}
+	updateSkeleton(forceWorldUpdate = true) {
+		const root = this.d3dobject.modelScene || this.d3dobject.object3d;
+		if(!root)
+			throw new Error('No root for updating skeleton from')
+	
+		let updated = false;
+		
+		// Make sure matrices are current before rebuilding palettes
+		if(forceWorldUpdate)
+			root.updateMatrixWorld(true);
+	
+		root.traverse(o => {
+			if(!o || !o.isSkinnedMesh)
+				return;
+	
+			// If bones were modified externally, rebuild the palette used for skinning
+			console.log(o, o.skeleton);
+			if(o.skeleton?.update)
+				o.skeleton.update();
+	
+			updated = true;
+		});
+	
+		return updated;
+	}
+	
 	onEnabled() {
 		this.d3dobject.visible2 = true;
 	}

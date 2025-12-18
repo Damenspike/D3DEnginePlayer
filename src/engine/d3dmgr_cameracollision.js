@@ -88,31 +88,69 @@ export default class CameraCollisionManager {
 		
 		this.target = target;
 		
-		const hits = _physics.linecast(
-			target.localToWorld(targetOffset), 
-			this.d3dobject.worldPosition,
-			{ 
-				all: true,
-				objects: this.physObjects
-			}
+		const coffset = this.d3dobject.localDirToWorld(
+			new THREE.Vector3(
+				this.offset?.x || 0,
+				this.offset?.y || 0,
+				this.offset?.z || 0
+			)
 		);
+		const worldPos = this.d3dobject.worldPosition;
+		const opts = { 
+			all: true,
+			objects: this.physObjects
+		};
+		const hits = _physics.rigidline(
+			target.localToWorld(targetOffset), 
+			worldPos,
+			opts
+		);
+		
+		const desiredPos = worldPos.clone();
+		let anyHit = false;
 		
 		if(hits?.length > 0) {
 			const point = hits[0].point;
-			const coffset = this.d3dobject.localDirToWorld(
-				new THREE.Vector3(
-					this.offset?.x || 0,
-					this.offset?.y || 0,
-					this.offset?.z || 0
-				)
-			);
 			
 			const hitPointDir = new THREE.Vector3()
 			.subVectors(
-				point, this.d3dobject.worldPosition
+				point, worldPos
 			).normalize();
 			
-			this.d3dobject.worldPosition = point.add(hitPointDir.multiplyScalar(radius)).add(coffset);
+			desiredPos.copy(point).add(hitPointDir.multiplyScalar(radius)).add(coffset);
+			anyHit = true;
+		}else{
+			// ---------- 2) sphere keep-out: camera position ----------
+			// (this catches “too close to terrain” even when line doesn’t hit nicely)
+			const sphereHits = _physics.rigidsphere(
+				this.d3dobject.worldPosition,
+				radius * 0.025,
+				opts
+			);
+			
+			if(sphereHits?.length > 0) {
+				// nearest first
+				const hit = sphereHits[0];
+				const point = hit.point;
+				
+				desiredPos.copy(point).add(coffset);
+				anyHit = true;
+			}
+		}
+		
+		if(anyHit) {
+			// Smooth towards desired position (frame-rate independent)
+			const dt = Math.min(0.05, Number(_time?.delta || 0.016));
+			const speed = 22; // higher = snappier, lower = smoother
+			const t = 1 - Math.exp(-speed * dt);
+			
+			if(!this._lastPosition)
+				this._lastPosition = worldPos.clone();
+			
+			this._lastPosition.lerp(desiredPos, t);
+			this.d3dobject.worldPosition = this._lastPosition;
+		}else{
+			this._lastPosition = worldPos.clone();
 		}
 	}
 }
