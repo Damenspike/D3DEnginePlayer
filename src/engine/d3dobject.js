@@ -1167,9 +1167,62 @@ export default class D3DObject {
 		return buffer;
 	}
 	
+	async getZipInstance(buffer) {
+		const origin = this.__origin;
+		const cacheEnabled = window._player && origin;
+		let zip;
+		
+		if(cacheEnabled) {
+			if(!_root.__zipInstances)
+				_root.__zipInstances = {};
+			
+			const inst = _root.__zipInstances[origin];
+			
+			if(inst) {
+				zip = inst.zip;
+				if(zip) {
+					if(!inst.d3dobjects.has(this))
+						inst.d3dobjects.add(this);
+						
+					return zip;
+				}
+			}
+		}
+		
+		zip = await new D3DZip().loadAsync(buffer);
+		
+		if(cacheEnabled) {
+			if(!_root.__zipInstances)
+				_root.__zipInstances = {};
+				
+			_root.__zipInstances[origin] = { zip, d3dobjects: new Set([this]) };
+		}
+		
+		return zip;
+	}
+	unlinkFromZipInstance() {
+		if(!_root.__zipInstances)
+			return;
+		
+		const origin = this.__origin;
+		const inst = _root.__zipInstances[origin];
+		
+		if(!inst) 
+			return;
+			
+		if(inst.d3dobjects.has(this))
+			inst.d3dobjects.delete(this);
+			
+		if(inst.d3dobjects.size < 1) {
+			inst.zip.terminate();
+			_root.__zipInstances[origin] = null;
+			delete _root.__zipInstances[origin];
+		}
+	}
+	
 	async loadFromZip(buffer) {
 		// No need for await import, using required modules
-		const zip = await new D3DZip().loadAsync(buffer);
+		const zip = await this.getZipInstance(buffer);
 		this.zip = zip;
 		
 		// Parse manifest.json for metadata
@@ -2285,6 +2338,7 @@ export default class D3DObject {
 		});
 		
 		this.disposeAllComponents();
+		this.unlinkFromZipInstance();
 		
 		const idx = this.parent.children.indexOf(this);
 		

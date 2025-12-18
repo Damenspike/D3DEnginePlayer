@@ -184,6 +184,14 @@ body.dark {
 	.color-field-popup {
 		background: #333;
 	}
+	.script-dialog {
+		.script-preview__scroller {
+			background: rgba(0, 0, 0, 0.25);
+		}
+		.script-preview__code {
+			color: white;
+		}
+	}
 }
 
 /* TOP BAR (top bar) */
@@ -1444,7 +1452,7 @@ body.dark {
 		flex: 1 1 auto;
 		min-height: 0;
 		overflow: auto;
-		background: rgba(0,0,0,0.35);
+		background: white;
 	}
 	
 	.object-result-row {
@@ -1456,7 +1464,7 @@ body.dark {
 		margin: 0;
 		padding: 10px;
 		white-space: pre;
-		color: #ddd;
+		color: black;
 		font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 		font-size: 12px;
 		line-height: 1.4;
@@ -1472,7 +1480,7 @@ body.dark {
 	}
 
 	.script-preview__hit.is-current {
-		background: rgba(255, 220, 100, 0.55);
+		background: rgba(255, 220, 100, 0.774);
 		outline: 1px solid rgba(255, 255, 255, 0.25);
 	}
 }

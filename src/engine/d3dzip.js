@@ -2,107 +2,6 @@
 import JSZipReal from 'jszip';
 
 /* =========================
-   Worker-side (real JSZip)
-   ========================= */
-
-const IS_WORKER =
-	typeof self !== 'undefined' &&
-	typeof WorkerGlobalScope !== 'undefined' &&
-	self instanceof WorkerGlobalScope;
-
-if(IS_WORKER) {
-	let zip = null;
-
-	function reply(id, ok, data, error, transfer) {
-		const msg = { id, ok };
-		if(ok) msg.data = data;
-		else msg.error = error;
-		if(transfer && transfer.length) self.postMessage(msg, transfer);
-		else self.postMessage(msg);
-	}
-
-	self.onmessage = async e => {
-		const msg = e.data || {};
-		const { id, type } = msg;
-
-		try {
-			if(type === 'init') {
-				zip = await JSZipReal.loadAsync(msg.buffer);
-				reply(id, true, true);
-				return;
-			}
-
-			if(!zip)
-				throw new Error('Zip not initialised');
-
-			if(type === 'list') {
-				reply(id, true,
-					Object.values(zip.files).map(f => ({
-						name: f.name,
-						dir: !!f.dir,
-						date: f.date ? +new Date(f.date) : 0,
-						comment: f.comment || ''
-					}))
-				);
-				return;
-			}
-
-			if(type === 'folder') {
-				const p = msg.path && !msg.path.endsWith('/') ? msg.path + '/' : (msg.path || '');
-				zip.folder(p);
-				reply(id, true, true);
-				return;
-			}
-
-			if(type === 'remove') {
-				zip.remove(msg.path);
-				reply(id, true, true);
-				return;
-			}
-
-			if(type === 'put') {
-				// msg.buffer: string | ArrayBuffer | null
-				// msg.options: { dir?: boolean, date?: number|string|Date, comment?: string, createFolders?: boolean }
-				zip.file(msg.path, msg.buffer, msg.options || undefined);
-				reply(id, true, true);
-				return;
-			}
-
-			if(type === 'readText') {
-				const f = zip.file(msg.path);
-				if(!f) throw new Error(`File not found: ${msg.path}`);
-				reply(id, true, await f.async('string'));
-				return;
-			}
-
-			if(type === 'readBin') {
-				const f = zip.file(msg.path);
-				if(!f) throw new Error(`File not found: ${msg.path}`);
-
-				const u8 = await f.async('uint8array');
-				const ab = u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
-				reply(id, true, ab, null, [ab]);
-				return;
-			}
-
-			if(type === 'generate') {
-				const opts = msg.options || {};
-				const u8 = await zip.generateAsync({ ...opts, type: 'uint8array' });
-				const ab = u8.buffer.slice(u8.byteOffset, u8.byteOffset + u8.byteLength);
-				reply(id, true, ab, null, [ab]);
-				return;
-			}
-
-			throw new Error(`Unknown type: ${type}`);
-		} catch(err) {
-			reply(id, false, null, err?.message || String(err));
-		}
-	};
-
-	// Worker exports nothing.
-}
-
-/* =========================
    Main-thread proxy
    ========================= */
 
@@ -182,7 +81,10 @@ class FolderProxy {
 
 class ZipProxy {
 	constructor() {
-		this._worker = new Worker(new URL(import.meta.url), { type: 'module' });
+		this._worker = new Worker(
+			new URL('./d3dzip.worker.js', import.meta.url),
+			{ type: 'module' }
+		);
 		this._id = 1;
 		this._pending = new Map();
 
@@ -367,40 +269,48 @@ class ZipProxy {
 
 	async generateAsync(options = {}) {
 		await this._ops;
-
+	
 		const type = options.type || 'arraybuffer';
+	
+		if(type === 'base64')
+			return this._req('generateBase64', { options });
+	
 		const ab = await this._req('generate', { options });
-
+	
 		if(type === 'arraybuffer') return ab;
 		if(type === 'uint8array') return new Uint8Array(ab);
 		if(type === 'blob') return new Blob([ab]);
-
+	
 		throw new Error(`Unsupported generateAsync type: ${type}`);
 	}
 
 	async _read(name, type) {
 		await this._ops;
-
+	
 		// Reading a folder ZipObject is allowed in JSZip (it exists), but content is meaningless.
 		if(this._meta.get(name)?.dir) {
 			if(type === 'string') return '';
+			if(type === 'base64') return '';
 			if(type === 'arraybuffer') return new ArrayBuffer(0);
 			if(type === 'uint8array') return new Uint8Array(0);
 			if(type === 'blob') return new Blob([]);
 		}
-
+	
 		if(type === 'string')
 			return this._req('readText', { path: name });
-
+	
+		if(type === 'base64')
+			return this._req('readBase64', { path: name });
+	
 		if(type === 'arraybuffer')
 			return this._req('readBin', { path: name });
-
+	
 		if(type === 'uint8array')
 			return new Uint8Array(await this._req('readBin', { path: name }));
-
+	
 		if(type === 'blob')
 			return new Blob([await this._req('readBin', { path: name })]);
-
+	
 		throw new Error(`Unsupported async type: ${type}`);
 	}
 
