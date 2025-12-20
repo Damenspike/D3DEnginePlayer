@@ -82,7 +82,33 @@ THREE.Vector3.right = new THREE.Vector3(1, 0, 0);
 THREE.Vector3.up = new THREE.Vector3(0, 1, 0);
 THREE.Vector3.forward = new THREE.Vector3(0, 0, 1);
 
+/////////////////////
 // Error handling
+////////////////////
+window.addEventListener('error', (event) => {
+	try {
+		D3DConsole.error(
+			'[Uncaught Error]',
+			event.message,
+			event.error || null
+		);
+	} catch (_) {}
+});
+// Unhandled promise rejections (async/await, .then chains, etc.)
+window.addEventListener('unhandledrejection', (event) => {
+	try {
+		const reason = event.reason;
+		const msg =
+			(reason && reason.message) ||
+			(typeof reason === 'string' ? reason : 'Unhandled promise rejection');
+
+		if(reason) {
+			D3DConsole.error(reason)
+		}else{
+			D3DConsole.error('[Unhandled Promise Rejection]', msg);
+		}
+	} catch (_) {}
+});
 function showError(args) {
 	let title, message, closeEditorWhenDone;
 	

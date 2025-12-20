@@ -296,6 +296,7 @@ export default class AutoLODManager {
 		if(distToMe > maxDistance) {
 			this.makeAllLevelsVisible(false);
 			this.d3dobject.__lodCulled = true;
+			this.currentLODLevel = -1;
 			if(this.billboardMesh) {
 				this.billboardMesh.visible = true && this.billboardWhenCulled;
 				

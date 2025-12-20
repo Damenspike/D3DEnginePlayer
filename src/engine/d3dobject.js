@@ -961,6 +961,7 @@ export default class D3DObject {
 			objData.suuid = symbolCopy.suuid;
 			objData.script = symbolCopy.script;
 			objData.layer = symbolCopy.layer;
+			objData.hindex = symbolCopy.hindex;
 			
 			/*
 				Override-able properties
@@ -996,6 +997,9 @@ export default class D3DObject {
 		child.__script = objData.script;
 		child.layer = objData.layer;
 		child.hindex = Number(objData.hindex) || 0;
+		
+		if(child.hindex > 0)
+			console.log(child.name, objData.hindex, child.hindex);
 		
 		child.editorOnly = !!objData.editorOnly || false;
 		child.editorAlwaysVisible = !!objData.editorAlwaysVisible || false;
@@ -1918,6 +1922,7 @@ export default class D3DObject {
 			
 			d3dobject.__script = objData.script;
 			d3dobject.layer = objData.layer;
+			d3dobject.hindex = objData.hindex;
 			d3dobject.components = structuredClone(objData.components);
 			
 			await d3dobject.updateComponents();

@@ -362,8 +362,10 @@ function AnimationState({d3dobject, clip}) {
 			time = this.time;
 			
 		for(let name in this.clip.objectTracks) {
-			const d3dtarget = this.findAnimationTarget(name);
 			const objectTrack = this.clip.objectTracks[name];
+			const d3dtarget = objectTrack.__d3dtarget || this.findAnimationTarget(name);
+			
+			objectTrack.__d3dtarget = d3dtarget;
 			
 			if(!d3dtarget || !objectTrack)
 				continue;
@@ -422,8 +424,17 @@ function AnimationState({d3dobject, clip}) {
 		this.normalizedTime = t;
 	}
 	this.findAnimationTarget = (name) => {
+		const findBest = () => {
+			const d3dobjs = this.d3dobject.findAllDeep(name);
+			if(!d3dobjs || !Array.isArray(d3dobjs) || d3dobjs.length < 1)
+				return;
+			
+			d3dobjs.sort((a, b) => b.hindex - a.hindex);
+			return d3dobjs[0];
+		}
+		
 		return (name == this.d3dobject.name || name == '__self__') ? 
 			this.d3dobject : 
-			this.d3dobject.findDeep(name);
+			findBest();
 	}
 }

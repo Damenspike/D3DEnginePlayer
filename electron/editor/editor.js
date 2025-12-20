@@ -399,6 +399,17 @@ async function createEditorWindow(session) {
 	if(isDev) await win.loadURL('http://localhost:5173');
 	else await win.loadFile(resolvePath('dist', 'editor', 'index.html'));
 
+	if(isMac) {
+		// must match for native tabbing
+		win.tabbingIdentifier = 'damen3d-editor';
+	
+		const host = getAnyEditorWindowExcept(win);
+		if(host) {
+			// Force it into tabs instead of a separate window
+			try { host.addTabbedWindow(win); } catch(e) {}
+		}
+	}
+	
 	setupTheme(win);
 
 	Menu.setApplicationMenu(appMenu);
@@ -463,6 +474,16 @@ function closeSessionGameWindow(session) {
 
 		session.gameWindow.close();
 	});
+}
+
+function getAnyEditorWindowExcept(exceptWin) {
+	for(const s of sessions.values()) {
+		const w = s.editorWindow;
+		if(!w || w.isDestroyed()) continue;
+		if(exceptWin && w.id === exceptWin.id) continue;
+		return w;
+	}
+	return null;
 }
 
 async function createToolWindow(session, name) {

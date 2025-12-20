@@ -1933,6 +1933,7 @@ export default function Inspector() {
 							}
 							
 							_editor.project.name = val;
+							D3D.updateEditorWindow({ title: _editor.project.name });
 							update();
 						}}
 					/>
