@@ -22,10 +22,11 @@ export default class AutoLODManager {
 			this.d3dobject.root.__bbShared = {geo: null, mats: {}};
 		
 		this.distanceFromCamera = 0;
-		this.lastDistanceCheck = 0;
 		this.levelStore = [];
 		this.sigsInUse = [];
 		this.instancedCulled = false;
+		this.meshReadyTimeout = 0;
+		this.lastUpdate = 0;
 		
 		this.tmpQ1 = new THREE.Quaternion();
 		this.tmpQ2 = new THREE.Quaternion();
@@ -36,6 +37,10 @@ export default class AutoLODManager {
 	}
 	get BB_SHARED() {
 		return this.d3dobject.root.__bbShared;
+	}
+	
+	get allMeshesReady() {
+		return false;//this.d3dobject.root.__loaded;
 	}
 	
 	get center() {
@@ -126,6 +131,13 @@ export default class AutoLODManager {
 		this.component.properties.billboardScale = v;
 	}
 	
+	get billboardInstancing() {
+		return !!this.component.properties.billboardInstancing;
+	}
+	set billboardInstancing(v) {
+		this.component.properties.billboardInstancing = !!v;
+	}
+	
 	generateLevels() {
 		const modifier = new SimplifyModifier();
 		const levels = this.levels;
@@ -138,10 +150,11 @@ export default class AutoLODManager {
 			if(d3dobj?.object3d?.isMesh && !d3dobj?.object3d?.isSkinnedMesh) {
 				const mesh = d3dobj.object3d;
 				const lod0geom = d3dobj.__lod0geom || mesh.geometry;
+				const submesh = d3dobj.getComponent('SubMesh');
 				
 				d3dobj.__lod0geom = lod0geom;
 				
-				this.levelStore.push({ d3dobj, mesh, geometries: [lod0geom] });
+				this.levelStore.push({ d3dobj, mesh, submesh, geometries: [lod0geom] });
 			}
 		}
 		
@@ -236,10 +249,8 @@ export default class AutoLODManager {
 		if(!this.billboardTexture)
 			return;
 		
-		if(this.billboardMesh) {
-			parent3d.remove(this.billboardMesh);
-			this.billboardMesh = null;
-		}
+		if(this.billboardMesh)
+			this.destroyBillboard();
 		
 		const zip = this.d3dobject.root.zip;
 		const uuid = this.billboardTexture;
@@ -280,10 +291,44 @@ export default class AutoLODManager {
 		mesh.position.copy(this.billboardOffset);
 		mesh.scale.copy(this.billboardScale);
 		
+		if(this.billboardSubmeshMock) {
+			// Safely remove old instance
+			_instancing.removeFromInstance(this.billboardInstanceId, this.billboardSubmeshMock);
+		}
+		
+		if(this.billboardInstancing) {
+			// Mock 'submesh'
+			const submesh = {
+				d3dobject: {
+					object3d: mesh
+				}
+			}
+			const instanceId = `bb_${uuid}`;
+			
+			mesh.visible = false;
+			
+			this.billboardInstanceId = instanceId;
+			this.billboardSubmeshMock = submesh;
+		}
+		
 		parent3d.add(mesh);
 		
 		this.billboardMesh = mesh;
 		this.billboardLoading = false;
+	}
+	destroyBillboard() {
+		const parent3d = this.d3dobject.object3d;
+		
+		if(!parent3d) {
+			D3DConsole.error('No parent available to destroy the billboard sprite');
+			return;
+		}
+		
+		if(!this.billboardMesh)
+			return;
+		
+		parent3d.remove(this.billboardMesh);
+		this.billboardMesh = null;
 	}
 	updateComponent(force = false) {
 		this.centerBBox = getObjectsCenter([this.d3dobject]);
@@ -306,60 +351,96 @@ export default class AutoLODManager {
 	}
 	
 	__onInternalBeforeRender() {
+		const now = _time.now;
+		let r = 0.25;
+		
+		if(this.maxDistSq)
+			r += Math.min(this.distanceFromCamera / this.maxDistSq, 2);
+		
+		if(now - this.lastUpdate < r && this.lastUpdate)
+			return;
+		
+		this.lastUpdate = now;
+		
 		const camera = this.getCamera();
 		const levels = this.levels;
 		const maxDistance = this.maxDistance;
 		
 		if(!camera)
 			return;
-			
-		let now = _time.now;
 		
-		if(now - this.lastDistanceCheck > 0.25 || !this.lastDistanceCheck) {
-			this.distanceToCamera = this.center.distanceTo(camera.worldPosition);
-			this.lastDistanceCheck = now;
-		}
-			
 		this.camera = camera;
 		
-		const distToMe = this.distanceToCamera;
+		const camPos = camera.worldPosition;
+		const c = this.center;
+		const dx = c.x - camPos.x;
+		const dy = c.y - camPos.y;
+		const dz = c.z - camPos.z;
+		const distSq = dx*dx + dy*dy + dz*dz;
+		const maxDistSq = maxDistance * maxDistance;
 		
-		if(distToMe > maxDistance) {
-			if(!this.d3dobject.__lodCulled) {
-				this.makeAllLevelsVisible(false);
-				this.d3dobject.__lodCulled = true;
-				this.currentLODLevel = -1;
-				this._instancedCulled = true;
-				
-				if(this.billboardMesh)
-					this.billboardMesh.visible = true && this.billboardWhenCulled;
-			}
-			if(this.billboardMesh && this.billboardWhenCulled) {
-				const parent = this.billboardMesh.parent;
-				
-				camera.object3d.getWorldQuaternion(this.tmpQ1);
-				
-				if(parent) {
-					parent.getWorldQuaternion(this.tmpQ2).invert();
-					this.billboardMesh.quaternion.copy(this.tmpQ1).premultiply(this.tmpQ2);
-				}else{
-					this.billboardMesh.quaternion.copy(this.tmpQ1);
+		this.distanceFromCamera = distSq;
+		this.maxDistSq = maxDistSq;
+		
+		if(distSq > maxDistSq) {
+			this.makeAllLevelsVisible(false);
+			this.d3dobject.__lodCulled = true;
+			this.currentLODLevel = -1;
+			this._instancedCulled = true;
+			
+			if(this.billboardWhenCulled) {
+				if(this.billboardInstancing) {
+					
+					// Always hide mesh billboard if we're instancing
+					if(this.billboardMesh && this.billboardMesh.visible)
+						this.billboardMesh.visible = false;
+					
+					if(this.billboardInstanceId)
+						_instancing.setInstanceDirty(this.billboardInstanceId, this.billboardSubmeshMock);
+				}else
+				if(this.billboardMesh) {
+					if(!this.billboardMesh.visible)
+						this.billboardMesh.visible = true;
+				}
+				if(this.billboardMesh) {
+					const parent = this.billboardMesh.parent;
+					
+					camera.object3d.getWorldQuaternion(this.tmpQ1);
+					
+					if(parent) {
+						parent.getWorldQuaternion(this.tmpQ2).invert();
+						this.billboardMesh.quaternion.copy(this.tmpQ1).premultiply(this.tmpQ2);
+					}else{
+						this.billboardMesh.quaternion.copy(this.tmpQ1);
+					}
+					if(this.billboardInstancing) {
+						_instancing.updateSubmeshMatrix(this.billboardInstanceId, this.billboardSubmeshMock);
+					}
 				}
 			}
 			return;
 		}else{
-			if(this.d3dobject.__lodCulled && this.billboardMesh)
+			if(this.billboardInstancing) {
+				// Always hide mesh billboard if we're instancing
+				if(this.billboardMesh && this.billboardMesh.visible)
+					this.billboardMesh.visible = false;
+				
+				if(this.billboardInstanceId)
+					_instancing.removeFromInstance(this.billboardInstanceId, this.billboardSubmeshMock);
+			}else
+			if(this.billboardMesh && this.billboardMesh.visible) {
 				this.billboardMesh.visible = false;
+			}
 			
 			this.d3dobject.__lodCulled = false;
 			this._instancedCulled = false;
 		}
 		
-		let desiredLevel = Math.floor(distToMe / maxDistance * levels);
+		let desiredLevel = Math.floor(distSq / (maxDistSq / levels));
 		
 		if (desiredLevel < 0) 
 			desiredLevel = 0;
-			
+		else
 		if (desiredLevel >= levels) 
 			desiredLevel = levels - 1;
 			
@@ -374,7 +455,7 @@ export default class AutoLODManager {
 		
 		let changed = 0;
 		
-		this.levelStore.forEach(({d3dobj, mesh, geometries}) => {
+		this.levelStore.forEach(({d3dobj, mesh, submesh, geometries}) => {
 			const lodGeom = geometries[level] || geometries[level-1] || geometries[level-2] || geometries[level-3] || geometries[0];
 			
 			if(!lodGeom) {
@@ -382,8 +463,18 @@ export default class AutoLODManager {
 				return;
 			}
 			
-			mesh.visible = true && this.d3dobject.visible;
+			const visible = true && this.d3dobject.visible;
+			
+			mesh.visible = visible;
 			mesh.geometry = lodGeom;
+			
+			if(submesh?.instancing) {
+				if(visible)
+					_instancing.setInstanceDirty(submesh.instancingId, submesh);
+				else
+					_instancing.removeFromInstance(submesh.instancingId, submesh);
+			}
+			
 			changed++;
 		});
 		
@@ -393,8 +484,16 @@ export default class AutoLODManager {
 		if(!this.d3dobject.visible)
 			visible = false;
 		
-		this.levelStore.forEach(({d3dobj, mesh, geometries}) => {
-			mesh.visible = visible;
+		this.levelStore.forEach(({d3dobj, mesh, submesh, geometries}) => {
+			if(mesh.visible != visible)
+				mesh.visible = visible;
+				
+			if(submesh?.instancing) {
+				if(visible)
+					_instancing.setInstanceDirty(submesh.instancingId, submesh);
+				else
+					_instancing.removeFromInstance(submesh.instancingId, submesh);
+			}
 		});
 	}
 	

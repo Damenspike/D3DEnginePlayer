@@ -24,7 +24,6 @@ import D3DFirstPersonCharacterController from './d3dmgr_firstpersoncharactercont
 import D3DAutoLODManager from './d3dmgr_autolod.js';
 import D3DDayNightManager from './d3dmgr_daynight.js';
 import D3DStamperManager from './d3dmgr_stamper.js';
-import D3DInstanceBatcherManager from './d3dmgr_instancebatcher.js';
 
 import { WebSafeFonts } from './d3dfonts.js';
 import { fileNameNoExt } from './d3dutility.js';
@@ -59,26 +58,7 @@ const D3DComponents = {
 				label: 'Receive shadows',
 				type: 'boolean',
 				def: true
-			},
-			/*'instancing': {
-				label: 'Instancing',
-				type: 'boolean',
-				def: false
-			},
-			'instancingId': {
-				label: 'Instancing ID',
-				type: 'string',
-				description: 'All meshes with this ID will draw together',
-				def: '',
-				condition: c => c.properties.instancing == true
-			},
-			'maxInstancesPerGroup': {
-				label: 'Max per group', 
-				type: 'number',
-				min: 1,
-				def: 100,
-				condition: c => c.properties.instancing == true
-			}*/
+			}
 		},
 		persistent: true,
 		manager: D3DMeshManager
@@ -106,6 +86,18 @@ const D3DComponents = {
 				label: 'Receive shadows',
 				type: 'boolean',
 				def: true
+			},
+			'instancing': {
+				label: 'Instancing',
+				type: 'boolean',
+				def: false
+			},
+			'instancingId': {
+				label: 'Instancing ID',
+				type: 'string',
+				description: 'All meshes with this ID will be batched together. They must share the same geometry and materials.',
+				def: '',
+				condition: c => c.properties.instancing == true
 			}
 		},
 		manager: D3DMeshManager
@@ -2120,6 +2112,12 @@ const D3DComponents = {
 				def: {x: 1, y: 1, z: 1},
 				section: 'billboard',
 				condition: c => c.properties.billboardWhenCulled == true
+			},
+			'billboardInstancing': {
+				label: 'Instancing',
+				type: 'boolean',
+				section: 'billboard',
+				def: false
 			}
 		},
 		manager: D3DAutoLODManager
@@ -2368,38 +2366,6 @@ const D3DComponents = {
 			}
 		},
 		manager: D3DStamperManager
-	},
-	InstanceBatcher: {
-		name: 'Instance Batcher',
-		fields: {
-			rebuildMode: {
-				label: 'Rebuild',
-				type: 'select',
-				def: 'onChange',
-				section: 'batch',
-				options: [
-					{name: 'manual',  label: 'Manual'},
-					{name: 'onChange',label: 'On change'},
-					{name: 'everyFrame',label: 'Every frame'}
-				]
-			},
-			maxInstancesPerBatch: {
-				label: 'Max per batch',
-				type: 'islider',
-				min: 1,
-				max: 20000,
-				def: 1024,
-				section: 'batch'
-			},
-			includeHidden: {
-				label: 'Include hidden',
-				description: 'Include invisible meshes in batching',
-				type: 'boolean',
-				def: false,
-				section: 'scan'
-			}
-		},
-		manager: D3DInstanceBatcherManager
 	}
 }
 

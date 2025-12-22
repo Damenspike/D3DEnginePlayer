@@ -1014,8 +1014,7 @@ const menuTemplate = [
 					{
 						label: 'Advanced',
 						submenu: [
-							{ label: 'Auto LOD', click: () => sendAddComponent('AutoLOD') },
-							{ label: 'Instance Batcher', click: () => sendAddComponent('InstanceBatcher') }
+							{ label: 'Auto LOD', click: () => sendAddComponent('AutoLOD') }
 						]
 					},
 					{ type: 'separator' },

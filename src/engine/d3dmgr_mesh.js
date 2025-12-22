@@ -65,13 +65,6 @@ export default class MeshManager {
 	set instancingId(v) {
 		this.component.properties.instancingId = v;
 	}
-	
-	get maxInstancesPerGroup() {
-		return this.component.properties.maxInstancesPerGroup;
-	}
-	set maxInstancesPerGroup(v) {
-		this.component.properties.maxInstancesPerGroup = Number(v);
-	}
 
 	// =====================================================
 	// HELPER FUNCTIONS
@@ -590,15 +583,37 @@ export default class MeshManager {
 	// MAIN LIFECYCLE
 	// =====================================================
 
-	async updateComponent() {
+	async updateComponent(force = false) {
 		// ---------------- SubMesh ----------------
 		if (this.isSubMesh) {
-			const node = this.d3dobject.object3d;
-			if (!node || !(node.isMesh || node.isSkinnedMesh)) return;
+			const mesh = this.d3dobject.object3d;
+			
+			if (!mesh || !(mesh.isMesh || mesh.isSkinnedMesh)) return;
+			
 			const uuids = this.component.properties.materials;
-			await this._applyMaterialsToThreeMesh(node, uuids);
+			await this._applyMaterialsToThreeMesh(mesh, uuids);
 			this._applyShadows();
 			this.d3dobject.updateVisibility(true);
+			
+			// Instancing updates
+			if(mesh.isMesh && (this.lastInstancingId != this.instancingId || this.lastInstancing != this.instancing)) {
+				if(this.instancing && this.instancingId)
+					_instancing.setInstanceDirty(this.instancingId, this);
+				else
+				if(this.lastInstancing && this.lastInstancingId)
+					_instancing.removeFromInstance(this.lastInstancingId, this);
+				
+				if(this.instancing)
+					this.d3dobject.visible3 = false;
+				else
+					this.d3dobject.visible3 = true;
+				
+				this.d3dobject.__flagInstancing = true;
+				this.d3dobject.rootParent.__flagInstancing = true; // nice to have
+				this.lastInstancingId = this.instancingId;
+				this.lastInstancing = this.instancing;
+			}
+			
 			return;
 		}
 
@@ -728,7 +743,12 @@ export default class MeshManager {
 		this.d3dobject.root.onChildMeshReady?.(this.d3dobject);
 		
 		this.d3dobject.invokeEvent('meshReady');
-		this.d3dobject.root.invokeEvent('onChildMeshReady', this.d3dobject);
+		
+		let p = this.d3dobject;
+		while(p) {
+			p.invokeEvent('onChildMeshReady', this.d3dobject);
+			p = p.parent;
+		}
 		
 		this.d3dobject.updateVisibility(true);
 	}

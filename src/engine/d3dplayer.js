@@ -18,6 +18,7 @@ import D3DConsole from './d3dconsole.js';
 import D3DPhysics from './d3dphysics.js';
 import D3DDimensions from './d3ddimensions.js';
 import D3DGraphics from './d3dgraphics.js';
+import D3DInstancing from './d3dinstancing.js';
 
 window.THREE = THREE;
 window._loopFns = {};
@@ -28,6 +29,7 @@ window._time = new D3DTime();
 window._physics = new D3DPhysics();
 window._dimensions = new D3DDimensions();
 window._graphics = new D3DGraphics();
+window._instancing = new D3DInstancing();
 window._player = {};
 window.__global = {}; // our own runtime global store
 
@@ -266,6 +268,8 @@ function startAnimationLoop() {
 				'__onBeforeRender',
 				'onBeforeRender'
 			]);
+			
+			_instancing.buildDirtyInstances();
 			
 			const camera3d = _player.camera?.object3d;
 			const renderer3d = _player.renderer3d;

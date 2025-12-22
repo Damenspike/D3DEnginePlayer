@@ -49,7 +49,8 @@ export const FORBIDDEN_PROPS = [
 	'__script','__onInternalEnterFrame','__onEditorEnterFrame',
 	'__componentInstances','__deleted','__animatedTransformChange',
 	'_animation','_mesh','_camera','_directionallight','_ambientlight',
-	'_pointlight','__runInSandbox'
+	'_pointlight','__runInSandbox','__batches','__symbols','__lodGeoms',
+	'__bbShared', '__zipInstances'
 ];
 export const NO_OBFUSCATE = [
 	"_root",

@@ -44,6 +44,8 @@ export default class D3DObject {
 		this.name = name;
 		this._enabled = true;
 		this._visible = true;
+		this._visible2 = true;
+		this._visible3 = true;
 		this.hindex = 0;
 		
 		// INTERNAL SENSITIVE VARS
@@ -55,6 +57,11 @@ export default class D3DObject {
 		this.object3d = this.parent ? new THREE.Object3D() : new THREE.Scene();
 		this.object3d.userData.d3dobject = this;
 		this.__d3d = true;
+		
+		if(this == _root) {
+			// ROOT ONLY
+			
+		}
 		
 		this.setupDefaultMethods();
 	}
@@ -612,7 +619,7 @@ export default class D3DObject {
 	}
 	
 	get visible() {
-		return (this._visible && this._visible2) ?? true;
+		return this._visible && this._visible2 && this._visible3;
 	}
 	set visible(value) {
 		this._visible = !!value;
@@ -627,6 +634,17 @@ export default class D3DObject {
 	}
 	set visible2(value) {
 		this._visible2 = !!value;
+		this.updateVisibility();
+		this.onVisibilityChanged?.();
+		this._onVisibilityChanged?.();
+		this.checkSymbols();
+	}
+	
+	get visible3() {
+		return this._visible3 ?? true;
+	}
+	set visible3(value) {
+		this._visible3 = !!value;
 		this.updateVisibility();
 		this.onVisibilityChanged?.();
 		this._onVisibilityChanged?.();
@@ -852,6 +870,7 @@ export default class D3DObject {
 		
 			this.__onTransformationChange = () => {
 				this.checkSymbols();
+				this.checkInstancedSubmeshes();
 			};
 		}
 		
@@ -1854,6 +1873,19 @@ export default class D3DObject {
 		}
 	}
 	
+	checkInstancedSubmeshes() {
+		if(!this.__flagInstancing)
+			return;
+		
+		const submeshes = this.findAllComponents('SubMesh');
+		
+		submeshes.forEach(submesh => {
+			if(submesh.instancing && submesh.instancingId) {
+				_instancing.updateSubmeshMatrix(submesh.instancingId, submesh);
+			}
+		});
+	}
+	
 	findAssetById(uuid) {
 		const assetIndex = this.root.assetIndex;
 		
@@ -2463,7 +2495,7 @@ export default class D3DObject {
 		if(window._editor && this.__editorState?.hidden === true)
 			v = false;
 		
-		if(this.__lastOpacity != this.opacity || force) {
+		if(v && (this.__lastOpacity != this.opacity || force)) {
 			let o = 1;
 			let p = this;
 			while(p) {
