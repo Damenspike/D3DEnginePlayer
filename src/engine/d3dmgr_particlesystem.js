@@ -1,6 +1,7 @@
 // d3dparticlesystemmanager.js
 import * as THREE from 'three';
 import { parseColor, randUnitVec3 } from './d3dutility.js';
+import { rand } from './d3dmath.js';
 
 // ---------- utils ----------
 const clamp01 = (v) => v < 0 ? 0 : (v > 1 ? 1 : v);
@@ -102,7 +103,7 @@ export default class D3DParticleSystemManager {
 
 		// baked per-particle data
 		this._vol    = null;  // baked VOL (vec3)
-		this._angRand= null;  // float
+		this._angVel = null;  // float
 		this._alpha  = null;  // float
 		this._t      = null;  // float
 		this._angle  = null;  // float
@@ -175,20 +176,26 @@ export default class D3DParticleSystemManager {
 		this.props.particleScale = { x:+(v?.x)||1, y:+(v?.y)||1, z:+(v?.z)||1 };
 	}
 
-	get velocityOverLifetime(){ return this.props.velocityOverLifetime; }
-	set velocityOverLifetime(v){ this.props.velocityOverLifetime = v; }
-	get velocityOverLifetimeEntropy(){ return this.props.velocityOverLifetimeEntropy; }
-	set velocityOverLifetimeEntropy(v){ this.props.velocityOverLifetimeEntropy = +v || 0; }
-
-	get angularVelocityOverLifetime(){ return this.props.angularVelocityOverLifetime; }
-	set angularVelocityOverLifetime(v){ this.props.angularVelocityOverLifetime = v; }
-	get angularVelocityOverLifetimeEntropy(){ return this.props.angularVelocityOverLifetimeEntropy; }
-	set angularVelocityOverLifetimeEntropy(v){ this.props.angularVelocityOverLifetimeEntropy = +v || 0; }
-
-	get startRotationDeg(){ return this.props.startRotationDeg; }
-	set startRotationDeg(v){ this.props.startRotationDeg = +v || 0; }
-	get startRotationEntropy(){ return this.props.startRotationEntropy; }
-	set startRotationEntropy(v){ this.props.startRotationEntropy = +v || 0; }
+	get velocityOverLifetimeRandom(){ return this.props.velocityOverLifetimeRandom; }
+	set velocityOverLifetimeRandom(v){ this.props.velocityOverLifetimeRandom = !!v; }
+	get velocityOverLifetimeRandomMin(){ return this.props.velocityOverLifetimeRandomMin; }
+	set velocityOverLifetimeRandomMin(v){ this.props.velocityOverLifetimeRandomMin = v; }
+	get velocityOverLifetimeRandomMax(){ return this.props.velocityOverLifetimeRandomMax; }
+	set velocityOverLifetimeRandomMax(v){ this.props.velocityOverLifetimeRandomMax = v; }
+	
+	get angularVelocityOverLifetimeRandom(){ return this.props.angularVelocityOverLifetimeRandom; }
+	set angularVelocityOverLifetimeRandom(v){ this.props.angularVelocityOverLifetimeRandom = !!v; }
+	get angularVelocityOverLifetimeRandomMin(){ return this.props.angularVelocityOverLifetimeRandomMin; }
+	set angularVelocityOverLifetimeRandomMin(v){ this.props.angularVelocityOverLifetimeRandomMin = v; }
+	get angularVelocityOverLifetimeRandomMax(){ return this.props.angularVelocityOverLifetimeRandomMax; }
+	set angularVelocityOverLifetimeRandomMax(v){ this.props.angularVelocityOverLifetimeRandomMax = v; }
+	
+	get startRotationRandom(){ return this.props.startRotationRandom; }
+	set startRotationRandom(v){ this.props.startRotationRandom = !!v; }
+	get startRotationRandomMinDeg(){ return this.props.startRotationRandomMinDeg; }
+	set startRotationRandomMinDeg(v){ this.props.startRotationRandomMinDeg = +v || 0; }
+	get startRotationRandomMaxDeg(){ return this.props.startRotationRandomMaxDeg; }
+	set startRotationRandomMaxDeg(v){ this.props.startRotationRandomMaxDeg = +v || 0; }
 
 	get color(){ return this.props.color; }                 set color(v){ this.props.color = v; }
 
@@ -298,7 +305,7 @@ export default class D3DParticleSystemManager {
 		this._vel   = new Float32Array(this._max * 3);
 
 		this._vol     = new Float32Array(this._max * 3);
-		this._angRand = new Float32Array(this._max);
+		this._angVel  = new Float32Array(this._max);
 		this._alpha   = new Float32Array(this._max);
 		this._t       = new Float32Array(this._max);
 		this._angle   = new Float32Array(this._max);
@@ -583,29 +590,47 @@ export default class D3DParticleSystemManager {
 		this._ttl[i]  = lt;
 
 		// baked VOL (space-consistent)
-		const volBase = p.velocityOverLifetime || {x:0,y:0,z:0};
-		const eVOL = +p.velocityOverLifetimeEntropy || 0;
-		this._tmpVOL.set(
-			(volBase.x || 0) * (1 + (Math.random()*2 - 1) * eVOL),
-			(volBase.y || 0) * (1 + (Math.random()*2 - 1) * eVOL),
-			(volBase.z || 0) * (1 + (Math.random()*2 - 1) * eVOL)
-		);
+		if (p.velocityOverLifetimeRandom == true) {
+			const mn = p.velocityOverLifetimeRandomMin || {x:0,y:0,z:0};
+			const mx = p.velocityOverLifetimeRandomMax || {x:0,y:0,z:0};
+			this._tmpVOL.set(
+				rand(+mn.x||0, +mx.x||0),
+				rand(+mn.y||0, +mx.y||0),
+				rand(+mn.z||0, +mx.z||0)
+			);
+		} else {
+			const volBase = p.velocityOverLifetime || {x:0,y:0,z:0};
+			this._tmpVOL.set(+volBase.x||0, +volBase.y||0, +volBase.z||0);
+		}
+		
 		if (p.simulationSpace === 'world') {
 			this._tmpVOL.applyQuaternion(this._tmpWorldQuat); // rotate only
 		}
+		
 		this._vol[i3+0] = this._tmpVOL.x;
 		this._vol[i3+1] = this._tmpVOL.y;
 		this._vol[i3+2] = this._tmpVOL.z;
-
-		// angular entropy
-		const eANG = +p.angularVelocityOverLifetimeEntropy || 0;
-		this._angRand[i] = 1 + (Math.random()*2 - 1) * eANG;
-
-		// start rotation
-		const startDeg = +p.startRotationDeg || 0;
-		const sEnt     = +p.startRotationEntropy || 0;
-		this._angle[i] = THREE.MathUtils.degToRad(startDeg) * (1 + (Math.random()*2 - 1) * sEnt);
-
+		
+		// baked angular velocity (Z spin radians/sec)
+		if (p.angularVelocityOverLifetimeRandom == true) {
+			const mn = p.angularVelocityOverLifetimeRandomMin || {x:0,y:0,z:0};
+			const mx = p.angularVelocityOverLifetimeRandomMax || {x:0,y:0,z:0};
+			this._angVel[i] = rand(+mn.z||0, +mx.z||0);
+		} else {
+			const av = p.angularVelocityOverLifetime || {x:0,y:0,z:0};
+			this._angVel[i] = +av.z || 0;
+		}
+		
+		// start rotation (deg -> radians)
+		if (p.startRotationRandom == true) {
+			const mn = +p.startRotationRandomMinDeg || 0;
+			const mx = +p.startRotationRandomMaxDeg || 0;
+			this._angle[i] = THREE.MathUtils.degToRad(rand(mn, mx));
+		} else {
+			const startDeg = +p.startRotationDeg || 0;
+			this._angle[i] = THREE.MathUtils.degToRad(startDeg);
+		}
+		
 		this._t[i]     = 0;
 		this._alpha[i] = 1;
 		this._alive[i] = 1;
@@ -652,7 +677,6 @@ export default class D3DParticleSystemManager {
 		const colors = this._geom.getAttribute('color').array;
 
 		const g = +p.gravity || 0;
-		const avolBase = p.angularVelocityOverLifetime || {x:0,y:0,z:0};
 
 		let aliveCount = 0;
 
@@ -678,7 +702,8 @@ export default class D3DParticleSystemManager {
 			pos[i*3+2] += this._vol[i*3+2] * dt;
 
 			// angular velocity (Z spin)
-			if (avolBase.z) this._angle[i] += (avolBase.z * this._angRand[i]) * dt;
+			const avz = this._angVel[i];
+			if (avz) this._angle[i] += avz * dt;
 
 			// lifetime fraction & gradient color
 			const t = 1 - clamp01(life[i] / ttl[i]);

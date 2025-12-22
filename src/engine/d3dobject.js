@@ -998,9 +998,6 @@ export default class D3DObject {
 		child.layer = objData.layer;
 		child.hindex = Number(objData.hindex) || 0;
 		
-		if(child.hindex > 0)
-			console.log(child.name, objData.hindex, child.hindex);
-		
 		child.editorOnly = !!objData.editorOnly || false;
 		child.editorAlwaysVisible = !!objData.editorAlwaysVisible || false;
 		child.no3DGizmos = !!objData.no3DGizmos;
@@ -1331,6 +1328,9 @@ export default class D3DObject {
 			}else{
 				this.object3d.fog = null;
 			}
+			
+			if(window._editor && !_editor.fogEnabled)
+				this.object3d.fog = null;
 		}catch(e) {
 			console.error('Apply scene fog error', e);
 		}

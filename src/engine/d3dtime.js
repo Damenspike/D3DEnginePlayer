@@ -9,7 +9,7 @@ export default class D3DTime {
 		return this.delta > 0 ? 1 / this.delta : 0;
 	}
 	get now() {
-		return this._nowMs / 1000;
+		return this._nowS;
 	}
 	get nowMs() {
 		return this._nowMs;
@@ -22,13 +22,15 @@ export default class D3DTime {
 	}
 	constructor() {
 		this._nowMs = performance.now();
+		this._nowS = this._nowMs / 1000;
 		this._start = this.now;
 		this.delta = 0;      // seconds
 	}
 	tick(nowMs) {            // call once per RAF
-		const last = this._nowMs;
+		const last = this._nowS;
 		this._nowMs = nowMs;
-		const d = (nowMs - last) / 1000;
+		this._nowS = nowMs / 1000;
+		const d = this._nowS - last;
 		// cap pathological hitches (tab switch, breakpoint, etc.)
 		this.delta = d > 0.1 ? 0.1 : (d >= 0 ? d : 0);
 	}

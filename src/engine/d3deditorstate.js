@@ -53,7 +53,7 @@ export default class D3DEditorState {
 		this._focus = value ?? _root;
 		this.onEditorFocusChanged?.();
 		_events.invoke('editor-focus', value);
-		_editor.updateInspector?.();
+		this.updateInspector?.();
 	}
 	
 	get mode() {
@@ -77,8 +77,8 @@ export default class D3DEditorState {
 		_input.clearKeyState();
 		
 		_events.invoke('editor-mode', value);
-		_editor.updateInspector?.();
-		_editor.setSelection([]);
+		this.updateInspector?.();
+		this.setSelection([]);
 	}
 	
 	get tool() {
@@ -97,10 +97,17 @@ export default class D3DEditorState {
 	}
 	
 	get lightsEnabled() {
-		return this._lightsEnabled && _editor.focus == _root;
+		return this._lightsEnabled && this.focus == _root;
 	}
 	set lightsEnabled(v) {
 		this._lightsEnabled = !!v;
+	}
+	
+	get fogEnabled() {
+		return this._fogEnabled;
+	}
+	set fogEnabled(v) {
+		this._fogEnabled = !!v;
 	}
 	
 	constructor() {
@@ -119,6 +126,7 @@ export default class D3DEditorState {
 		this.lastSingleClick = 0;
 		this._mode = '3D';
 		this._lightsEnabled = false;
+		this._fogEnabled = false;
 		this.pastes = 0;
 		this.flatFocus = false;
 		this.draw2d = {
@@ -341,7 +349,7 @@ export default class D3DEditorState {
 	
 	async dupe(addStep = true) {
 		if(this.selectedObjects.length < 1) {
-			_editor.__dupeInspector?.(); // inspector handle possible asset duplication
+			this.__dupeInspector?.(); // inspector handle possible asset duplication
 			return;
 		}
 		const clipboard = [];
@@ -474,21 +482,21 @@ export default class D3DEditorState {
 		
 		if(isEditorBuild) {
 			manifest.editorConfig.lastCameraPosition = {
-				x: _editor.camera.position.x,
-				y: _editor.camera.position.y,
-				z: _editor.camera.position.z
+				x: this.camera.position.x,
+				y: this.camera.position.y,
+				z: this.camera.position.z
 			};
 			manifest.editorConfig.lastCameraRotation = {
-				x: _editor.camera.rotation.x,
-				y: _editor.camera.rotation.y,
-				z: _editor.camera.rotation.z
+				x: this.camera.rotation.x,
+				y: this.camera.rotation.y,
+				z: this.camera.rotation.z
 			};
 			manifest.editorConfig.lastScene = _root.scenes.indexOf(_root.scene);
 			manifest.editorConfig.objectStates = this.getCleanObjectStates(
 				manifest.editorConfig.objectStates
 			);
-			manifest.editorConfig.lastMode = _editor.mode;
-			manifest.editorConfig.flatFocus = !!_editor.flatFocus;
+			manifest.editorConfig.lastMode = this.mode;
+			manifest.editorConfig.flatFocus = !!this.flatFocus;
 		}else{
 			delete manifest.editorConfig;
 		}
@@ -561,7 +569,7 @@ export default class D3DEditorState {
 		});
 		
 		// Save scripts
-		_editor.clearDirectory('scripts');
+		this.clearDirectory('scripts');
 		if(_root.__script) {
 			let rootScript = _root.__script;
 			
@@ -674,7 +682,7 @@ export default class D3DEditorState {
 		});
 	}
 	gameOrInspectorActive() {
-		return _editor.game3dRef.current.contains(document.activeElement) || _editor.game2dRef.current.contains(document.activeElement) || _editor.inspRef.current.contains(document.activeElement);
+		return this.game3dRef.current.contains(document.activeElement) || this.game2dRef.current.contains(document.activeElement) || this.inspRef.current.contains(document.activeElement);
 	}
 	doCopySelectedObjects() {
 		this.pastes = 0;
@@ -699,7 +707,7 @@ export default class D3DEditorState {
 					return;
 				
 				const rel = _root.resolvePath(bitmap2d.source);
-				const data = _editor.readFileData(rel);
+				const data = this.readFileData(rel);
 				
 				if(!data)
 					return;
@@ -762,7 +770,7 @@ export default class D3DEditorState {
 		let pastedObjects = [];
 		
 		for(let objData of clip) {
-			const d3dobject = await _editor.focus.createObject(objData, {
+			const d3dobject = await this.focus.createObject(objData, {
 				updateComponents: false
 			});
 			
@@ -775,20 +783,20 @@ export default class D3DEditorState {
 				}
 			});
 			
-			if(_editor.mode == '3D' && d3dobject.hasComponent('Container2D')) {
+			if(this.mode == '3D' && d3dobject.hasComponent('Container2D')) {
 				if(!containsSymbol) {
 					d3dobject.traverse(o => o.removeComponent('Container2D'));
 				}else
-					_editor.mode = '2D';
+					this.mode = '2D';
 			}else
-			if(_editor.mode == '2D' && !d3dobject.is2D) {
+			if(this.mode == '2D' && !d3dobject.is2D) {
 				if(!containsSymbol)
 					d3dobject.traverse(o => !o.is2D && o.addComponent('Container2D'));
 				else
-					_editor.mode = '3D';
+					this.mode = '3D';
 			}
 			
-			if(posStep && _editor.mode == '2D') {
+			if(posStep && this.mode == '2D') {
 				d3dobject.position.add(new THREE.Vector3(10, 10, 0).multiplyScalar(this.pastes + 1));
 				this.pastes++;
 			}
@@ -909,7 +917,7 @@ export default class D3DEditorState {
 		if(!_root?.__loaded)
 			return;
 		
-		this.openCodeEditor(this.selectedObjects[0] ?? _editor.focus);
+		this.openCodeEditor(this.selectedObjects[0] ?? this.focus);
 	}
 	openCode(d3dobj) {
 		if(!d3dobj)
@@ -995,7 +1003,7 @@ export default class D3DEditorState {
 				child.setParent(d3dobj.parent);
 				ungrouped.push(child);
 			});
-			d3dobj.delete();
+			d3dobj.destroy();
 			
 			addStep && undoables.push(() => this.groupObjects(children, parent, false));
 		});
@@ -1018,8 +1026,8 @@ export default class D3DEditorState {
 		});
 	}
 	async mergeObjects(d3dobjects, containingParent, addStep = true) {
-		if(_editor.mode != '2D') {
-			_editor.showError({
+		if(this.mode != '2D') {
+			this.showError({
 				title: '2D Mode',
 				message: 'This operation is for 2D objects'
 			});
@@ -1086,6 +1094,41 @@ export default class D3DEditorState {
 		});
 		
 		return {d3dmerged, restorableObjDatas};
+	}
+	toggleObjects(d3dobjects, toggle) {
+		if(d3dobjects.length < 1) {
+			this.showError({
+				title: 'Toggle',
+				message: 'No objects selected'
+			})
+			return;
+		}
+		
+		d3dobjects.forEach(o => {
+			o.__wasEnabled = o.enabled;
+			o.enabled = !!toggle;
+		});
+		this.updateInspector();
+		
+		this.addStep({
+			name: 'Toggle object(s)',
+			undo: () => {
+				d3dobjects.forEach(o => {
+					o.enabled = !!o.__wasEnabled;
+				});
+				this.updateInspector();
+			},
+			redo: () => {
+				d3dobjects.forEach(o => {
+					o.enabled = !!toggle;
+				});
+				this.updateInspector();
+			}
+		})
+	}
+	editInPlace() {
+		this.focus = this.selectedObjects[0];
+		this.setSelection([]);
 	}
 	
 	async importFile(file, destDir) {

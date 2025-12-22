@@ -74,6 +74,21 @@ export async function handleImportFile(file, destDir) {
 					if (Array.isArray(m)) m.forEach(mm => mm && materialSet.add(mm));
 					else if (m) materialSet.add(m);
 				});
+				
+				// Track which material instances need vertexColors enabled
+				const matUsesVertexColors = new Map();
+				
+				gltf.scene.traverse(o => {
+					if(!o.isMesh) return;
+				
+					const hasVC = !!(o.geometry?.attributes?.color); // GLTFLoader uses attributes.color for COLOR_0
+				
+					const mats = Array.isArray(o.material) ? o.material : [o.material];
+					mats.forEach(m => {
+						if(!m) return;
+						if(hasVC) matUsesVertexColors.set(m, true);
+					});
+				});
 			
 				// Dedupe by "signature" so identical materials only export once
 				const bySig   = new Map(); // signature -> outRel (path to .mat)
@@ -126,7 +141,8 @@ export async function handleImportFile(file, destDir) {
 					opacity:     m.opacity,
 					transparent: !!m.transparent,
 					side:        m.side,
-					alphaTest:   m.alphaTest
+					alphaTest:   m.alphaTest,
+					vertexColors: !!matUsesVertexColors.get(m)
 				});
 			
 				for (const mat of materialSet) {
@@ -162,8 +178,9 @@ export async function handleImportFile(file, destDir) {
 						roughness:   mat.roughness,
 						metalness:   mat.metalness,
 						alphaTest:   mat.alphaTest,
-			
-						// IMPORTANT: maps store texture UUIDs (your asset IDs)
+					
+						vertexColors: !!matUsesVertexColors.get(mat),
+					
 						maps: {
 							map:          mapUUID,
 							normalMap:    normalUUID,

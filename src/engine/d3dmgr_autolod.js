@@ -18,13 +18,26 @@ export default class AutoLODManager {
 		if(!this.d3dobject.root.__lodGeoms)
 			this.d3dobject.root.__lodGeoms = {};
 		
+		if(!this.d3dobject.root.__bbShared)
+			this.d3dobject.root.__bbShared = {geo: null, mats: {}};
+		
+		this.distanceFromCamera = 0;
+		this.lastDistanceCheck = 0;
 		this.levelStore = [];
 		this.sigsInUse = [];
+		this.instancedCulled = false;
+		
+		this.tmpQ1 = new THREE.Quaternion();
+		this.tmpQ2 = new THREE.Quaternion();
 	}
 	
 	get GEOM_SHARED() {
 		return this.d3dobject.root.__lodGeoms;
 	}
+	get BB_SHARED() {
+		return this.d3dobject.root.__bbShared;
+	}
+	
 	get center() {
 		const type = this.centerType;
 		
@@ -225,35 +238,44 @@ export default class AutoLODManager {
 		
 		if(this.billboardMesh) {
 			parent3d.remove(this.billboardMesh);
-			if(this.billboardMesh.geometry)
-				this.billboardMesh.geometry.dispose();
-			if(this.billboardMesh.material)
-				this.billboardMesh.material.dispose();
 			this.billboardMesh = null;
 		}
-			
+		
 		const zip = this.d3dobject.root.zip;
-		const rel = this.d3dobject.root.resolvePath(this.billboardTexture);
+		const uuid = this.billboardTexture;
+		const rel = this.d3dobject.root.resolvePath(uuid);
 		
 		if(!rel)
 			return;
-			
+		
 		this.billboardLoading = true;
 		
-		const texture = await loadTexture(rel, zip);
+		const shared = this.BB_SHARED;
 		
-		const geo = new THREE.PlaneGeometry(1, 1);
-		const mat = new THREE.MeshStandardMaterial({
-			map: texture,
-			transparent: true,
-			alphaTest: 0.05,
-			side: THREE.DoubleSide
-		});
+		if(!shared.geo)
+			shared.geo = new THREE.PlaneGeometry(1, 1);
 		
-		const mesh = new THREE.Mesh(geo, mat);
+		let mat = shared.mats[uuid];
+		
+		if(!mat) {
+			const texture = await loadTexture(rel, zip);
+			
+			mat = new THREE.MeshStandardMaterial({
+				map: texture,
+				transparent: true,
+				alphaTest: 0.05,
+				side: THREE.FrontSide
+			});
+			
+			shared.mats[uuid] = mat;
+		}
+		
+		const mesh = new THREE.Mesh(shared.geo, mat);
 		mesh.name = `${this.d3dobject.name}_billboard`;
 		mesh.visible = false;
 		mesh.layers.set(2);
+		mesh.castShadow = false;
+		mesh.receiveShadow = false;
 		
 		mesh.position.copy(this.billboardOffset);
 		mesh.scale.copy(this.billboardScale);
@@ -290,33 +312,47 @@ export default class AutoLODManager {
 		
 		if(!camera)
 			return;
+			
+		let now = _time.now;
 		
-		const distToMe = this.center.distanceTo(camera.worldPosition);
+		if(now - this.lastDistanceCheck > 0.25 || !this.lastDistanceCheck) {
+			this.distanceToCamera = this.center.distanceTo(camera.worldPosition);
+			this.lastDistanceCheck = now;
+		}
+			
+		this.camera = camera;
+		
+		const distToMe = this.distanceToCamera;
 		
 		if(distToMe > maxDistance) {
-			this.makeAllLevelsVisible(false);
-			this.d3dobject.__lodCulled = true;
-			this.currentLODLevel = -1;
-			if(this.billboardMesh) {
-				this.billboardMesh.visible = true && this.billboardWhenCulled;
+			if(!this.d3dobject.__lodCulled) {
+				this.makeAllLevelsVisible(false);
+				this.d3dobject.__lodCulled = true;
+				this.currentLODLevel = -1;
+				this._instancedCulled = true;
 				
-				if(this.billboardMesh.visible) {
-					const desiredWorld = camera.object3d.getWorldQuaternion(new THREE.Quaternion());
-					const parent = this.billboardMesh.parent;
-					
-					if(parent) {
-						const parentWorld = parent.getWorldQuaternion(new THREE.Quaternion());
-						parentWorld.invert();
-						this.billboardMesh.quaternion.copy(parentWorld.multiply(desiredWorld));
-					}
+				if(this.billboardMesh)
+					this.billboardMesh.visible = true && this.billboardWhenCulled;
+			}
+			if(this.billboardMesh && this.billboardWhenCulled) {
+				const parent = this.billboardMesh.parent;
+				
+				camera.object3d.getWorldQuaternion(this.tmpQ1);
+				
+				if(parent) {
+					parent.getWorldQuaternion(this.tmpQ2).invert();
+					this.billboardMesh.quaternion.copy(this.tmpQ1).premultiply(this.tmpQ2);
+				}else{
+					this.billboardMesh.quaternion.copy(this.tmpQ1);
 				}
 			}
 			return;
 		}else{
-			this.d3dobject.__lodCulled = false;
-			
-			if(this.billboardMesh)
+			if(this.d3dobject.__lodCulled && this.billboardMesh)
 				this.billboardMesh.visible = false;
+			
+			this.d3dobject.__lodCulled = false;
+			this._instancedCulled = false;
 		}
 		
 		let desiredLevel = Math.floor(distToMe / maxDistance * levels);
@@ -327,19 +363,22 @@ export default class AutoLODManager {
 		if (desiredLevel >= levels) 
 			desiredLevel = levels - 1;
 			
-		if(this.currentLODLevel == desiredLevel)
+		if(this.currentLODLevel == desiredLevel) 
 			return;
 		
 		this.setLevel(desiredLevel);
 	}
 	setLevel(level) {
+		if(this.d3dobject.__lodCulled)
+			return;
+		
 		let changed = 0;
 		
 		this.levelStore.forEach(({d3dobj, mesh, geometries}) => {
-			let lodGeom = geometries[level] || geometries[level-1] || geometries[level-2] || geometries[level-3] || geometries[0];
+			const lodGeom = geometries[level] || geometries[level-1] || geometries[level-2] || geometries[level-3] || geometries[0];
 			
 			if(!lodGeom) {
-				console.warn(`LOD geometry for ${d3dobj.name} at quality level ${desiredLevel} is not defined`);
+				console.warn(`LOD geometry for ${d3dobj.name} at quality level ${level} is not defined`);
 				return;
 			}
 			

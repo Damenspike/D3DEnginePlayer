@@ -429,7 +429,7 @@ function startAnimationLoop() {
 	
 	function animate(nowMs) {
 		_time.tick(nowMs); // updates _time.delta (seconds) + _time.now
-
+		
 		if(!_editor.__saving) {
 			updateObjects([
 				'__onInternalEnterFrame',
@@ -492,6 +492,10 @@ function startAnimationLoop() {
 			toggleLight(editorLight, !lightsOn);
 		
 			_editor.__lastLightsEnabled = lightsOn;
+		}
+		
+		if (_editor.fogEnabled !== _editor.__lastFogEnabled) {
+			_root.applyScene(_root.scene);
 		}
 		
 		if (_editor.focus != _root && !_editor.flatFocus) {
@@ -604,6 +608,7 @@ function setupSelection() {
 		if (_editor.tool !== 'select' || event.button !== 0) return;
 		if (_input.getKeyDown('alt')) return;
 		if (_editor.gizmo.busy) return;
+		if (_editor.gameViewBusy) return;
 		if(!_input.getIsGameInFocus()) return;
 
 		const r = renderer.domElement.getBoundingClientRect();
@@ -621,7 +626,7 @@ function setupSelection() {
 
 	renderer.domElement.addEventListener('mousemove', (event) => {
 		if (!startPoint) return;
-		if (_editor.gizmo.busy) {
+		if (_editor.gizmo.busy || _editor.gameViewBusy) {
 			selectionBox.style.display = 'none';
 			startPoint = null;
 			return;
@@ -761,7 +766,7 @@ function setupSelection() {
 		else
 			_editor.lastSingleClick = 0;
 		
-		if (_editor.gizmo.mouseOver)
+		if (_editor.gizmo.mouseOver || _editor.gameViewBusy)
 			return;
 
 		if (intersects.length > 0) {
@@ -884,6 +889,8 @@ async function addD3DObjectEditor(type) {
 		case 'plane':
 		case 'particlesys':
 		case 'audiosrc':
+		case 'stamper':
+		case 'dncycle':
 			supported = true;
 		break;
 	}
@@ -940,6 +947,14 @@ async function addD3DObjectEditor(type) {
 		case 'particlesys':
 			newd3dobj.name = 'particle system';
 			newd3dobj.addComponent('ParticleSystem', {});
+		break;
+		case 'stamper':
+			newd3dobj.name = 'stamper';
+			newd3dobj.addComponent('Stamper', {});
+		break;
+		case 'dncycle':
+			newd3dobj.name = 'day night cycle';
+			newd3dobj.addComponent('DayNightCycle', {});
 		break;
 	}
 	
@@ -1574,6 +1589,12 @@ function ungroupSelectedObjects() {
 function mergeSelectedObjects() {
 	_editor.mergeObjects(_editor.selectedObjects)
 }
+function enableSelectedObjects() {
+	_editor.toggleObjects(_editor.selectedObjects, true);
+}
+function disableSelectedObjects() {
+	_editor.toggleObjects(_editor.selectedObjects, false);
+}
 function exportD3DSelectedObjects(opts = {}) {
 	if(_editor.selectedObjects.length < 1) {
 		_editor.showError({
@@ -1798,6 +1819,8 @@ _editor.exportD3DSelectedObjects = exportD3DSelectedObjects;
 _editor.traceSelectedBitmap = traceSelectedBitmap;
 _editor.receiveMessage = receiveMessage;
 _editor.modifySelected = modifySelected;
+_editor.enableSelectedObjects = enableSelectedObjects;
+_editor.disableSelectedObjects = disableSelectedObjects;
 
 D3D.setEventListener('select-all', () => _editor.selectAll());
 D3D.setEventListener('delete', () => _editor.delete());
@@ -1826,6 +1849,8 @@ D3D.setEventListener('paste-special', (type) => _editor.pasteSpecial(type));
 D3D.setEventListener('group', () => _editor.groupSelectedObjects());
 D3D.setEventListener('ungroup', () => _editor.ungroupSelectedObjects());
 D3D.setEventListener('merge', () => _editor.mergeSelectedObjects());
+D3D.setEventListener('enable-object', () => _editor.enableSelectedObjects());
+D3D.setEventListener('disable-object', () => _editor.disableSelectedObjects());
 D3D.setEventListener('ctx-menu-action', (id) => _events.invoke('ctx-menu-action', id));
 D3D.setEventListener('ctx-menu-close', () => _events.invoke('ctx-menu-close'));
 D3D.setEventListener('move-sel-view', () => _editor.moveSelectionToView());
@@ -1839,6 +1864,7 @@ D3D.setEventListener('export-as-d3dproj', () => _editor.exportD3DSelectedObjects
 D3D.setEventListener('send-message', (name, ...params) => _editor.receiveMessage(name, ...params));
 D3D.setEventListener('modify', (type) => _editor.modifySelected(type));
 D3D.setEventListener('paste-in-place', (type) => _editor.pasteInPlace());
+D3D.setEventListener('edit-in-place', (type) => _editor.editInPlace());
 
 
 

@@ -612,11 +612,14 @@ function sendAddObject(type) { sendToEditor('add-object', type); }
 function sendSymboliseObject() { sendToEditor('symbolise-object'); }
 function sendDesymboliseObject() { sendToEditor('desymbolise-object'); }
 function sendFocusObject() { sendToEditor('focus-object'); }
+function sendEnableObject() { sendToEditor('enable-object'); }
+function sendDisableObject() { sendToEditor('disable-object'); }
 function sendSetTool(type) { sendToEditor('set-tool', type); }
 function sendSetTransformTool(type) { sendToEditor('set-transform-tool', type); }
 function sendNewFolder() { sendToEditor('new-folder'); }
 function sendNewFile(extension) { sendToEditor('new-asset', extension); }
 function sendEditCode() { sendToEditor('edit-code'); }
+function sendEditInPlace() { sendToEditor('edit-in-place') }
 function sendExportSelectedAssets() { sendToEditor('menu-export-assets'); }
 function sendAddComponent(type, properties) { sendToEditor('add-component', type, properties); }
 function sendCopySpecial(type) { sendToEditor('copy-special', type); }
@@ -986,7 +989,9 @@ const menuTemplate = [
 					{ label: 'Spot Light', click: () => sendAddObject('spotlight') },
 					{ type: 'separator' },
 					{ label: 'Particle System', click: () => sendAddObject('particlesys') },
-					{ label: 'Audio Source', click: () => sendAddObject('audiosrc') }
+					{ label: 'Audio Source', click: () => sendAddObject('audiosrc') },
+					{ label: 'Day Night Cycle', click: () => sendAddObject('dncycle') },
+					{ label: 'Stamper', click: () => sendAddObject('stamper') }
 				]
 			},
 			{
@@ -998,14 +1003,19 @@ const menuTemplate = [
 					{ label: 'Particle System', click: () => sendAddComponent('ParticleSystem') },
 					{ label: 'Audio Listener', click: () => sendAddComponent('AudioListener') },
 					{ label: 'Audio Source', click: () => sendAddComponent('AudioSource') },
-					{ label: 'Auto LOD', click: () => sendAddComponent('AutoLOD') },
-					{ label: 'Day Night Cycle', click: () => sendAddComponent('DayNightCycle') },
 					{
 						label: 'Rigidbody',
 						submenu: [
 							{ label: 'Dynamic', click: () => sendAddComponent('Rigidbody', {kind: 'dynamic'}) },
 							{ label: 'Fixed', click: () => sendAddComponent('Rigidbody', {kind: 'fixed'}) },
 							{ label: 'Kinematic', click: () => sendAddComponent('Rigidbody', {kind: 'kinematic'}) },
+						]
+					},
+					{
+						label: 'Advanced',
+						submenu: [
+							{ label: 'Auto LOD', click: () => sendAddComponent('AutoLOD') },
+							{ label: 'Instance Batcher', click: () => sendAddComponent('InstanceBatcher') }
 						]
 					},
 					{ type: 'separator' },
@@ -1034,9 +1044,8 @@ const menuTemplate = [
 			},
 			{ type: 'separator' },
 			{ id: 'focusObject', label: 'Focus', accelerator: 'F', click: () => sendFocusObject() },
-			{ label: 'Move to View', accelerator: 'CmdOrCtrl+Alt+M', click: () => sendMoveToView() },
-			{ label: 'Align to View', accelerator: 'CmdOrCtrl+Alt+A', click: () => sendAlignToView() },
-			{ label: 'Drop to Ground', accelerator: 'CmdOrCtrl+G', click: () => sendDropToGround() },
+			{ label: 'Enable', accelerator: 'Alt+Shift+E', click: () => sendEnableObject() },
+			{ label: 'Disable', accelerator: 'Alt+Shift+D', click: () => sendDisableObject() },
 			{ type: 'separator' },
 			{ id: 'symbolise', label: 'Symbolise', accelerator: 'CmdOrCtrl+Shift+Y', click: () => sendSymboliseObject() },
 			{ id: 'desymbolise', label: 'Desymbolise', accelerator: 'CmdOrCtrl+Shift+D', click: () => sendDesymboliseObject() },
@@ -1044,9 +1053,11 @@ const menuTemplate = [
 			{ label: 'Group', accelerator: 'CmdOrCtrl+Alt+G', click: () => sendGroupObjects() },
 			{ label: 'Ungroup', accelerator: 'CmdOrCtrl+Alt+U', click: () => sendUngroupObjects() },
 			{ type: 'separator' },
-			{ id: 'code', label: 'Code', accelerator: 'CmdOrCtrl+Shift+C', click: () => sendEditCode() },
 			{ label: 'Export As D3D...', accelerator: 'CmdOrCtrl+Shift+E', click: () => sendExportAsD3D() },
-			{ label: 'Export As Project...', click: () => sendExportAsD3DProj() }
+			{ label: 'Export As Project...', click: () => sendExportAsD3DProj() },
+			{ type: 'separator' },
+			{ id: 'code', label: 'Edit In Place', click: () => sendEditInPlace() },
+			{ id: 'code', label: 'Code', accelerator: 'CmdOrCtrl+Shift+C', click: () => sendEditCode() }
 		]
 	},
 	{
@@ -1077,6 +1088,10 @@ const menuTemplate = [
 			{ label: 'Flip Horizontally', click: () => sendModify('flip-horizontal') },
 			{ label: 'Rotate 90 Degrees', click: () => sendModify('rotate+90') },
 			{ label: 'Rotate -90 Degrees', click: () => sendModify('rotate-90') },
+			{ type: 'separator' },
+			{ label: 'Move to View', accelerator: 'CmdOrCtrl+Alt+M', click: () => sendMoveToView() },
+			{ label: 'Align to View', accelerator: 'CmdOrCtrl+Alt+A', click: () => sendAlignToView() },
+			{ label: 'Drop to Ground', accelerator: 'CmdOrCtrl+G', click: () => sendDropToGround() },
 		]
 	},
 	{

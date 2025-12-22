@@ -23,17 +23,10 @@ import {
 	MdFolder, MdInsertDriveFile, MdExpandMore, MdChevronRight,
 	MdUpload, MdCreateNewFolder, MdRefresh, MdDeleteForever,
 	MdOutlineInterests, MdTexture, MdDirectionsWalk,
-	MdFormatAlignLeft, MdFormatAlignCenter, MdFormatAlignRight,
 	MdLock, MdLockOpen,
 	MdCheckBox, MdCheckBoxOutlineBlank
 } from 'react-icons/md';
 import { IoMdEye, IoMdEyeOff } from 'react-icons/io';
-import { 
-	AiOutlineVerticalAlignTop,
-	AiOutlineVerticalAlignMiddle,
-	AiOutlineVerticalAlignBottom
-	
-} from "react-icons/ai";
 
 import {
 	MIME_D3D_ROW,
@@ -60,6 +53,9 @@ import {
 	drawIconForObject,
 	drawIconForExt
 } from '../utilities/d3dicons.jsx';
+
+// Custom inspectors
+import InspTextStyle from '../custom-inspectors/InspTextStyle.jsx';
 
 const { path } = D3D;
 
@@ -352,6 +348,17 @@ export default function Inspector() {
 				},
 				{ type: 'separator' },
 				{
+					id: 'enable',
+					label: 'Enable',
+					enabled: _editor.selectedObjects.filter(o => !o.enabled).length > 0
+				},
+				{
+					id: 'disable',
+					label: 'Disable',
+					enabled: _editor.selectedObjects.filter(o => o.enabled).length > 0
+				},
+				{ type: 'separator' },
+				{
 					id: 'focus',
 					label: 'Focus'
 				},
@@ -437,6 +444,12 @@ export default function Inspector() {
 				case 'delete':
 					_editor.delete();
 				break;
+				case 'enable':
+					_editor.enableSelectedObjects();
+				break;
+				case 'disable':
+					_editor.disableSelectedObjects();
+				break;
 				case 'rename':
 					_events.invoke('edit-object-row');
 				break;
@@ -445,6 +458,7 @@ export default function Inspector() {
 				break;
 				case 'edit':
 					_editor.focus = _editor.selectedObjects[0];
+					_editor.setSelection([]);
 				break;
 				case 'movetoview':
 					_editor.moveSelectionToView()
@@ -1652,7 +1666,25 @@ export default function Inspector() {
 					}
 					case 'select': {
 						const selRows = [];
-						const options = [...field.options];
+						const fieldOptions = Array.isArray(field.options) ? [...field.options] : [];
+						const options = [...fieldOptions];
+						
+						if(typeof field.options === 'function') {
+							const f = field.options; // function
+							let autoOptions = [];
+							
+							for(const object of objects) {
+								const component = object.getComponentObject(type);
+								if(!component)
+									continue;
+									
+								const a = f(component);
+								if(Array.isArray(a))
+									autoOptions.push(...a);
+							}
+							
+							options.push(...autoOptions);
+						}
 						
 						if(mixed)
 							options.unshift({ name: DASH, label: DASH })
@@ -1687,112 +1719,22 @@ export default function Inspector() {
 						)
 						break;
 					}
-					case '_textStyle': {
-						const drawButton = (content, activeCondition, onClick, title = '') => {
-							const classes = ['tool-option', 'no-select'];
-							
-							if(activeCondition() == true)
-								classes.push('tool-option--active');
-							
-							return (
-								<div 
-									className={classes.join(' ')}
-									onClick={onClick} 
-									title={title}
-									tabIndex={0}
-								>
-									{content}
-								</div>
-							)
-						}
-						const getVal = fid => {
-							const { current, mixed } = getCurrentValueOf(fid);
-							if(mixed) return DASH;
-							return current;
-						};
-						const setVal = (fid, val) => commitValueOf({fieldId: fid, val});
-						
-						fieldContent = (
-							<>
-								<div className='text-style-row'>
-									<div className='text-style-editor'>
-										{
-											drawButton(
-												(<b>B</b>),
-												() => getVal('fontWeight') == 'bold',
-												() => {
-													const val = getVal('fontWeight');
-													
-													setVal('fontWeight', val == 'bold' ? 'normal' : 'bold');
-												}
-											)
-										}
-										{
-											drawButton(
-												(<i>i</i>),
-												() => getVal('fontStyle') == 'italic',
-												() => {
-													const val = getVal('fontStyle');
-													
-													setVal('fontStyle', val == 'italic' ? 'normal' : 'italic');
-												}
-											)
-										}
-										<div style={{width: 15}}></div>
-										{
-											drawButton(
-												(<MdFormatAlignLeft />),
-												() => getVal('align') == 'left',
-												() => setVal('align', 'left')
-											)
-										}
-										{
-											drawButton(
-												(<MdFormatAlignCenter />),
-												() => getVal('align') == 'center',
-												() => setVal('align', 'center')
-											)
-										}
-										{
-											drawButton(
-												(<MdFormatAlignRight />),
-												() => getVal('align') == 'right',
-												() => setVal('align', 'right')
-											)
-										}
-									</div>
-								</div>
-								<div className='text-style-row'>
-									<div className='text-style-editor'>
-										{
-											drawButton(
-												(<AiOutlineVerticalAlignTop />),
-												() => getVal('valign') == 'top',
-												() => setVal('valign', 'top')
-											)
-										}
-										{
-											drawButton(
-												(<AiOutlineVerticalAlignMiddle />),
-												() => getVal('valign') == 'middle',
-												() => setVal('valign', 'middle')
-											)
-										}
-										{
-											drawButton(
-												(<AiOutlineVerticalAlignBottom />),
-												() => getVal('valign') == 'bottom',
-												() => setVal('valign', 'bottom')
-											)
-										}
-									</div>
-								</div>
-							</>
-						);
-						break;
-					}
 					case 'none':
 						fieldContent = null;
+						break;
+					case 'custom':
+						let customInspector;
+						
+						if(field.customInspector == 'textStyle')
+							customInspector = InspTextStyle;
+						
+						fieldContent = customInspector({
+							objects, 
+							field, 
+							type, 
+							getCurrentValueOf,
+							commitValueOf
+						});
 						break;
 					default: {
 						fieldContent = (<i>No editor</i>)
@@ -2251,6 +2193,7 @@ export default function Inspector() {
 								onClick={(e) => {
 									e.stopPropagation();
 									object.__editorState.hidden = !object.__editorState.hidden;
+									object.updateVisibility();
 									
 									if(_editor.selectedObjects.includes(object))
 										_editor.removeSelection([object]);

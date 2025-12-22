@@ -23,8 +23,11 @@ import D3DFirstPersonCameraManager from './d3dmgr_firstpersoncamera.js';
 import D3DFirstPersonCharacterController from './d3dmgr_firstpersoncharactercontroller.js';
 import D3DAutoLODManager from './d3dmgr_autolod.js';
 import D3DDayNightManager from './d3dmgr_daynight.js';
+import D3DStamperManager from './d3dmgr_stamper.js';
+import D3DInstanceBatcherManager from './d3dmgr_instancebatcher.js';
 
 import { WebSafeFonts } from './d3dfonts.js';
+import { fileNameNoExt } from './d3dutility.js';
 
 const D3DComponents = {
 	Mesh: {
@@ -1066,7 +1069,8 @@ const D3DComponents = {
 			},
 			'_textStyle': { // no value, its a placeholder
 				label: 'Style',
-				type: '_textStyle',
+				type: 'custom',
+				customInspector: 'textStyle',
 				def: null 
 			},
 			'fontWeight': { // handled in _textStyle inspector
@@ -1627,50 +1631,111 @@ const D3DComponents = {
 			},
 		
 			// ==== Over Lifetime ====
+			
+			// ---------- Velocity over lifetime ----------
 			velocityOverLifetime: {
 				section: 'Over Lifetime',
 				label: 'Velocity over lifetime',
 				type: 'vector3',
-				def: { x: 0, y: 0, z: 0 }
+				def: { x: 0, y: 0, z: 0 },
+				condition: c => c.properties.velocityOverLifetimeRandom != true
 			},
-			velocityOverLifetimeEntropy: {
+			velocityOverLifetimeRandom: {
 				section: 'Over Lifetime',
-				label: 'Velocity entropy',
-				description: 'Random multiplier applied per particle (no clamp)',
-				type: 'number',
-				def: 0,
-				step: 0.01
+				label: 'Random velocity',
+				type: 'boolean',
+				def: false
 			},
+			
+			velocityOverLifetimeRandomMin: {
+				section: 'Over Lifetime',
+				label: 'Velocity min',
+				description: 'Per-particle value (sampled once on spawn)',
+				type: 'vector3',
+				def: { x: 0, y: 0, z: 0 },
+				condition: c => c.properties.velocityOverLifetimeRandom == true
+			},
+			
+			velocityOverLifetimeRandomMax: {
+				section: 'Over Lifetime',
+				label: 'Velocity max',
+				description: 'Per-particle value (sampled once on spawn)',
+				type: 'vector3',
+				def: { x: 0, y: 0, z: 0 },
+				condition: c => c.properties.velocityOverLifetimeRandom == true
+			},
+			
+			
+			// ---------- Angular velocity over lifetime ----------
 			angularVelocityOverLifetime: {
 				section: 'Over Lifetime',
 				label: 'Angular velocity over lifetime',
 				description: 'Billboard spin; uses Z (radians/sec)',
 				type: 'vector3',
-				def: { x: 0, y: 0, z: 0 }
+				def: { x: 0, y: 0, z: 0 },
+				condition: c => c.properties.angularVelocityOverLifetimeRandom != true
 			},
-			angularVelocityOverLifetimeEntropy: {
+			angularVelocityOverLifetimeRandom: {
 				section: 'Over Lifetime',
-				label: 'Angular velocity entropy',
-				description: 'Random multiplier applied per particle (no clamp)',
-				type: 'number',
-				def: 0,
-				step: 0.01
+				label: 'Random angular velocity',
+				type: 'boolean',
+				def: false
 			},
+			
+			angularVelocityOverLifetimeRandomMin: {
+				section: 'Over Lifetime',
+				label: 'Angular velocity min',
+				description: 'Per-particle value (sampled once on spawn)',
+				type: 'vector3',
+				def: { x: 0, y: 0, z: 0 },
+				condition: c => c.properties.angularVelocityOverLifetimeRandom == true
+			},
+			
+			angularVelocityOverLifetimeRandomMax: {
+				section: 'Over Lifetime',
+				label: 'Angular velocity max',
+				description: 'Per-particle value (sampled once on spawn)',
+				type: 'vector3',
+				def: { x: 0, y: 0, z: 0 },
+				condition: c => c.properties.angularVelocityOverLifetimeRandom == true
+			},
+			
+			
+			// ---------- Start rotation ----------
 			startRotationDeg: {
 				section: 'Over Lifetime',
 				label: 'Start rotation °',
 				type: 'number',
 				def: 0,
-				step: 0.1
+				step: 0.1,
+				condition: c => c.properties.startRotationRandom != true
 			},
-			startRotationEntropy: {
+			startRotationRandom: {
 				section: 'Over Lifetime',
-				label: 'Start rotation entropy',
-				description: 'Random multiplier applied per particle (no clamp)',
+				label: 'Random start rotation',
+				type: 'boolean',
+				def: false
+			},
+			
+			startRotationRandomMinDeg: {
+				section: 'Over Lifetime',
+				label: 'Start rotation min °',
+				description: 'Per-particle value (sampled once on spawn)',
 				type: 'number',
 				def: 0,
-				step: 0.01
-			}
+				step: 0.1,
+				condition: c => c.properties.startRotationRandom == true
+			},
+			
+			startRotationRandomMaxDeg: {
+				section: 'Over Lifetime',
+				label: 'Start rotation max °',
+				description: 'Per-particle value (sampled once on spawn)',
+				type: 'number',
+				def: 0,
+				step: 0.1,
+				condition: c => c.properties.startRotationRandom == true
+			},
 		}
 	},
 	CameraCollision: {
@@ -2202,6 +2267,139 @@ const D3DComponents = {
 			}
 		},
 		manager: D3DDayNightManager
+	},
+	Stamper: {
+		name: 'Stamper',
+		sectionsLast: true,
+		fields: {
+			size: {
+				label: 'Stamp size',
+				type: 'islider',
+				min: 1,
+				max: 100,
+				def: 10,
+				section: 'stamping'
+			},
+			strength: {
+				label: 'Strength',
+				type: 'islider',
+				min: 0,
+				max: 1,
+				step: 0.01,
+				def: 0.5,
+				section: 'stamping'
+			},
+			rotateToNormal: {
+				label: 'Match surface',
+				description: 'Each stamp will rotate itself to match the surface normal of the ground',
+				type: 'boolean',
+				def: true,
+				section: 'stamping'
+			},
+			randomness: {
+				label: 'Randomness',
+				type: 'boolean',
+				def: false,
+				section: 'stamping'
+			},
+			scaleFrom: {
+				label: 'Scale from',
+				type: 'vector3',
+				def: {x: 1, y: 1, z: 1},
+				section: 'randscl',
+				condition: c => c.properties.randomness === true
+			},
+			scaleTo: {
+				label: 'Scale to',
+				type: 'vector3',
+				def: {x: 2, y: 2, z: 2},
+				section: 'randscl',
+				condition: c => c.properties.randomness === true
+			},
+			scaleUniform: {
+				label: 'Uniform',
+				type: 'boolean',
+				def: false,
+				section: 'randscl',
+				condition: c => c.properties.randomness === true
+			},
+			rotateFrom: {
+				label: 'Rotate from',
+				type: 'vector3',
+				def: {x: 0, y: 0, z: 0},
+				section: 'randrot',
+				condition: c => c.properties.randomness === true
+			},
+			rotateTo: {
+				label: 'Rotate to',
+				type: 'vector3',
+				def: {x: 180, y: 0, z: 0},
+				section: 'randrot',
+				condition: c => c.properties.randomness === true
+			},
+			active: {
+				label: 'Active',
+				type: 'select',
+				options: c => {
+					const names = [];
+					c.properties.symbols.forEach(uuid => {
+						const idx = c.properties.symbols.indexOf(uuid);
+						const path = _root.resolvePath(uuid);
+						const symbol = Object.values(_root.__symbols).find(s => s.file?.name == path);
+						
+						if(!symbol)  {
+							console.warn('Stamper: Cant find symbol from asset UUID', uuid);
+							return;
+						}
+						
+						names.push({
+							name: idx,
+							label: fileNameNoExt(path)
+						});
+					});
+					return names;
+				},
+				condition: c => c.properties.symbols?.length > 0
+			},
+			symbols: {
+				label: 'Symbols',
+				type: 'file[]',
+				format: 'symbol'
+			}
+		},
+		manager: D3DStamperManager
+	},
+	InstanceBatcher: {
+		name: 'Instance Batcher',
+		fields: {
+			rebuildMode: {
+				label: 'Rebuild',
+				type: 'select',
+				def: 'onChange',
+				section: 'batch',
+				options: [
+					{name: 'manual',  label: 'Manual'},
+					{name: 'onChange',label: 'On change'},
+					{name: 'everyFrame',label: 'Every frame'}
+				]
+			},
+			maxInstancesPerBatch: {
+				label: 'Max per batch',
+				type: 'islider',
+				min: 1,
+				max: 20000,
+				def: 1024,
+				section: 'batch'
+			},
+			includeHidden: {
+				label: 'Include hidden',
+				description: 'Include invisible meshes in batching',
+				type: 'boolean',
+				def: false,
+				section: 'scan'
+			}
+		},
+		manager: D3DInstanceBatcherManager
 	}
 }
 

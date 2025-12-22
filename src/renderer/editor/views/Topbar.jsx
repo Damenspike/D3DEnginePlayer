@@ -8,12 +8,12 @@ import {
 	MdCode,
 	MdPlayArrow,
 	MdBackHand,
-	MdLightbulb,
 	MdSearch
 } from "react-icons/md";
 import { PiHandGrabbingFill } from "react-icons/pi";
 import { BiExpand } from "react-icons/bi";
-import { RiStackLine } from "react-icons/ri";
+import { BsCloudFog2 } from "react-icons/bs";
+import { RiStackLine, RiFoggyLine, RiLightbulbLine } from "react-icons/ri";
 
 import smallLogoLight from '../../../assets/images/d3dicon-small.png';
 import smallLogoDark from '../../../assets/images/d3dicon-small-dark.png';
@@ -24,6 +24,7 @@ export default function Topbar() {
 	const [_transformTool, setTransformTool] = useState(_editor.transformTool);
 	const [_mode, setMode] = useState(_editor.mode);
 	const [_lightsEnabled, setLightsEnabled] = useState(_editor.lightsEnabled);
+	const [_fogEnabled, setFogEnabled] = useState(_editor.fogEnabled);
 	const [_flatFocus, setFlatFocus] = useState(false);
 	const [_focus, setFocus] = useState();
 	
@@ -48,18 +49,22 @@ export default function Topbar() {
 		_events.on('editor-focus', o => setFocus(o));
 	}, []);
 	
+	// Tool
 	useEffect(() => {
 		_editor.setTool(_tool);
 	}, [_tool]);
 	
+	// Mode
 	useEffect(() => {
 		_editor.setMode(_mode);
 	}, [_mode]);
 	
+	// T Tool
 	useEffect(() => {
 		_editor.setTransformTool(_transformTool);
 	}, [_transformTool]);
 	
+	// Lights
 	useEffect(() => {
 		_editor.lightsEnabled = _lightsEnabled;
 	}, [_lightsEnabled]);
@@ -68,10 +73,21 @@ export default function Topbar() {
 		setLightsEnabled(_editor.lightsEnabled);
 	}, [_editor.lightsEnabled]);
 	
+	// Fog
+	useEffect(() => {
+		_editor.fogEnabled = _fogEnabled;
+	}, [_fogEnabled]);
+	
+	useEffect(() => {
+		setFogEnabled(_editor.fogEnabled);
+	}, [_editor.fogEnabled]);
+	
+	// Flat focus
 	useEffect(() => {
 		_editor.flatFocus = !!_flatFocus;
 		window._root && _editor.onEditorFocusChanged?.();
 	}, [_flatFocus]);
+	
 	useEffect(() => {
 		setFlatFocus(!!_editor.flatFocus);
 	}, [_editor.flatFocus]);
@@ -207,10 +223,18 @@ export default function Topbar() {
 			<div className="tools-section">
 				{
 					drawToolButton(
-						(<MdLightbulb />),
+						(<RiLightbulbLine />),
 						() => _lightsEnabled,
 						() => setLightsEnabled(!_lightsEnabled),
 						'Lights'
+					)
+				}
+				{
+					drawToolButton(
+						(<RiFoggyLine />),
+						() => _fogEnabled,
+						() => setFogEnabled(!_fogEnabled),
+						'Fog'
 					)
 				}
 				{

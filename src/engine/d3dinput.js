@@ -193,6 +193,8 @@ export default class D3DInput {
 			case 'arrowdown':  return ['ArrowDown'];
 			case 'arrowleft':  return ['ArrowLeft'];
 			case 'arrowright': return ['ArrowRight'];
+			case 'esc':
+			case 'escape':     return ['Escape'];
 			default:           return [key];
 		}
 	}

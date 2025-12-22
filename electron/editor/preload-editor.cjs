@@ -412,3 +412,6 @@ addIPCListener('export-as-d3dproj');
 addIPCListener('send-message');
 addIPCListener('modify');
 addIPCListener('paste-in-place');
+addIPCListener('enable-object');
+addIPCListener('disable-object');
+addIPCListener('edit-in-place');

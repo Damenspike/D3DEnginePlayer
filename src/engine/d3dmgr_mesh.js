@@ -426,6 +426,24 @@ export default class MeshManager {
 		m.needsUpdate = true;
 		return m;
 	}
+	
+	_applyVertexColors(mesh) {
+		if(!mesh?.geometry?.attributes?.color)
+			return;
+	
+		const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+	
+		for(const m of mats) {
+			if(!m)
+				continue;
+	
+			// Standard/Physical/Lambert/etc.
+			if('vertexColors' in m)
+				m.vertexColors = true;
+	
+			m.needsUpdate = true;
+		}
+	}
 
 	async _applyMaterialsToThreeMesh(mesh, defs) {
 		const src = Array.isArray(defs) ? defs : [];
@@ -468,6 +486,8 @@ export default class MeshManager {
 				mesh.material.needsUpdate = true;
 			}
 		}
+		
+		this._applyVertexColors(mesh);
 		
 		this.meshLoaded = true;
 	}

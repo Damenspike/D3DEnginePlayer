@@ -21,6 +21,7 @@ const EXT_GROUPS = {
 	material: ['.mat'],
 	html: ['.html'],
 	anim: ['.anim'],
+	symbol: ['.d3dsymbol'],
 	vertexShader: ['.glsl', '.vert'],
 	fragmentShader: ['.glsl', '.frag'],
 	all: []
@@ -258,6 +259,7 @@ export default function AssetExplorerDialog({
 						<option value="model">3D Models</option>
 						<option value="material">Materials</option>
 						<option value="anim">Animation Clips</option>
+						<option value="symbol">Symbols</option>
 						<option value="img">Images</option>
 						<option value="audio">Audio</option>
 						<option value="html">HTML</option>
