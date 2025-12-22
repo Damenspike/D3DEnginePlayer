@@ -143,6 +143,8 @@ export default class D3DInstancing {
 		
 		im.count = batch.submeshes.length;
 		im.instanceMatrix.needsUpdate = true;
+		im.computeBoundingSphere();
+		im.computeBoundingBox?.();
 		
 		if(batch.submeshes.length < 1) {
 			const scene = _root.object3d;
@@ -184,6 +186,8 @@ export default class D3DInstancing {
 		
 		im.count = batch.submeshes.length;
 		im.instanceMatrix.needsUpdate = true;
+		im.computeBoundingSphere();
+		im.computeBoundingBox?.();
 	}
 	updateSubmeshMatrix(instanceId, submesh) {
 		const instance = this.instances[instanceId];
@@ -204,5 +208,7 @@ export default class D3DInstancing {
 		im.setMatrixAt(idx, submesh.d3dobject.object3d.matrixWorld);
 	
 		im.instanceMatrix.needsUpdate = true;
+		im.computeBoundingSphere();
+		im.computeBoundingBox?.();
 	}
 }

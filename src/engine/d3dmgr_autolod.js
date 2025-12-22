@@ -30,6 +30,8 @@ export default class AutoLODManager {
 		
 		this.tmpQ1 = new THREE.Quaternion();
 		this.tmpQ2 = new THREE.Quaternion();
+		
+		_autolod.add(this);
 	}
 	
 	get GEOM_SHARED() {
@@ -350,105 +352,6 @@ export default class AutoLODManager {
 		return this.camera || this.d3dobject.root.find(this.cameraName);
 	}
 	
-	__onInternalBeforeRender() {
-		const now = _time.now;
-		let r = 0.25;
-		
-		if(this.maxDistSq)
-			r += Math.min(this.distanceFromCamera / this.maxDistSq, 2);
-		
-		if(now - this.lastUpdate < r && this.lastUpdate)
-			return;
-		
-		this.lastUpdate = now;
-		
-		const camera = this.getCamera();
-		const levels = this.levels;
-		const maxDistance = this.maxDistance;
-		
-		if(!camera)
-			return;
-		
-		this.camera = camera;
-		
-		const camPos = camera.worldPosition;
-		const c = this.center;
-		const dx = c.x - camPos.x;
-		const dy = c.y - camPos.y;
-		const dz = c.z - camPos.z;
-		const distSq = dx*dx + dy*dy + dz*dz;
-		const maxDistSq = maxDistance * maxDistance;
-		
-		this.distanceFromCamera = distSq;
-		this.maxDistSq = maxDistSq;
-		
-		if(distSq > maxDistSq) {
-			this.makeAllLevelsVisible(false);
-			this.d3dobject.__lodCulled = true;
-			this.currentLODLevel = -1;
-			this._instancedCulled = true;
-			
-			if(this.billboardWhenCulled) {
-				if(this.billboardInstancing) {
-					
-					// Always hide mesh billboard if we're instancing
-					if(this.billboardMesh && this.billboardMesh.visible)
-						this.billboardMesh.visible = false;
-					
-					if(this.billboardInstanceId)
-						_instancing.setInstanceDirty(this.billboardInstanceId, this.billboardSubmeshMock);
-				}else
-				if(this.billboardMesh) {
-					if(!this.billboardMesh.visible)
-						this.billboardMesh.visible = true;
-				}
-				if(this.billboardMesh) {
-					const parent = this.billboardMesh.parent;
-					
-					camera.object3d.getWorldQuaternion(this.tmpQ1);
-					
-					if(parent) {
-						parent.getWorldQuaternion(this.tmpQ2).invert();
-						this.billboardMesh.quaternion.copy(this.tmpQ1).premultiply(this.tmpQ2);
-					}else{
-						this.billboardMesh.quaternion.copy(this.tmpQ1);
-					}
-					if(this.billboardInstancing) {
-						_instancing.updateSubmeshMatrix(this.billboardInstanceId, this.billboardSubmeshMock);
-					}
-				}
-			}
-			return;
-		}else{
-			if(this.billboardInstancing) {
-				// Always hide mesh billboard if we're instancing
-				if(this.billboardMesh && this.billboardMesh.visible)
-					this.billboardMesh.visible = false;
-				
-				if(this.billboardInstanceId)
-					_instancing.removeFromInstance(this.billboardInstanceId, this.billboardSubmeshMock);
-			}else
-			if(this.billboardMesh && this.billboardMesh.visible) {
-				this.billboardMesh.visible = false;
-			}
-			
-			this.d3dobject.__lodCulled = false;
-			this._instancedCulled = false;
-		}
-		
-		let desiredLevel = Math.floor(distSq / (maxDistSq / levels));
-		
-		if (desiredLevel < 0) 
-			desiredLevel = 0;
-		else
-		if (desiredLevel >= levels) 
-			desiredLevel = levels - 1;
-			
-		if(this.currentLODLevel == desiredLevel) 
-			return;
-		
-		this.setLevel(desiredLevel);
-	}
 	setLevel(level) {
 		if(this.d3dobject.__lodCulled)
 			return;
@@ -495,6 +398,10 @@ export default class AutoLODManager {
 					_instancing.removeFromInstance(submesh.instancingId, submesh);
 			}
 		});
+	}
+	
+	dispose() {
+		_autolod.remove(this);
 	}
 	
 	onDisabled() {

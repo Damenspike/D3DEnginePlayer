@@ -462,7 +462,9 @@ export default class MeshManager {
 	
 		if (mesh.isSkinnedMesh) {
 			for (const mm of mats) if (mm && 'skinning' in mm) mm.skinning = true;
-			mesh.frustumCulled = false;
+			mesh.frustumCulled = true;
+			mesh.geometry.computeBoundingSphere();
+			mesh.geometry.computeBoundingBox?.();
 		}
 	
 		if (groups.length > 1) {
@@ -945,6 +947,11 @@ export default class MeshManager {
 		});
 	
 		return updated;
+	}
+	
+	dispose() {
+		if(this.instancing && this.instancingId)
+			_instancing.removeFromInstance(this.instancingId, this);
 	}
 	
 	onEnabled() {

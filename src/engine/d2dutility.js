@@ -2260,7 +2260,7 @@ export function worldToScreen(worldPos, camera) {
 
 	// behind camera → bail with depth only
 	if (ndcZ < -1 || ndcZ > 1)
-		return new THREE.Vector3(-99999, -99999, ndcZ);
+		return false;
 
 	const renderer2d = _host.renderer2d;
 	const canvas     = renderer2d.domElement;

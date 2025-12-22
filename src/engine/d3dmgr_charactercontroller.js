@@ -118,7 +118,7 @@ export default class CharacterControllerManager {
 		
 		this._ensureController(state);
 		
-		if (!this.d3dobject.getComponent('Rigidbody')) {
+		if (window._editor && !this.d3dobject.getComponent('Rigidbody')) {
 			this.d3dobject.addComponent('Rigidbody', { kind: 'kinematicPosition' });
 		}
 		

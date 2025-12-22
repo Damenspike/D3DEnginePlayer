@@ -4,6 +4,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { OutlinePass } from 'three/examples/jsm/postprocessing/OutlinePass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
+import { SSAOPass } from 'three/addons/postprocessing/SSAOPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { GrayscaleShader } from './d3dshaders.js';
@@ -63,6 +64,7 @@ import D3DDimensions from './d3ddimensions.js';
 import D3DGraphics from './d3dgraphics.js';
 import D3DConsole from './d3dconsole.js';
 import D3DInstancing from './d3dinstancing.js';
+import D3DAutoLODMaster from './d3dautolodmaster.js';
 
 window.THREE = THREE;
 window._loopFns = {};
@@ -74,6 +76,7 @@ window._dimensions = new D3DDimensions();
 window._physics = new D3DPhysics();
 window._graphics = new D3DGraphics();
 window._instancing = new D3DInstancing();
+window._autolod = new D3DAutoLODMaster();
 window.__global = {}; // our own runtime global store
 
 // Host
@@ -272,46 +275,42 @@ function initComposer() {
 	const scene = _root.object3d;
 	const width = _container3d.clientWidth;
 	const height = _container3d.clientHeight;
+	
 	const composer = new EffectComposer(renderer);
+	const renderPass = new RenderPass(scene, camera);
+	const gtaoPass = new GTAOPass(scene, camera, width, height);
+	const ssaoPass = new SSAOPass(scene, camera, width, height);
+	const grayPass = new ShaderPass(GrayscaleShader);
+	const outlinePass = new OutlinePass(new THREE.Vector2(width, height), scene, camera);
+	const outputPass = new OutputPass();
 	
 	_editor.composer = composer;
-
-	// Render Pass
-	const renderPass = new RenderPass(scene, camera);
-	composer.addPass(renderPass);
 	
 	// Setup transform gizmo
 	setupTransformGizmo();
 	
-	// GTAO Pass
-	const gtaoPass = new GTAOPass(scene, camera, width, height);
-	gtaoPass.kernelRadius = 0.3;
-	gtaoPass.minDistance  = 0;
-	gtaoPass.maxDistance  = 0.3;
+	// GTAO pass toggle
 	gtaoPass.beforeRender = () => {
-		camera.layers.disable(2); // layer 2 = sprite materials
+		camera.layers.disable(2); // layer 2 = no gtao (like sprites)
 	};
 	gtaoPass.afterRender = () => {
 		camera.layers.enable(2);
 	};
-	composer.addPass(gtaoPass);
 	
-	// Gray Pass
-	const grayPass = new ShaderPass(GrayscaleShader);
+	// SSAO pass
+	ssaoPass.enabled = false; // disabled by default
+	ssaoPass.kernelRadius = 0.3;
+	ssaoPass.minDistance  = 0;
+	ssaoPass.maxDistance  = 0.3;
+	ssaoPass.beforeRender = () => {
+		camera.layers.disable(2); // layer 2 = no ssao (like sprites)
+	};
+	ssaoPass.afterRender = () => {
+		camera.layers.enable(2);
+	};
+	
+	// Gray pass
 	grayPass.enabled = false;
-	composer.addPass(grayPass);
-	
-	// Outline Pass
-	const outlinePass = new OutlinePass(
-		new THREE.Vector2(_container3d.clientWidth, _container3d.clientHeight),
-		scene,
-		camera
-	);
-	composer.addPass(outlinePass);
-	
-	// Output Pass
-	const outputPass = new OutputPass();
-	composer.addPass(outputPass);
 	
 	// Outline styling
 	outlinePass.edgeStrength = 12.0;
@@ -321,13 +320,22 @@ function initComposer() {
 	outlinePass.visibleEdgeColor.set('#0099ff');
 	outlinePass.hiddenEdgeColor.set('#000000');
 	
+	// Add passes (match player style ordering)
+	composer.addPass(renderPass);
+	composer.addPass(gtaoPass);
+	composer.addPass(ssaoPass);
+	composer.addPass(grayPass);
+	composer.addPass(outlinePass);
+	composer.addPass(outputPass);
+	
 	hookComposerPasses(composer);
 	
-	// Assign values if needed
-	_editor.grayPass = grayPass;
-	_editor.outlinePass = outlinePass;
+	// Assign values
 	_editor.renderPass = renderPass;
 	_editor.gtaoPass = gtaoPass;
+	_editor.ssaoPass = ssaoPass;
+	_editor.grayPass = grayPass;
+	_editor.outlinePass = outlinePass;
 	_editor.outputPass = outputPass;
 }
 
@@ -446,6 +454,7 @@ function startAnimationLoop() {
 			]);
 			
 			_instancing.buildDirtyInstances();
+			_autolod.updateAll();
 			
 			render();
 			
@@ -550,6 +559,7 @@ function setupResize() {
 		if (_editor.composer) {
 			_editor.composer.setSize(width3d, height3d);
 			_editor.gtaoPass.setSize(width3d, height3d);
+			_editor.ssaoPass.setSize(width3d, height3d);
 		}
 		
 		_editor.render();

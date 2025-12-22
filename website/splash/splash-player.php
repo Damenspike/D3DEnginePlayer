@@ -17,6 +17,7 @@
 				font-family: "proxima-nova", sans-serif;
 				background: white;
 				color: black;
+				overflow: hidden;
 			}
 			
 			<?php

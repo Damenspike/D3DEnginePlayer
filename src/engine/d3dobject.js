@@ -753,14 +753,7 @@ export default class D3DObject {
 		return !this.is2D;
 	}
 	get is2D() {
-		return this.hasComponent('Graphic2D') || this.hasComponent('Container2D');
-	}
-	get graphic2d() {
-		if(!this.is2D)
-			return;
-		
-		if(this.hasComponent('Graphic2D'))
-			return this.components.find(c => c.type == 'Graphic2D').properties;
+		return this.graphic2d || this.container2d;
 	}
 	
 	get depth() {
@@ -1103,7 +1096,7 @@ export default class D3DObject {
 		}
 		
 		// Handle all child components
-		if(opts?.updateComponents !== true)
+		if(opts?.updateComponents !== false)
 			await child.updateComponents();
 		
 		child.__ready = true;
@@ -1133,7 +1126,9 @@ export default class D3DObject {
 		
 		objData.symbolId = symbolId;
 		
-		return await this.createObject(objData, opts);
+		const d3dobject = await this.createObject(objData, opts);
+		
+		return d3dobject;
 	}
 	
 	async load(uri) {
@@ -1627,7 +1622,7 @@ export default class D3DObject {
 		doUpdateAll && this.updateComponents();
 		this.setupDefaultMethods();
 		
-		if(this.symbol && !dontRecurseSymbols) {
+		if(window._editor && this.symbol && !dontRecurseSymbols) {
 			// Add instances of this component to symbols
 			this.root.traverse(d3dobject => {
 				if(this !== d3dobject && d3dobject.symbol == this.symbol) {
@@ -1645,18 +1640,20 @@ export default class D3DObject {
 			dontRecurseSymbols = false
 		} = {}
 	) {
+		if(!this.getComponentObject(type))
+			throw new Error(`Component ${type} does not exist on ${this.name}`);
+			
 		const mgr = this.getComponent(type);
 		
-		if(!mgr)
-			return;
-			
-		if(typeof mgr.dispose == 'function')
+		if(mgr && typeof mgr.dispose == 'function')
 			await mgr.dispose();
 		
 		this.components.splice(this.components.findIndex(c => c.type == type), 1);
-		delete this.__componentInstances[type];
 		
-		if(this.symbol && !dontRecurseSymbols) {
+		if(this.__componentInstances[type])
+			delete this.__componentInstances[type];
+		
+		if(window._editor && this.symbol && !dontRecurseSymbols) {
 			// Remove all instances of this component
 			this.root.traverse(d3dobject => {
 				if(this !== d3dobject && d3dobject.symbol == this.symbol) {
@@ -1919,7 +1916,7 @@ export default class D3DObject {
 		const a = this.findAssetByPath(path);
 		
 		if(!a)
-			console.trace(`Can't resolve asset id for path ${path}`);
+			console.log(`Can't resolve asset id for path ${path}`);
 		
 		return a?.uuid || '';
 	}

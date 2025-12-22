@@ -5,6 +5,7 @@ import D2DBitmapManager from './d2dmgr_bitmap.js';
 import D2DGraphic2DManager from './d2dmgr_graphic2d.js';
 import D2DLayoutManager from './d2dmgr_layout.js';
 import D2DFilterManager from './d2dmgr_filter.js';
+import D2DContainerManager from './d2dmgr_container2d.js';
 import D3DAnimationManager from './d3dmgr_animation.js';
 import D3DMeshManager from './d3dmgr_mesh.js';
 import D3DCameraManager from './d3dmgr_camera.js';
@@ -48,16 +49,6 @@ const D3DComponents = {
 				type: 'file[]',
 				format: 'material',
 				def: []
-			},
-			'castShadow': {
-				label: 'Cast shadows',
-				type: 'boolean',
-				def: true
-			},
-			'receiveShadow': {
-				label: 'Receive shadows',
-				type: 'boolean',
-				def: true
 			}
 		},
 		persistent: true,
@@ -717,7 +708,7 @@ const D3DComponents = {
 		manager: D3DRigidbodyManager
 	},
 	CharacterController: {
-		name: 'Third Person Character Controller',
+		name: 'Character Controller (Third Person)',
 		fields: {
 			'cameraName': {
 				label: 'Camera name',
@@ -1038,7 +1029,7 @@ const D3DComponents = {
 		persistent: true,
 		hidden: true,
 		fields: {},
-		manager: function() {}
+		manager: D2DContainerManager
 	},
 	Text2D: {
 		name: 'Text 2D',
@@ -2117,7 +2108,8 @@ const D3DComponents = {
 				label: 'Instancing',
 				type: 'boolean',
 				section: 'billboard',
-				def: false
+				def: false,
+				condition: c => c.properties.billboardWhenCulled == true
 			}
 		},
 		manager: D3DAutoLODManager

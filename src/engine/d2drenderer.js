@@ -232,6 +232,9 @@ export default class D2DRenderer {
 		//this._dirty = false;
 	}
 	renderParent(d3dobject, ctx) {
+		if(!d3dobject.is2D && d3dobject != _root)
+			return;
+		
 		let renderAnyway = false;
 		
 		if(window._editor) {

@@ -1,3 +1,6 @@
+<?php
+	include("../api/v1/version.php");
+?>
 <center>
 	<div class='reading'>
 		<div class='download'>
@@ -9,7 +12,7 @@
 			<div class='platform'>
 				<h2>Standard method</h2>
 				<div class='code'>
-					<?=htmlentities('<script type="module" crossorigin src="https://damen3d.com/player/1.2.0-beta.0/d3dplayer.js"></script>
+					<?=htmlentities('<script type="module" crossorigin src="https://damen3d.com/player/' . $PLAYER_VERSION . '/d3dplayer.js"></script>
 					<div id="damen3d-player" src="path/to/file.d3d"></div>')?>
 				</div>
 			</div>

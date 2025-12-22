@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
+import { SSAOPass } from 'three/addons/postprocessing/SSAOPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import {
 	updateObjects,
@@ -19,6 +20,7 @@ import D3DPhysics from './d3dphysics.js';
 import D3DDimensions from './d3ddimensions.js';
 import D3DGraphics from './d3dgraphics.js';
 import D3DInstancing from './d3dinstancing.js';
+import D3DAutoLODMaster from './d3dautolodmaster.js';
 
 window.THREE = THREE;
 window._loopFns = {};
@@ -30,6 +32,7 @@ window._physics = new D3DPhysics();
 window._dimensions = new D3DDimensions();
 window._graphics = new D3DGraphics();
 window._instancing = new D3DInstancing();
+window._autolod = new D3DAutoLODMaster();
 window._player = {};
 window.__global = {}; // our own runtime global store
 
@@ -117,6 +120,7 @@ function resizeRenderers() {
 	if (_player.composer) {
 		_player.composer.setSize(width3d, height3d);
 		_player.gtaoPass.setSize(width3d, height3d);
+		_player.ssaoPass.setSize(width3d, height3d);
 	}
 }
 
@@ -192,19 +196,33 @@ function initComposer() {
 	const composer = new EffectComposer(_player.renderer3d);
 	const renderPass = new RenderPass(scene, camera);
 	const gtaoPass = new GTAOPass(scene, camera, width, height);
+	const ssaoPass = new SSAOPass(scene, camera, width, height);
 	const outputPass = new OutputPass();
 	
 	// GTAO pass toggle
 	gtaoPass.beforeRender = () => {
-		camera.layers.disable(2); // layer 2 = sprite materials
+		camera.layers.disable(2); // layer 2 = no gtao (like sprites)
 	};
 	gtaoPass.afterRender = () => {
+		camera.layers.enable(2);
+	};
+	
+	// SSAO pass
+	ssaoPass.enabled = false; // disabled by default
+	ssaoPass.kernelRadius = 0.3;
+	ssaoPass.minDistance  = 0;
+	ssaoPass.maxDistance  = 0.3;
+	ssaoPass.beforeRender = () => {
+		camera.layers.disable(2); // layer 2 = no ssao (like sprites)
+	};
+	ssaoPass.afterRender = () => {
 		camera.layers.enable(2);
 	};
 	
 	// Add passes
 	composer.addPass(renderPass);
 	composer.addPass(gtaoPass);
+	composer.addPass(ssaoPass);
 	composer.addPass(outputPass);
 	
 	hookComposerPasses(composer);
@@ -212,6 +230,7 @@ function initComposer() {
 	_player.composer = composer;
 	_player.renderPass = renderPass;
 	_player.gtaoPass = gtaoPass;
+	_player.ssaoPass = ssaoPass;
 }
 
 function startAnimationLoop() {
@@ -270,6 +289,7 @@ function startAnimationLoop() {
 			]);
 			
 			_instancing.buildDirtyInstances();
+			_autolod.updateAll();
 			
 			const camera3d = _player.camera?.object3d;
 			const renderer3d = _player.renderer3d;

@@ -11,7 +11,7 @@
 				"origin" => "https://damen3d.com/splash/splash-editor.php?theme=$theme",
 				"title" => "New Version Available",
 				"width" => 760,
-				"height" => 520,
+				"height" => 600,
 				"resizable" => true
 			)
 		)));
@@ -22,7 +22,7 @@
 				"origin" => "https://damen3d.com/splash/splash-player.php?theme=$theme",
 				"title" => "New Version Available",
 				"width" => 760,
-				"height" => 520,
+				"height" => 600,
 				"resizable" => true
 			)
 		)));

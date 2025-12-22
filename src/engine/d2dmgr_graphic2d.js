@@ -10,6 +10,8 @@ export default class Graphic2DManager {
 	constructor(d3dobject, component) {
 		this.d3dobject = d3dobject;
 		this.component = component;
+		
+		this.d3dobject.graphic2d = this.component.properties;
 	}
 
 	updateComponent() {}
@@ -261,5 +263,9 @@ export default class Graphic2DManager {
 	}
 	hitTestPoint({ x, y }) {
 		return hitObjectDeep(this.d3dobject, x, y);
+	}
+	
+	dispose() {
+		this.d3dobject.graphic2d = null;
 	}
 }

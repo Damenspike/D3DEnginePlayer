@@ -358,6 +358,9 @@ function AnimationState({d3dobject, clip}) {
 	
 	this.updateListener = () => this.listener?.(this);
 	this.updateTransforms = (time) => {
+		if(!this.d3dobject.rendered)
+			return;
+		
 		if(time === undefined) 
 			time = this.time;
 			

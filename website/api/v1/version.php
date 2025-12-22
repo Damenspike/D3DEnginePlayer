@@ -1,6 +1,6 @@
 <?php
-	$PLAYER_VERSION = "1.2.0-beta.0";
-	$EDITOR_VERSION = "1.2.0-beta.0";
+	$PLAYER_VERSION = "1.2.3-beta.5";
+	$EDITOR_VERSION = "1.2.3-beta.5";
 	
 	function version_to_number(string $version): float {
 		// Split by '-' (prerelease)

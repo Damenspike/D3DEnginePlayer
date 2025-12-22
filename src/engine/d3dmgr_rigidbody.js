@@ -31,6 +31,9 @@ export default class RigidbodyManager {
 		// tuneables
 		this._wireOpacity = 0.95;
 		this._helperRenderOrder = 10_000_000; 
+		
+		if(this.kind == 'fixed' && window._player)
+			this.__onInternalEnterFrame = null; // save performance
 	}
 
 	/* =========================================================
