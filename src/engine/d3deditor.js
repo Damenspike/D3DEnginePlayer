@@ -482,7 +482,7 @@ function startAnimationLoop() {
 		}
 		
 		outlinePass.selectedObjects = _editor.selectedObjects
-		.filter(d => !!d.object3d)
+		.filter(d => !!d.object3d && !d.__editorNoOutline)
 		.map(d => d.object3d);
 		
 		_dimensions.update();

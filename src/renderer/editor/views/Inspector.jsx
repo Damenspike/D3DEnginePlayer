@@ -3110,9 +3110,14 @@ export default function Inspector() {
 			const rows = [];
 			
 			uris.forEach(uri => {
+				const drawn = drawInspControls(uri);
+				
+				if(!drawn)
+					return;
+				
 				rows.push(
 					<div className='media-control-container' key={rows.length}>
-						{drawInspControls(uri)}
+						{drawn}
 					</div>
 				)
 			});

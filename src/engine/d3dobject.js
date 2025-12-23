@@ -1878,7 +1878,7 @@ export default class D3DObject {
 		
 		submeshes.forEach(submesh => {
 			if(submesh.instancing && submesh.instancingId) {
-				_instancing.updateSubmeshMatrix(submesh.instancingId, submesh);
+				_instancing.updateSubmeshMatrix(submesh.instancingId, submesh, true);
 			}
 		});
 	}
@@ -2365,13 +2365,12 @@ export default class D3DObject {
 			return;
 		}
 		
-		[...this.children].forEach(d3dchild => {
-			d3dchild.__lockSymbols = true; // MUST NOT ALLOW ANY SYMBOL SYNCING
-			d3dchild.traverse(o => o.disposeAllComponents()); // DISPOSE CHILDREN COMPONENTS DO NOT SYNC
-			d3dchild.__lockSymbols = false;
+		this.traverse(o => {
+			o.__lockSymbols = true; // MUST NOT ALLOW ANY SYMBOL SYNCING
+			o.disposeAllComponents();
+			o.__lockSymbols = false;
 		});
 		
-		this.disposeAllComponents();
 		this.unlinkFromZipInstance();
 		
 		const idx = this.parent.children.indexOf(this);

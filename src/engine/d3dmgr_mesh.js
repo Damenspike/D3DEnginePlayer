@@ -1,5 +1,6 @@
 import { importModelFromZip } from './glb-instancer.js';
 import { fileName } from './d3dutility.js';
+import { clamp01 } from './d3dmath.js';
 
 export default class MeshManager {
 	constructor(d3dobject, component) {
@@ -101,6 +102,44 @@ export default class MeshManager {
 		if (/^[0-9a-fA-F]{6}$/.test(s)) return parseInt(s, 16);
 		if (/^\d+$/.test(s)) return Number(s);
 		return s;
+	}
+	
+	_applyRenderMode(m, params) {
+		if(!m || !params)
+			return;
+	
+		// legacy: if people still set transparent/opacity directly, don't fight it.
+		const mode = params.renderMode || null;
+	
+		// defaults
+		if(params.depthWrite !== undefined)
+			m.depthWrite = !!params.depthWrite;
+	
+		if(params.alphaTest !== undefined)
+			m.alphaTest = clamp01(params.alphaTest);
+	
+		if(mode === 'opaque') {
+			m.transparent = false;
+			m.opacity = 1;
+			m.alphaTest = 0;
+			if(params.depthWrite === undefined) m.depthWrite = true;
+		}else
+		if(mode === 'cutout') {
+			m.transparent = false;
+			m.opacity = 1;
+			m.alphaTest = params.alphaTest !== undefined ? clamp01(params.alphaTest) : 0.5;
+			if(params.depthWrite === undefined) m.depthWrite = true;
+		}else
+		if(mode === 'fade') {
+			m.transparent = true;
+			// keep user opacity
+			if(typeof params.opacity === 'number')
+				m.opacity = clamp01(params.opacity);
+			m.alphaTest = 0;
+			if(params.depthWrite === undefined) m.depthWrite = false;
+		}
+	
+		m.needsUpdate = true;
 	}
 
 	async _readTextByUUID(uuid) {
@@ -215,6 +254,8 @@ export default class MeshManager {
 	
 		const { ctorParams } = this._stripIncompatible(params, type);
 		const m = new Ctor(ctorParams);
+		
+		this._applyRenderMode(m, params);
 	
 		if (!m.userData) m.userData = {};
 		if (m.userData._baseOpacity == null) {
@@ -363,6 +404,8 @@ export default class MeshManager {
 				if (Array.isArray(normalMapRepeat)) m.normalMap.repeat.set(normalMapRepeat[0] || 1, normalMapRepeat[1] || 1);
 				m.normalMap.needsUpdate = true;
 			}
+			
+			this._applyRenderMode(m, params);
 	
 			m.needsUpdate = true;
 			return m;
@@ -377,6 +420,8 @@ export default class MeshManager {
 		const { ctorParams, pulled } = this._stripIncompatible({ ...params }, type);
 	
 		const m = new Ctor(ctorParams);
+		
+		this._applyRenderMode(m, params);
 	
 		// store authoring opacity once; applyOpacity will use this
 		if (!m.userData) m.userData = {};
@@ -601,8 +646,8 @@ export default class MeshManager {
 			if(mesh.isMesh && (this.lastInstancingId != this.instancingId || this.lastInstancing != this.instancing)) {
 				if(this.instancing && this.instancingId)
 					_instancing.setInstanceDirty(this.instancingId, this);
-				else
-				if(this.lastInstancing && this.lastInstancingId)
+				
+				if(this.lastInstancing && this.lastInstancingId && this.lastInstancingId != this.instancingId)
 					_instancing.removeFromInstance(this.lastInstancingId, this);
 				
 				if(this.instancing)
@@ -610,8 +655,14 @@ export default class MeshManager {
 				else
 					this.d3dobject.visible3 = true;
 				
-				this.d3dobject.__flagInstancing = true;
-				this.d3dobject.rootParent.__flagInstancing = true; // nice to have
+				let p = this.d3dobject;
+				while(p) {
+					p.__flagInstancing = true;
+					p = p.parent;
+					if(p == this.d3dobject.root)
+						break;
+				}
+				
 				this.lastInstancingId = this.instancingId;
 				this.lastInstancing = this.instancing;
 			}

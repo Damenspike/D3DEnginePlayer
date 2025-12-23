@@ -189,7 +189,7 @@ export default class D3DInstancing {
 		im.computeBoundingSphere();
 		im.computeBoundingBox?.();
 	}
-	updateSubmeshMatrix(instanceId, submesh) {
+	updateSubmeshMatrix(instanceId, submesh, markUpdate = false) {
 		const instance = this.instances[instanceId];
 		if(!instance)
 			return;
@@ -206,6 +206,9 @@ export default class D3DInstancing {
 	
 		submesh.d3dobject.object3d.updateWorldMatrix(true, false);
 		im.setMatrixAt(idx, submesh.d3dobject.object3d.matrixWorld);
+		
+		if(markUpdate)
+			this.markAsNeedsUpdate(instanceId);
 	}
 	markAsNeedsUpdate(instanceId) {
 		const instance = this.instances[instanceId];

@@ -48,8 +48,8 @@ export default class D3DInput {
 		this._onTouchMove        = this._onTouchMove.bind(this);
 
 		// --- DOM listeners ---
-		window.addEventListener('keydown',  this._onKeyDown,  { passive: false });
-		window.addEventListener('keyup',    this._onKeyUp);
+		window.addEventListener('keydown', this._onKeyDown, { passive: false, capture: true });
+		window.addEventListener('keyup',   this._onKeyUp,   { capture: true });
 		window.addEventListener('mousedown',this._onMouseDown);
 		window.addEventListener('mouseup',  this._onMouseUp);
 		window.addEventListener('mousemove',this._onMouseMove);
@@ -149,9 +149,9 @@ export default class D3DInput {
 		const editing = this._isEditableTarget(e);
 
 		// Let browser handle normal text input
-		if (editing && !(e.ctrlKey || e.metaKey)) {
+		/*if (editing && !(e.ctrlKey || e.metaKey)) {
 			return;
-		}
+		}*/
 
 		this._keys[e.code] = true;
 		this._listenersDown.forEach(fn => fn(e));
@@ -163,10 +163,10 @@ export default class D3DInput {
 	}
 
 	_onKeyUp(e) {
-		const editing = this._isEditableTarget(e);
-		if (editing && !(e.ctrlKey || e.metaKey)) {
+		/*const editing = this._isEditableTarget(e);
+		if (editing && !(e.ctrlKey || e.metaKey || e.shiftKey)) {
 			return;
-		}
+		}*/
 		this._keys[e.code] = false;
 		this._listenersUp.forEach(fn => fn(e));
 	}
@@ -351,12 +351,28 @@ export default class D3DInput {
 			this.exitPointerLock();
 		}
 	}
+	
+	syncMainKeys(e) {
+		this._keys.ShiftLeft  = !!e.shiftKey;
+		this._keys.ShiftRight = !!e.shiftKey;
+		
+		this._keys.ControlLeft  = !!e.ctrlKey;
+		this._keys.ControlRight = !!e.ctrlKey;
+		
+		this._keys.AltLeft  = !!e.altKey;
+		this._keys.AltRight = !!e.altKey;
+		
+		this._keys.MetaLeft  = !!e.metaKey;
+		this._keys.MetaRight = !!e.metaKey;
+	}
 
 	/* ---------------------------------------------------------------------
 	 * Mouse
 	 * ------------------------------------------------------------------ */
-
+	 
 	_onMouseDown(e) {
+		this.syncMainKeys(e);
+		
 		if (this._mouseFrozen) return;
 
 		this.mouseButtons[e.button] = true;
@@ -374,6 +390,8 @@ export default class D3DInput {
 	}
 
 	_onMouseUp(e) {
+		this.syncMainKeys(e);
+		
 		if (this._mouseFrozen) return;
 
 		this.mouseButtons[e.button] = false;
@@ -385,6 +403,8 @@ export default class D3DInput {
 	}
 
 	_onMouseMove(e) {
+		this.syncMainKeys(e);
+		
 		if (this._mouseFrozen) return;
 
 		const clientX = e.clientX;

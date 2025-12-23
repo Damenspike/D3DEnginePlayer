@@ -29,19 +29,28 @@ export default class StamperManager {
 		this.projB = new THREE.Vector3();
 		this.projC = new THREE.Vector3();
 		
+		this.tmpQ = new THREE.Quaternion();
+		this.brushWasVisible = false;
+		
 		this.wasDown = false;
 		this.batchMode = null;
 		this.batchCreates = [];
 		this.batchCreateObjs = [];
 		this.batchDeletes = [];
 		this.batchDeleteObjs = [];
+		
+		this.d3dobject.__editorNoOutline = true;
 	}
 
-	get size() {
-		return this.component.properties.size || 0;
+	get radius() {
+		return Number(this.component.properties.radius) || 0;
 	}
-	set size(v) {
-		this.component.properties.size = Number(v);
+	set radius(v) {
+		this.component.properties.radius = Number(v);
+	}
+	
+	get size() {
+		return this.radius * 0.25;
 	}
 
 	get strength() {
@@ -186,8 +195,10 @@ export default class StamperManager {
 			this.drawBrushGizmo();
 			this.updateStamp();
 		}else{
-			if(this.brush)
+			if(this.brush) {
 				this.brush.visible = false;
+				this.brushWasVisible = false;
+			}
 			
 			_editor.gameViewBusy = false;
 			this.endBatch();
@@ -236,6 +247,7 @@ export default class StamperManager {
 		
 		if(!_input.getCursorOverGame3D() || !this.updateMouseNDC()) {
 			this.brush.visible = false;
+			this.brushWasVisible = false;
 			this.hitObject = null;
 			return;
 		}
@@ -262,6 +274,7 @@ export default class StamperManager {
 			
 		if(hits.length < 1) {
 			this.brush.visible = false;
+			this.brushWasVisible = false;
 			this.hitObject = null;
 			return;
 		}
@@ -278,17 +291,33 @@ export default class StamperManager {
 
 		this.hitPoint.copy(hit.point);
 		this.hitNormal.copy(normal);
-
+		
 		const brushNormal = this.computeBrushNormal(hit.point, normal);
-
-		this.brush.position
-			.copy(hit.point)
-			.addScaledVector(brushNormal, 0.02);
-
-		this.brush.quaternion.setFromUnitVectors(
+		
+		// smooth factor
+		const dt = _time?.delta || (1 / Math.max(1, _time?.fps || 60));
+		const speed = 18; // higher = snappier
+		const a = 1 - Math.exp(-speed * dt);
+		
+		// target orientation from normal
+		this.tmpQ.setFromUnitVectors(
 			this.tmpB.set(0, 0, 1),
 			brushNormal
 		);
+		
+		// snap first frame we become visible (prevents “lag jump”)
+		if(!this.brushWasVisible) {
+			this.brush.quaternion.copy(this.tmpQ);
+			this.brush.position.copy(hit.point).addScaledVector(brushNormal, 0.02);
+		}else{
+			this.brush.quaternion.slerp(this.tmpQ, a);
+		
+			// optional: smooth position too (keeps it from jittering on micro triangles)
+			const targetPos = this.tmpC.copy(hit.point).addScaledVector(brushNormal, 0.02);
+			this.brush.position.lerp(targetPos, a);
+		}
+		
+		this.brushWasVisible = true;
 
 		const s = Math.max(0.001, this.size);
 		this.brush.scale.set(s, s, s);
@@ -297,39 +326,40 @@ export default class StamperManager {
 	computeBrushNormal(center, normal) {
 		if(!this.hitObject)
 			return normal;
-		
-		const r = Math.max(0.001, this.size) * 0.33;
-		
+	
+		const s = Math.max(0.001, this.size);
+		const r = s * 2; // edge of ring (RingGeometry is 0.98..1.0)
+	
 		const n = this.tmpA.copy(normal).normalize();
-		
+	
 		const t = Math.abs(n.y) < 0.99
 			? this.tmpB.set(0, 1, 0).cross(n).normalize()
 			: this.tmpB.set(1, 0, 0).cross(n).normalize();
-		
+	
 		const b = this.tmpC.copy(n).cross(t).normalize();
-		
+	
 		this.projA.copy(center).addScaledVector(t,  r);
 		this.projB.copy(center).addScaledVector(t, -r * 0.5).addScaledVector(b,  r * 0.8660254);
 		this.projC.copy(center).addScaledVector(t, -r * 0.5).addScaledVector(b, -r * 0.8660254);
-		
+	
 		const h1 = this.projectToGround(this.projA);
 		const h2 = this.projectToGround(this.projB);
 		const h3 = this.projectToGround(this.projC);
-		
+	
 		if(!h1 || !h2 || !h3)
 			return n;
-		
+	
 		const a = h1.point;
 		const c = h2.point;
 		const d = h3.point;
-		
+	
 		const v1 = this.tmpD.copy(c).sub(a);
 		const v2 = this.tmpE.copy(d).sub(a);
 		const nn = v1.cross(v2).normalize();
-		
+	
 		if(nn.dot(n) < 0)
 			nn.negate();
-		
+	
 		return nn;
 	}
 	
@@ -409,8 +439,8 @@ export default class StamperManager {
 		const deletes = this.batchDeletes.slice();
 		const manager = this;
 		
-		let createObjs = this.batchCreateObjs.slice();
-		let deleteObjs = this.batchDeleteObjs.slice();
+		let createObjs = this.batchCreateObjs;
+		let deleteObjs = this.batchDeleteObjs;
 		
 		this.batchMode = null;
 		this.batchCreates = [];
@@ -488,121 +518,119 @@ export default class StamperManager {
 	
 	stampOnce() {
 		const symbolId = this.activeSymbolId;
-		
+	
 		if(!symbolId || !this.hitObject)
 			return;
-		
-		const s = Math.max(0.001, this.size);
+	
+		const s = Math.max(0.001, this.size) * 0.7;
 		const pos = this.samplePointInBrush(this.hitPoint, this.hitNormal, s);
-		
+	
 		const groundHit = this.projectToGround(pos);
-		
+	
 		if(!groundHit)
 			return;
-		
+	
 		const groundPos = groundHit.point.clone().addScaledVector(this.hitNormal, 0.02);
-		
+	
 		const minDist = s * 0.15;
 		if(this.lastStampPos.distanceToSquared(groundPos) < (minDist * minDist))
 			return;
-		
+	
 		this.lastStampPos.copy(groundPos);
-		
+	
 		let rotation = {x: 0, y: 0, z: 0};
-		
+	
 		if(this.rotateToNormal) {
 			const q = this.rotationForNormal(this.hitNormal);
 			const euler = new THREE.Euler().setFromQuaternion(q);
 			rotation = {x: euler.x, y: euler.y, z: euler.z};
 		}
-		
+	
 		const randRot = this.getRandomRotation();
 		rotation = {
 			x: rotation.x + randRot.x,
 			y: rotation.y + randRot.y,
 			z: rotation.z + randRot.z
 		};
-		
+	
 		const scale = this.getRandomScale();
-		
+	
 		const rec = {
 			symbolId,
 			position: {x: groundPos.x, y: groundPos.y, z: groundPos.z},
 			rotation,
 			scale
 		};
-		
-		if(this.batchMode === 'paint')
-			this.batchCreates.push(rec);
-		
+	
+		const isBatch = this.batchMode === 'paint';
+		const batchCreates = isBatch ? this.batchCreates : null;
+		const batchCreateObjs = isBatch ? this.batchCreateObjs : null;
+	
+		if(batchCreates)
+			batchCreates.push(rec);
+	
 		this.d3dobject.createObject({
 			symbolId,
 			position: rec.position,
 			rotation: rec.rotation,
 			scale: rec.scale
 		}).then(obj => {
-			if(obj && this.batchMode === 'paint')
-				this.batchCreateObjs.push(obj);
+			if(obj && batchCreateObjs)
+				batchCreateObjs.push(obj);
 		});
 	}
 	
 	eraseOnce() {
 		if(!this.hitObject)
 			return;
-		
-		const s = Math.max(0.001, this.size);
-		const s2 = s * s;
-		
+	
+		const allDelete = _input.getKeyDown('control');
 		const children = this.d3dobject.children || [];
 		if(children.length < 1)
 			return;
-		
-		let closest = null;
-		let best = Infinity;
-		
-		for(let i = 0; i < children.length; i++) {
-			const ch = children[i];
-			const p = ch.position || ch.object3d?.position;
-			
-			if(!p)
-				continue;
-			
-			const dx = p.x - this.hitPoint.x;
-			const dy = p.y - this.hitPoint.y;
-			const dz = p.z - this.hitPoint.z;
-			const d2 = dx*dx + dy*dy + dz*dz;
-			
-			if(d2 <= s2 && d2 < best) {
-				best = d2;
-				closest = ch;
+	
+		const r = Math.max(0.001, this.size);
+		const hits = _physics.overlapSphere(this.hitPoint, r, {
+			objects: children,
+			filter: o => {
+				if(!o)
+					return false;
+	
+				if(allDelete)
+					return true;
+	
+				return o.symbolId == this.activeSymbolId;
 			}
-		}
-		
-		if(!closest)
+		});
+	
+		if(hits.length < 1)
 			return;
-		
-		const symbolId = closest.symbolId || closest?.components?.find?.(c => c.type === 'Symbol')?.properties?.symbolId;
+	
+		// closest first (your overlapSphere already sorts by centerDistance)
+		const picked = hits[0].object;
+	
+		const symbolId = picked.symbolId || picked?.components?.find?.(c => c.type === 'Symbol')?.properties?.symbolId;
 		if(!symbolId)
 			return;
-		
-		const p = closest.position || closest.object3d?.position;
-		const r = closest.rotation || closest.object3d?.rotation;
-		const sc = closest.scale || closest.object3d?.scale || {x: 1, y: 1, z: 1};
-		
+	
+		const p = picked.position || picked.object3d?.position;
+		const ro = picked.rotation || picked.object3d?.rotation;
+		const sc = picked.scale || picked.object3d?.scale || {x: 1, y: 1, z: 1};
+	
 		const rec = {
 			symbolId,
 			position: {x: p.x, y: p.y, z: p.z},
-			rotation: {x: r.x, y: r.y, z: r.z},
+			rotation: {x: ro.x, y: ro.y, z: ro.z},
 			scale: {x: sc.x, y: sc.y, z: sc.z}
 		};
-		
+	
 		if(this.batchMode === 'erase')
 			this.batchDeletes.push(rec);
-		
-		closest.destroy();
-		
+	
+		picked.destroy();
+	
 		if(this.batchMode === 'erase')
-			this.batchDeleteObjs.push(closest);
+			this.batchDeleteObjs.push(picked);
 	}
 	
 	samplePointInBrush(center, normal, radius) {
@@ -672,19 +700,21 @@ export default class StamperManager {
 	getRandomRotation() {
 		if(!this.randomness)
 			return {x: 0, y: 0, z: 0};
-		
+	
 		const a = this.rotateFrom;
 		const b = this.rotateTo;
-		
+		const DEG2RAD = Math.PI / 180;
+	
 		return {
-			x: rand(a.x, b.x) * Math.PI / 180,
-			y: rand(a.y, b.y) * Math.PI / 180,
-			z: rand(a.z, b.z) * Math.PI / 180
+			x: rand(a.x, b.x) * DEG2RAD,
+			y: rand(a.y, b.y) * DEG2RAD,
+			z: rand(a.z, b.z) * DEG2RAD
 		};
 	}
 	
 	dispose() {
 		this.endBatch();
+		this.d3dobject.__editorNoOutline = false;
 		
 		if(this.brush) {
 			_root.object3d.remove(this.brush);

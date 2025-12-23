@@ -49,3 +49,4 @@ export default class D3DMath {
 export const rand = Math.rand;
 export const randInt = Math.randInt;
 export const randVec3 = Math.randVec3;
+export const clamp01 = Math.clamp01;

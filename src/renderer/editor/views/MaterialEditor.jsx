@@ -27,6 +27,11 @@ const DEFAULTS = {
 	alphaMap: '',
 	envMapIntensity: 1,
 	
+	// TRANSPARENCY
+	renderMode: 'opaque',   // opaque | cutout | fade
+	alphaTest: 0,           // 0..1 (cutout threshold)
+	depthWrite: true,
+	
 	// SHADERS
 	vertexShader: '',
 	fragmentShader: '',
@@ -85,6 +90,17 @@ function ensureDefaults(val) {
 	v.mapRepeat = Array.isArray(v.mapRepeat) ? v.mapRepeat : [1, 1];
 	v.normalMapOffset = Array.isArray(v.normalMapOffset) ? v.normalMapOffset : [0, 0];
 	v.normalMapRepeat = Array.isArray(v.normalMapRepeat) ? v.normalMapRepeat : [1, 1];
+	
+	v.alphaTest = Number.isFinite(+v.alphaTest) ? clamp01(v.alphaTest) : 0;
+	v.depthWrite = v.depthWrite === undefined ? true : !!v.depthWrite;
+	
+	// infer renderMode from older materials (backwards compat)
+	v.renderMode = v.renderMode || DEFAULTS.renderMode;
+	if(!val?.renderMode) {
+		if(v.transparent) v.renderMode = 'fade';
+		else if(v.alphaTest > 0) v.renderMode = 'cutout';
+		else v.renderMode = 'opaque';
+	}
 	
 	// SHADERS
 	v.vertexShader = v.vertexShader || '';
@@ -381,6 +397,75 @@ export default function MaterialEditor({ uri, date, onSave, openAsset }) {
 							<option value="flat">Flat</option>
 						</select>
 					</div>
+					
+					<div className="material-editor-row field">
+						<label className="material-editor-label">Render Mode</label>
+						<select
+							className="tf"
+							value={mat.renderMode || 'opaque'}
+							onChange={(e) => {
+								const mode = e.target.value;
+					
+								if(mode === 'opaque') {
+									patch({
+										renderMode: 'opaque',
+										transparent: false,
+										opacity: 1,
+										alphaTest: 0,
+										depthWrite: true
+									}, true);
+								}else
+								if(mode === 'cutout') {
+									patch({
+										renderMode: 'cutout',
+										transparent: false,
+										opacity: 1,
+										alphaTest: mat.alphaTest > 0 ? mat.alphaTest : 0.5,
+										depthWrite: true
+									}, true);
+								}else
+								if(mode === 'fade') {
+									patch({
+										renderMode: 'fade',
+										transparent: true,
+										alphaTest: 0,
+										depthWrite: false
+									}, true);
+								}
+							}}
+						>
+							<option value="opaque">Opaque</option>
+							<option value="cutout">Cutout</option>
+							<option value="fade">Fade</option>
+						</select>
+					</div>
+					
+					{mat.renderMode === 'cutout' && (
+						<div className="material-editor-row field">
+							<label className="material-editor-label">Alpha Cutoff</label>
+							<div className="material-editor-slider">
+								<input
+									type="range" min={0} max={1} step={0.01}
+									value={Number(mat.alphaTest) || 0}
+									onChange={(e) => patch({ alphaTest: clamp01(e.target.value) })}
+									onMouseUp={(e) => patch({ alphaTest: clamp01(e.target.value) }, true)}
+									onTouchEnd={(e) => patch({ alphaTest: clamp01(e.target.value) }, true)}
+								/>
+								<div className="slider-value">{(Number(mat.alphaTest) || 0).toFixed(2)}</div>
+							</div>
+						</div>
+					)}
+					
+					{mat.renderMode === 'fade' && (
+						<div className="material-editor-row field">
+							<label className="material-editor-label">Depth Write</label>
+							<input
+								type="checkbox"
+								checked={mat.depthWrite !== false}
+								onChange={(e) => patch({ depthWrite: !!e.target.checked }, true)}
+							/>
+						</div>
+					)}
 
 					{spacer()}
 

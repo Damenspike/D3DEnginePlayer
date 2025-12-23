@@ -2262,11 +2262,11 @@ const D3DComponents = {
 		name: 'Stamper',
 		sectionsLast: true,
 		fields: {
-			size: {
-				label: 'Stamp size',
+			radius: {
+				label: 'Stamp radius',
 				type: 'islider',
 				min: 1,
-				max: 100,
+				max: 200,
 				def: 10,
 				section: 'stamping'
 			},
