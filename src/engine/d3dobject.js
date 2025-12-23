@@ -2132,25 +2132,25 @@ export default class D3DObject {
 		this.object3d.updateMatrixWorld(true);
 	}
 	
-	async refreshObjectsWithResource(uri) {
+	refreshObjectsWithResource(uri) {
 		const uuid = this.resolveAssetId(uri);
 		
-		const checkObject = async (d3dobject) => {
+		const checkObject = (d3dobject) => {
 			const serializedComponents = JSON.stringify(
 				d3dobject.getSerializedComponents()
 			);
 			
 			if (serializedComponents.includes(`"${uuid}"`)) {
 				// refresh this child
-				await d3dobject.updateComponents();
+				d3dobject.updateComponents();
 			}
 		}
 		
-		await checkObject(this);
+		checkObject(this);
 		
 		for (const child of this.children) {
-			await checkObject(child);
-			await child.refreshObjectsWithResource(uri);
+			checkObject(child);
+			child.refreshObjectsWithResource(uri);
 		}
 	}
 	
@@ -2367,7 +2367,7 @@ export default class D3DObject {
 		
 		[...this.children].forEach(d3dchild => {
 			d3dchild.__lockSymbols = true; // MUST NOT ALLOW ANY SYMBOL SYNCING
-			d3dchild.disposeAllComponents(); // DISPOSE CHILDREN COMPONENTS DO NOT SYNC
+			d3dchild.traverse(o => o.disposeAllComponents()); // DISPOSE CHILDREN COMPONENTS DO NOT SYNC
 			d3dchild.__lockSymbols = false;
 		});
 		

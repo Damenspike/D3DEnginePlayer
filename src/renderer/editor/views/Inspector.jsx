@@ -550,34 +550,39 @@ export default function Inspector() {
 		update();
 		_editor.renderer2d.drawer._rebuildSnapCache(); // rebuild 2d snap
 	}
-	const drawMaterialEditor = (uri) => (
-		<MaterialEditor
-			uri={uri}
-			date={new Date()}
-			onSave={async (prev, next) => {
-				const before = JSON.stringify(prev);
-				const after  = JSON.stringify(next);
-				
-				writeAndRefresh(uri, after);
-				
-				_editor.addStep({
-					name: `Edit material: ${uri}`,
-					undo: async () => {
-						writeAndRefresh(uri, before);
-						await _root.refreshObjectsWithResource(uri);
-					},
-					redo: async () => {
-						writeAndRefresh(uri, after);
-						await _root.refreshObjectsWithResource(uri);
-					}
-				});
-				
-				// apply to all other objects using this material
-				await _root.refreshObjectsWithResource(uri);
-			}}
-			openAsset={openAssetExplorer}
-		/>
-	)
+	const drawMaterialEditor = (uri) => {
+		if(uri.split('/')[1] == 'Standard')
+			return;
+			
+		return (
+			<MaterialEditor
+				uri={uri}
+				date={new Date()}
+				onSave={async (prev, next) => {
+					const before = JSON.stringify(prev);
+					const after  = JSON.stringify(next);
+					
+					writeAndRefresh(uri, after);
+					
+					_editor.addStep({
+						name: `Edit material: ${uri}`,
+						undo: async () => {
+							writeAndRefresh(uri, before);
+							_root.refreshObjectsWithResource(uri);
+						},
+						redo: async () => {
+							writeAndRefresh(uri, after);
+							_root.refreshObjectsWithResource(uri);
+						}
+					});
+					
+					// apply to all other objects using this material
+					_root.refreshObjectsWithResource(uri);
+				}}
+				openAsset={openAssetExplorer}
+			/>
+		)
+	}
 	const drawObjectInspector = () => {
 		if(objects?.length < 1) {
 			// Should never happen. dummyObject == defined = objects.length > 0;
@@ -1501,73 +1506,6 @@ export default function Inspector() {
 							}
 						});
 						
-						const drawExtra = () => {
-							if(field.label == 'Materials') {
-								const uuids = [];
-								let match = true;
-								
-								for(const object of objects) {
-									const component = object.getComponentObject(type);
-									if(!component || !canSee(component))
-										return;
-									
-									const ids = component.properties.materials;
-									if(!ids)
-										return;
-									
-									for(let i in ids) {
-										const id = ids[i];
-										if(uuids[i] != id) {
-											match = false;
-											break;
-										}
-										if(!uuids.includes(id))
-											uuids.push(id);
-									}
-									
-									if(!match)
-										break;
-								}
-								
-								// Too ambiguous. Don't draw.
-								if(!match) 
-									return;
-								
-								return drawMaterials(
-									uuids.map(uuid => _root.resolvePathNoAssets(uuid))
-								);
-							}
-						}
-						const drawMaterials = (uris) => {
-							const mrows = [];
-							
-							uris.forEach(uri => {
-								const originURI = uri;
-								
-								uri = path.join('assets', uri);
-								if(uri.split('/')[1] == 'Standard')
-									return;
-								
-								if(!originURI)
-									return;
-								
-								mrows.push(
-									<ComponentCell 
-										title={fileNameNoExt(originURI)}
-										key={mrows.length} 
-									>
-										{drawMaterialEditor(uri)}
-									</ComponentCell>
-								)
-							});
-							
-							return (
-								<div className='mt'>
-									{mrows}
-								</div>
-							);
-						}
-						
 						if(mixed) {
 							fieldContent = drawAmbiguous();
 							break;
@@ -1658,8 +1596,6 @@ export default function Inspector() {
 										</button>
 									</div>
 								)}
-								
-								{drawExtra()}
 							</div>
 						);
 						break;
@@ -3135,10 +3071,34 @@ export default function Inspector() {
 		);
 	}
 	const drawMediaInspector = () => {
-		const uri = selectedAssetPaths.values().next().value;
-		const ext = getExtension(uri);
+		const uris = new Set();
+		const selected = _editor.selectedObjects;
 		
-		const drawInspControls = () => {
+		if(selectedAssetPaths.size > 0) {
+			const paths = selectedAssetPaths.values();
+			paths.forEach(path => {
+				if(!uris.has(path))
+					uris.add(path);
+			});
+		}
+		if(selected.length > 0) {
+			selected.forEach(d3dobject => {
+				const mesh = d3dobject.getComponent('Mesh') || d3dobject.getComponent('SubMesh');
+				
+				if(!mesh)
+					return;
+				
+				const paths = mesh.materials.map(uuid => _root.resolvePath(uuid));
+				
+				paths.forEach(path => {
+					if(path && !uris.has(path))
+						uris.add(path);
+				});
+			})
+		}
+		
+		const drawInspControls = (uri) => {
+			const ext = getExtension(uri);
 			switch(ext) {
 				case 'mat': {
 					return drawMaterialEditor(uri);
@@ -3146,10 +3106,23 @@ export default function Inspector() {
 				default: return;
 			}
 		}
+		const drawControls = () => {
+			const rows = [];
+			
+			uris.forEach(uri => {
+				rows.push(
+					<div className='media-control-container' key={rows.length}>
+						{drawInspControls(uri)}
+					</div>
+				)
+			});
+			
+			return rows;
+		}
 		
-		const drawnControls = drawInspControls();
+		const controlsDrawn = drawControls();
 		
-		if(!drawnControls)
+		if(controlsDrawn.length < 1)
 			return;
 		
 		return (
@@ -3160,7 +3133,7 @@ export default function Inspector() {
 				onExpand={() => setMediaInspectorExpanded(!mediaInspectorExpanded)}
 				alwaysOpen={tab != Tabs.All}
 			>
-				{drawnControls}
+				{controlsDrawn}
 			</InspectorCell>
 		)
 	}
@@ -3211,7 +3184,7 @@ export default function Inspector() {
 				{(tab == 'assets' || tab == 'all') && loaded && drawAssetInspector()}
 				{(tab == 'scene' || tab == 'all') && loaded && drawSceneInspector()}
 				{(tab == 'object' || tab == 'all') && loaded && objects.length > 0 && drawObjectInspector()}
-				{selectedAssetPaths.size == 1 && loaded &&  drawMediaInspector()}
+				{loaded && drawMediaInspector()}
 				{(tab == 'project' || tab == 'all') && loaded && _editor.project && (_editor.focus == _root || tab == 'project') && drawProjectInspector()}
 				
 				<div style={{height: 45}} />

@@ -275,19 +275,20 @@ function initComposer() {
 	const scene = _root.object3d;
 	const width = _container3d.clientWidth;
 	const height = _container3d.clientHeight;
-	
 	const composer = new EffectComposer(renderer);
-	const renderPass = new RenderPass(scene, camera);
-	const gtaoPass = new GTAOPass(scene, camera, width, height);
-	const ssaoPass = new SSAOPass(scene, camera, width, height);
-	const grayPass = new ShaderPass(GrayscaleShader);
-	const outlinePass = new OutlinePass(new THREE.Vector2(width, height), scene, camera);
-	const outputPass = new OutputPass();
 	
 	_editor.composer = composer;
+
+	// Render Pass
+	const renderPass = new RenderPass(scene, camera);
+	composer.addPass(renderPass);
 	
 	// Setup transform gizmo
 	setupTransformGizmo();
+	
+	// GTAO Pass
+	const gtaoPass = new GTAOPass(scene, camera, width, height);
+	const ssaoPass = new SSAOPass(scene, camera, width, height);
 	
 	// GTAO pass toggle
 	gtaoPass.beforeRender = () => {
@@ -298,7 +299,6 @@ function initComposer() {
 	};
 	
 	// SSAO pass
-	ssaoPass.enabled = false; // disabled by default
 	ssaoPass.kernelRadius = 0.3;
 	ssaoPass.minDistance  = 0;
 	ssaoPass.maxDistance  = 0.3;
@@ -309,8 +309,22 @@ function initComposer() {
 		camera.layers.enable(2);
 	};
 	
-	// Gray pass
+	// Gray Pass
+	const grayPass = new ShaderPass(GrayscaleShader);
 	grayPass.enabled = false;
+	composer.addPass(grayPass);
+	
+	// Outline Pass
+	const outlinePass = new OutlinePass(
+		new THREE.Vector2(_container3d.clientWidth, _container3d.clientHeight),
+		scene,
+		camera
+	);
+	composer.addPass(outlinePass);
+	
+	// Output Pass
+	const outputPass = new OutputPass();
+	composer.addPass(outputPass);
 	
 	// Outline styling
 	outlinePass.edgeStrength = 12.0;
@@ -320,22 +334,14 @@ function initComposer() {
 	outlinePass.visibleEdgeColor.set('#0099ff');
 	outlinePass.hiddenEdgeColor.set('#000000');
 	
-	// Add passes (match player style ordering)
-	composer.addPass(renderPass);
-	composer.addPass(gtaoPass);
-	composer.addPass(ssaoPass);
-	composer.addPass(grayPass);
-	composer.addPass(outlinePass);
-	composer.addPass(outputPass);
-	
 	hookComposerPasses(composer);
 	
-	// Assign values
+	// Assign values if needed
+	_editor.grayPass = grayPass;
+	_editor.outlinePass = outlinePass;
 	_editor.renderPass = renderPass;
 	_editor.gtaoPass = gtaoPass;
 	_editor.ssaoPass = ssaoPass;
-	_editor.grayPass = grayPass;
-	_editor.outlinePass = outlinePass;
 	_editor.outputPass = outputPass;
 }
 
@@ -559,7 +565,6 @@ function setupResize() {
 		if (_editor.composer) {
 			_editor.composer.setSize(width3d, height3d);
 			_editor.gtaoPass.setSize(width3d, height3d);
-			_editor.ssaoPass.setSize(width3d, height3d);
 		}
 		
 		_editor.render();

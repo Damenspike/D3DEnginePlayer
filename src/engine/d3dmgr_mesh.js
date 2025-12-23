@@ -939,7 +939,7 @@ export default class MeshManager {
 				return;
 	
 			// If bones were modified externally, rebuild the palette used for skinning
-			console.log(o, o.skeleton);
+			
 			if(o.skeleton?.update)
 				o.skeleton.update();
 	

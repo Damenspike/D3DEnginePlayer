@@ -15,6 +15,7 @@ export default class D3DAutoLODMaster {
 	updateAll() {
 		const now = _time.now;
 		const maxBillboards = _graphics.maxBillboards;
+		const instancesToUpdate = [];
 		let billboards = 0;
 		
 		this.autoLODs.forEach(autoLOD => {
@@ -68,7 +69,7 @@ export default class D3DAutoLODMaster {
 					}
 					
 					if(autoLOD.billboardMesh) {
-						if(!autoLOD.lastSyncBB || now - autoLOD.lastSyncBB > 0.25) {
+						if(!autoLOD.lastSyncBB || now - autoLOD.lastSyncBB > 0.1) {
 							const mesh = autoLOD.billboardMesh;
 							const parent = mesh.parent;
 							
@@ -91,8 +92,11 @@ export default class D3DAutoLODMaster {
 								mesh.rotation.set(0, yaw, 0);
 							}
 							
-							if(autoLOD.billboardInstancing)
+							if(autoLOD.billboardInstancing) {
 								_instancing.updateSubmeshMatrix(autoLOD.billboardInstanceId, autoLOD.billboardSubmeshMock);
+								if(!instancesToUpdate.includes(autoLOD.billboardInstanceId))
+									instancesToUpdate.push(autoLOD.billboardInstanceId);
+							}
 							
 							autoLOD.lastSyncBB = now;
 						}
@@ -131,6 +135,8 @@ export default class D3DAutoLODMaster {
 			
 			autoLOD.setLevel(desiredLevel);
 		});
+		
+		instancesToUpdate.forEach(instanceId => _instancing.markAsNeedsUpdate(instanceId));
 		
 		_graphics.billboards = billboards;
 	}
