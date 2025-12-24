@@ -32,21 +32,16 @@ export default class D3DAutoLODMaster {
 			autoLOD.camera = camera;
 			
 			const camPos = camera.worldPosition;
-			const c = autoLOD.center;
-			const dx = c.x - camPos.x;
-			const dy = c.y - camPos.y;
-			const dz = c.z - camPos.z;
-			const distSq = dx*dx + dy*dy + dz*dz;
-			const maxDistSq = maxDistance * maxDistance;
+			const center = autoLOD.center;
 			
 			if(!autoLOD.lastDistanceCalculate || now - autoLOD.lastDistanceCalculate > 0.5) {
-				autoLOD.distanceFromCamera = distSq;
+				autoLOD.distanceFromCamera = center.distanceTo(camera.worldPosition);
 				autoLOD.lastDistanceCalculate = now;
 			}
 			
-			autoLOD.maxDistSq = maxDistSq;
+			const distance = autoLOD.distanceFromCamera;
 			
-			if(distSq > maxDistSq) {
+			if(distance > maxDistance) {
 				autoLOD.makeAllLevelsVisible(false);
 				autoLOD.d3dobject.__lodCulled = true;
 				autoLOD.currentLODLevel = -1;
@@ -122,14 +117,16 @@ export default class D3DAutoLODMaster {
 				autoLOD._instancedCulled = false;
 			}
 			
-			let desiredLevel = Math.floor(distSq / (maxDistSq / levels));
+			let desiredLevel = Math.floor(distance / (maxDistance / levels));
 			
-			if (desiredLevel < 0) 
+			if(desiredLevel < 0)
 				desiredLevel = 0;
 			else
-			if (desiredLevel >= levels) 
+			if(desiredLevel >= levels)
 				desiredLevel = levels - 1;
 				
+			autoLOD.desiredLevel = desiredLevel;
+			
 			if(autoLOD.currentLODLevel == desiredLevel) 
 				return;
 			

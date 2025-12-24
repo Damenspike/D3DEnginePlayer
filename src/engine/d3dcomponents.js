@@ -2032,7 +2032,7 @@ const D3DComponents = {
 		fields: {
 			'levels': {
 				label: 'Levels',
-				type: 'slider',
+				type: 'islider',
 				min: 1,
 				max: 4,
 				step: 1,
@@ -2040,7 +2040,7 @@ const D3DComponents = {
 			},
 			'simplification': {
 				label: 'Simplification',
-				type: 'slider',
+				type: 'islider',
 				min: 0.01,
 				max: 1,
 				step: 0.01,
@@ -2162,7 +2162,8 @@ const D3DComponents = {
 				label: 'Sun scale',
 				type: 'vector3',
 				def: {x: 1, y: 1, z: 1},
-				section: 'sun'
+				section: 'sun',
+				condition: c => c.properties.sunEnabled !== false
 			},
 			sunriseTexture: {
 				label: 'Sunrise sky',
@@ -2203,7 +2204,7 @@ const D3DComponents = {
 				label: 'Sunset tint',
 				type: 'color',
 				def: '0xFFC3A3',
-				condition: c => !!c.properties.sunriseTexture,
+				condition: c => !!c.properties.sunsetTexture,
 				section: 'sunset'
 			},
 			nightTexture: {
@@ -2354,7 +2355,8 @@ const D3DComponents = {
 			symbols: {
 				label: 'Symbols',
 				type: 'file[]',
-				format: 'symbol'
+				format: 'symbol',
+				def: []
 			}
 		},
 		manager: D3DStamperManager

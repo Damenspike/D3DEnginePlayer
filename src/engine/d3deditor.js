@@ -515,6 +515,7 @@ function startAnimationLoop() {
 		
 		if (_editor.fogEnabled !== _editor.__lastFogEnabled) {
 			_root.applyScene(_root.scene);
+			_editor.__lastFogEnabled = _editor.fogEnabled;
 		}
 		
 		if (_editor.focus != _root && !_editor.flatFocus) {

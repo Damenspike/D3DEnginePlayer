@@ -143,7 +143,7 @@ export default class StamperManager {
 	}
 
 	get symbols() {
-		return this.component.properties.symbols;
+		return this.component.properties.symbols || [];
 	}
 	set symbols(v) {
 		if(!Array.isArray(v))

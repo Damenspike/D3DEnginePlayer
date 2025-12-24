@@ -52,10 +52,12 @@ export default class D3DInstancing {
 		if(!instance) {
 			const geometry = submeshes[0].d3dobject.object3d.geometry;
 			const material = submeshes[0].d3dobject.object3d.material;
+			const mask = submeshes[0].d3dobject.object3d.layers.mask;
 			
 			instance = {
 				geometry,
 				material,
+				mask,
 				submeshes: [],
 				indexBySubmesh: new WeakMap(),
 				batches: []
@@ -88,6 +90,7 @@ export default class D3DInstancing {
 		};
 		
 		batch.instancedMesh.count = 0;
+		batch.instancedMesh.layers.mask = instance.mask;
 		scene.add(batch.instancedMesh);
 		
 		instance.batches.push(batch);

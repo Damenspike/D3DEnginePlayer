@@ -1304,23 +1304,29 @@ export default class D3DObject {
 	async applyScene(scene, overrideRoot, overrideZip) {
 		if(!this.object3d.isScene)
 			return;
+			
+		const defaultBg = new THREE.Color('#000000');
 		
 		try {
 			const bgType = scene.background?.type;
 			
 			if(bgType == 'none') {
-				this.object3d.background = new THREE.Color('#000000');
+				this.object3d.background = defaultBg;
 			}
 			if(bgType == 'color') {
 				this.object3d.background = new THREE.Color(scene.background.color || '#000000');
 			}else
 			if(bgType == 'texture') {
-				await applyTextureToSceneBackground(
-					overrideRoot ?? this.root,
-					overrideZip ?? this.zip,
-					this.object3d,
-					scene.background.textureAsset
-				)
+				if(!scene.background.textureAsset) {
+					this.object3d.background = defaultBg;
+				}else{
+					await applyTextureToSceneBackground(
+						overrideRoot ?? this.root,
+						overrideZip ?? this.zip,
+						this.object3d,
+						scene.background.textureAsset
+					)
+				}
 			}
 		}catch(e) {
 			console.error('Apply scene background error', e);

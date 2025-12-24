@@ -248,7 +248,8 @@ function startAnimationLoop() {
 			
 			if(_physics.ready) {
 				const didSteps = _physics.step(_time.delta);
-				
+				_physics.didSteps = didSteps;
+				_physics.deltaTime = _physics.fixedDt * _physics.didSteps;
 				if(didSteps > 0) {
 					updateObjects([
 						'__onInternalPhysicsUpdate',

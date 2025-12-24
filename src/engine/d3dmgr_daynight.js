@@ -320,14 +320,19 @@ export default class DayNightManager {
 			const material = new THREE.MeshBasicMaterial({
 				map: texture,
 				side: THREE.BackSide,
-				depthWrite: false,
 				fog: false,
+				
 				transparent: true,
-				opacity: 0
+				opacity: 0,
+				
+				depthWrite: false,
+				depthTest: true
 			});
 			
 			const mesh = new THREE.Mesh(geometry, material);
-			mesh.renderOrder = -1000;
+			mesh.layers.set(2);
+			mesh.frustumCulled = false;
+			mesh.renderOrder = -9999999999;
 			
 			return mesh;
 		};
@@ -439,8 +444,8 @@ export default class DayNightManager {
 		const dirObj = this.dirLight;
 		const ambObj = this.ambLight;
 		
-		const dir = dirObj.getComponent('DirectionalLight');
-		const amb = ambObj.getComponent('AmbientLight');
+		const dir = dirObj?.getComponent('DirectionalLight');
+		const amb = ambObj?.getComponent('AmbientLight');
 		
 		if(!dir && !amb)
 			return;
@@ -465,11 +470,11 @@ export default class DayNightManager {
 		
 		const peak = f * f; // boosts only midday
 		
-		if(dir)
+		if(dir) {
 			dir.intensity =
 				0.1 +
 				(1.9 * f + 0.8 * peak) * this.lightMultiplierDir;
-		
+		}
 		if(amb) {
 			const ambientNight = 0.02;
 			const ambientDay   = 0.8;

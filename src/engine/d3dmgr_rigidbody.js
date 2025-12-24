@@ -33,7 +33,10 @@ export default class RigidbodyManager {
 		this._helperRenderOrder = 10_000_000; 
 		
 		if(this.kind == 'fixed' && window._player)
-			this.__onInternalEnterFrame = null; // save performance
+			this.__onInternalEnterFrame = null;
+		
+		if(this.kind == 'fixed' || window._editor)
+			this.__onInternalPhysicsUpdate = null;
 	}
 
 	/* =========================================================
@@ -89,34 +92,38 @@ export default class RigidbodyManager {
 	}
 	
 	__onInternalEnterFrame() {
-		if(window._editor) {
-			// Only draw when selected
-			const selected = this._isSelected();
-			if (!selected) {
-				if (this.__rbHelper) this.__rbHelper.visible = false;
-				return;
-			}
-			
-			// --- FAST PATH: fixed + trimesh → skip expensive gizmo work ---
-			const props     = this.component.properties || {};
-			const kind      = props.kind  ?? 'dynamic';
-			const shapeType = props.shape ?? 'trimesh';
-			
-			// "Fixed mesh" mode: use the full mesh as collider, no gizmo
-			if (kind === 'fixed' && shapeType === 'trimesh') {
-				// make sure helper is removed/hidden, but don't touch geometry
-				this._clearHelperGroup();
-				return;
-			}
-			// --------------------------------------------------------------
-			
-			const cur = this._readComponent();
-			this._updateGizmo(cur.shape, cur.shapeType, cur.kind);
-		}else{
-			if(this.kind !== 'fixed')
-				this._sampleMotion();
+		if(!window._editor)
+			return;
+		
+		// Only draw when selected
+		const selected = this._isSelected();
+		if (!selected) {
+			if (this.__rbHelper) this.__rbHelper.visible = false;
+			return;
 		}
+		
+		// --- FAST PATH: fixed + trimesh → skip expensive gizmo work ---
+		const props     = this.component.properties || {};
+		const kind      = props.kind  ?? 'dynamic';
+		const shapeType = props.shape ?? 'trimesh';
+		
+		// "Fixed mesh" mode: use the full mesh as collider, no gizmo
+		if (kind === 'fixed' && shapeType === 'trimesh') {
+			// make sure helper is removed/hidden, but don't touch geometry
+			this._clearHelperGroup();
+			return;
+		}
+		// --------------------------------------------------------------
+		
+		const cur = this._readComponent();
+		this._updateGizmo(cur.shape, cur.shapeType, cur.kind);
 	};
+	
+	__onInternalPhysicsUpdate() {
+		const dt = _physics.deltaTime;
+		if(this.kind !== 'fixed')
+			this._sampleMotion(dt);
+	}
 
 	/* =========================================================
 	 *  PROPERTIES (schema-backed passthroughs)
@@ -1171,10 +1178,9 @@ export default class RigidbodyManager {
 			rot: this.d3dobject.worldQuaternion.clone()
 		};
 	}
-	_sampleMotion() {
+	_sampleMotion(dt) {
 		const now = this._takeSnapshot();
 		const then = this._lastSnapshot || now;
-		const dt = _time.delta; //_physics.fixedDt;
 		
 		if(dt <= 0) {
 			this._lastSnapshot = now;

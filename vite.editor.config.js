@@ -30,6 +30,11 @@ export default defineConfig({
 				graphicStraighten: resolve(__dirname, 'src/renderer/editor/tool-windows/graphic-straighten.html'),
 				graphicSimplify: resolve(__dirname, 'src/renderer/editor/tool-windows/graphic-simplify.html'),
 			},
+			output: {
+				entryFileNames: 'd3deditor.js',
+				chunkFileNames: 'chunks/[name].js',
+				assetFileNames: 'assets/[name].[ext]'
+			},
 			external: ['electron', 'fs', 'path', 'vm']
 		}
 	}

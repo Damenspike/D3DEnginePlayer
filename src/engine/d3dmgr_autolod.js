@@ -7,6 +7,7 @@ import {
 import {
 	loadTexture
 } from './d2dutility.js';
+import D3DMath from './d3dmath.js';
 
 const minimumVertexCount = 20;
 
@@ -192,7 +193,7 @@ export default class AutoLODManager {
 			}
 			
 			for (let i = 1; i < levels; i++) {
-				const removeVerts = Math.floor((vertexCount / levels) * i * simplification);
+				const removeVerts = Math.floor(vertexCount * (simplification * (i / levels)));
 				const meshSig = getMeshSignature(mesh);
 				const sig = `${meshSig}_${removeVerts}`;
 				
