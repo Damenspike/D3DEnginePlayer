@@ -43,7 +43,7 @@ export default class RigidbodyManager {
 	 *  LIFECYCLE
 	 * ======================================================= */
 
-	updateComponent() {
+	updateComponent(force = false) {
 		if (!this.component.enabled) {
 			if (this.component.bodySetup) {
 				this._teardownBody();
@@ -73,18 +73,23 @@ export default class RigidbodyManager {
 		// Helpers are strictly editor-only
 		this._clearHelperGroup();
 		
-		if (!this.component.bodySetup) {
+		if(!this.component.bodySetup) {
 			this._setupBody(next);
+			this._applyConstraints(this.component._rb, next);
 			this.component.bodySetup = true;
 			this.component._cache = next;
-		} else if (this._changed(this.component._cache, next)) {
+		}else 
+		if(force || this._changed(this.component._cache, next)) {
 			this._teardownBody();
 			this._setupBody(next);
+			this._applyConstraints(this.component._rb, next);
 			this.component._cache = next;
 		}
 	}
 
 	dispose() {
+		this.d3dobject.removeEventListener('onChildMeshReady', this.onChildMeshReady);
+		
 		this._teardownBody();
 		this.component.bodySetup = false;
 		this.component._cache = null;
@@ -188,6 +193,37 @@ export default class RigidbodyManager {
 	set angularVelocity(v)          { this.setAngularVelocity(v?.x || 0, v?.y || 0, v?.z || 0); }
 	
 	get speed()              { return this.smoothSpeed; }
+	
+	get constrainAxes() {
+		return !!this.component.properties.constrainAxes;
+	}
+	set constrainAxes(v) {
+		this.component.properties.constrainAxes = !!v;
+	}
+	
+	get constraintPos() {
+		return this.component.properties?.constraintPos || { x: 1, y: 1, z: 1 };
+	}
+	set constraintPos(v) {
+		const p = v || {};
+		this.component.properties.constraintPos = {
+			x: Number(p.x) || 0,
+			y: Number(p.y) || 0,
+			z: Number(p.z) || 0
+		};
+	}
+	
+	get constraintRot() {
+		return this.component.properties?.constraintRot || { x: 1, y: 1, z: 1 };
+	}
+	set constraintRot(v) {
+		const r = v || {};
+		this.component.properties.constraintRot = {
+			x: Number(r.x) || 0,
+			y: Number(r.y) || 0,
+			z: Number(r.z) || 0
+		};
+	}
 
 	/* =========================================================
 	 *  TRANSFORMS
@@ -325,6 +361,9 @@ export default class RigidbodyManager {
 	 * ======================================================= */
 
 	_setupBody(opts) {
+		if(!opts.shape)
+			return;
+		
 		const rb = _physics.addRigidBody(this.d3dobject, {
 			kind:        opts.kind,
 			shape:       opts.shape,
@@ -352,6 +391,8 @@ export default class RigidbodyManager {
 		rb.setLinearDamping(Math.max(0, Number(opts.drag) || 0));
 		rb.setAngularDamping(Math.max(0, Number(opts.angularDrag) || 0));
 		this.component._rb = rb;
+		
+		this._applyConstraints(rb, opts);
 	
 		// seed sampler from current RB pose
 		const p = rb.translation();
@@ -559,6 +600,9 @@ export default class RigidbodyManager {
 		const drag        = Math.max(0, Number(props.drag ?? 0));
 		const angularDrag = Math.max(0, Number(props.angularDrag ?? 0));
 		const auto        = !!props.autoCalculateShapes;
+		const constrainAxes = !!props.constrainAxes;
+		const constraintPos = props.constraintPos || { x: 1, y: 1, z: 1 };
+		const constraintRot = props.constraintRot || { x: 1, y: 1, z: 1 };
 
 		if (kind !== 'fixed' && shapeType === 'trimesh') {
 			// strict: throw instead of silent swap? We'll choose strict-but-helpful.
@@ -582,12 +626,40 @@ export default class RigidbodyManager {
 		try {
 			shape = this._buildShapeFromProps(this.d3dobject, shapeType, dims);
 		}catch(e) {
-			console.warn(e, 'reverting to box');
-			this.shape = 'box';
-			shape = this._buildShapeFromProps(this.d3dobject, 'box', dims);
+			console.warn(e);
+			//this.shape = 'box';
+			//shape = this._buildShapeFromProps(this.d3dobject, 'box', dims);
 		}
 
-		return { kind, shapeType, shape, friction, restitution, density, drag, angularDrag };
+		return {
+			kind, shapeType, shape,
+			friction, restitution, density, drag, angularDrag,
+			constrainAxes, constraintPos, constraintRot
+		};
+	}
+	
+	_applyConstraints(rb, opts) {
+		if(!rb || !opts)
+			return;
+		
+		// don't apply to fixed bodies
+		if(opts.kind === 'fixed')
+			return;
+	
+		if(!opts.constrainAxes) {
+			if(rb.setEnabledTranslations) rb.setEnabledTranslations(true, true, true, true);
+			if(rb.setEnabledRotations)    rb.setEnabledRotations(true, true, true, true);
+			return;
+		}
+	
+		const p = opts.constraintPos || { x: 1, y: 1, z: 1 };
+		const r = opts.constraintRot || { x: 1, y: 1, z: 1 };
+	
+		const px = !!p.x, py = !!p.y, pz = !!p.z;
+		const rx = !!r.x, ry = !!r.y, rz = !!r.z;
+	
+		if(rb.setEnabledTranslations) rb.setEnabledTranslations(px, py, pz, true);
+		if(rb.setEnabledRotations)    rb.setEnabledRotations(rx, ry, rz, true);
 	}
 
 	_autoPopulateDimensions(d3dobject, shapeType) {
@@ -596,7 +668,7 @@ export default class RigidbodyManager {
 
 		switch (shapeType) {
 			case 'box': {
-				const bb   = this._resolveGeometry(o, { merge: true, type: 'box' });
+				const bb   = this._resolveGeometry(d3dobject, { merge: true, type: 'box' });
 				if(!bb) break; // No geometry found
 				
 				const size = { x: (bb.max.x - bb.min.x), y: (bb.max.y - bb.min.y), z: (bb.max.z - bb.min.z) };
@@ -606,7 +678,7 @@ export default class RigidbodyManager {
 				break;
 			}
 			case 'sphere': {
-				const sp = this._resolveGeometry(o, { merge: true, type: 'sphere' });
+				const sp = this._resolveGeometry(d3dobject, { merge: true, type: 'sphere' });
 				if(!sp) break; // no geometry found
 				
 				props.sphereRadius = sp.radius;
@@ -614,7 +686,7 @@ export default class RigidbodyManager {
 				break;
 			}
 			case 'capsule': {
-				const bb    = this._resolveGeometry(o, { merge: true, type: 'box' });
+				const bb    = this._resolveGeometry(d3dobject, { merge: true, type: 'box' });
 				if(!bb) break; // No geometry found
 				
 				const sx    = (bb.max.x - bb.min.x);
@@ -637,8 +709,8 @@ export default class RigidbodyManager {
 		}
 	}
 
-	_buildShapeFromProps(obj, shapeType, dims) {
-		const o = obj.object3d;
+	_buildShapeFromProps(d3dobject, shapeType, dims) {
+		const o = d3dobject.object3d;
 		const scale = new THREE.Vector3(1, 1, 1);
 		o.updateWorldMatrix(true, true);
 		o.getWorldScale(scale);
@@ -655,7 +727,7 @@ export default class RigidbodyManager {
 			case 'box': {
 				let bs = dims.boxSize;
 				if (!bs || !Number.isFinite(bs.x) || !Number.isFinite(bs.y) || !Number.isFinite(bs.z)) {
-					const bb = this._resolveGeometry(o, { merge: true, type: 'box' });
+					const bb = this._resolveGeometry(d3dobject, { merge: true, type: 'box' });
 					bs = { x: (bb.max.x - bb.min.x), y: (bb.max.y - bb.min.y), z: (bb.max.z - bb.min.z) };
 				}
 				const hx = 0.5 * bs.x * sx;
@@ -667,7 +739,7 @@ export default class RigidbodyManager {
 			case 'sphere': {
 				let r = Number.isFinite(dims.sphereRadius) ? dims.sphereRadius : undefined;
 				if (r == null) {
-					const sphere = this._resolveGeometry(o, { merge: true, type: 'sphere' });
+					const sphere = this._resolveGeometry(d3dobject, { merge: true, type: 'sphere' });
 					r = sphere.radius;
 				}
 				const radius = r * Math.max(sx, sy, sz);
@@ -679,7 +751,7 @@ export default class RigidbodyManager {
 				let r = Number.isFinite(dims.capsuleRadius) ? dims.capsuleRadius : undefined;
 
 				if (h == null || r == null) {
-					const bb = this._resolveGeometry(o, { merge: true, type: 'box' });
+					const bb = this._resolveGeometry(d3dobject, { merge: true, type: 'box' });
 					const sx0 = (bb.max.x - bb.min.x);
 					const sy0 = (bb.max.y - bb.min.y);
 					const sz0 = (bb.max.z - bb.min.z);
@@ -698,7 +770,10 @@ export default class RigidbodyManager {
 			}
 
 			case 'convex': {
-				const geom = this._resolveGeometry(o, { merge: true, type: 'convex' }).clone();
+				const geom = this._resolveGeometry(d3dobject, { merge: true, type: 'convex' })?.clone();
+				if(!geom)
+					throw new Error('No convex merged geometry resolved for ' + d3dobject.name);
+				
 				geom.applyMatrix4(new THREE.Matrix4().makeScale(sx, sy, sz));
 				const verts = this._getPositionFloat32(geom);
 				return { type: 'convex', vertices: verts, space: 'local' };
@@ -706,9 +781,12 @@ export default class RigidbodyManager {
 
 			case 'trimesh':
 			default: {
-				const src = this._resolveGeometry(o, { merge: true, type: 'trimesh' }).clone();
-				src.applyMatrix4(new THREE.Matrix4().makeScale(sx, sy, sz));
-				const { vertices, indices } = this._getTriMeshBuffers(src);
+				const geom = this._resolveGeometry(d3dobject, { merge: true, type: 'trimesh' })?.clone();
+				if(!geom)
+					throw new Error('No trimesh merged geometry resolved for ' + d3dobject.name);
+				
+				geom.applyMatrix4(new THREE.Matrix4().makeScale(sx, sy, sz));
+				const { vertices, indices } = this._getTriMeshBuffers(geom);
 				return { type: 'trimesh', vertices, indices, space: 'local' };
 			}
 		}
@@ -718,16 +796,23 @@ export default class RigidbodyManager {
 	 *  GEOMETRY RESOLUTION
 	 * ======================================================= */
 
-	_resolveGeometry(obj3d, options = {}) {
+	_resolveGeometry(d3dobj, options = {}) {
 		const { merge = false, type } = options;
-
+		const obj3d = d3dobj.object3d;
+		const geometry = d3dobj.__lod0geom || obj3d.geometry;
+		
 		if (!merge) {
-			if (obj3d.geometry && obj3d.isMesh !== false) return obj3d.geometry;
+			if (geometry && obj3d.isMesh !== false) 
+				return geometry;
+			
 			let geom = null;
-			obj3d.traverse(n => { if (!geom && n.isMesh && n.geometry) geom = n.geometry; });
+			obj3d.traverse(n => { 
+				if (!geom && n.isMesh && n.geometry) 
+					geom = n.geometry; 
+			});
 			
 			if (!geom) {
-				console.error(`[RigidbodyManager] No geometry found for ${obj3d.name}`);
+				console.error(`[RigidbodyManager] No geometry found for ${d3dobj.name}`);
 				return;
 			}
 			
@@ -735,12 +820,21 @@ export default class RigidbodyManager {
 		}
 
 		const meshes = [];
+		
 		obj3d.traverse((node) => {
-			if (node.isMesh && node.geometry) meshes.push(node);
+			if (node.isMesh && node.geometry) 
+				meshes.push(node);
 		});
+		
 		if (meshes.length === 0) {
-			console.error(`[RigidbodyManager] No geometries to merge for ${obj3d.name}`);
+			console.error(`[RigidbodyManager] No geometries to merge for ${d3dobj.name}`);
+			d3dobj.__rbFailed = true;
 			return;
+		}
+		
+		if(d3dobj.__rbFailed) {
+			console.log('RB failed but merge is now working for ', d3dobj.name);
+			delete d3dobj.__rbFailed;
 		}
 
 		const parentInvMatrix = new THREE.Matrix4();
@@ -787,7 +881,7 @@ export default class RigidbodyManager {
 		for (const mesh of meshes) {
 			mesh.updateMatrixWorld(true);
 			const relative = new THREE.Matrix4().multiplyMatrices(parentInvMatrix, mesh.matrixWorld);
-			const geom = mesh.geometry.clone();
+			const geom = (mesh.userData?.d3dobject?.__lod0geom || mesh.geometry).clone();
 			geom.applyMatrix4(relative);
 			geometries.push(geom);
 		}
@@ -1245,6 +1339,13 @@ export default class RigidbodyManager {
 			a.density !== b.density ||
 			a.drag !== b.drag ||
 			a.angularDrag !== b.angularDrag ||
+			a.constrainAxes !== b.constrainAxes ||
+			a.constraintPos?.x !== b.constraintPos?.x ||
+			a.constraintPos?.y !== b.constraintPos?.y ||
+			a.constraintPos?.z !== b.constraintPos?.z ||
+			a.constraintRot?.x !== b.constraintRot?.x ||
+			a.constraintRot?.y !== b.constraintRot?.y ||
+			a.constraintRot?.z !== b.constraintRot?.z ||
 			this._shapeChanged(a.shape, b.shape)
 		);
 	}

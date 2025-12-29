@@ -32,6 +32,7 @@ import { fileNameNoExt } from './d3dutility.js';
 const D3DComponents = {
 	Mesh: {
 		name: 'Mesh',
+		priority: -1,
 		fields: {
 			'mesh': {
 				label: 'Model',
@@ -56,6 +57,7 @@ const D3DComponents = {
 	},
 	SubMesh: {
 		name: 'Sub Mesh',
+		priority: -1,
 		fields: {
 			'materials': { 
 				label: 'Materials', 
@@ -75,6 +77,11 @@ const D3DComponents = {
 			},
 			'receiveShadow': {
 				label: 'Receive shadows',
+				type: 'boolean',
+				def: true
+			},
+			'ambientOcclusion': {
+				label: 'Ambient occlusion',
 				type: 'boolean',
 				def: true
 			},
@@ -703,6 +710,27 @@ const D3DComponents = {
 				max: Infinity,
 				def: 1,
 				condition: c => c.properties.kind !== 'fixed'
+			},
+			'constrainAxes': {
+				label: 'Contrain axes',
+				type: 'boolean',
+				section: 'constrain',
+				def: false,
+				condition: c => c.properties.kind !== 'fixed'
+			},
+			'constraintPos': {
+				label: 'Position',
+				type: 'vector3bool',
+				section: 'constrain',
+				def: {x: 1, y: 1, z: 1},
+				condition: c => !!c.properties.constrainAxes && c.properties.kind !== 'fixed'
+			},
+			'constraintRot': {
+				label: 'Rotation',
+				type: 'vector3bool',
+				section: 'constrain',
+				def: {x: 1, y: 1, z: 1},
+				condition: c => !!c.properties.constrainAxes && c.properties.kind !== 'fixed'
 			}
 		},
 		manager: D3DRigidbodyManager
@@ -1043,7 +1071,8 @@ const D3DComponents = {
 			},
 			'fontFamily': {
 				label: 'Font',
-				type: 'select',
+				type: 'custom',
+				customInspector: 'textFont',
 				options: WebSafeFonts.map(fontName => ({
 					name: fontName,
 					label: fontName
@@ -1612,6 +1641,12 @@ const D3DComponents = {
 				type: 'boolean',
 				def: true
 			},
+			useDayNight: {
+				section: 'Renderer',
+				label: 'Use day/night cycle lighting',
+				type: 'boolean',
+				def: false
+			},
 		
 			// ==== Over Lifetime ====
 			
@@ -2110,6 +2145,19 @@ const D3DComponents = {
 				section: 'billboard',
 				def: false,
 				condition: c => c.properties.billboardWhenCulled == true
+			},
+			'cullAO': {
+				label: 'Ambient occlusion culling',
+				type: 'boolean',
+				section: 'ao',
+				def: false
+			},
+			'aoDistance': {
+				label: 'Distance',
+				type: 'number',
+				section: 'ao',
+				def: 300,
+				condition: c => c.properties.cullAO == true
 			}
 		},
 		manager: D3DAutoLODManager

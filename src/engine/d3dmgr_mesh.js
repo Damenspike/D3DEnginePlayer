@@ -9,6 +9,10 @@ export default class MeshManager {
 
 		this.zip = this.d3dobject.root.zip;
 		this.isSubMesh = (this.component.type === 'SubMesh');
+		this.aoEnabled = true;
+		
+		if(!_root.__texShared)
+			_root.__texShared = new Map();
 	}
 
 	// =====================================================
@@ -43,6 +47,14 @@ export default class MeshManager {
 	set receiveShadow(v) {
 		this.component.properties.receiveShadow = !!v;
 		this._applyShadows();
+	}
+	
+	get ambientOcclusion() {
+		return !!this.component.properties.ambientOcclusion;
+	}
+	set ambientOcclusion(v) {
+		this.component.properties.ambientOcclusion = !!v;
+		this._applyAmbientOcclusion();
 	}
 	
 	get morphTargets() {
@@ -150,64 +162,106 @@ export default class MeshManager {
 		return zf ? await zf.async('string') : null;
 	}
 
-	async _loadTexture(uuid) {
-		if (!uuid) return null;
+	async _loadTextureShared(uuid, isColor = false) {
+		if(!uuid)
+			return null;
+	
+		const shared = _root.__texShared;
+		let entry = shared.get(uuid);
+		if(entry) {
+			entry.owners.add(this.d3dobject);
+			return entry.tex;
+		}
+	
 		const rel = this.d3dobject.resolvePathNoAssets(uuid);
-		if (!rel) return null;
+		if(!rel)
+			return null;
+	
 		const zf = this.zip.file(this._norm('assets/' + rel));
-		if (!zf) return null;
-		const buf = await zf.async('arraybuffer');
+		if(!zf)
+			return null;
+	
+		const buf  = await zf.async('arraybuffer');
 		const blob = new Blob([buf], { type: this._mimeFromExt(rel) });
 		const bmp  = await createImageBitmap(blob);
-		const tex  = new THREE.Texture(bmp);
+	
+		const tex = new THREE.Texture(bmp);
+		tex.flipY = false;
+	
+		if(isColor) {
+			if('colorSpace' in tex) tex.colorSpace = THREE.SRGBColorSpace;
+			else tex.encoding = THREE.sRGBEncoding;
+		}
+	
+		tex.wrapS = THREE.RepeatWrapping;
+		tex.wrapT = THREE.RepeatWrapping;
 		tex.needsUpdate = true;
+	
+		if(!tex.userData) tex.userData = {};
+		tex.userData._assetUUID = uuid;
+	
+		entry = {
+			tex,
+			owners: new Set([this.d3dobject])
+		};
+		
+		shared.set(uuid, entry);
 		return tex;
 	}
-
 	async _setMapRel(mat, key, uuid, isColor = false) {
-		if (!(key in mat)) return;
-
-		if (!uuid) {
-			if (mat[key]) {
-				try { mat[key].dispose?.(); } catch {}
+		if(!(key in mat))
+			return;
+			
+		// remove previous ownership
+		if(mat[key]?.userData?._assetUUID) {
+			const old = _root.__texShared.get(mat[key].userData._assetUUID);
+			if(old)
+				old.owners.delete(this.d3dobject);
+		}
+	
+		if(!uuid) {
+			if(mat[key]) {
 				mat[key] = null;
 				mat.needsUpdate = true;
 			}
 			return;
 		}
-
-		const tex = await this._loadTexture(uuid);
-		if (!tex) return;
-
-		tex.flipY = false;
-		if (isColor) {
-			if ('colorSpace' in tex) tex.colorSpace = THREE.SRGBColorSpace;
-			else tex.encoding = THREE.sRGBEncoding;
-		}
-		tex.wrapS = THREE.RepeatWrapping;
-		tex.wrapT = THREE.RepeatWrapping;
+	
+		// already correct
+		if(mat[key]?.userData?._assetUUID === uuid)
+			return;
+	
+		const tex = await this._loadTextureShared(uuid, isColor);
+		if(!tex)
+			return;
+	
 		mat[key] = tex;
 		mat.needsUpdate = true;
 	}
 
 	_stripIncompatible(params, type) {
 		const {
+			// your custom / non-three keys:
+			renderMode,
+		
 			maps, doubleSided,
 			mapOffset, mapRepeat,
 			normalMapOffset, normalMapRepeat,
+			emissiveMapOffset, emissiveMapRepeat,
 			map, normalMap, roughnessMap, metalnessMap, emissiveMap, aoMap, alphaMap,
 			...rest
 		} = params;
-
+		
 		delete rest.mapOffset; delete rest.mapRepeat;
 		delete rest.normalMapOffset; delete rest.normalMapRepeat;
 		delete rest.doubleSided; delete rest.maps;
 		delete rest.map; delete rest.normalMap;
 		delete rest.roughnessMap; delete rest.metalnessMap;
 		delete rest.emissiveMap; delete rest.aoMap; delete rest.alphaMap;
-
+		delete rest.emissiveMapOffset; delete rest.emissiveMapRepeat;
+	
 		if (doubleSided === true) rest.side = THREE.DoubleSide;
-
+	
 		if (type === 'MeshBasicMaterial') {
 			delete rest.metalness;
 			delete rest.roughness;
@@ -215,7 +269,7 @@ export default class MeshManager {
 			delete rest.emissiveIntensity;
 			delete rest.envMapIntensity;
 		}
-
+	
 		const mergedMaps = {
 			...(maps || {}),
 			...(map ? { map } : null),
@@ -226,10 +280,16 @@ export default class MeshManager {
 			...(aoMap ? { aoMap } : null),
 			...(alphaMap ? { alphaMap } : null),
 		};
-
+	
 		return {
 			ctorParams: rest,
-			pulled: { maps: mergedMaps, mapOffset, mapRepeat, normalMapOffset, normalMapRepeat }
+			pulled: {
+				maps: mergedMaps,
+				mapOffset, mapRepeat,
+				normalMapOffset, normalMapRepeat,
+				emissiveMapOffset, emissiveMapRepeat,
+				renderMode
+			}
 		};
 	}
 
@@ -392,6 +452,8 @@ export default class MeshManager {
 			const mapRepeat        = params.mapRepeat;
 			const normalMapOffset  = params.normalMapOffset;
 			const normalMapRepeat  = params.normalMapRepeat;
+			const emissiveMapOffset = params.emissiveMapOffset;
+			const emissiveMapRepeat = params.emissiveMapRepeat;
 	
 			if (m.map) {
 				if (Array.isArray(mapOffset)) m.map.offset.set(mapOffset[0] || 0, mapOffset[1] || 0);
@@ -403,6 +465,12 @@ export default class MeshManager {
 				if (Array.isArray(normalMapOffset)) m.normalMap.offset.set(normalMapOffset[0] || 0, normalMapOffset[1] || 0);
 				if (Array.isArray(normalMapRepeat)) m.normalMap.repeat.set(normalMapRepeat[0] || 1, normalMapRepeat[1] || 1);
 				m.normalMap.needsUpdate = true;
+			}
+			
+			if (m.emissiveMap) {
+				if (Array.isArray(emissiveMapOffset)) m.emissiveMap.offset.set(emissiveMapOffset[0] || 0, emissiveMapOffset[1] || 0);
+				if (Array.isArray(emissiveMapRepeat)) m.emissiveMap.repeat.set(emissiveMapRepeat[0] || 1, emissiveMapRepeat[1] || 1);
+				m.emissiveMap.needsUpdate = true;
 			}
 			
 			this._applyRenderMode(m, params);
@@ -437,6 +505,8 @@ export default class MeshManager {
 		const mapRepeat        = pulled.mapRepeat;
 		const normalMapOffset  = pulled.normalMapOffset;
 		const normalMapRepeat  = pulled.normalMapRepeat;
+		const emissiveMapOffset = pulled.emissiveMapOffset;
+		const emissiveMapRepeat = pulled.emissiveMapRepeat;
 	
 		// Load textures
 		await this._setMapRel(m, 'map',          maps.map,         true);
@@ -459,6 +529,13 @@ export default class MeshManager {
 			if (Array.isArray(normalMapOffset)) m.normalMap.offset.set(normalMapOffset[0] || 0, normalMapOffset[1] || 0);
 			if (Array.isArray(normalMapRepeat)) m.normalMap.repeat.set(normalMapRepeat[0] || 1, normalMapRepeat[1] || 1);
 			m.normalMap.needsUpdate = true;
+		}
+		
+		// Apply UV offset / scale for emissive map
+		if (m.emissiveMap) {
+			if (Array.isArray(emissiveMapOffset)) m.emissiveMap.offset.set(emissiveMapOffset[0] || 0, emissiveMapOffset[1] || 0);
+			if (Array.isArray(emissiveMapRepeat)) m.emissiveMap.repeat.set(emissiveMapRepeat[0] || 1, emissiveMapRepeat[1] || 1);
+			m.emissiveMap.needsUpdate = true;
 		}
 	
 		m.needsUpdate = true;
@@ -601,6 +678,19 @@ export default class MeshManager {
 			}
 		});
 	}
+	_applyAmbientOcclusion() {
+		const ao = this.ambientOcclusion;
+		if(!ao && this.aoEnabled) {
+			this.d3dobject.enableLayer(2);
+			this.d3dobject.disableLayer(0);
+			this.aoEnabled = false;
+		}else
+		if(ao && !this.aoEnabled) {
+			this.d3dobject.enableLayer(0);
+			this.d3dobject.disableLayer(2);
+			this.aoEnabled = true;
+		}
+	}
 	
 	_applyMorphTargets() {
 		const root = this.d3dobject.modelScene || this.d3dobject.object3d;
@@ -640,6 +730,7 @@ export default class MeshManager {
 			const uuids = this.component.properties.materials;
 			await this._applyMaterialsToThreeMesh(mesh, uuids);
 			this._applyShadows();
+			this._applyAmbientOcclusion();
 			this.d3dobject.updateVisibility(true);
 			
 			// Instancing updates
@@ -790,6 +881,7 @@ export default class MeshManager {
 
 		// ---------------- Apply stuff ----------------
 		this._applyShadows();
+		this._applyAmbientOcclusion();
 		this._applyMorphTargets();
 		
 		this.d3dobject.onMeshReady?.();

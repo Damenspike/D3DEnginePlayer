@@ -960,13 +960,40 @@ export default class D2DRenderer {
 		const buildFont = () => `${fontStyle} ${fontVariant} ${fontWeight} ${fontSize}px ${fontFamily}`;
 		const measure   = (s) => ctx.measureText(s);
 	
+		const graphemes = (s) => {
+			if (Intl?.Segmenter) {
+				const seg = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+				return Array.from(seg.segment(s), x => x.segment);
+			}
+			return Array.from(s); // fallback (still better than s[i])
+		};
 		const lineWidthAdv = (s) => {
 			if (!s) return 0;
 			if (!letterSpacing) return measure(s).width;
+		
+			const parts = graphemes(s);
 			let w = 0;
-			for (let i = 0; i < s.length; i++) w += measure(s[i]).width;
-			if (s.length > 1) w += letterSpacing * (s.length - 1);
+			for (let i = 0; i < parts.length; i++)
+				w += measure(parts[i]).width;
+		
+			if (parts.length > 1)
+				w += letterSpacing * (parts.length - 1);
+		
 			return w;
+		};
+		const drawSpaced = (method, s, x, y) => {
+			if (!letterSpacing) {
+				ctx[method](s, x, y);
+				return;
+			}
+		
+			const parts = graphemes(s);
+			let acc = 0;
+			for (let i = 0; i < parts.length; i++) {
+				const g = parts[i];
+				ctx[method](g, x + acc, y);
+				acc += measure(g).width + letterSpacing;
+			}
 		};
 	
 		const wrapLine = (raw, contentW) => {
@@ -1028,19 +1055,6 @@ export default class D2DRenderer {
 	
 			pushCur(); // push even empty line segments
 			return out;
-		};
-	
-		const drawSpaced = (method, s, x, y) => {
-			if (!letterSpacing) {
-				ctx[method](s, x, y);
-				return;
-			}
-			let acc = 0;
-			for (let i = 0; i < s.length; i++) {
-				const ch = s[i];
-				ctx[method](ch, x + acc, y);
-				acc += measure(ch).width + letterSpacing;
-			}
 		};
 	
 		// ---------- paint setup ----------

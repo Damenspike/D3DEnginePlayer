@@ -16,5 +16,8 @@ export const WebSafeFonts = [
 	'Georgia',
 
 	// Monospace
-	'Courier New'
+	'Courier New',
+	'sans-serif',
+	'serif',
+	'system-ui'
 ];

@@ -76,6 +76,19 @@ function sampleStops(stops, t) {
 	return { r:lerp(A.c.r,B.c.r,u), g:lerp(A.c.g,B.c.g,u), b:lerp(A.c.b,B.c.b,u), a:lerp(A.c.a,B.c.a,u) };
 }
 
+const smoothstep = (a, b, x) => {
+	x = clamp01((x - a) / (b - a));
+	return x * x * (3 - 2 * x);
+};
+
+function hourToEnv(dayNightCycle) {
+	const peak = 1;
+	const a = dayNightCycle.ambientLightIntensity / peak;
+	
+	const minNight = 0.015;
+	return minNight + (1 - minNight) * clamp01(a);
+}
+
 // ---------- manager ----------
 export default class D3DParticleSystemManager {
 	_texLoadToken = 0;
@@ -155,6 +168,7 @@ export default class D3DParticleSystemManager {
 	get startSize(){ return this.props.startSize; }         set startSize(v){ this.props.startSize = +v || 0.08; }
 	get endSize(){ return this.props.endSize; }             set endSize(v){ this.props.endSize = +v || 0; }
 	get sizeAttenuation(){ return this.props.sizeAttenuation; } set sizeAttenuation(v){ this.props.sizeAttenuation = !!v; }
+	get useDayNight(){ return this.props.useDayNight; } 	set useDayNight(v){ this.props.useDayNight = !!v; }
 	get simulationSpace(){ return this.props.simulationSpace; } set simulationSpace(v){ this.props.simulationSpace = v; }
 	get looping(){ return this.props.looping; }             set looping(v){ this.props.looping = !!v; }
 	get playOnAwake(){ return this.props.playOnAwake; }     set playOnAwake(v){ this.props.playOnAwake = !!v; }
@@ -198,9 +212,14 @@ export default class D3DParticleSystemManager {
 	set startRotationRandomMaxDeg(v){ this.props.startRotationRandomMaxDeg = +v || 0; }
 
 	get color(){ return this.props.color; }                 set color(v){ this.props.color = v; }
+	get isPlaying() { return !this._isPaused; }
+	
 
 	// editor signal
 	async updateComponent() {
+		if(!this.component.enabled)
+			return;
+		
 		// capacity
 		const targetMax = Math.max(1, this.props.maxParticles|0);
 		if (targetMax !== this._max) this._rebuild();
@@ -219,7 +238,7 @@ export default class D3DParticleSystemManager {
 		const textureChanged = (this._lastTextureUUID !== (this.props.texture || ''));
 		this._lastTextureUUID = (this.props.texture || '');
 		await this._buildMaterial(textureChanged);
-
+		
 		// uniforms mirror props
 		this._uniforms.uStartSize.value  = this.props.startSize || 0.08;
 		this._uniforms.uEndSize.value    = (this.props.endSize ?? this.props.startSize) || 0.08;
@@ -352,7 +371,8 @@ export default class D3DParticleSystemManager {
 				uEndSize:       { value: (this.props.endSize ?? this.props.startSize) || 0.08 },
 				uSizeAtten:     { value: !!this.props.sizeAttenuation },
 				uWorldSpace:    { value: (this.props.simulationSpace === 'world') },
-				uParticleScale: { value: 1.0 }
+				uParticleScale: { value: 1.0 },
+				uEnv: 			{ value: 1.0 }
 			};
 		}
 
@@ -402,6 +422,7 @@ export default class D3DParticleSystemManager {
 				fragmentShader: `
 					uniform sampler2D uMap;
 					uniform bool uUseMap;
+					uniform float uEnv;
 
 					varying vec3  vCol;
 					varying float vAlpha;
@@ -415,9 +436,9 @@ export default class D3DParticleSystemManager {
 
 						vec4 tex = uUseMap ? texture2D(uMap, ruv) : vec4(1.0);
 						vec4 col = vec4(vCol, vAlpha) * tex;
-
-						// premultiply for correct "Normal" blending path
-						col.rgb *= col.a;
+						
+						col.rgb *= uEnv;        // apply day/night brightness
+						col.rgb *= col.a;       // premultiply
 
 						if (col.a <= 0.001) discard;
 						gl_FragColor = col;
@@ -468,6 +489,10 @@ export default class D3DParticleSystemManager {
 					if (this._currentMap.image && typeof this._currentMap.image.close === 'function') { try { this._currentMap.image.close(); } catch {} }
 				}
 				this._currentMap = null;
+				
+				if(!this.d3dobject.enabled || !this.component.enabled)
+					return;
+				
 				this._uniforms.uMap.value = null;
 				this._uniforms.uUseMap.value = false;
 				this._mat.needsUpdate = true;
@@ -647,6 +672,9 @@ export default class D3DParticleSystemManager {
 
 	// ---------- sim ----------
 	_tick(dt, force=false) {
+		// Update day night lighting
+		this.updateDayNightLighting();
+		
 		if (!Number.isFinite(dt) || dt <= 0) return;
 		if (!force && this._isPaused) return;
 
@@ -725,6 +753,19 @@ export default class D3DParticleSystemManager {
 		this._geom.attributes.aAngle.needsUpdate   = true;
 
 		if (!p.looping && this._playedOnce && aliveCount === 0) this._isPaused = true;
+	}
+	updateDayNightLighting() {
+		if(!this.useDayNight)
+			return;
+	
+		const dayNightCycle = this.d3dobject.root._dayNightCycle;
+		if(!dayNightCycle)
+			return;
+		
+		const env = hourToEnv(dayNightCycle);
+		
+		if(this._uniforms)
+			this._uniforms.uEnv.value = env;
 	}
 
 	__onInternalEnterFrame(dt = _time.delta) { this._tick(dt, false); }

@@ -3,6 +3,7 @@ import D3DComponents from '../../../engine/d3dcomponents.js';
 import InspectorCell from './InspectorCell.jsx';
 import ComponentCell from './ComponentCell.jsx';
 import VectorInput from './VectorInput.jsx';
+import VectorBool from './VectorBool.jsx';
 import AssetExplorerDialog from './AssetExplorerDialog.jsx';
 import ScriptFindReplaceDialog  from './ScriptFindAndReplaceDialog.jsx';
 import ObjectRow from './ObjectRow.jsx';
@@ -56,6 +57,7 @@ import {
 
 // Custom inspectors
 import InspTextStyle from '../custom-inspectors/InspTextStyle.jsx';
+import InspTextFont from '../custom-inspectors/InspTextFont.jsx';
 
 const { path } = D3D;
 
@@ -67,7 +69,7 @@ const autoBlur = (e) => {
 }
 let onSelectFile;
 const sharedInspector = {};
-const DASH = '–';
+export const DASH = '–';
 
 const Tabs = {
 	All: 'all',
@@ -119,6 +121,9 @@ export default function Inspector() {
 	const [currentAssetFolder, setCurrentAssetFolder] = useState('assets');
 	const [newFolderOpen, setNewFolderOpen] = useState(false);
 	const [newFolderName, setNewFolderName] = useState('');
+	
+	// Other
+	const [systemFonts, setSystemFonts] = useState([]);
 	
 	// Unpack drop mime
 	const unpackMime = useCallback((e) => {
@@ -180,6 +185,12 @@ export default function Inspector() {
 		_editor.onProjectLoaded = () => {
 			setDummyProject({..._editor.project});
 		}
+	
+		D3D.getSystemFonts().then(fonts => setSystemFonts(
+			fonts.map(f =>
+				String(f).replace(/^["']|["']$/g, '').trim()
+			)
+		));
 		
 		_editor.updateInspector = () => {};
 	}, []);
@@ -887,28 +898,53 @@ export default function Inspector() {
 								<div style={{height: 20}}></div>
 								<div className="vector-input vector-input--top">
 									<div>
-										<label>Layer</label>
+										<label>Layers</label>
+									
 										<select
 											className="tf"
-											value={objects[0].layer}
-											style={{width: 100}}
+											multiple
+											size={6}
+											style={{ width: 120 }}
+											value={
+												Array.from({ length: 32 })
+													.map((_, i) => i)
+													.filter(i => i >= 3)
+													.filter(i => {
+														const mask = objects[0].object3d?.layers?.mask ?? 0;
+														return (mask & (1 << i)) !== 0;
+													})
+													.map(String)
+											}
 											onChange={e => {
-												const newLayer = Number(e.target.value);
-												
-												objects.forEach(object => {
-													object.__inspOldLayerMask = object.layer;
+												objects.forEach(o => {
+													o.__inspOldLayerMask = o.object3d?.layers?.mask ?? 0;
 												});
-												
+									
+												const selected = Array.from(e.target.selectedOptions).map(o => Number(o.value));
+									
+												let newMask = 0;
+									
+												// preserve locked layers (0,1,2)
+												objects.forEach(o => {
+													const oldMask = o.__inspOldLayerMask;
+													newMask |= (oldMask & 0b111);
+												});
+									
+												// apply editable layers (3..31)
+												selected.forEach(i => newMask |= (1 << i));
+									
 												const apply = () => {
-													objects.forEach(object => {
-														object.layer = newLayer;
+													objects.forEach(o => {
+														if(o.object3d)
+															o.object3d.layers.mask = newMask;
 													});
 													update();
 												};
 									
 												const undo = () => {
-													objects.forEach(object => {
-														object.layer = object.__inspOldLayerMask;
+													objects.forEach(o => {
+														if(o.object3d)
+															o.object3d.layers.mask = o.__inspOldLayerMask;
 													});
 													update();
 												};
@@ -916,17 +952,24 @@ export default function Inspector() {
 												apply();
 									
 												_editor.addStep({
-													name: 'Update layer',
+													name: 'Update layer mask',
 													undo,
 													redo: apply
 												});
 											}}
 										>
-											{Array.from({ length: 32 }).map((_, i) => (
-												<option key={i} value={i}>
-													{i}
-												</option>
-											))}
+											{
+												Array.from({ length: 32 }).map((_, i) => {
+													if(i < 3)
+														return null;
+									
+													return (
+														<option key={i} value={i}>
+															{i}
+														</option>
+													);
+												})
+											}
 										</select>
 									</div>
 									{
@@ -1252,6 +1295,15 @@ export default function Inspector() {
 					case 'vector3': {
 						fieldContent = (
 							<VectorInput 
+								values={[ (!mixed ? current : {x: '-', y: '-', z: '-'}) ]} 
+								onSave={vector => commitValue(vector)}
+							/>
+						);
+						break;
+					}
+					case 'vector3bool': {
+						fieldContent = (
+							<VectorBool 
 								values={[ (!mixed ? current : {x: '-', y: '-', z: '-'}) ]} 
 								onSave={vector => commitValue(vector)}
 							/>
@@ -1663,13 +1715,21 @@ export default function Inspector() {
 						
 						if(field.customInspector == 'textStyle')
 							customInspector = InspTextStyle;
+						else
+						if(field.customInspector == 'textFont')
+							customInspector = InspTextFont;
 						
 						fieldContent = customInspector({
 							objects, 
 							field, 
 							type, 
+							mixed,
+							current,
+							offerValue,
+							commitValue,
 							getCurrentValueOf,
-							commitValueOf
+							commitValueOf,
+							systemFonts
 						});
 						break;
 					default: {
@@ -2054,6 +2114,9 @@ export default function Inspector() {
 							return object.name;
 						}}
 						onClick={e => {
+							if(object.parent != _editor.focus)
+								_editor.focus = object.parent;
+							
 							if(e.shiftKey) {
 								const anchor = _editor.selectedObjects[0];
 								const startIndex = objects.indexOf(anchor);
@@ -2067,7 +2130,7 @@ export default function Inspector() {
 								
 								for (let i = start; i <= end; i++) {
 									const o = objects[i];
-									if (!_editor.isSelected(o))
+									if (!_editor.isSelected(o) && o.parent == _editor.focus)
 										_editor.addSelection([o]);
 								}
 							}else
@@ -2078,6 +2141,11 @@ export default function Inspector() {
 									_editor.removeSelection([object]);
 							}else
 								_editor.setSelection([object]);
+								
+							[..._editor.selectedObjects].forEach(o => {
+								if(o.parent != _editor.focus)
+									_editor.removeSelection([o]);
+							});
 						}}
 						onDoubleClick={() => {
 							_editor.focus = object;
@@ -2643,6 +2711,36 @@ export default function Inspector() {
 			_editor.setSelection([], false, false);
 			setLastSelectedPath(B);
 		};
+		
+		_editor.selectAndScrollToAsset = (path) => {
+			const p = normPath(path);
+			const parent = parentDir(p).replace(/\/$/, '');
+		
+			setAssetExpanded(prev => {
+				const next = new Set(prev);
+		
+				let d = parent;
+				while(d && d !== 'assets') {
+					next.add(d);
+					d = parentDir(d).replace(/\/$/, '');
+				}
+		
+				next.add('assets');
+				next.add(parent);
+		
+				return next;
+			});
+		
+			setSingleSelection(p);
+		
+			requestAnimationFrame(() => {
+				requestAnimationFrame(() => {
+					const el = assetsListRef.current?.querySelector(`[title="${p}"]`);
+					if(el)
+						el.scrollIntoView({block: 'center'});
+				});
+			});
+		};
 	
 		// ------------------------------
 		// Import / create
@@ -2674,6 +2772,7 @@ export default function Inspector() {
 			setNewFolderOpen(false);
 			setNewFolderName('');
 			_editor.onAssetsUpdated();
+			_editor.selectAndScrollToAsset?.(dirPath);
 		};
 	
 		const addNewFile = () => {
@@ -3167,7 +3266,7 @@ export default function Inspector() {
 		return rows;
 	}
 	
-	const loaded = !!_root?.zip;
+	const loaded = _editor.loaded;
 	
 	return (
 		<div 

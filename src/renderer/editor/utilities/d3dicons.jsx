@@ -15,7 +15,7 @@ import {
 	MdAudiotrack, MdOutlineVolumeUp
 } from 'react-icons/md';
 import { LuCloudMoon } from "react-icons/lu";
-import { BsFonts } from "react-icons/bs";
+import { BsFonts, BsStars } from "react-icons/bs";
 import { LuStamp } from "react-icons/lu";
 import { PiSphereFill } from "react-icons/pi";
 
@@ -48,6 +48,9 @@ export function drawIconForObject(object) {
 	else
 	if(object.hasComponent('DayNightCycle'))
 		return <LuCloudMoon />;
+	else
+	if(object.hasComponent('ParticleSystem'))
+		return <BsStars />;
 	else
 		return <MdGames />;
 }

@@ -5,6 +5,16 @@ export default class D3DGraphics {
 		this.maxBillboards = 512;
 	}
 	
+	get ssao() {
+		return window._host.ssaoPass;
+	}
+	get gtao() {
+		return window._host.gtaoPass;
+	}
+	get render() {
+		return window._host.renderPass;
+	}
+	
 	addShaderPass(shaderObj, uniforms = {}, opts = {}) {
 		if (!shaderObj)
 			return null;
@@ -90,15 +100,5 @@ export default class D3DGraphics {
 		}
 	
 		return shaderPass;
-	}
-	
-	get ssao() {
-		return window._host.ssaoPass;
-	}
-	get gtao() {
-		return window._host.gtaoPass;
-	}
-	get render() {
-		return window._host.renderPass;
 	}
 }

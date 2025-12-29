@@ -6,8 +6,9 @@ async function publishProject(resolveProjectorPath, onPublishDone, publishURI, b
 	
 	const fileName = getFileName(buildURI);
 	const publishName = getFileNameNoExt(publishURI);
+	const editorVersion = opts.manifest.editorVersion;
 	
-	let scriptURI = 'https://damen3d.com/player/1.0/d3dplayer.js';
+	let scriptURI = `https://damen3d.com/player/${editorVersion}/d3dplayer.js`;
 	
 	if(opts.js) {
 		scriptURI = 'd3dplayer.js';

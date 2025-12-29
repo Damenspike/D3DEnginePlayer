@@ -357,25 +357,19 @@ export default class D3DObject {
 		this.checkSymbols();
 	}
 	
-	get layer() {
-		const obj = this.object3d;
-		if(!obj)
-			return 0;
-		
-		// convert bitmask → layer index
-		const mask = obj.layers.mask;
-		let layer = 0;
-		while(layer < 32 && ((mask & (1 << layer)) === 0))
-			layer++;
-		return layer;
+	get layersMask() {
+		return this.object3d?.layers.mask ?? 1;
 	}
-	set layer(v) {
+	set layersMask(mask) {
 		const obj = this.object3d;
 		if(!obj)
 			return;
+	
+		// always force layer 0 ON
+		obj.layers.mask = (mask | 1) | 0;
 		
-		v = Number(v) || 0;
-		obj.layers.set(v);
+		this.checkSymbols();
+		this.checkInstancedSubmeshes();
 	}
 	
 	get worldPosition() {
@@ -627,6 +621,7 @@ export default class D3DObject {
 		this.onVisibilityChanged?.();
 		this._onVisibilityChanged?.();
 		this.checkSymbols();
+		this.checkInstancedSubmeshes();
 	}
 	
 	get visible2() {
@@ -638,6 +633,7 @@ export default class D3DObject {
 		this.onVisibilityChanged?.();
 		this._onVisibilityChanged?.();
 		this.checkSymbols();
+		this.checkInstancedSubmeshes();
 	}
 	
 	get visible3() {
@@ -649,6 +645,7 @@ export default class D3DObject {
 		this.onVisibilityChanged?.();
 		this._onVisibilityChanged?.();
 		this.checkSymbols();
+		this.checkInstancedSubmeshes();
 	}
 	
 	get rendered() {
@@ -703,6 +700,7 @@ export default class D3DObject {
 		this._opacity = Math.max(0, Math.min(1, Number(value))) ?? 0;
 		this.updateVisibility();
 		this.checkSymbols();
+		this.checkInstancedSubmeshes();
 	}
 	
 	///////////////////////////////
@@ -754,6 +752,16 @@ export default class D3DObject {
 	}
 	get is2D() {
 		return this.graphic2d || this.container2d;
+	}
+	get isLight() {
+		return (
+			this.object3d?.isDirectionalLight ||
+			this.object3d?.isAmbientLight ||
+			this.object3d?.isPointLight ||
+			this.object3d?.isSpotLight ||
+			this.object3d?.isHemisphereLight ||
+			this.object3d?.isRectAreaLight
+		);
 	}
 	
 	get depth() {
@@ -845,7 +853,11 @@ export default class D3DObject {
 					this.__onTransformationChange?.(changed);
 					this.onTransformationChange?.(changed);
 		
-					window._editor?.updateInspector?.();
+					if(window._editor) {
+						if(_editor.selectedObjects.includes(this))
+							_editor.updateInspector();
+					}
+					
 					this.invokeEvent('matrixChanged', changed);
 				}
 		
@@ -862,7 +874,9 @@ export default class D3DObject {
 			};
 		
 			this.__onTransformationChange = () => {
-				this.checkSymbols();
+				if(window._editor && (_editor.focus == this || _editor.focus == this.parent) )
+					this.checkSymbols();
+				
 				this.checkInstancedSubmeshes();
 			};
 		}
@@ -972,7 +986,7 @@ export default class D3DObject {
 			objData.components = symbolCopy.components;
 			objData.suuid = symbolCopy.suuid;
 			objData.script = symbolCopy.script;
-			objData.layer = symbolCopy.layer;
+			objData.layersMask = Number(symbolCopy.layersMask) | 0;
 			objData.hindex = symbolCopy.hindex;
 			
 			/*
@@ -1007,7 +1021,7 @@ export default class D3DObject {
 		child.rotation = objData.rotation ?? {x: 0, y: 0, z: 0};
 		child.scale = objData.scale ?? {x: 1, y: 1, z: 1};
 		child.__script = objData.script;
-		child.layer = objData.layer;
+		child.layersMask = objData.layersMask | 0;
 		child.hindex = Number(objData.hindex) || 0;
 		
 		child.editorOnly = !!objData.editorOnly || false;
@@ -1139,7 +1153,8 @@ export default class D3DObject {
 		this.__symbols = {};
 	
 		this.removeAllChildren();
-	
+		this.disposeImportant();
+		
 		const isRemote = !_isStandalone || uri.startsWith('http://') || uri.startsWith('https://');
 		
 		buffer = await D3DFileCache.getOrLoad(
@@ -1535,12 +1550,14 @@ export default class D3DObject {
 		
 		await this.updateComponents();
 		this.checkSymbols();
+		this.checkInstancedSubmeshes();
 	}
 	async addComponent(
 		type, 
 		properties = {}, 
 		{ 
 			doUpdateAll = true, 
+			doUpdateSelf = false,
 			removeIfPresent = false, 
 			unshift = false,
 			dontRecurseSymbols = false
@@ -1626,18 +1643,26 @@ export default class D3DObject {
 		}
 		
 		doUpdateAll && this.updateComponents();
+		doUpdateSelf && inst.updateComponent();
 		this.setupDefaultMethods();
 		
 		if(window._editor && this.symbol && !dontRecurseSymbols) {
-			// Add instances of this component to symbols
-			this.root.traverse(d3dobject => {
-				if(this !== d3dobject && d3dobject.symbol == this.symbol) {
-					d3dobject.addComponent(type, properties, {
-						dontRecurseSymbols: true
-					});
-				}
-			});
+			
+		}
+		if(window._editor && !dontRecurseSymbols) {
+			if(this.symbol) {
+				// Add instances of this component to symbols
+				this.root.traverse(d3dobject => {
+					if(this !== d3dobject && d3dobject.symbol == this.symbol) {
+						d3dobject.addComponent(type, properties, {
+							dontRecurseSymbols: true
+						});
+					}
+				});
+			}
+			
 			this.checkSymbols();
+			this.checkInstancedSubmeshes();
 		}
 	}
 	async removeComponent(
@@ -1659,16 +1684,20 @@ export default class D3DObject {
 		if(this.__componentInstances[type])
 			delete this.__componentInstances[type];
 		
-		if(window._editor && this.symbol && !dontRecurseSymbols) {
-			// Remove all instances of this component
-			this.root.traverse(d3dobject => {
-				if(this !== d3dobject && d3dobject.symbol == this.symbol) {
-					d3dobject.removeComponent(type, {
-						dontRecurseSymbols: true
-					});
-				}
-			});
+		if(window._editor && !dontRecurseSymbols) {
+			if(this.symbol) {
+				// Remove all instances of this component
+				this.root.traverse(d3dobject => {
+					if(this !== d3dobject && d3dobject.symbol == this.symbol) {
+						d3dobject.removeComponent(type, {
+							dontRecurseSymbols: true
+						});
+					}
+				});
+			}
+			
 			this.checkSymbols();
+			this.checkInstancedSubmeshes();
 		}
 	}
 	getComponentObject(type, { dummy = false } = {}) {
@@ -1719,6 +1748,7 @@ export default class D3DObject {
 		component.enabled = enabled;
 		this.updateComponents(true);
 		this.checkSymbols();
+		this.checkInstancedSubmeshes();
 	}
 	enableComponent(type) {
 		this.toggleComponent(type, true);
@@ -1731,7 +1761,19 @@ export default class D3DObject {
 			return;
 		
 		const zip = this.root.zip;
-		const components = this.components;
+		const components = [...this.components];
+		
+		components.sort((a, b) => {
+			const p1 = D3DComponents[a.name]?.priority || 0;
+			const p2 = D3DComponents[b.name]?.priority || 0;
+			
+			if(p1 == p2)
+				return 0;
+			if(p1 > p2)
+				return 1;
+			if(p1 < p2)
+				return -1;
+		});
 		
 		if(window._editor && !this.no3DGizmos) {
 			// Add any gizmo related mesh components
@@ -1747,7 +1789,8 @@ export default class D3DObject {
 						castShadow: false,
 						receiveShadow: false
 					}, {
-						doUpdateAll: false
+						doUpdateAll: false,
+						doUpdateSelf: true
 					});
 				}
 			})
@@ -1956,7 +1999,7 @@ export default class D3DObject {
 			}
 			
 			d3dobject.__script = objData.script;
-			d3dobject.layer = objData.layer;
+			d3dobject.layersMask = objData.layersMask | 0;
 			d3dobject.hindex = objData.hindex;
 			d3dobject.components = structuredClone(objData.components);
 			
@@ -2076,6 +2119,7 @@ export default class D3DObject {
 	
 	replaceObject3D(newObject3D, { keepChildren = true } = {}) {
 		const old = this.object3d;
+		
 		if (!old || old === newObject3D) return;
 	
 		// --- cache LOCAL transform (relative to parent) ---
@@ -2169,7 +2213,7 @@ export default class D3DObject {
 			uuid: this.uuid,
 			suuid: this.suuid,
 			name: this.name,
-			layer: this.layer,
+			layersMask: this.layersMask,
 			hindex: this.hindex,
 			enabled: this._enabled,
 			position: {
@@ -2371,6 +2415,9 @@ export default class D3DObject {
 			return;
 		}
 		
+		this.symbolId = null;
+		this.components = [];
+		
 		this.traverse(o => {
 			o.__lockSymbols = true; // MUST NOT ALLOW ANY SYMBOL SYNCING
 			o.disposeAllComponents();
@@ -2393,12 +2440,16 @@ export default class D3DObject {
 		
 		delete this.parent[this.name];
 		delete _root.superIndex[this.uuid];
+		
+		this.disposeImportant();
 		this.removeFromAllLoops();
 		
 		_root.updateSuperIndex();
 		
 		if(shouldCheckSymbols)
 			this.checkSymbols();
+		
+		this.checkInstancedSubmeshes();
 	}
 	disposeAllComponents() {
 		for(let i in this.__componentInstances) {
@@ -2406,6 +2457,32 @@ export default class D3DObject {
 			mgr?.dispose?.();
 		}
 		this.__componentInstances = {};
+	}
+	disposeImportant() {
+		this.disposeTextures();
+		this.disposeUnusedTextures();
+	}
+	disposeTextures() {
+		const shared = _root.__texShared;
+		if(!shared)
+			return;
+			
+		for(const entry of shared.values()) {
+			entry.owners.delete(this);
+		}
+	}
+	disposeUnusedTextures() {
+		const shared = _root.__texShared;
+		if(!shared)
+			return;
+			
+		for(const [uuid, entry] of shared.entries()) {
+			if(entry.owners.size !== 0)
+				continue;
+				
+			entry.tex.dispose();
+			shared.delete(uuid);
+		}
 	}
 	async readFile(path) {
 		const zip = this.zip;
@@ -2629,6 +2706,43 @@ export default class D3DObject {
 			}
 		);
 	}
+	setWorldPosition(newPosition) {
+		const oldPosition = this.position.clone();
+		
+		this.__spOldPosition = oldPosition;
+		this.worldPosition = newPosition;
+		
+		_events.invoke(
+			'transform-changed', 
+			this, 
+			['pos'], 
+			{
+				position: oldPosition,
+				rotation: this.rotation.clone(),
+				quaternion: this.quaternion.clone(),
+				scale: this.scale.clone()
+			}
+		);
+	}
+	setWorldRotation(newRotation) {
+		const oldRotation = this.rotation.clone();
+		const oldRotationQ = this.quaternion.clone();
+		
+		this.__spOldRotation = oldRotation;
+		this.worldRotation = newRotation;
+		
+		_events.invoke(
+			'transform-changed', 
+			this, 
+			['rot'], 
+			{
+				position: this.position.clone(),
+				rotation: oldRotation,
+				quaternion: oldRotationQ,
+				scale: this.scale.clone()
+			}
+		);
+	}
 	setScale(newScale) {
 		const oldScale = this.scale.clone();
 		
@@ -2647,6 +2761,46 @@ export default class D3DObject {
 			}
 		);
 	}
+	hasLayer(v) {
+		const obj = this.object3d;
+		if(!obj)
+			return;
+		
+		return !!(obj.layers.mask & (1 << v));
+	}
+	enableLayer(layer, recurse = false) {
+		const obj = this.object3d;
+		if(!obj)
+			return;
+	
+		obj.layers.enable(layer);
+	
+		if(recurse) {
+			this.traverse(o => {
+				o.object3d?.layers.enable(layer);
+			});
+		}
+		
+		this.checkSymbols();
+		this.checkInstancedSubmeshes();
+	}
+	disableLayer(layer, recurse = false) {
+		const obj = this.object3d;
+		if(!obj)
+			return;
+	
+		obj.layers.disable(layer);
+	
+		if(recurse) {
+			this.traverse(o => {
+				o.object3d?.layers.disable(layer);
+			});
+		}
+		
+		this.checkSymbols();
+		this.checkInstancedSubmeshes();
+	}
+	
 	localToWorld(vec) {
 		const out = new THREE.Vector3();
 		return out.copy(vec).applyMatrix4(this.object3d.matrixWorld);

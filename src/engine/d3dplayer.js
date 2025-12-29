@@ -289,7 +289,7 @@ function startAnimationLoop() {
 				'onBeforeRender'
 			]);
 			
-			_instancing.buildDirtyInstances();
+			_instancing.updateAll();
 			_autolod.updateAll();
 			
 			const camera3d = _player.camera?.object3d;

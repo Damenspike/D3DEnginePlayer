@@ -9,6 +9,12 @@ export default class D3DInstancing {
 		this.dirtyInstances = [];
 	}
 	
+	// Framely
+	updateAll() {
+		this.buildDirtyInstances();
+		this.updateDirtyBatchesBounds();
+	}
+	
 	setInstanceDirty(instanceId, submesh) {
 		if(!this.submeshes[instanceId])
 			this.submeshes[instanceId] = [];
@@ -91,6 +97,8 @@ export default class D3DInstancing {
 		
 		batch.instancedMesh.count = 0;
 		batch.instancedMesh.layers.mask = instance.mask;
+		batch.instancedMesh.frustumCulled = false;
+		
 		scene.add(batch.instancedMesh);
 		
 		instance.batches.push(batch);
@@ -211,7 +219,20 @@ export default class D3DInstancing {
 		im.setMatrixAt(idx, submesh.d3dobject.object3d.matrixWorld);
 		
 		if(markUpdate)
-			this.markAsNeedsUpdate(instanceId);
+			this.markBatchAsNeedsUpdate(batch);
+		
+		return { instance, batch, idx };
+	}
+	markBatchAsNeedsUpdate(batch) {
+		if(!batch)
+			return;
+			
+		const im = batch.instancedMesh;
+		
+		if(!im.instanceMatrix.needsUpdate)
+			im.instanceMatrix.needsUpdate = true;
+		
+		batch._boundsDirty = true;
 	}
 	markAsNeedsUpdate(instanceId) {
 		const instance = this.instances[instanceId];
@@ -225,5 +246,31 @@ export default class D3DInstancing {
 			im.computeBoundingSphere();
 			im.computeBoundingBox?.();
 		});
+	}
+	
+	// Once per frame
+	updateDirtyBatchesBounds() {
+		for(const instanceId in this.instances) {
+			const instance = this.instances[instanceId];
+			const batches = instance.batches;
+			
+			for(let i = 0; i < batches.length; i++) {
+				const batch = batches[i];
+				if(!batch._boundsDirty)
+					continue;
+					
+				batch._boundsDirty = false;
+				
+				const im = batch.instancedMesh;
+				
+				if(!im.frustumCulled)
+					continue;
+					
+				im.computeBoundingSphere();
+				
+				if(im.computeBoundingBox)
+					im.computeBoundingBox();
+			}
+		}
 	}
 }

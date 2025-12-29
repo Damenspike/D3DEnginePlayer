@@ -90,10 +90,6 @@ export default function ColorPickerBest({
 						top: panelStyle.top,
 						left: panelStyle.left
 					}}
-					onMouseDown={e => {
-						e.stopPropagation();
-						e.preventDefault();
-					}}
 				>
 					<GradientColorPicker
 						value={value}

@@ -9,7 +9,7 @@ import {
 } from './d2dutility.js';
 import D3DMath from './d3dmath.js';
 
-const minimumVertexCount = 20;
+const minimumVertexCount = 18;
 
 export default class AutoLODManager {
 	constructor(d3dobject, component) {
@@ -28,6 +28,7 @@ export default class AutoLODManager {
 		this.instancedCulled = false;
 		this.meshReadyTimeout = 0;
 		this.lastUpdate = 0;
+		this.__aoEnabled = true;
 		
 		this.tmpQ1 = new THREE.Quaternion();
 		this.tmpQ2 = new THREE.Quaternion();
@@ -141,6 +142,20 @@ export default class AutoLODManager {
 		this.component.properties.billboardInstancing = !!v;
 	}
 	
+	get cullAO() {
+		return !!this.component.properties.aoDistance;
+	}
+	set cullAO(v) {
+		this.component.properties.aoDistance = !!v;
+	}
+	
+	get aoDistance() {
+		return Number(this.component.properties.aoDistance);
+	}
+	set aoDistance(v) {
+		this.component.properties.aoDistance = Number(v);
+	}
+	
 	generateLevels() {
 		const modifier = new SimplifyModifier();
 		const levels = this.levels;
@@ -178,9 +193,13 @@ export default class AutoLODManager {
 			const posAttr = source.attributes?.position;
 			const vertexCount = posAttr?.count || 0;
 			
-			if (!vertexCount || vertexCount < minimumVertexCount || !Number.isFinite(vertexCount)) {
+			if(vertexCount > 0 && vertexCount < minimumVertexCount)
+				return;
+			
+			if (!vertexCount || !Number.isFinite(vertexCount)) {
 				console.warn('Skipping LOD gen (bad vertexCount)', {
 					obj: d3dobj.name,
+					rootParent: d3dobj.rootParent.name,
 					vertexCount
 				});
 				return;
@@ -402,6 +421,17 @@ export default class AutoLODManager {
 	}
 	
 	dispose() {
+		// Hide all
+		this.makeAllLevelsVisible(false);
+		
+		// Hide billboard
+		if(this.billboardMesh)
+			this.billboardMesh.visible = false;
+		
+		if(this.billboardInstanceId)
+			_instancing.removeFromInstance(this.billboardInstanceId, this.billboardSubmeshMock);
+		
+		// Remove from autoLOD stack
 		_autolod.remove(this);
 	}
 	

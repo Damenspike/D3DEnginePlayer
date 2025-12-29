@@ -17,6 +17,13 @@ export default class DayNightManager {
 		
 		this._sun = null;
 		this._skyDomes = null;
+		
+		if(this.d3dobject.root._dayNightCycle)
+			D3DConsole.warn('There are more than one DayNightCycle components in the scene. There should only be one.');
+		
+		this.d3dobject.root._dayNightCycle = this;
+		this.directionalLightIntensity = 1;
+		this.ambientLightIntensity = 1;
 	}
 	
 	get dirLight() {
@@ -484,6 +491,9 @@ export default class DayNightManager {
 				(ambientDay - ambientNight) * f +
 				0.3 * peak * this.lightMultiplierAmb;
 		}
+		
+		this.directionalLightIntensity = dir?.intensity ?? 1;
+		this.ambientLightIntensity = amb?.intensity ?? 1;
 	}
 	
 	updateLightAngle() {

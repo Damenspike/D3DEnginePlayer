@@ -13,6 +13,7 @@ const {
 
 const path = require('path');
 const fs = require('fs');
+const fontList = require('font-list');
 const pkg = require('../../package.json');
 
 const isDev = !app.isPackaged;
@@ -85,6 +86,13 @@ function getEditorBusy() {
 // Tool windows definitions
 // ----------------------------
 const toolWindows = {
+	projectSettings: {
+		title: 'Project Settings',
+		width: 760,
+		height: 480,
+		resizable: false,
+		html: 'project-settings.html'
+	},
 	bitmapTrace: {
 		title: 'Trace Bitmap',
 		width: 300,
@@ -501,7 +509,7 @@ async function createToolWindow(session, name) {
 		width: def.width ?? 100,
 		height: def.height ?? 100,
 		resizable: def.resizable ?? true,
-		parent: session.editorWindow || undefined,
+		//parent: session.editorWindow || undefined,
 		webPreferences: {
 			preload: path.join(__dirname, 'preload-editor.cjs'),
 			contextIsolation: true,
@@ -962,7 +970,9 @@ const menuTemplate = [
 				click: () => sendDupe()
 			},
 			{ type: 'separator' },
-			{ id: 'selectAll', label: 'Select All', accelerator: 'CmdOrCtrl+A', click: () => sendSelectAll() }
+			{ id: 'selectAll', label: 'Select All', accelerator: 'CmdOrCtrl+A', click: () => sendSelectAll() },
+			{ type: 'separator' },
+			{ label: 'Project Settings', click: () => openToolWindow('projectSettings'), accelerator: 'CmdOrCtrl+,' }
 		]
 	},
 	{
@@ -1317,6 +1327,12 @@ ipcMain.handle('get-editor-version', () => pkg.editorVersion);
 // Get player version
 ipcMain.handle('get-player-version', () => pkg.playerVersion);
 
+// Get system fonts
+ipcMain.handle('get-system-fonts', async () => {
+	const fonts = await fontList.getFonts();
+	return Array.from(new Set(fonts)).sort((a, b) => a.localeCompare(b));
+});
+
 // Editor status (per project window)
 ipcMain.on('editor-status', (event, { inputFocussed, codeEditorOpen, activeElement }) => {
 	const session = getSessionFromEvent(event);
@@ -1493,6 +1509,27 @@ ipcMain.on('open-player', (event, uri) => {
 ipcMain.handle('get-current-game-uri', (event) => {
 	const session = getSessionFromEvent(event);
 	return session?.playerURI || null;
+});
+
+ipcMain.handle('get-project-settings', async (event) => {
+	const session = getSessionFromEvent(event);
+	const editorWindow = session.editorWindow;
+	
+	if(!editorWindow || editorWindow.isDestroyed())
+		return null;
+	
+	const value = await editorWindow.webContents.executeJavaScript(
+		`(function(){
+			try {
+				return window?._editor?.project?.editorConfig ?? null;
+			}catch(e){
+				return null;
+			}
+		})()`,
+		true
+	);
+	
+	return value;
 });
 
 // Console message (route back to sender's editor)

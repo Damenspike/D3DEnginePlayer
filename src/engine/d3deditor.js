@@ -48,6 +48,9 @@ import {
 	straightenShape,
 	simplifyShape
 } from './d2dshapetools.js';
+import {
+	clamp01, clamp
+} from './d3dmath.js';
 
 import $ from 'jquery';
 import D2DRenderer from './d2drenderer.js';
@@ -191,6 +194,11 @@ export async function loadD3DProj(uri) {
 	
 	// Init editor mode
 	initEditorMode();
+	
+	// Init project settings
+	applyProjectSettings();
+	
+	_editor.loaded = true;
 }
 
 /* ---------------- Helper Functions ---------------- */
@@ -279,53 +287,53 @@ function initComposer() {
 	
 	_editor.composer = composer;
 
-	// Render Pass
+	// Render
 	const renderPass = new RenderPass(scene, camera);
 	composer.addPass(renderPass);
-	
-	// Setup transform gizmo
-	setupTransformGizmo();
-	
-	// GTAO Pass
+
+	// GTAO
 	const gtaoPass = new GTAOPass(scene, camera, width, height);
-	const ssaoPass = new SSAOPass(scene, camera, width, height);
-	
-	// GTAO pass toggle
 	gtaoPass.beforeRender = () => {
-		camera.layers.disable(2); // layer 2 = no gtao (like sprites)
+		camera.layers.disable(2); // no-gtao layer
 	};
 	gtaoPass.afterRender = () => {
 		camera.layers.enable(2);
 	};
-	
-	// SSAO pass
+	composer.addPass(gtaoPass);
+
+	// (Optional) SSAO — usually you want ONE or the other, not both
+	const ssaoPass = new SSAOPass(scene, camera, width, height);
 	ssaoPass.kernelRadius = 0.3;
 	ssaoPass.minDistance  = 0;
 	ssaoPass.maxDistance  = 0.3;
 	ssaoPass.beforeRender = () => {
-		camera.layers.disable(2); // layer 2 = no ssao (like sprites)
+		camera.layers.disable(2);
 	};
 	ssaoPass.afterRender = () => {
 		camera.layers.enable(2);
 	};
-	
-	// Gray Pass
+	// composer.addPass(ssaoPass); // ← enable only if GTAO disabled
+
+	// Setup transform gizmo (after AO so it stays crisp)
+	setupTransformGizmo();
+
+	// Grayscale
 	const grayPass = new ShaderPass(GrayscaleShader);
 	grayPass.enabled = false;
 	composer.addPass(grayPass);
-	
-	// Outline Pass
+
+	// Outline
 	const outlinePass = new OutlinePass(
-		new THREE.Vector2(_container3d.clientWidth, _container3d.clientHeight),
+		new THREE.Vector2(width, height),
 		scene,
 		camera
 	);
 	composer.addPass(outlinePass);
-	
-	// Output Pass
+
+	// Output (must be last)
 	const outputPass = new OutputPass();
 	composer.addPass(outputPass);
-	
+
 	// Outline styling
 	outlinePass.edgeStrength = 12.0;
 	outlinePass.edgeGlow = 0.0;
@@ -333,16 +341,15 @@ function initComposer() {
 	outlinePass.pulsePeriod = 0;
 	outlinePass.visibleEdgeColor.set('#0099ff');
 	outlinePass.hiddenEdgeColor.set('#000000');
-	
+
 	hookComposerPasses(composer);
-	
-	// Assign values if needed
-	_editor.grayPass = grayPass;
+
+	_editor.renderPass  = renderPass;
+	_editor.gtaoPass    = gtaoPass;
+	_editor.ssaoPass    = ssaoPass;
+	_editor.grayPass    = grayPass;
 	_editor.outlinePass = outlinePass;
-	_editor.renderPass = renderPass;
-	_editor.gtaoPass = gtaoPass;
-	_editor.ssaoPass = ssaoPass;
-	_editor.outputPass = outputPass;
+	_editor.outputPass  = outputPass;
 }
 
 function initEditorConfig() {
@@ -459,7 +466,7 @@ function startAnimationLoop() {
 				'onEditorBeforeRender'
 			]);
 			
-			_instancing.buildDirtyInstances();
+			_instancing.updateAll();
 			_autolod.updateAll();
 			
 			render();
@@ -623,6 +630,14 @@ function setupSelection() {
 	_container3d.appendChild(selectionBox);
 
 	let startPoint = null;
+	
+	const selectionLayers = new THREE.Layers();
+	
+	function updateSelectionLayers() {
+		// Always allow selecting stuff on layers 0,1,2
+		selectionLayers.mask = (camera.layers.mask | 0b111) | 0;
+		raycaster.layers.mask = selectionLayers.mask;
+	}
 
 	renderer.domElement.addEventListener('mousedown', (event) => {
 		if (_editor.tool !== 'select' || event.button !== 0) return;
@@ -698,8 +713,15 @@ function setupSelection() {
 		
 		// Gather unique owners first
 		const owners = [];
+		
+		updateSelectionLayers();
+		
 		scene.traverse((obj) => {
-			if (!obj.isMesh) return;
+			if(!obj.isMesh)
+				return;
+			
+			if(!obj.layers.test(selectionLayers))
+				return;
 			
 			let owner = obj;
 			while (owner && !owner.userData?.d3dobject && owner.parent) 
@@ -777,7 +799,9 @@ function setupSelection() {
 		mouse.x = ((event.clientX - r.left) / r.width) * 2 - 1;
 		mouse.y = -((event.clientY - r.top) / r.height) * 2 + 1;
 
+		updateSelectionLayers();
 		raycaster.setFromCamera(mouse, camera);
+		
 		const intersects = raycaster.intersectObjects(scene.children, true);
 		const isDoubleClick = _time.now - _editor.lastSingleClick < 0.25 && _editor.lastSingleClick > 0;
 		
@@ -1018,6 +1042,7 @@ function addNewFile({zip, name, dir, data}) {
 	z.file(path, data || new Uint8Array());
 	
 	_editor.onAssetsUpdated();
+	_editor.selectAndScrollToAsset?.(path);
 	
 	return path;
 }
@@ -1055,7 +1080,7 @@ async function readFileData(path, zip) {
 	if (!file) 
 		return null;
 
-	return await file.async("uint8array");
+	return await file.async("arraybuffer");
 }
 function clearDirectory(path, zip) {
 	const z = zip ?? _root.zip;
@@ -1220,15 +1245,22 @@ function moveObjectToCameraView(d3dobject, opts = {}) {
 	// d3dobject.lookAt = { x: lookAt.x, y: lookAt.y, z: lookAt.z };
 }
 async function saveProject(projectURI) {
+	if(!_editor.loaded) {
+		_editor.showError({
+			title: 'Build',
+			message: `Project hasn't fully loaded`
+		});
+		return;
+	}
 	if(!projectURI) {
-		showError({
+		_editor.showError({
 			message: 'Invalid project URI'
 		});
 		console.error('Invalid project URI', projectURI);
 		return;
 	}
 	try {
-		await _editor.__save(projectURI);
+		await _editor.save(projectURI);
 		
 		_editor.setDirty(false);
 		
@@ -1248,14 +1280,28 @@ async function saveProjectAndClose(projectURI) {
 		_editor.closeEditor();
 	}
 }
+function getBuildOptions(play) {
+	const editorConfig = _editor.project.editorConfig;
+	return {
+		openInFinder: !play,
+		compressionLevel: !play ? clamp(Number(editorConfig.compression), 1, 9) : 3,
+		obfuscateCode: !play ? (!!editorConfig.codeObfuscation) : false,
+		stripAssets: !!(editorConfig.stripAssets ?? true)
+	}
+}
 async function buildProject(buildURI, play = false) {
-	console.log('Build URI', buildURI);
-	try {
-		await _editor.__build(buildURI, {
-			openInFinder: !play,
-			compressionLevel: !play ? 6 : 3,
-			obfuscateCode: !play
+	if(!_editor.loaded) {
+		_editor.showError({
+			title: 'Build',
+			message: `Project hasn't fully loaded`
 		});
+		return;
+	}
+	
+	console.log('Build URI', buildURI);
+	
+	try {
+		await _editor.build(buildURI, getBuildOptions(play));
 		
 		if(play) {
 			D3D.openPlayer(buildURI);
@@ -1271,9 +1317,17 @@ async function buildProject(buildURI, play = false) {
 	}
 }
 async function publishProject(publishURI, buildURI, opts) {
+	if(!_editor.loaded) {
+		_editor.showError({
+			title: 'Build',
+			message: `Project hasn't fully loaded`
+		});
+		return;
+	}
+	
 	console.log('Publish URI', publishURI, 'Build URI', buildURI);
 	try {
-		await _editor.__publish(publishURI, buildURI, opts);
+		await _editor.publish(publishURI, buildURI, {...getBuildOptions(play), ...opts});
 	}catch(e) {
 		_editor.showError({
 			message: `Error publishing project. ${e}`
@@ -1321,12 +1375,18 @@ function onAssetDeleted(path) {
 }
 async function onImportAssets(paths) {
 	const files = await D3D.readAsFiles(paths);
+	const importedPaths = [];
 	for(const f of files) {
-		await _editor.importFile(f, 'assets');
+		const path = await _editor.importFile(f, 'assets');
+		if(path?.wrote?.length > 0)
+			importedPaths.push(...path.wrote);
 	}
 	onAssetsUpdated();
 	_root.updateSymbolStore();
 	_editor.setDirty(true);
+	
+	if(importedPaths.length > 0)
+		_editor.selectAndScrollToAsset?.(importedPaths[0]);
 }
 function addComponent(type, properties = {}) {
 	const schema = D3DComponents[type];
@@ -1444,8 +1504,8 @@ function alignSelectionToView() {
 	
 	const forwardMult = 1;
 	const camFwd = camerad3d.forward.multiplyScalar(-1); // THREE.Vector3
-	const camPos = camerad3d.position.clone().add(camFwd.multiplyScalar(forwardMult));
-	const camRot = camerad3d.rotation.clone();
+	const camPos = camerad3d.worldPosition.clone().add(camFwd.multiplyScalar(forwardMult));
+	const camRot = camerad3d.worldPosition.clone();
 	
 	const doMove = (recordMstv = true) => {
 		selectedObjects.forEach(d3dobject => {
@@ -1456,8 +1516,8 @@ function alignSelectionToView() {
 				}
 			}
 			
-			d3dobject.setPosition(camPos.clone());
-			d3dobject.setRotation(camRot.clone());
+			d3dobject.setWorldPosition(camPos.clone());
+			d3dobject.setWorldRotation(camRot.clone());
 		});
 	}
 	const undoMove = () => {
@@ -1803,6 +1863,37 @@ async function modifySelected(type, options = {}) {
 		}
 	}
 }
+function updateProjectSettings(settings) {
+	const editorConfig = _editor.project.editorConfig; // same as _root.manifest.editorConfig
+	
+	// Just lazy sync it in
+	for(let i in settings)
+		editorConfig[i] = settings[i];
+	
+	if(settings.quality2D !== undefined) {
+		editorConfig.quality2D = clamp01(Number(settings.quality2D));
+	}
+	if(settings.quality3D !== undefined) {
+		editorConfig.quality3D = clamp01(Number(settings.quality3D));
+	}
+	if(settings.gtao !== undefined) {
+		editorConfig.gtao = !!settings.gtao;
+	}
+	if(settings.ssao !== undefined) {
+		editorConfig.ssao = !!settings.ssao;
+	}
+	
+	_editor.setDirty(true);
+	applyProjectSettings();
+}
+function applyProjectSettings() {
+	const editorConfig = _editor.project.editorConfig;
+	
+	_dimensions.pixelRatio2D = window.devicePixelRatio * editorConfig.quality2D;
+	_dimensions.pixelRatio3D = window.devicePixelRatio * editorConfig.quality3D;
+	_graphics.gtao.enabled = editorConfig.gtao;
+	_graphics.ssao.enabled = editorConfig.ssao;
+}
 
 // INTERNAL
 
@@ -1841,6 +1932,9 @@ _editor.receiveMessage = receiveMessage;
 _editor.modifySelected = modifySelected;
 _editor.enableSelectedObjects = enableSelectedObjects;
 _editor.disableSelectedObjects = disableSelectedObjects;
+_editor.readFileData = readFileData;
+_editor.updateProjectSettings = updateProjectSettings;
+_editor.applyProjectSettings = applyProjectSettings;
 
 D3D.setEventListener('select-all', () => _editor.selectAll());
 D3D.setEventListener('delete', () => _editor.delete());

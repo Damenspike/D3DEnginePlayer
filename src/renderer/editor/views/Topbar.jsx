@@ -116,9 +116,8 @@ export default function Topbar() {
 			</div>
 		)
 	}
-
-	return (
-		<div className="topbar" id="topbar-view">
+	const drawTopBar = () => (
+		<>
 			<div className="tools-section">
 				{
 					drawToolButton(
@@ -145,7 +144,7 @@ export default function Topbar() {
 					)
 				}
 			</div>
-
+			
 			<div className="tools-section">
 				{
 					drawToolButton(
@@ -247,6 +246,12 @@ export default function Topbar() {
 					)
 				}
 			</div>
+		</>
+	)
+
+	return (
+		<div className="topbar" id="topbar-view">
+			{_editor.loaded && drawTopBar()}
 			
 			<div className="top-bar__right">
 				<img 

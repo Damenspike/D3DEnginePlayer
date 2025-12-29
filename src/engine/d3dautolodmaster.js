@@ -15,11 +15,11 @@ export default class D3DAutoLODMaster {
 	updateAll() {
 		const now = _time.now;
 		const maxBillboards = _graphics.maxBillboards;
-		const instancesToUpdate = [];
+		const batchesToUpdate = [];
 		let billboards = 0;
 		
 		this.autoLODs.forEach(autoLOD => {
-			if(!autoLOD.component.enabled)
+			if(!autoLOD.component.enabled || autoLOD.d3dobject.__deleted)
 				return;
 				
 			const camera = autoLOD.camera || autoLOD.getCamera();
@@ -40,6 +40,22 @@ export default class D3DAutoLODMaster {
 			}
 			
 			const distance = autoLOD.distanceFromCamera;
+			
+			if(autoLOD.cullAO) {
+				if(distance > autoLOD.aoDistance) {
+					if(autoLOD.__aoEnabled) {
+						autoLOD.d3dobject.enableLayer(2, true);
+						autoLOD.d3dobject.disableLayer(0, true);
+						autoLOD.__aoEnabled = false;
+					}
+				}else{
+					if(!autoLOD.__aoEnabled) {
+						autoLOD.d3dobject.disableLayer(2, true);
+						autoLOD.d3dobject.enableLayer(0, true);
+						autoLOD.__aoEnabled = true;
+					}
+				}
+			}
 			
 			if(distance > maxDistance) {
 				autoLOD.makeAllLevelsVisible(false);
@@ -88,9 +104,9 @@ export default class D3DAutoLODMaster {
 							}
 							
 							if(autoLOD.billboardInstancing) {
-								_instancing.updateSubmeshMatrix(autoLOD.billboardInstanceId, autoLOD.billboardSubmeshMock);
-								if(!instancesToUpdate.includes(autoLOD.billboardInstanceId))
-									instancesToUpdate.push(autoLOD.billboardInstanceId);
+								const { batch } = _instancing.updateSubmeshMatrix(autoLOD.billboardInstanceId, autoLOD.billboardSubmeshMock) ?? {};
+								if(batch && !batchesToUpdate.includes(batch))
+									batchesToUpdate.push(batch);
 							}
 							
 							autoLOD.lastSyncBB = now;
@@ -133,7 +149,7 @@ export default class D3DAutoLODMaster {
 			autoLOD.setLevel(desiredLevel);
 		});
 		
-		instancesToUpdate.forEach(instanceId => _instancing.markAsNeedsUpdate(instanceId));
+		batchesToUpdate.forEach(batch => _instancing.markBatchAsNeedsUpdate(batch));
 		
 		_graphics.billboards = billboards;
 	}

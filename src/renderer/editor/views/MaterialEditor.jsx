@@ -21,9 +21,11 @@ const DEFAULTS = {
 	normalMap: '',
 	normalMapOffset: [0, 0],
 	normalMapRepeat: [1, 1],
+	emissiveMap: '',
+	emissiveMapOffset: [0, 0],
+	emissiveMapRepeat: [1, 1],
 	roughnessMap: '',
 	metalnessMap: '',
-	emissiveMap: '',
 	alphaMap: '',
 	envMapIntensity: 1,
 	
@@ -81,9 +83,11 @@ function ensureDefaults(val) {
 	v.side = v.side || DEFAULTS.side;
 	v.map = v.map || '';
 	v.normalMap = v.normalMap || '';
+	v.emissiveMap = v.emissiveMap || '';
+	v.emissiveMapOffset = Array.isArray(v.emissiveMapOffset) ? v.emissiveMapOffset : [0, 0];
+	v.emissiveMapRepeat = Array.isArray(v.emissiveMapRepeat) ? v.emissiveMapRepeat : [1, 1];
 	v.roughnessMap = v.roughnessMap || '';
 	v.metalnessMap = v.metalnessMap || '';
-	v.emissiveMap = v.emissiveMap || '';
 	v.alphaMap = v.alphaMap || '';
 	v.envMapIntensity = Number.isFinite(+v.envMapIntensity) ? +v.envMapIntensity : DEFAULTS.envMapIntensity;
 	v.mapOffset = Array.isArray(v.mapOffset) ? v.mapOffset : [0, 0];
@@ -618,6 +622,56 @@ export default function MaterialEditor({ uri, date, onSave, openAsset }) {
 									value={mat.normalMapRepeat[1]}
 									onChange={e => patch({ normalMapRepeat: [mat.normalMapRepeat[0], parseFloat(e.target.value)] })}
 									onBlur={() => commit({ ...mat, normalMapRepeat: [...mat.normalMapRepeat] })}
+									onKeyDown={autoBlur}
+								/>
+							</div>
+							{spacer()}
+						</>
+					)}
+					
+					{fileRow('Emissive Map', 'emissiveMap')}
+					{!!mat.emissiveMap && (
+						<>
+							<div className="material-editor-row field subrow">
+								<label className="material-editor-label">Offset</label>
+								<input
+									className="tf"
+									type="number"
+									step="0.01"
+									value={mat.emissiveMapOffset[0]}
+									onChange={e => patch({ emissiveMapOffset: [parseFloat(e.target.value), mat.emissiveMapOffset[1]] })}
+									onBlur={() => commit({ ...mat, emissiveMapOffset: [...mat.emissiveMapOffset] })}
+									onKeyDown={autoBlur}
+								/>
+								<input
+									className="tf"
+									type="number"
+									step="0.01"
+									value={mat.emissiveMapOffset[1]}
+									onChange={e => patch({ emissiveMapOffset: [mat.emissiveMapOffset[0], parseFloat(e.target.value)] })}
+									onBlur={() => commit({ ...mat, emissiveMapOffset: [...mat.emissiveMapOffset] })}
+									onKeyDown={autoBlur}
+								/>
+							</div>
+					
+							<div className="material-editor-row field subrow">
+								<label className="material-editor-label">Scale</label>
+								<input
+									className="tf"
+									type="number"
+									step="0.01"
+									value={mat.emissiveMapRepeat[0]}
+									onChange={e => patch({ emissiveMapRepeat: [parseFloat(e.target.value), mat.emissiveMapRepeat[1]] })}
+									onBlur={() => commit({ ...mat, emissiveMapRepeat: [...mat.emissiveMapRepeat] })}
+									onKeyDown={autoBlur}
+								/>
+								<input
+									className="tf"
+									type="number"
+									step="0.01"
+									value={mat.emissiveMapRepeat[1]}
+									onChange={e => patch({ emissiveMapRepeat: [mat.emissiveMapRepeat[0], parseFloat(e.target.value)] })}
+									onBlur={() => commit({ ...mat, emissiveMapRepeat: [...mat.emissiveMapRepeat] })}
 									onKeyDown={autoBlur}
 								/>
 							</div>

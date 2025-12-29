@@ -271,6 +271,12 @@ contextBridge.exposeInMainWorld('D3D', {
 	exportMultipleFiles: (files) => ipcRenderer.invoke('export-multiple-files', files),
 	openToolWindow: (name) => ipcRenderer.send('open-tool-window', name),
 	closeToolWindow: (name) => ipcRenderer.send('close-tool-window', name),
+	getProjectSettings: async () => {
+		return await ipcRenderer.invoke('get-project-settings');
+	},
+	getSystemFonts: async () => {
+		return await ipcRenderer.invoke('get-system-fonts');
+	},
 	
 	theme: {
 		get: () => ipcRenderer.invoke('get-theme'),

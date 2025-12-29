@@ -25,6 +25,7 @@ export default defineConfig({
 				player: resolve(__dirname, 'src/renderer/editor/player.html'),
 				
 				// Tool windows
+				projectSettings: resolve(__dirname, 'src/renderer/editor/tool-windows/project-settings.html'),
 				bitmapTrace: resolve(__dirname, 'src/renderer/editor/tool-windows/bitmap-trace.html'),
 				graphicSmooth: resolve(__dirname, 'src/renderer/editor/tool-windows/graphic-smooth.html'),
 				graphicStraighten: resolve(__dirname, 'src/renderer/editor/tool-windows/graphic-straighten.html'),

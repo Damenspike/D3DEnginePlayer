@@ -65,6 +65,9 @@ export default class D2DDraw {
 		return new Set(['brush','pencil','line','square','text','circle','polygon']).has(t);
 	}
 	_request() { 
+		if(_editor.mode != '2D')
+			return;
+		
 		this.d2drenderer.render(); 
 		_editor.updateInspector();
 	}
@@ -422,7 +425,6 @@ export default class D2DDraw {
 			if (this.localPoints.length < 2) {
 				obj.delete?.();
 				this._request();
-				_editor.updateInspector();
 				return;
 			}
 		} else if (isDragTool) {
@@ -432,7 +434,6 @@ export default class D2DDraw {
 			if (!a || !b) {
 				obj.delete?.();
 				this._request();
-				_editor.updateInspector();
 				return;
 			}
 			
@@ -447,7 +448,6 @@ export default class D2DDraw {
 			if ((dx * dx + dy * dy) < minSq) {
 				obj.delete?.();
 				this._request();
-				_editor.updateInspector();
 				return;
 			}
 		}
@@ -753,7 +753,7 @@ export default class D2DDraw {
 					ctx.lineWidth = 1;           // or strokePx if you want it thicker
 					ctx.lineCap   = 'round';
 					ctx.lineJoin  = 'round';
-					ctx.strokeStyle = '#ffffff'; // white in 'difference' = invert
+					ctx.strokeStyle = 'gray'; // white in 'difference' = invert
 					ctx.stroke(pathC);
 					ctx.restore();
 				}
@@ -812,7 +812,7 @@ export default class D2DDraw {
 		
 			ctx.save();
 			ctx.globalCompositeOperation = 'difference';
-			ctx.strokeStyle = 'white'; // XOR → invert
+			ctx.strokeStyle = 'gray'; // XOR → invert
 			ctx.lineWidth = 2;
 		
 			ctx.beginPath();

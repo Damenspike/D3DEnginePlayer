@@ -5,7 +5,8 @@ import {
 	handleImportFile
 } from './d3deditorimporter.js';
 import {
-	getSelectionCenter
+	getSelectionCenter,
+	fileName
 } from './d3dutility.js';
 import {
 	mergeGraphic2Ds
@@ -97,7 +98,7 @@ export default class D3DEditorState {
 	}
 	
 	get lightsEnabled() {
-		return this._lightsEnabled && this.focus == _root;
+		return this._lightsEnabled;
 	}
 	set lightsEnabled(v) {
 		this._lightsEnabled = !!v;
@@ -367,7 +368,7 @@ export default class D3DEditorState {
 	}
 	
 	// .d3dproj
-	async __save(projectURI) {
+	async save(projectURI) {
 		if(this.__saving) {
 			console.warn('Project is already saving');
 			return;
@@ -405,7 +406,7 @@ export default class D3DEditorState {
 	}
 	
 	// .d3d
-	async __build(buildURI, opts = {}) {
+	async build(buildURI, opts = {}) {
 		if(this.__saving) {
 			console.warn('Project is already saving');
 			return;
@@ -422,18 +423,20 @@ export default class D3DEditorState {
 		
 		D3DConsole.log('[2/4] Making...');
 		await this.__doBuild(zip, {
-			obfuscateCode: opts?.obfuscateCode !== false
+			obfuscateCode: opts?.obfuscateCode !== false,
+			stripAssets: !!opts?.stripAssets
 		});
 		
 		D3DConsole.log('[3/4] Compressing...');
 		///////////////////////////////////
 		// -- Save zip itself --
 		const t = _time.now;
+		
 		const zipData = await zip.generateAsync({ 
 			type: 'arraybuffer',
 			compression: 'DEFLATE', // d3d file compression enabled
 			compressionOptions: {
-				level: opts?.compressionLevel || 6
+				level: Number(opts?.compressionLevel) || 6
 			}
 		});
 		
@@ -446,11 +449,11 @@ export default class D3DEditorState {
 		D3DConsole.log(`Project built. Time elapsed ${Number(_time.now - t).toFixed(2)}s.`);
 	}
 	// .d3d
-	async __publish(publishURI, buildURI, opts) {
+	async publish(publishURI, buildURI, opts) {
 		D3DConsole.clear();
 		
 		const t = _time.now;
-		await this.__build(buildURI, opts);
+		await this.build(buildURI, opts);
 		
 		opts.manifest = _root.manifest;
 		
@@ -544,12 +547,67 @@ export default class D3DEditorState {
 			});
 		}
 		
+		// Build scene graph
 		const scenesData = JSON.stringify(scenes);
 		this.writeFile({
 			zip,
 			path: 'scenes.json',
 			data: scenesData
 		});
+		
+		// Remove orphan assets
+		// (MUST BE A CLONED ZIP)
+		if(opts.stripAssets && _root.zip !== zip) {
+			// Compile all symbol data
+			const symbolsData = JSON.stringify(
+				Object.values(_root.__symbols)
+				.map(s => ({
+					objData: s.objData, 
+					symbolAssetId: !!s.file?.name ? _root.resolveAssetId(s.file?.name) : ''
+				}))
+			);
+			
+			// Compile all material data
+			let materialsData = '';
+			
+			for (const [rel, file] of Object.entries(zip.files)) {
+				if(!rel.startsWith('assets/') || file.dir)
+					continue;
+				
+				if(file.name.endsWith('.mat')) {
+					const matData = await file.async('string');
+					if(matData)
+						materialsData += matData;
+				}
+			}
+			
+			// Contains all scene graph + symbols (with serialized symbol object data and symbol file asset UUID which is not the same as symbolId)
+			const superGraph = scenesData + symbolsData + materialsData;
+			const essentials = ['materials.index.json'];
+			
+			let stripped = [];
+			zip.forEach((rel, entry) => {
+				if(!rel.startsWith('assets/'))
+					return;
+				
+				const uuid = _root.resolveAssetId(rel);
+				
+				if(!uuid)
+					return;
+					
+				const file = zip.file(rel);
+				
+				if(file.dir || essentials.includes(fileName(rel)))
+					return;
+				
+				if(!superGraph.includes(uuid))
+					stripped.push({rel, uuid});
+			});
+			stripped.forEach(({rel, uuid}) => {
+				zip.remove(rel);
+			});
+			console.log('Stripped', stripped.length, 'orphaned assets', stripped);
+		}
 		
 		// Save asset index
 		const assetIndexData = JSON.stringify(_root.assetIndex);
@@ -684,7 +742,7 @@ export default class D3DEditorState {
 	gameOrInspectorActive() {
 		return this.game3dRef.current.contains(document.activeElement) || this.game2dRef.current.contains(document.activeElement) || this.inspRef.current.contains(document.activeElement);
 	}
-	doCopySelectedObjects() {
+	async doCopySelectedObjects() {
 		this.pastes = 0;
 		
 		SystemClipboard.writeText(JSON.stringify(
@@ -707,7 +765,7 @@ export default class D3DEditorState {
 					return;
 				
 				const rel = _root.resolvePath(bitmap2d.source);
-				const data = this.readFileData(rel);
+				const data = await this.readFileData(rel);
 				
 				if(!data)
 					return;

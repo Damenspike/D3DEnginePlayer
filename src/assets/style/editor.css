@@ -278,6 +278,7 @@ body.dark {
 	background:
 	conic-gradient(from 90deg, #fff 25%, #eee 0 50%, #fff 0 75%, #eee 0)
 	0 0 / 16px 16px;
+	mix-blend-mode: difference;
 }
 
 /* CONSOLE (bottom panel) */
@@ -1379,6 +1380,9 @@ body.dark {
 		margin-right: 5px;
 	}
 }
+.project-settings {
+	padding: 30px;
+}
 .code-not-present {
 	svg {
 		opacity: 0.2;
@@ -1486,5 +1490,17 @@ body.dark {
 	.script-preview__hit.is-current {
 		background: rgba(255, 220, 100, 0.774);
 		outline: 1px solid rgba(255, 255, 255, 0.25);
+	}
+}
+.insp-font__input {
+	margin-top: 5px;
+}
+.vector-bool-axis {
+	.vector-bool-axis-label {
+		padding-right: 5px;
+		vertical-align: middle;
+	}
+	input {
+		vertical-align: middle;
 	}
 }
