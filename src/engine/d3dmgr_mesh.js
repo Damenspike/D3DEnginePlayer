@@ -163,14 +163,12 @@ export default class MeshManager {
 	}
 
 	async _loadTextureShared(uuid, isColor = false) {
-		if(!uuid)
-			return null;
-	
 		const shared = _root.__texShared;
+	
 		let entry = shared.get(uuid);
 		if(entry) {
 			entry.owners.add(this.d3dobject);
-			return entry.tex;
+			return entry;
 		}
 	
 		const rel = this.d3dobject.resolvePathNoAssets(uuid);
@@ -185,40 +183,95 @@ export default class MeshManager {
 		const blob = new Blob([buf], { type: this._mimeFromExt(rel) });
 		const bmp  = await createImageBitmap(blob);
 	
-		const tex = new THREE.Texture(bmp);
-		tex.flipY = false;
+		const base = new THREE.Texture(bmp);
+		base.flipY = false;
 	
 		if(isColor) {
-			if('colorSpace' in tex) tex.colorSpace = THREE.SRGBColorSpace;
-			else tex.encoding = THREE.sRGBEncoding;
+			if('colorSpace' in base) base.colorSpace = THREE.SRGBColorSpace;
+			else base.encoding = THREE.sRGBEncoding;
 		}
 	
-		tex.wrapS = THREE.RepeatWrapping;
-		tex.wrapT = THREE.RepeatWrapping;
+		base.wrapS = THREE.RepeatWrapping;
+		base.wrapT = THREE.RepeatWrapping;
+	
+		// IMPORTANT: we rely on texture matrix for offset/repeat
+		base.matrixAutoUpdate = true;
+	
+		base.needsUpdate = true;
+	
+		if(!base.userData) base.userData = {};
+		base.userData._assetUUID = uuid;
+	
+		entry = {
+			uuid,
+			bmp,
+			base,                 // shared "base" texture
+			variants: new Map(),  // exture clone (shares bmp)
+			owners: new Set([this.d3dobject])
+		};
+	
+		shared.set(uuid, entry);
+		return entry;
+	}
+	
+	_getTexVariant(entry, uv) {
+		const off = uv?.offset;
+		const rep = uv?.repeat;
+	
+		const ox = Array.isArray(off) ? (Number(off[0]) || 0) : 0;
+		const oy = Array.isArray(off) ? (Number(off[1]) || 0) : 0;
+	
+		const rx = Array.isArray(rep) ? (Number(rep[0]) || 1) : 1;
+		const ry = Array.isArray(rep) ? (Number(rep[1]) || 1) : 1;
+	
+		// default transform: just use the shared base texture
+		if(ox === 0 && oy === 0 && rx === 1 && ry === 1)
+			return entry.base;
+	
+		const key = `${ox},${oy}|${rx},${ry}`;
+		let tex = entry.variants.get(key);
+		if(tex)
+			return tex;
+	
+		// clone texture object but share the same image/bitmap
+		tex = entry.base.clone();
+		tex.image = entry.base.image;         // shared ImageBitmap
+		tex.flipY = entry.base.flipY;
+		tex.wrapS = entry.base.wrapS;
+		tex.wrapT = entry.base.wrapT;
+		tex.matrixAutoUpdate = true;
+	
+		tex.offset.set(ox, oy);
+		tex.repeat.set(rx, ry);
+		tex.updateMatrix();
+	
 		tex.needsUpdate = true;
 	
 		if(!tex.userData) tex.userData = {};
-		tex.userData._assetUUID = uuid;
+		tex.userData._assetUUID = entry.uuid;
 	
-		entry = {
-			tex,
-			owners: new Set([this.d3dobject])
-		};
-		
-		shared.set(uuid, entry);
+		entry.variants.set(key, tex);
 		return tex;
 	}
-	async _setMapRel(mat, key, uuid, isColor = false) {
-		if(!(key in mat))
-			return;
-			
-		// remove previous ownership
-		if(mat[key]?.userData?._assetUUID) {
-			const old = _root.__texShared.get(mat[key].userData._assetUUID);
-			if(old)
-				old.owners.delete(this.d3dobject);
-		}
 	
+	async _setMapRel(mat, key, uuid, isColor = false, uv = null) {
+		if(
+			key !== 'map' &&
+			key !== 'normalMap' &&
+			key !== 'roughnessMap' &&
+			key !== 'metalnessMap' &&
+			key !== 'emissiveMap' &&
+			key !== 'aoMap' &&
+			key !== 'alphaMap'
+		)
+			return;
+		
+		if(mat[key]?.userData?._assetUUID) {
+			const oldEntry = _root.__texShared.get(mat[key].userData._assetUUID);
+			if(oldEntry)
+				oldEntry.owners.delete(this.d3dobject);
+		}
+		
 		if(!uuid) {
 			if(mat[key]) {
 				mat[key] = null;
@@ -226,318 +279,238 @@ export default class MeshManager {
 			}
 			return;
 		}
-	
-		// already correct
-		if(mat[key]?.userData?._assetUUID === uuid)
+		
+		const entry = await this._loadTextureShared(uuid, isColor);
+		if(!entry)
 			return;
-	
-		const tex = await this._loadTextureShared(uuid, isColor);
-		if(!tex)
+		
+		entry.owners.add(this.d3dobject);
+		
+		const tex = this._getTexVariant(entry, uv);
+		
+		if(mat[key] === tex)
 			return;
-	
+		
 		mat[key] = tex;
 		mat.needsUpdate = true;
 	}
-
-	_stripIncompatible(params, type) {
-		const {
-			// your custom / non-three keys:
-			renderMode,
-		
-			maps, doubleSided,
-			mapOffset, mapRepeat,
-			normalMapOffset, normalMapRepeat,
-			emissiveMapOffset, emissiveMapRepeat,
-			map, normalMap, roughnessMap, metalnessMap, emissiveMap, aoMap, alphaMap,
-			...rest
-		} = params;
-		
-		delete rest.mapOffset; delete rest.mapRepeat;
-		delete rest.normalMapOffset; delete rest.normalMapRepeat;
-		delete rest.doubleSided; delete rest.maps;
-		delete rest.map; delete rest.normalMap;
-		delete rest.roughnessMap; delete rest.metalnessMap;
-		delete rest.emissiveMap; delete rest.aoMap; delete rest.alphaMap;
-		delete rest.emissiveMapOffset; delete rest.emissiveMapRepeat;
 	
-		if (doubleSided === true) rest.side = THREE.DoubleSide;
+	_normalizeMaterialParams(paramsIn) {
+		const p = { ...(paramsIn || {}) };
+		const type = p.type || 'MeshStandardMaterial';
 	
-		if (type === 'MeshBasicMaterial') {
-			delete rest.metalness;
-			delete rest.roughness;
-			delete rest.emissive;
-			delete rest.emissiveIntensity;
-			delete rest.envMapIntensity;
+		if('color' in p) p.color = this._fixColor(p.color);
+		if('emissive' in p) p.emissive = this._fixColor(p.emissive);
+	
+		if(p.opacity !== undefined && p.opacity < 1 && p.transparent !== true)
+			p.transparent = true;
+	
+		if(typeof p.side === 'string' && THREE[p.side] !== undefined)
+			p.side = THREE[p.side];
+	
+		const renderMode = p.renderMode || null;
+		const doubleSided = p.doubleSided === true;
+	
+		const uv = {
+			map: { offset: p.mapOffset, repeat: p.mapRepeat },
+			normalMap: { offset: p.normalMapOffset, repeat: p.normalMapRepeat },
+			emissiveMap: { offset: p.emissiveMapOffset, repeat: p.emissiveMapRepeat }
+		};
+	
+		const maps = {
+			...(p.maps || {}),
+			...(p.map ? { map: p.map } : null),
+			...(p.normalMap ? { normalMap: p.normalMap } : null),
+			...(p.roughnessMap ? { roughnessMap: p.roughnessMap } : null),
+			...(p.metalnessMap ? { metalnessMap: p.metalnessMap } : null),
+			...(p.emissiveMap ? { emissiveMap: p.emissiveMap } : null),
+			...(p.aoMap ? { aoMap: p.aoMap } : null),
+			...(p.alphaMap ? { alphaMap: p.alphaMap } : null),
+		};
+	
+		const shader = {
+			vertexShader: p.vertexShader || null,
+			fragmentShader: p.fragmentShader || null,
+			shaderProps: Array.isArray(p.shaderProps) ? p.shaderProps : []
+		};
+	
+		delete p.renderMode;
+		delete p.doubleSided;
+		delete p.maps;
+	
+		delete p.mapOffset; delete p.mapRepeat;
+		delete p.normalMapOffset; delete p.normalMapRepeat;
+		delete p.emissiveMapOffset; delete p.emissiveMapRepeat;
+	
+		delete p.map;
+		delete p.normalMap;
+		delete p.roughnessMap;
+		delete p.metalnessMap;
+		delete p.emissiveMap;
+		delete p.aoMap;
+		delete p.alphaMap;
+	
+		delete p.vertexShader;
+		delete p.fragmentShader;
+		delete p.shaderProps;
+	
+		if(doubleSided)
+			p.side = THREE.DoubleSide;
+	
+		if(type === 'MeshBasicMaterial') {
+			delete p.metalness;
+			delete p.roughness;
+			delete p.emissive;
+			delete p.emissiveIntensity;
+			delete p.envMapIntensity;
 		}
 	
-		const mergedMaps = {
-			...(maps || {}),
-			...(map ? { map } : null),
-			...(normalMap ? { normalMap } : null),
-			...(roughnessMap ? { roughnessMap } : null),
-			...(metalnessMap ? { metalnessMap } : null),
-			...(emissiveMap ? { emissiveMap } : null),
-			...(aoMap ? { aoMap } : null),
-			...(alphaMap ? { alphaMap } : null),
-		};
-	
-		return {
-			ctorParams: rest,
-			pulled: {
-				maps: mergedMaps,
-				mapOffset, mapRepeat,
-				normalMapOffset, normalMapRepeat,
-				emissiveMapOffset, emissiveMapRepeat,
-				renderMode
-			}
-		};
+		return { type, ctorParams: p, maps, uv, renderMode, shader };
 	}
-
+	
+	async _applyTexturesToMaterial(m, maps, uv) {
+		await this._setMapRel(m, 'map', maps.map, true, uv.map);
+		await this._setMapRel(m, 'normalMap', maps.normalMap, false, uv.normalMap);
+		await this._setMapRel(m, 'roughnessMap', maps.roughnessMap);
+		await this._setMapRel(m, 'metalnessMap', maps.metalnessMap);
+		await this._setMapRel(m, 'emissiveMap', maps.emissiveMap, true, uv.emissiveMap);
+		await this._setMapRel(m, 'aoMap', maps.aoMap);
+		await this._setMapRel(m, 'alphaMap', maps.alphaMap);
+	}
+	
 	async _buildMaterialFromParams(paramsIn) {
-		if (!paramsIn) return null;
-	
-		const params = { ...paramsIn };
-		const type   = params.type || 'MeshStandardMaterial';
-	
-		// Keep it simple: only normal Three material types here
-		if ('color' in params)    params.color    = this._fixColor(params.color);
-		if ('emissive' in params) params.emissive = this._fixColor(params.emissive);
-	
-		if (params.opacity !== undefined && params.opacity < 1 && params.transparent !== true)
-			params.transparent = true;
-	
-		if (typeof params.side === 'string' && THREE[params.side] !== undefined)
-			params.side = THREE[params.side];
-	
-		const Ctor = THREE[type];
-		if (!Ctor) return null;
-	
-		const { ctorParams } = this._stripIncompatible(params, type);
-		const m = new Ctor(ctorParams);
+		const n = this._normalizeMaterialParams(paramsIn);
 		
-		this._applyRenderMode(m, params);
+		if(n.type === 'ShaderMaterial') {
+			const baseOpacity = typeof n.ctorParams.opacity === 'number' ? n.ctorParams.opacity : 1;
+			const baseColor = n.ctorParams.color != null ? n.ctorParams.color : 0xffffff;
 	
-		if (!m.userData) m.userData = {};
-		if (m.userData._baseOpacity == null) {
-			m.userData._baseOpacity =
-				typeof ctorParams.opacity === 'number' ? ctorParams.opacity : 1;
-		}
-		if ('toneMapped' in m) m.toneMapped = false;
-	
-		m.needsUpdate = true;
-		return m;
-	}
-	async _buildMaterialFromMatUUID(uuid) {
-		if (!uuid) return null;
-	
-		const txt = await this._readTextByUUID(uuid);
-		if (!txt) return null;
-	
-		let params;
-		try { params = JSON.parse(txt); } catch { return null; }
-	
-		const type = params.type || 'MeshStandardMaterial';
-		
-		// If it isn't ShaderMaterial, these keys are garbage to three.js and will warn.
-		if (type !== 'ShaderMaterial') {
-			delete params.vertexShader;
-			delete params.fragmentShader;
-			delete params.shaderProps;
-			delete params.flatShading;
-		}
-	
-		// ---- Common fixes (all material types, including ShaderMaterial) ----
-		if ('color' in params)    params.color    = this._fixColor(params.color);
-		if ('emissive' in params) params.emissive = this._fixColor(params.emissive);
-	
-		// make sure transparent is correct for non-1 opacity
-		if (params.opacity !== undefined && params.opacity < 1 && params.transparent !== true)
-			params.transparent = true;
-	
-		if (typeof params.side === 'string' && THREE[params.side] !== undefined)
-			params.side = THREE[params.side];
-	
-		// -------------------------------------------------
-		// ShaderMaterial path (with lights + standard props)
-		// -------------------------------------------------
-		if (type === 'ShaderMaterial') {
-			const vertexShaderUUID   = params.vertexShader || null;
-			const fragmentShaderUUID = params.fragmentShader || null;
-	
-			// remove UUIDs from ctor params
-			delete params.vertexShader;
-			delete params.fragmentShader;
-	
-			const vertSrc = vertexShaderUUID   ? await this._readTextByUUID(vertexShaderUUID)   : null;
-			const fragSrc = fragmentShaderUUID ? await this._readTextByUUID(fragmentShaderUUID) : null;
-			if (!vertSrc || !fragSrc) return null;
-	
-			const baseColor = params.color != null ? params.color : 0xffffff;
-			const baseOpacity = typeof params.opacity === 'number' ? params.opacity : 1;
-	
-			// Base uniforms: common + lights
 			const uniforms = THREE.UniformsUtils.merge([
 				THREE.UniformsLib.common,
 				THREE.UniformsLib.lights
 			]);
 	
-			// diffuse from material color
-			if (uniforms.diffuse && uniforms.diffuse.value && uniforms.diffuse.value.copy) {
-				uniforms.diffuse.value.copy(new THREE.Color(baseColor));
-			} else {
-				uniforms.diffuse = { value: new THREE.Color(baseColor) };
-			}
+			uniforms.diffuse = { value: new THREE.Color(baseColor) };
+			uniforms.opacity = { value: baseOpacity };
 	
-			// opacity uniform from material opacity
-			if (uniforms.opacity) {
-				uniforms.opacity.value = baseOpacity;
-			} else {
-				uniforms.opacity = { value: baseOpacity };
-			}
-	
-			// we drove diffuse from color → drop color param from ctor
-			delete params.color;
-	
-			// shaderProps → uniforms
-			const shaderProps = Array.isArray(params.shaderProps) ? params.shaderProps : [];
-			delete params.shaderProps;
-	
-			const parseVal = (v) => {
-				if (typeof v !== 'string') return v;
+			const parseVal = v => {
+				if(typeof v !== 'string') return v;
 				const t = v.trim();
-				if (t === '') return '';
-				if (t === 'true') return true;
-				if (t === 'false') return false;
-				const n = Number(t);
-				if (Number.isFinite(n)) return n;
+				if(t === '') return '';
+				if(t === 'true') return true;
+				if(t === 'false') return false;
+				const num = Number(t);
+				if(Number.isFinite(num)) return num;
 				return t;
 			};
 	
-			for (const prop of shaderProps) {
-				if (!prop || !prop.key) continue;
-				const k = prop.key.trim();
-				if (!k) continue;
-				uniforms[k] = { value: parseVal(prop.value) };
+			for(const prop of n.shader.shaderProps) {
+				const k = prop.key && prop.key.trim();
+				if(k) uniforms[k] = { value: parseVal(prop.value) };
 			}
 	
-			const ctorParams = {
-				...params,
-				vertexShader: vertSrc,
-				fragmentShader: fragSrc,
-				uniforms,
-				lights: true
-			};
+			const m = new THREE.ShaderMaterial({ ...n.ctorParams, uniforms, lights: true });
 	
-			const m = new THREE.ShaderMaterial(ctorParams);
+			m.userData ||= {};
+			if(m.userData._baseOpacity == null) m.userData._baseOpacity = baseOpacity;
+			if('toneMapped' in m) m.toneMapped = false;
 	
-			// store authoring opacity once; applyOpacity will use this
-			if (!m.userData) m.userData = {};
-			if (m.userData._baseOpacity == null) {
-				m.userData._baseOpacity = baseOpacity;
-			}
-	
-			if ('toneMapped' in m) m.toneMapped = false;
-	
-			// Load textures just like for standard materials
-			await this._setMapRel(m, 'map',          params.map,         true);
-			await this._setMapRel(m, 'normalMap',    params.normalMap);
-			await this._setMapRel(m, 'roughnessMap', params.roughnessMap);
-			await this._setMapRel(m, 'metalnessMap', params.metalnessMap);
-			await this._setMapRel(m, 'emissiveMap',  params.emissiveMap, true);
-			await this._setMapRel(m, 'aoMap',        params.aoMap);
-			await this._setMapRel(m, 'alphaMap',     params.alphaMap);
-	
-			// Apply UV offset / scale for color & normal maps
-			const mapOffset        = params.mapOffset;
-			const mapRepeat        = params.mapRepeat;
-			const normalMapOffset  = params.normalMapOffset;
-			const normalMapRepeat  = params.normalMapRepeat;
-			const emissiveMapOffset = params.emissiveMapOffset;
-			const emissiveMapRepeat = params.emissiveMapRepeat;
-	
-			if (m.map) {
-				if (Array.isArray(mapOffset)) m.map.offset.set(mapOffset[0] || 0, mapOffset[1] || 0);
-				if (Array.isArray(mapRepeat)) m.map.repeat.set(mapRepeat[0] || 1, mapRepeat[1] || 1);
-				m.map.needsUpdate = true;
-			}
-	
-			if (m.normalMap) {
-				if (Array.isArray(normalMapOffset)) m.normalMap.offset.set(normalMapOffset[0] || 0, normalMapOffset[1] || 0);
-				if (Array.isArray(normalMapRepeat)) m.normalMap.repeat.set(normalMapRepeat[0] || 1, normalMapRepeat[1] || 1);
-				m.normalMap.needsUpdate = true;
-			}
-			
-			if (m.emissiveMap) {
-				if (Array.isArray(emissiveMapOffset)) m.emissiveMap.offset.set(emissiveMapOffset[0] || 0, emissiveMapOffset[1] || 0);
-				if (Array.isArray(emissiveMapRepeat)) m.emissiveMap.repeat.set(emissiveMapRepeat[0] || 1, emissiveMapRepeat[1] || 1);
-				m.emissiveMap.needsUpdate = true;
-			}
-			
-			this._applyRenderMode(m, params);
-	
+			await this._applyTexturesToMaterial(m, n.maps, n.uv);
+			this._applyRenderMode(m, paramsIn);
 			m.needsUpdate = true;
 			return m;
 		}
 	
-		// -------------------------------------------------
-		// Original path for Standard/Physical/Basic/etc.
-		// -------------------------------------------------
-		const Ctor = THREE[type];
-		if (!Ctor) return null;
+		const Ctor = THREE[n.type];
+		if(!Ctor) return null;
 	
-		const { ctorParams, pulled } = this._stripIncompatible({ ...params }, type);
+		const m = new Ctor(n.ctorParams);
 	
-		const m = new Ctor(ctorParams);
-		
+		m.userData ||= {};
+		if(m.userData._baseOpacity == null)
+			m.userData._baseOpacity = typeof n.ctorParams.opacity === 'number' ? n.ctorParams.opacity : 1;
+	
+		if('toneMapped' in m) m.toneMapped = false;
+	
+		await this._applyTexturesToMaterial(m, n.maps, n.uv);
+		this._applyRenderMode(m, paramsIn);
+		m.needsUpdate = true;
+		return m;
+	}
+	
+	async _buildMaterialFromMatUUID(uuid) {
+		const txt = await this._readTextByUUID(uuid);
+		if(!txt) return null;
+	
+		let params;
+		try { params = JSON.parse(txt); }
+		catch { return null; }
+	
+		const n = this._normalizeMaterialParams(params);
+	
+		if(n.type === 'ShaderMaterial') {
+			const vertSrc = n.shader.vertexShader ? await this._readTextByUUID(n.shader.vertexShader) : null;
+			const fragSrc = n.shader.fragmentShader ? await this._readTextByUUID(n.shader.fragmentShader) : null;
+			if(!vertSrc || !fragSrc) return null;
+	
+			const baseOpacity = typeof n.ctorParams.opacity === 'number' ? n.ctorParams.opacity : 1;
+			const baseColor = n.ctorParams.color != null ? n.ctorParams.color : 0xffffff;
+	
+			const uniforms = THREE.UniformsUtils.merge([
+				THREE.UniformsLib.common,
+				THREE.UniformsLib.lights
+			]);
+	
+			uniforms.diffuse = { value: new THREE.Color(baseColor) };
+			uniforms.opacity = { value: baseOpacity };
+	
+			const parseVal = v => {
+				if(typeof v !== 'string') return v;
+				const t = v.trim();
+				if(t === '') return '';
+				if(t === 'true') return true;
+				if(t === 'false') return false;
+				const num = Number(t);
+				if(Number.isFinite(num)) return num;
+				return t;
+			};
+	
+			for(const prop of n.shader.shaderProps) {
+				const k = prop.key && prop.key.trim();
+				if(k) uniforms[k] = { value: parseVal(prop.value) };
+			}
+	
+			const m = new THREE.ShaderMaterial({
+				...n.ctorParams,
+				vertexShader: vertSrc,
+				fragmentShader: fragSrc,
+				uniforms,
+				lights: true
+			});
+	
+			m.userData ||= {};
+			if(m.userData._baseOpacity == null) m.userData._baseOpacity = baseOpacity;
+			if('toneMapped' in m) m.toneMapped = false;
+	
+			await this._applyTexturesToMaterial(m, n.maps, n.uv);
+			this._applyRenderMode(m, params);
+			m.needsUpdate = true;
+			return m;
+		}
+	
+		const Ctor = THREE[n.type];
+		if(!Ctor) return null;
+	
+		const m = new Ctor(n.ctorParams);
+	
+		m.userData ||= {};
+		if(m.userData._baseOpacity == null)
+			m.userData._baseOpacity = typeof n.ctorParams.opacity === 'number' ? n.ctorParams.opacity : 1;
+	
+		if('toneMapped' in m) m.toneMapped = false;
+	
+		await this._applyTexturesToMaterial(m, n.maps, n.uv);
 		this._applyRenderMode(m, params);
-	
-		// store authoring opacity once; applyOpacity will use this
-		if (!m.userData) m.userData = {};
-		if (m.userData._baseOpacity == null) {
-			m.userData._baseOpacity =
-				typeof ctorParams.opacity === 'number' ? ctorParams.opacity : 1;
-		}
-	
-		if ('toneMapped' in m) m.toneMapped = false;
-	
-		const maps = pulled.maps || {};
-		const mapOffset        = pulled.mapOffset;
-		const mapRepeat        = pulled.mapRepeat;
-		const normalMapOffset  = pulled.normalMapOffset;
-		const normalMapRepeat  = pulled.normalMapRepeat;
-		const emissiveMapOffset = pulled.emissiveMapOffset;
-		const emissiveMapRepeat = pulled.emissiveMapRepeat;
-	
-		// Load textures
-		await this._setMapRel(m, 'map',          maps.map,         true);
-		await this._setMapRel(m, 'normalMap',    maps.normalMap);
-		await this._setMapRel(m, 'roughnessMap', maps.roughnessMap);
-		await this._setMapRel(m, 'metalnessMap', maps.metalnessMap);
-		await this._setMapRel(m, 'emissiveMap',  maps.emissiveMap, true);
-		await this._setMapRel(m, 'aoMap',        maps.aoMap);
-		await this._setMapRel(m, 'alphaMap',     maps.alphaMap);
-	
-		// Apply UV offset / scale for color map
-		if (m.map) {
-			if (Array.isArray(mapOffset)) m.map.offset.set(mapOffset[0] || 0, mapOffset[1] || 0);
-			if (Array.isArray(mapRepeat)) m.map.repeat.set(mapRepeat[0] || 1, mapRepeat[1] || 1);
-			m.map.needsUpdate = true;
-		}
-	
-		// Apply UV offset / scale for normal map
-		if (m.normalMap) {
-			if (Array.isArray(normalMapOffset)) m.normalMap.offset.set(normalMapOffset[0] || 0, normalMapOffset[1] || 0);
-			if (Array.isArray(normalMapRepeat)) m.normalMap.repeat.set(normalMapRepeat[0] || 1, normalMapRepeat[1] || 1);
-			m.normalMap.needsUpdate = true;
-		}
-		
-		// Apply UV offset / scale for emissive map
-		if (m.emissiveMap) {
-			if (Array.isArray(emissiveMapOffset)) m.emissiveMap.offset.set(emissiveMapOffset[0] || 0, emissiveMapOffset[1] || 0);
-			if (Array.isArray(emissiveMapRepeat)) m.emissiveMap.repeat.set(emissiveMapRepeat[0] || 1, emissiveMapRepeat[1] || 1);
-			m.emissiveMap.needsUpdate = true;
-		}
-	
 		m.needsUpdate = true;
 		return m;
 	}
@@ -715,6 +688,21 @@ export default class MeshManager {
 			}
 		});
 	}
+	getMaterialUUIDs() {
+		let uuids = this.materials;
+		let p = this.d3dobject.parent;
+	
+		while(p && p != this.d3dobject.root) {
+			const mesh = p.getComponent('Mesh');
+			if(mesh && Array.isArray(mesh.materials) && mesh.materials.length > 0) {
+				uuids = mesh.materials;
+				break;
+			}
+			p = p.parent;
+		}
+	
+		return uuids;
+	}
 
 	// =====================================================
 	// MAIN LIFECYCLE
@@ -727,7 +715,19 @@ export default class MeshManager {
 			
 			if (!mesh || !(mesh.isMesh || mesh.isSkinnedMesh)) return;
 			
-			const uuids = this.component.properties.materials;
+			// Assign root mesh
+			let p = this.d3dobject;
+			while(p && p != _root) {
+				const m = p.getComponent('Mesh');
+				if(m) {
+					this.rootMesh = m;
+					break;
+				}
+				p = p.parent;
+			}
+			
+			const uuids = this.getMaterialUUIDs();
+			
 			await this._applyMaterialsToThreeMesh(mesh, uuids);
 			this._applyShadows();
 			this._applyAmbientOcclusion();
@@ -741,10 +741,14 @@ export default class MeshManager {
 				if(this.lastInstancing && this.lastInstancingId && this.lastInstancingId != this.instancingId)
 					_instancing.removeFromInstance(this.lastInstancingId, this);
 				
-				if(this.instancing)
-					this.d3dobject.visible3 = false;
-				else
-					this.d3dobject.visible3 = true;
+				if(this.instancing) {
+					if(!this.__wasInstanced)
+						this.__wasInstanced = true;
+				}else
+				if(this.__wasInstanced) {
+					this.d3dobject.addObject3D();
+					this.__wasInstanced = false;
+				}
 				
 				let p = this.d3dobject;
 				while(p) {
@@ -804,16 +808,27 @@ export default class MeshManager {
 		const sceneRoot = this.d3dobject.modelScene;
 
 		// ---------------- Apply materials ----------------
-		const meshLevel = this.component.properties?.materials;
-		if (Array.isArray(meshLevel) && meshLevel.length > 0) {
+		const mats = this.component.properties.materials;
+		const subs = this.d3dobject.findAllComponents('SubMesh');
+		
+		if(mats && mats.length) {
 			const host = this.d3dobject.object3d;
-			const targets = [];
-			if (host.isMesh || host.isSkinnedMesh) targets.push(host);
-			else if (Array.isArray(host.children))
-				for (const c of host.children)
-					if (c && (c.isMesh || c.isSkinnedMesh)) targets.push(c);
-			for (const t of targets)
-				await this._applyMaterialsToThreeMesh(t, meshLevel);
+		
+			if(host.isMesh || host.isSkinnedMesh)
+				await this._applyMaterialsToThreeMesh(host, mats);
+			else
+				for(const c of host.children)
+					if(c.isMesh || c.isSkinnedMesh)
+						await this._applyMaterialsToThreeMesh(c, mats);
+		
+			for(const sm of subs) {
+				const mesh = sm.d3dobject.object3d;
+				if(mesh.isMesh || mesh.isSkinnedMesh)
+					await this._applyMaterialsToThreeMesh(mesh, mats);
+			}
+		}else {
+			for(const sm of subs)
+				await sm.updateComponent();
 		}
 
 		// ---------------- Build GLTF hierarchy ----------------

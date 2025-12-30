@@ -1,16 +1,18 @@
 import * as THREE from 'three';
 
-const MAX_PER_BATCH = 1024;
-
 export default class D3DInstancing {
 	constructor() {
 		this.instances = {};
 		this.submeshes = {};
 		this.dirtyInstances = [];
+		this.maxPerBatch = 1024;
 	}
 	
 	// Framely
 	updateAll() {
+		const maxIns = Number(_root.manifest.insMaxBatch);
+		if(maxIns) this.maxPerBatch = maxIns;
+		
 		this.buildDirtyInstances();
 		this.updateDirtyBatchesBounds();
 	}
@@ -33,6 +35,28 @@ export default class D3DInstancing {
 		
 		this.dirtyInstances.forEach(instanceId => this.buildInstance(instanceId));
 		this.dirtyInstances.length = 0;
+	}
+	buildAllInstances() {
+		for(const instanceId in this.instances) {
+			this.buildInstance(instanceId);
+		}
+	}
+	removeAllFromInstance(instanceId) {
+		const instance = this.instances[instanceId];
+		if(!instance)
+			return;
+		
+		const submeshes = this.submeshes[instanceId] || [];
+		if(submeshes.length > 0)
+			[...submeshes].forEach(sm => this.removeFromInstance(instanceId, sm));
+		
+		if(this.instances[instanceId] && (this.submeshes[instanceId]?.length ?? 0) < 1)
+			this.buildInstance(instanceId);
+	}
+	removeAllInstances() {
+		for(const instanceId in this.instances) {
+			this.removeAllFromInstance(instanceId);
+		}
 	}
 	buildInstance(instanceId) {
 		if(!instanceId)
@@ -91,13 +115,13 @@ export default class D3DInstancing {
 			instancedMesh: new THREE.InstancedMesh(
 				instance.geometry,
 				instance.material,
-				MAX_PER_BATCH
+				this.maxPerBatch
 			)
 		};
 		
 		batch.instancedMesh.count = 0;
 		batch.instancedMesh.layers.mask = instance.mask;
-		batch.instancedMesh.frustumCulled = false;
+		//batch.instancedMesh.frustumCulled = false;
 		
 		scene.add(batch.instancedMesh);
 		
@@ -174,7 +198,7 @@ export default class D3DInstancing {
 		let batch = null;
 		
 		for(let i = 0; i < instance.batches.length; i++) {
-			if(instance.batches[i].submeshes.length < MAX_PER_BATCH) {
+			if(instance.batches[i].submeshes.length < this.maxPerBatch) {
 				batch = instance.batches[i];
 				break;
 			}

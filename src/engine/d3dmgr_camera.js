@@ -3,6 +3,9 @@ export default class CameraManager {
 		this.d3dobject = d3dobject;
 		this.component  = component;
 		this.__setup    = false;
+		
+		this._aoBox = new THREE.Box3();
+		this._aoCenter = new THREE.Vector3();
 	}
 
 	// ---- property helpers ----
@@ -63,6 +66,15 @@ export default class CameraManager {
 	set aspect(v) {
 		this.props.aspect = v;
 		this.updateCamera();
+	}
+	
+	// GTAO optimisation: world-space clip radius (0 = disabled)
+	get aoClipRadius() {
+		return Number(this.props.aoClipRadius) ?? 0;
+	}
+	set aoClipRadius(v) {
+		this.props.aoClipRadius = Number(v) ?? 0;
+		this._applyGtaoClipBox();
 	}
 
 	// ---- lifecycle ----
@@ -132,12 +144,15 @@ export default class CameraManager {
 		camera.quaternion.copy(old.quaternion);
 		camera.scale.copy(old.scale);
 	}
+	
+	__onInternalEnterFrame() {
+		if(_host.camera == this.d3dobject)
+			this._applyGtaoClipBox();
+	}
 
 	updateCamera() {
 		let camera = this.d3dobject.object3d;
 		const proj = this.projection;
-		const near = this.clipNear ?? 0.1;
-		const far  = this.clipFar  ?? 1000;
 
 		const wantsPerspective  = (proj === 'perspective');
 		const wantsOrthographic = (proj === 'orthographic');
@@ -185,5 +200,37 @@ export default class CameraManager {
 
 			camera.updateProjectionMatrix();
 		}
+	}
+	
+	_applyGtaoClipBox() {
+		if(!_graphics.gtao?.enabled)
+			return;
+		
+		const pass = _graphics.gtao;
+		
+		const r = this.props.aoClipRadius;
+		if (r <= 0) {
+			pass.setSceneClipBox(null);
+			return;
+		}
+		
+		const camera = this.d3dobject.object3d;
+		if (!camera || !camera.position || !camera.isCamera)
+			return;
+		
+		this._aoCenter.copy(camera.position);
+		
+		this._aoBox.min.set(
+			this._aoCenter.x - r,
+			this._aoCenter.y - r,
+			this._aoCenter.z - r
+		);
+		this._aoBox.max.set(
+			this._aoCenter.x + r,
+			this._aoCenter.y + r,
+			this._aoCenter.z + r
+		);
+		
+		pass.setSceneClipBox(this._aoBox);
 	}
 }

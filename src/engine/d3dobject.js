@@ -2117,6 +2117,31 @@ export default class D3DObject {
 		}
 	}
 	
+	removeObject3D() {
+		const obj = this.object3d;
+		if(!obj)
+			return;
+		
+		const parent = obj.parent;
+		if(parent)
+			parent.remove(obj);
+	}
+	addObject3D(parent = null) {
+		const obj = this.object3d;
+		if(!obj)
+			return;
+		
+		if(!parent)
+			parent = this.parent.object3d;
+		
+		if(!parent) {
+			console.warn('Cant add object3d back to', this.name, ' as parent is no longer available.');
+			return;
+		}
+		
+		if(obj.parent !== parent)
+			parent.add(obj);
+	}
 	replaceObject3D(newObject3D, { keepChildren = true } = {}) {
 		const old = this.object3d;
 		
@@ -2466,21 +2491,26 @@ export default class D3DObject {
 		const shared = _root.__texShared;
 		if(!shared)
 			return;
-			
-		for(const entry of shared.values()) {
+	
+		for(const entry of shared.values())
 			entry.owners.delete(this);
-		}
 	}
 	disposeUnusedTextures() {
 		const shared = _root.__texShared;
 		if(!shared)
 			return;
-			
+	
 		for(const [uuid, entry] of shared.entries()) {
 			if(entry.owners.size !== 0)
 				continue;
-				
-			entry.tex.dispose();
+	
+			// dispose all variant textures
+			for(const tex of entry.variants.values())
+				tex.dispose();
+	
+			// dispose base texture
+			entry.base.dispose();
+	
 			shared.delete(uuid);
 		}
 	}
@@ -2569,27 +2599,27 @@ export default class D3DObject {
 		if(!this.object3d)
 			return;
 		
-		let v = this.visible;
+		const editorHidden = !!(window._editor && this.__editorState?.hidden === true);
+		const v = !!this.visible && !editorHidden;
 		
-		if(window._editor && this.__editorState?.hidden === true)
-			v = false;
+		let o = 1;
+		for(let p = this; p; p = p.parent)
+			o *= (p.opacity ?? 1);
 		
-		if(v && (this.__lastOpacity != this.opacity || force)) {
-			let o = 1;
-			let p = this;
-			while(p) {
-				o *= p.opacity;
-				p = p.parent;
-			}
-			
+		const opacityChanged = force || this.__lastEffectiveOpacity !== o;
+		const visibleChanged = force || this.__lastVisible !== v;
+		const propagate = force || opacityChanged || visibleChanged;
+		
+		if(opacityChanged)
 			applyOpacity(this.object3d, o);
-			
-			this.children.forEach(c => c.updateVisibility(true));
-			
-			this.__lastOpacity = this.opacity;
-		}
 		
 		this.object3d.visible = v;
+		
+		if(propagate)
+			this.children.forEach(c => c.updateVisibility(true));
+		
+		this.__lastEffectiveOpacity = o;
+		this.__lastVisible = v;
 	}
 	
 	getNextHighestDepth() {

@@ -23,6 +23,7 @@ function ProjectSettings() {
 	const [ssao, setSSAO] = useState(false);
 	
 	const [compression, setCompression] = useState(6);
+	const [insMaxBatch, setInsMaxBatch] = useState(1024);
 	const [codeObfuscation, setCodeObfuscation] = useState(true);
 	const [stripAssets, setStripAssets] = useState(true);
 	
@@ -45,6 +46,7 @@ function ProjectSettings() {
 			setCompression(s.compression ?? 6);
 			setCodeObfuscation(s.codeObfuscation ?? true);
 			setStripAssets(s.stripAssets ?? true);
+			setInsMaxBatch(s.insMaxBatch ?? 1024);
 		})();
 	}, []);
 	
@@ -53,6 +55,7 @@ function ProjectSettings() {
 			quality2D, quality3D,
 			gtao, ssao,
 			compression,
+			insMaxBatch,
 			codeObfuscation,
 			stripAssets
 		});
@@ -65,6 +68,7 @@ function ProjectSettings() {
 		quality2D, quality3D,
 		gtao, ssao,
 		compression,
+		insMaxBatch,
 		codeObfuscation,
 		stripAssets
 	]);
@@ -163,6 +167,15 @@ function ProjectSettings() {
 								v => setCompression(Number(v) || 1),
 								{ min: 1, max: 9, step: 1 },
 								'When building your .d3d file, the editor will compress the contents according to a compression level from 1-9. Files with greater compression take longer to decompress.'
+							)
+						}
+						{
+							drawNumber(
+								'Max instances per batch',
+								insMaxBatch,
+								v => setInsMaxBatch(Number(v) || 1),
+								{ min: 1, max: Infinity, step: 1 },
+								'Determines how many instanced meshes can appear in each batch. (Default is 1024)'
 							)
 						}
 						<br />

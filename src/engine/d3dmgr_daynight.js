@@ -304,7 +304,7 @@ export default class DayNightManager {
 		const sprite = new THREE.Sprite(material);
 		const s = this.sunSize * 100;
 		sprite.scale.set(s, s, 1);
-		sprite.renderOrder = 9999999999999;
+		sprite.renderOrder = 9990;
 		sprite.layers.set(2); // No GTAO pass applied on layer 2 to fix the black box glitch
 		
 		root.object3d.add(sprite);
@@ -333,7 +333,8 @@ export default class DayNightManager {
 				opacity: 0,
 				
 				depthWrite: false,
-				depthTest: true
+				depthTest: true,
+				depthFunc: THREE.LessEqualDepth
 			});
 			
 			const mesh = new THREE.Mesh(geometry, material);
@@ -674,10 +675,15 @@ export default class DayNightManager {
 		if(h < 0)   h = 0;
 		if(h >= 24) h = 23.9999;
 		
-		const sunriseStart = this.sunrise - 2;
-		const sunriseEnd   = this.sunrise + 2;
-		const sunsetStart  = this.sunset - 2;
-		const sunsetEnd    = this.sunset + 2;
+		if(!this.fogHourOffset)
+			this.fogHourOffset = 1.7;
+		
+		const fo = this.fogHourOffset;
+		
+		const sunriseStart = this.sunrise - fo;
+		const sunriseEnd   = this.sunrise + fo;
+		const sunsetStart  = this.sunset - fo;
+		const sunsetEnd    = this.sunset + fo;
 		
 		const nightCol   = new THREE.Color(Number(this.nightTint   || 0x050510));
 		const sunriseCol = new THREE.Color(Number(this.sunriseTint || this.nightTint   || 0xffaa66));

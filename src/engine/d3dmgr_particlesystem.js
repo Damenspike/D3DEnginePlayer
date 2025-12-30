@@ -216,14 +216,14 @@ export default class D3DParticleSystemManager {
 	
 
 	// editor signal
-	async updateComponent() {
+	async updateComponent(force = false) {
 		if(!this.component.enabled)
 			return;
 		
 		// capacity
 		const targetMax = Math.max(1, this.props.maxParticles|0);
 		if (targetMax !== this._max) this._rebuild();
-
+		
 		// gradient
 		this._colorStops = parseColorbestStops(this.props.color);
 
@@ -237,7 +237,7 @@ export default class D3DParticleSystemManager {
 		// material / texture
 		const textureChanged = (this._lastTextureUUID !== (this.props.texture || ''));
 		this._lastTextureUUID = (this.props.texture || '');
-		await this._buildMaterial(textureChanged);
+		await this._buildMaterial(textureChanged || force);
 		
 		// uniforms mirror props
 		this._uniforms.uStartSize.value  = this.props.startSize || 0.08;
@@ -251,11 +251,27 @@ export default class D3DParticleSystemManager {
 		this._applyBlendMode();
 		this._mat.needsUpdate = true;
 	}
+	
+	onSkyDomeReady() {
+		if(!this.component.enabled)
+			return;
+		this.updateComponent(true);
+	}
 
 	// controls
-	play(){ this._isPaused = false; this._playedOnce = true; }
-	pause(){ this._isPaused = true; }
-	stop(clear=false){ this._isPaused = true; if (clear) this.clear(); }
+	play() { 
+		this._isPaused = false;
+		this._playedOnce = true;
+	}
+	pause() {
+		this._isPaused = true;
+	}
+	stop(clear = false) { 
+		this._isPaused = true;
+		
+		if (clear)
+			this.clear();
+	}
 
 	clear(){
 		this._alive.fill(0); this._life.fill(0); this._ttl.fill(0);
@@ -267,11 +283,20 @@ export default class D3DParticleSystemManager {
 	}
 
 	dispose(){
-		if (this._points?.parent) this._points.parent.remove(this._points);
+		if (this._points?.parent) 
+			this._points.parent.remove(this._points);
+		
 		this._points?.geometry?.dispose();
+		
 		if (this._currentMap) {
 			this._currentMap.dispose?.();
-			if (this._currentMap.image && typeof this._currentMap.image.close === 'function') { try { this._currentMap.image.close(); } catch {} }
+			
+			if (this._currentMap.image) { 
+				try { 
+					this._currentMap.image.close(); 
+				} catch {} 
+			}
+			
 			this._currentMap = null;
 		}
 		this._points?.material?.dispose();
@@ -768,5 +793,12 @@ export default class D3DParticleSystemManager {
 			this._uniforms.uEnv.value = env;
 	}
 
-	__onInternalEnterFrame(dt = _time.delta) { this._tick(dt, false); }
+	__onInternalEnterFrame(dt = _time.delta) { 
+		this._tick(dt, false); 
+		
+		if(!this._firstRun) {
+			this.onSkyDomeReady();
+			this._firstRun = true;
+		}
+	}
 }

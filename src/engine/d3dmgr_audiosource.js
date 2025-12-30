@@ -57,13 +57,9 @@ export default class AudioSourceManager {
 	}
 
 	// ==== engine entry ====
-	updateComponent() {
-		if (!window._player) return;
-		
-		this.__onInternalStart = () => {
-			if (!this.__setup) 
-				this.setup();
-		}
+	__onInternalEnterFrame() {
+		if (window._player && !this.__setup) 
+			this.setup();
 	}
 
 	setup() {
@@ -87,6 +83,7 @@ export default class AudioSourceManager {
 		if (this.audio) this._reloadBuffer();
 
 		this.__setup = true;
+		this.__onInternalEnterFrame = null;
 	}
 
 	deinitialize() {

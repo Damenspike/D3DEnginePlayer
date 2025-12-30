@@ -3,6 +3,7 @@ import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 export default class D3DGraphics {
 	constructor() {
 		this.maxBillboards = 512;
+		this.lodBias = 1;
 	}
 	
 	get ssao() {

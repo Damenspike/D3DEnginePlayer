@@ -181,6 +181,10 @@ export default class StamperManager {
 		
 		if(!window._editor) {
 			this.component.enabled = false;
+			// Remove from scene (BIG PERFORMANCE WIN)
+			const o = this.d3dobject.object3d;
+			if(o.parent)
+				o.parent.remove(o);
 			return;
 		}
 		
@@ -723,7 +727,7 @@ export default class StamperManager {
 			this.brush = null;
 		}
 		
-		if(_editor)
+		if(window._editor)
 			_editor.gameViewBusy = false;
 	}
 }

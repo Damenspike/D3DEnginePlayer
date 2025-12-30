@@ -258,7 +258,7 @@ async function initEditorCamera() {
 	});
 	const editorLight = await cameraD3DObj.createObject({
 		name: 'Editor Camera Light',
-		position: { x: 0, y: 0, z: 100 },
+		position: { x: 0, y: 0, z: 0 },
 		rotation: { x: 0, y: THREE.MathUtils.degToRad(180), z: 0 },
 		scale: { x: 1, y: 1, z: 1 },
 		editorOnly: true,
@@ -1882,6 +1882,9 @@ function updateProjectSettings(settings) {
 	if(settings.ssao !== undefined) {
 		editorConfig.ssao = !!settings.ssao;
 	}
+	if(settings.insMaxBatch !== undefined) {
+		_root.manifest.insMaxBatch = Number(settings.insMaxBatch);
+	}
 	
 	_editor.setDirty(true);
 	applyProjectSettings();
@@ -1889,10 +1892,10 @@ function updateProjectSettings(settings) {
 function applyProjectSettings() {
 	const editorConfig = _editor.project.editorConfig;
 	
-	_dimensions.pixelRatio2D = window.devicePixelRatio * editorConfig.quality2D;
-	_dimensions.pixelRatio3D = window.devicePixelRatio * editorConfig.quality3D;
-	_graphics.gtao.enabled = editorConfig.gtao;
-	_graphics.ssao.enabled = editorConfig.ssao;
+	_dimensions.pixelRatio2D = window.devicePixelRatio * (editorConfig.quality2D || 1);
+	_dimensions.pixelRatio3D = window.devicePixelRatio * (editorConfig.quality3D || 1);
+	_graphics.gtao.enabled = editorConfig.gtao ?? true;
+	_graphics.ssao.enabled = editorConfig.ssao ?? false;
 }
 
 // INTERNAL

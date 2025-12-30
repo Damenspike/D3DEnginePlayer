@@ -122,6 +122,8 @@ function resizeRenderers() {
 		_player.gtaoPass.setSize(width3d, height3d);
 		_player.ssaoPass.setSize(width3d, height3d);
 	}
+	
+	window._dimensions.onResize?.({width3d, height3d, width2d, height2d});
 }
 
 // Main loader

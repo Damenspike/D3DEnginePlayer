@@ -102,6 +102,7 @@ const D3DComponents = {
 	},
 	Camera: {
 		name: 'Camera',
+		sectionsLast: true,
 		fields: {
 			projection: {
 				label: 'Projection',
@@ -147,16 +148,36 @@ const D3DComponents = {
 				max: 10000000,
 				def: 2000
 			},
+			advancedControls: {
+				label: 'Advanced controls',
+				type: 'boolean',
+				def: false,
+				section: 'advanced'
+			},
 			autoAspect: {
 				label: 'Auto aspect',
 				type: 'boolean',
-				def: true
+				def: true,
+				section: 'advanced',
+				condition: c => c.properties.advancedControls == true
 			},
 			aspect: { 
 				label: 'Aspect', 
 				type: 'number',
 				def: 1,
-				condition: c => !c.properties.autoAspect
+				section: 'advanced',
+				condition: c => !c.properties.autoAspect && c.properties.advancedControls == true
+			},
+			aoClipRadius: {
+				label: 'AO distance',
+				type: 'number',
+				description: 'Clip radius for ambient occlusion pass (if enabled). Zero means infinite.',
+				def: 0,
+				min: 0,
+				max: Infinity,
+				step: 1,
+				section: 'advanced',
+				condition: c => c.properties.advancedControls == true
 			}
 		},
 		gizmo3d: {
@@ -211,6 +232,11 @@ const D3DComponents = {
 				type: 'number',
 				min: 0,
 				def: 1
+			},
+			'distance': { 
+				label: 'Distance', 
+				type: 'number',
+				def: 1000
 			},
 			'castShadow': { 
 				label: 'Casts shadows', 
@@ -782,12 +808,14 @@ const D3DComponents = {
 				label: 'Target name',
 				description: 'Path to the target object instance (.target property pointing to an object instance overrides this value)',
 				type: 'string',
-				def: ''
+				def: '',
+				section: 'target'
 			},
 			'targetOffset': {
 				label: 'Target offset',
 				type: 'vector3',
-				def: {x: 0, y: 0, z: 0}
+				def: {x: 0, y: 0, z: 0},
+				section: 'target'
 			},
 			'distance': {
 				label: 'Distance',
@@ -795,34 +823,54 @@ const D3DComponents = {
 				type: 'number',
 				min: 0,
 				max: Infinity,
-				def: 1
+				def: 1,
+				section: 'offsets'
 			},
 			'height': {
 				label: 'Height',
 				type: 'number',
 				min: 0,
 				max: Infinity,
-				def: 0.5
+				def: 0.5,
+				section: 'offsets'
 			},
 			'rotateSpeed': {
 				label: 'Rotate speed',
 				type: 'number',
 				min: 0,
 				max: Infinity,
-				def: 1
+				def: 1,
+				section: 'speeds'
 			},
 			'zoomSpeed': {
 				label: 'Zoom speed',
 				type: 'number',
 				min: 0,
 				max: Infinity,
-				def: 1
+				def: 1,
+				section: 'speeds'
+			},
+			'smoothRotate': {
+				label: 'Smooth rotate',
+				type: 'boolean',
+				def: false,
+				section: 'speeds'
+			},
+			'damping': {
+				label: 'Damping amount',
+				type: 'number',
+				min: 0,
+				max: Infinity,
+				def: 5,
+				condition: c => c.properties.smoothRotate === true,
+				section: 'speeds'
 			},
 			'allowScroll': {
 				label: 'Allow scroll',
 				description: 'Allow the player to control the distance of the camera?',
 				type: 'boolean',
-				def: false
+				def: false,
+				section: 'scroll'
 			},
 			'minDist': {
 				label: 'Minimum distance',
@@ -830,7 +878,8 @@ const D3DComponents = {
 				min: 0,
 				max: Infinity,
 				def: 0.25,
-				condition: c => c.properties.allowScroll === true
+				condition: c => c.properties.allowScroll === true,
+				section: 'scroll'
 			},
 			'maxDist': {
 				label: 'Maximum distance',
@@ -838,7 +887,8 @@ const D3DComponents = {
 				min: 0,
 				max: Infinity,
 				def: 100,
-				condition: c => c.properties.allowScroll === true
+				condition: c => c.properties.allowScroll === true,
+				section: 'scroll'
 			}
 		},
 		manager: D3DThirdPersonCameraManager
@@ -2145,8 +2195,8 @@ const D3DComponents = {
 				section: 'billboard',
 				def: false,
 				condition: c => c.properties.billboardWhenCulled == true
-			},
-			'cullAO': {
+			}
+			/*'cullAO': {
 				label: 'Ambient occlusion culling',
 				type: 'boolean',
 				section: 'ao',
@@ -2158,7 +2208,7 @@ const D3DComponents = {
 				section: 'ao',
 				def: 300,
 				condition: c => c.properties.cullAO == true
-			}
+			}*/
 		},
 		manager: D3DAutoLODManager
 	},

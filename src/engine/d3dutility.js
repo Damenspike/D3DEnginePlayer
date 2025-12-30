@@ -376,7 +376,7 @@ export function pickWorldPointAtScreen(sx, sy, camera, scene) {
 }
 export function dropToGroundIfPossible(d3dobject) {
 	const hit = _physics.raycast(d3dobject.position, new THREE.Vector3(0, -1, 0), {
-		filter: o => o.rootParent != d3dobject.rootParent
+		filter: o => !!window._editor?.flatFocus || o.rootParent != d3dobject.rootParent
 	});
 	
 	if(hit) {

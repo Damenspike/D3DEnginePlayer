@@ -24,7 +24,7 @@ export default class D3DAutoLODMaster {
 				
 			const camera = autoLOD.camera || autoLOD.getCamera();
 			const levels = autoLOD.levels;
-			const maxDistance = autoLOD.maxDistance;
+			const maxDistance = autoLOD.maxDistance * _graphics.lodBias;
 			
 			if(!camera)
 				return;
@@ -41,7 +41,7 @@ export default class D3DAutoLODMaster {
 			
 			const distance = autoLOD.distanceFromCamera;
 			
-			if(autoLOD.cullAO) {
+			/*if(autoLOD.cullAO) {
 				if(distance > autoLOD.aoDistance) {
 					if(autoLOD.__aoEnabled) {
 						autoLOD.d3dobject.enableLayer(2, true);
@@ -55,7 +55,7 @@ export default class D3DAutoLODMaster {
 						autoLOD.__aoEnabled = true;
 					}
 				}
-			}
+			}*/
 			
 			if(distance > maxDistance) {
 				autoLOD.makeAllLevelsVisible(false);

@@ -319,14 +319,30 @@ export default class AutoLODManager {
 		}
 		
 		if(this.billboardInstancing) {
-			// Mock 'submesh'
 			const submesh = {
 				d3dobject: {
-					object3d: mesh
+					object3d: mesh,
+					parent: this.d3dobject.parent,
+					removeObject3D() {
+						const o = this.object3d;
+						if(!o || !o.parent)
+							return;
+						o.parent.remove(o);
+					},
+					addObject3D(parent = null) {
+						const o = this.object3d;
+						if(!o)
+							return;
+							
+						const p = parent || o.__savedParent || _root.object3d;
+						p.add(o);
+					}
 				}
-			}
+			};
+			
 			const instanceId = `bb_${uuid}`;
 			
+			mesh.__savedParent = mesh.parent;
 			mesh.visible = false;
 			
 			this.billboardInstanceId = instanceId;

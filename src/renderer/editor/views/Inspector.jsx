@@ -837,7 +837,7 @@ export default function Inspector() {
 												
 												objects.forEach(object => {
 													object.__inspWasVisible = object._visible;
-													object._visible = newVisible;
+													object.visible = newVisible;
 												});
 												update();
 												
@@ -845,13 +845,13 @@ export default function Inspector() {
 													name: 'Update visibility',
 													undo: () => {
 														objects.forEach(object => {
-															object._visible = object.__inspWasVisible;
+															object.visible = object.__inspWasVisible;
 														});
 														update();
 													},
 													redo: () => {
 														objects.forEach(object => {
-															object._visible = newVisible;
+															object.visible = newVisible;
 														});
 														update();
 													}

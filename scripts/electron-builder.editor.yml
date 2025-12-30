@@ -10,12 +10,16 @@ directories:
 publish: null
 generateUpdatesFilesForAllChannels: false
 
+asarUnpack:
+  - "node_modules/font-list/**"
+
 files:
   - public/**
   - dist/editor/**              # Vite-built editor frontend
   - electron/editor/**          # main.js, preload.js, ipc handlers
   - package.json                # required by electron-builder (stripped)
   - "!node_modules"             # exclude massive dev deps
+  - "node_modules/font-list/**" # include font-list though
   - "!scripts"                  # exclude your build scripts
   - "!dist/player"              # ensure only the editor build is included
   - "!artwork"
