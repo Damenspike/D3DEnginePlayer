@@ -665,21 +665,30 @@ export default class D3DObject {
 	}
 	
 	get rootParent() {
-		let par = this;
+		let p = this;
+		const stop = this.root;
+		let guard = 0;
 		
-		while(par.parent && par.parent != this.root)
-			par = par.parent;
+		while(p.parent && p.parent !== stop) {
+			p = p.parent;
+			if(++guard > 1000)
+				break;
+		}
 		
-		return par;
+		return p;
 	}
-	
 	get _rootParent() {
-		let par = this;
+		let p = this;
+		const stop = _root;
+		let guard = 0;
 		
-		while(par.parent && par.parent != _root)
-			par = par.parent;
+		while(p.parent && p.parent !== stop) {
+			p = p.parent;
+			if(++guard > 1000)
+				break;
+		}
 		
-		return par;
+		return p;
 	}
 	
 	get __visible() {
@@ -1091,8 +1100,9 @@ export default class D3DObject {
 				_root.superIndex = {};
 				
 			_root.superIndex[child.uuid] = child;
-			_root.updateSuperIndex();
 		}
+		
+		_events.invoke('world-add-object', this);
 		
 		if(this.object3d && child.enabled) // 2d doesn't have an object3d
 			this.object3d.add(child.object3d);
@@ -2462,14 +2472,13 @@ export default class D3DObject {
 			this.parent.object3d.remove(this.object3d);
 		
 		this.__deleted = true;
+		_events.invoke('world-add-object', this);
 		
 		delete this.parent[this.name];
 		delete _root.superIndex[this.uuid];
 		
 		this.disposeImportant();
 		this.removeFromAllLoops();
-		
-		_root.updateSuperIndex();
 		
 		if(shouldCheckSymbols)
 			this.checkSymbols();
@@ -2934,12 +2943,6 @@ export default class D3DObject {
 			if(l && typeof l === 'function')
 				l(...params);
 		});
-	}
-	updateSuperIndex() {
-		if(this != _root) return;
-		this.superObjects = Object.values(this.superIndex);
-		this.superObjectsThree = this.superObjects.map(o => o.object3d);
-		_events.invoke('super-index-update');
 	}
 	getIsRendered() {
 		if(!this.visible)

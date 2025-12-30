@@ -46,4 +46,10 @@ export default class D3DTime {
 	setPlaying(playing) {
 		_host.paused = !playing;
 	}
+	setPlaying2D(playing) {
+		_host.paused2D = !playing;
+	}
+	setPlaying3D(playing) {
+		_host.paused3D = !playing;
+	}
 }

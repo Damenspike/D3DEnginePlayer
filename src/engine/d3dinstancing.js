@@ -4,7 +4,7 @@ export default class D3DInstancing {
 	constructor() {
 		this.instances = {};
 		this.submeshes = {};
-		this.dirtyInstances = [];
+		this.dirtyInstances = new Set();
 		this.maxPerBatch = 1024;
 	}
 	
@@ -25,16 +25,19 @@ export default class D3DInstancing {
 			this.submeshes[instanceId].push(submesh);
 			
 			// Only make dirty if needed
-			if(!this.dirtyInstances.includes(instanceId))
-				this.dirtyInstances.push(instanceId);
+			this.dirtyInstances.add(instanceId);
 		}
 	}
 	buildDirtyInstances() {
-		if(this.dirtyInstances.length < 1)
+		if(this.dirtyInstances.size < 1)
 			return;
 		
-		this.dirtyInstances.forEach(instanceId => this.buildInstance(instanceId));
-		this.dirtyInstances.length = 0;
+		const dirty = [...this.dirtyInstances];
+		
+		dirty.forEach(instanceId => {
+			if(this.buildInstance(instanceId))
+				this.dirtyInstances.delete(instanceId);
+		});
 	}
 	buildAllInstances() {
 		for(const instanceId in this.instances) {
@@ -65,9 +68,19 @@ export default class D3DInstancing {
 		const scene = _root.object3d;
 		const submeshes = this.submeshes[instanceId] || [];
 		
+		// All submeshes in instance must be ready and loaded
+		for(let i = 0; i < submeshes.length; i++) {
+			const sm = submeshes[i];
+			if(!sm?.d3dobject?.root?.__loaded)
+				return;
+		}
+		
 		let instance = this.instances[instanceId];
 		
-		if(instance && submeshes.length < 1) {
+		if(submeshes.length < 1) {
+			if(!instance)
+				return true; // Nothing to do, can return true
+			
 			console.warn(`No submeshes to build as part of ${instanceId}. Deleting instance...`);
 			
 			instance.batches.forEach(b => {
@@ -77,7 +90,7 @@ export default class D3DInstancing {
 			
 			delete this.instances[instanceId];
 			delete this.submeshes[instanceId];
-			return;
+			return true; // Handled
 		}
 		if(!instance) {
 			const geometry = submeshes[0].d3dobject.object3d.geometry;
@@ -104,6 +117,8 @@ export default class D3DInstancing {
 			if(!instance.submeshes.includes(submesh))
 				this.addToInstance(instanceId, submesh);
 		});
+		
+		return true;
 	}
 	createBatch(instanceId) {
 		const instance = this.instances[instanceId];

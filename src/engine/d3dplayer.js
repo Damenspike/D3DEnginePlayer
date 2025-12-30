@@ -298,10 +298,11 @@ function startAnimationLoop() {
 			const renderer3d = _player.renderer3d;
 			const renderer2d = _player.renderer2d;
 			
-			if(camera3d)
+			if(!_player.paused3D && camera3d)
 				_player.composer.render();
 			
-			renderer2d.render(); // render 2d
+			if(!_player.paused2D)
+				renderer2d.render(); // render 2d
 			
 			updateObjects([
 				'__onInternalExitFrame',

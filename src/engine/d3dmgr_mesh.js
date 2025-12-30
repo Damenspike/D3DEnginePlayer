@@ -741,14 +741,10 @@ export default class MeshManager {
 				if(this.lastInstancing && this.lastInstancingId && this.lastInstancingId != this.instancingId)
 					_instancing.removeFromInstance(this.lastInstancingId, this);
 				
-				if(this.instancing) {
-					if(!this.__wasInstanced)
-						this.__wasInstanced = true;
-				}else
-				if(this.__wasInstanced) {
-					this.d3dobject.addObject3D();
-					this.__wasInstanced = false;
-				}
+				if(this.instancing)
+					this.d3dobject.visible3 = false;
+				else
+					this.d3dobject.visible3 = true;
 				
 				let p = this.d3dobject;
 				while(p) {

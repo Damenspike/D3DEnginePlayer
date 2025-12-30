@@ -2,8 +2,20 @@ export default class CameraCollisionManager {
 	constructor(d3dobject, component) {
 		this.d3dobject = d3dobject;
 		this.component = component;
+		this.physObjects = new Set();
 		
 		this._lastPosition = null;
+		
+		this._evWorldAddRb = d3dobject => {
+			if(this.isPhysObject(d3dobject))
+				this.physObjects.add(d3dobject);
+		};
+		this._evWorldRemoveObj = d3dobject => {
+			this.physObjects.delete(d3dobject);
+		};
+		
+		_events.on('world-add-rb', this._evWorldAddRb);
+		_events.on('world-remove-object', this._evWorldRemoveObj);
 	}
 	
 	get targetName() {
@@ -35,20 +47,25 @@ export default class CameraCollisionManager {
 	}
 
 	updateComponent() {
-		if (!this.__setup) this.setup();
-		this.updateObjects();
+		this.target = this.target ?? this.d3dobject.root.find(this.targetName);
+		
+		if (!this.__setup) 
+			this.setup();
 	}
 	
 	setup() {
+		this.updateObjects();
 		this.__setup = true;
-		
-		_events.on('super-index-update', () => this.updateObjects());
 	}
 	
 	updateObjects() {
-		const target = this.target ?? this.d3dobject.root.find(this.targetName);
+		const objects = Object.values(_root.superIndex).filter(this.isPhysObject.bind(this));
 		
-		this.physObjects = _root.superObjects.filter(d3dobj => (
+		objects.forEach(d3dobject => this.physObjects.add(d3dobject));
+	}
+	isPhysObject(d3dobj) {
+		const target = this.target;
+		return (
 			d3dobj != target && 
 			d3dobj != this.d3dobject && 
 			d3dobj.rootParent != target &&
@@ -56,7 +73,7 @@ export default class CameraCollisionManager {
 				d3dobj.rootParent.hasComponent('Rigidbody') || 
 				d3dobj.hasComponent('Rigidbody')
 			)
-		));
+		)
 	}
 	
 	__onInternalBeforeRender() {
@@ -64,7 +81,7 @@ export default class CameraCollisionManager {
 			return;
 		
 		const radius = Number(this.radius);
-		const target = this.target ?? this.d3dobject.root.find(this.targetName);
+		const target = this.target;
 		const targetOffset = new THREE.Vector3(
 			this.targetOffset?.x || 0,
 			this.targetOffset?.y || 0,
@@ -85,8 +102,6 @@ export default class CameraCollisionManager {
 			}
 			return;
 		}
-		
-		this.target = target;
 		
 		const coffset = this.d3dobject.localDirToWorld(
 			new THREE.Vector3(
@@ -152,5 +167,20 @@ export default class CameraCollisionManager {
 		}else{
 			this._lastPosition = worldPos.clone();
 		}
+	}
+	
+	dispose() {
+		if(this._evWorldAddRb) {
+			_events.un('world-add-rb', this._evWorldAddRb);
+			this._evWorldAddRb = null;
+		}
+		if(this._evWorldRemoveObj) {
+			_events.un('world-remove-object', this._evWorldRemoveObj);
+			this._evWorldRemoveObj = null;
+		}
+		
+		this.physObjects.clear();
+		this.target = null;
+		this._lastPosition = null;
 	}
 }

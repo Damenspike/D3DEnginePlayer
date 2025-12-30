@@ -266,7 +266,7 @@ export default class D3DParticleSystemManager {
 	pause() {
 		this._isPaused = true;
 	}
-	stop(clear = false) { 
+	stop(clear = true) { 
 		this._isPaused = true;
 		
 		if (clear)
@@ -796,7 +796,7 @@ export default class D3DParticleSystemManager {
 	__onInternalEnterFrame(dt = _time.delta) { 
 		this._tick(dt, false); 
 		
-		if(!this._firstRun) {
+		if(!this._firstRun && this.d3dobject.root.__loaded) {
 			this.onSkyDomeReady();
 			this._firstRun = true;
 		}
