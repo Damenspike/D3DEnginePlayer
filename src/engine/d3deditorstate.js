@@ -5,6 +5,12 @@ import {
 	handleImportFile
 } from './d3deditorimporter.js';
 import {
+	spawnD3DSceneFromBinary
+} from './d3dscenespawn.js';
+import {
+	createD3DBinary
+} from './d3dexporter.js';
+import {
 	getSelectionCenter,
 	fileName
 } from './d3dutility.js';
@@ -358,8 +364,10 @@ export default class D3DEditorState {
 			clipboard.push(d3dobject.getSerializableObject());
 		});
 		
-		await this.pasteFrom({clip: clipboard, action: 'Duplicate'});
+		const objects = await this.pasteFrom({clip: clipboard, action: 'Duplicate'});
 		
+		if(this.mode == '2D')
+			this.offsetPastedObjects(objects);
 		// dont return anything for some reason the event listener in d3deditor.js freezes the whole app for 3 secs if something gets returned here?!
 	}
 	
@@ -742,39 +750,45 @@ export default class D3DEditorState {
 	gameOrInspectorActive() {
 		return this.game3dRef.current.contains(document.activeElement) || this.game2dRef.current.contains(document.activeElement) || this.inspRef.current.contains(document.activeElement);
 	}
+	
 	async doCopySelectedObjects() {
 		this.pastes = 0;
-		
-		SystemClipboard.writeText(JSON.stringify(
-			this.selectedObjects.map(
-				d3dobject => d3dobject.getSerializableObject()
-			)
-		));
-		
-		// Copy image
-		if(this.selectedObjects.length === 1) {
-			const theObject = this.selectedObjects[0];
+	
+		const objs = this.selectedObjects || [];
+		if(objs.length < 1)
+			return;
 			
-			if(!theObject)
-				return;
-			
-			if(theObject.hasComponent('Bitmap2D')) {
+		/*
+		if(objs.length === 1) {
+			const theObject = objs[0];
+			if(theObject && theObject.hasComponent('Bitmap2D')) {
 				const bitmap2d = theObject.getComponent('Bitmap2D');
-				
-				if(!bitmap2d.source)
-					return;
-				
-				const rel = _root.resolvePath(bitmap2d.source);
-				const data = await this.readFileData(rel);
-				
-				if(!data)
-					return;
-				
-				SystemClipboard.writeImage(data);
+				if(bitmap2d?.source) {
+					const rel = _root.resolvePath(bitmap2d.source);
+					const data = await this.readFileData(rel);
+					if(data) {
+						SystemClipboard.writeImage(data);
+						return;
+					}
+				}
 			}
 		}
+		*/
+		
+		try {
+			const u8 = await createD3DBinary(objs, {
+				name: objs.length === 1 ? objs[0]?.name : 'Clipboard',
+				includeWorld: true
+			});
+			
+			if(u8 && u8.length) {
+				SystemClipboard.writeD3D(u8);
+				return;
+			}
+		}catch(e) {
+			console.error('Copy (D3D binary) failed', e);
+		}
 	}
-	
 	copy() {
 		if(!this.gameOrInspectorActive()) {
 			_events.invoke('copy');
@@ -792,37 +806,46 @@ export default class D3DEditorState {
 		this.doCopySelectedObjects();
 		this.deleteSelectedObjects({action: 'Cut'});
 	}
-	async pasteInPlace() {
-		return await this.paste({posStep: false});
-	}
 	async paste(opts = {}) {
 		if(!this.gameOrInspectorActive()) {
 			_events.invoke('paste');
 			return;
 		}
-		
-		const json = SystemClipboard.readText();
+	
 		const imageData = SystemClipboard.readImage();
-		
-		if(json) {
-			try {
-				const clipboard = JSON.parse(json);
-				
-				return await this.pasteFrom({clip: clipboard, posStep: opts.posStep !== false});
-			}catch(e) {
-				console.error('Paste error', e);
-			}
-		}
 		if(imageData) {
 			const newObj = await createImageFromData({
 				baseName: 'Pasted Image',
 				pngData: imageData
 			});
-			
+	
 			newObj.depth = newObj.parent.getNextHighestDepth();
+			
+			_editor.setSelection([newObj]);
 			
 			return [newObj];
 		}
+	
+		const bin = SystemClipboard.readD3D();
+		if(bin && bin.length) {
+			try {
+				opts.addStep = true;
+				const spawned = await spawnD3DSceneFromBinary(bin, opts);
+				
+				if(spawned && spawned.length) {
+					if(this.mode == '2D' && opts.posStep !== false)
+						await this.offsetPastedObjects(spawned);
+					
+					_editor.setSelection(spawned);
+					return spawned;
+				}
+			}catch(e) {
+				console.error('Import D3D clipboard error', e);
+			}
+		}
+	}
+	async pasteInPlace() {
+		return await this.paste({posStep: false, keepWorldTransform: true});
 	}
 	async pasteFrom({clip = [], action = 'Paste', addStep = true, selectResult = true, posStep = false}) {
 		let pastedObjects = [];
@@ -854,11 +877,6 @@ export default class D3DEditorState {
 					this.mode = '3D';
 			}
 			
-			if(posStep && this.mode == '2D') {
-				d3dobject.position.add(new THREE.Vector3(10, 10, 0).multiplyScalar(this.pastes + 1));
-				this.pastes++;
-			}
-			
 			pastedObjects.push(d3dobject);
 		}
 		addStep && this.addStep({
@@ -872,6 +890,9 @@ export default class D3DEditorState {
 		
 		for(let o of pastedObjects) {
 			await o.updateComponents(true);
+		}
+		if(posStep && this.mode == '2D') {
+			this.offsetPastedObjects(pastedObjects);
 		}
 		
 		return pastedObjects;
@@ -965,6 +986,25 @@ export default class D3DEditorState {
 		});
 		
 		doPaste();
+	}
+	offsetPastedObjects(objects) {
+		if(!Array.isArray(objects) || objects.length < 1)
+			return;
+		
+		const step = 10;
+		const n = ++this.pastes;
+		
+		const dx = step * n;
+		const dy = step * n;
+		
+		for(const obj of objects) {
+			if(!obj) continue;
+	
+			if(obj.position) {
+				obj.position.x += dx;
+				obj.position.y += dy;
+			}
+		}
 	}
 	
 	editCode() {

@@ -30,6 +30,7 @@ const showConfirm = async ({title, message}) => {
 }
 
 const MAX_D3D_MB = 500;
+const D3D_CLIP_FORMAT = 'application/x-d3d-zip';
 
 contextBridge.exposeInMainWorld('D3D', {
 	setEventListener: (event, listener) => {
@@ -300,6 +301,16 @@ contextBridge.exposeInMainWorld('SystemClipboard', {
 		if (!img.isEmpty())
 			clipboard.writeImage(img);
 	},
+	writeD3D(uint8) {
+		if (!uint8) return;
+	
+		// Uint8Array -> Buffer (safe view copy)
+		const buf = Buffer.isBuffer(uint8)
+			? uint8
+			: Buffer.from(uint8.buffer, uint8.byteOffset, uint8.byteLength);
+	
+		clipboard.writeBuffer(D3D_CLIP_FORMAT, buf);
+	},
 	
 	readText() {
 		return clipboard.readText() || '';
@@ -309,6 +320,11 @@ contextBridge.exposeInMainWorld('SystemClipboard', {
 		if (img.isEmpty()) return null;
 		const pngBuffer = img.toPNG();
 		return new Uint8Array(pngBuffer);
+	},
+	readD3D() {
+		const buf = clipboard.readBuffer(D3D_CLIP_FORMAT);
+		if (!buf || buf.length < 1) return null;
+		return new Uint8Array(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
 	},
 	readHTML() {
 		return clipboard.readHTML() || '';

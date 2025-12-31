@@ -41,22 +41,6 @@ export default class D3DAutoLODMaster {
 			
 			const distance = autoLOD.distanceFromCamera;
 			
-			/*if(autoLOD.cullAO) {
-				if(distance > autoLOD.aoDistance) {
-					if(autoLOD.__aoEnabled) {
-						autoLOD.d3dobject.enableLayer(2, true);
-						autoLOD.d3dobject.disableLayer(0, true);
-						autoLOD.__aoEnabled = false;
-					}
-				}else{
-					if(!autoLOD.__aoEnabled) {
-						autoLOD.d3dobject.disableLayer(2, true);
-						autoLOD.d3dobject.enableLayer(0, true);
-						autoLOD.__aoEnabled = true;
-					}
-				}
-			}*/
-			
 			if(distance > maxDistance) {
 				autoLOD.makeAllLevelsVisible(false);
 				autoLOD.d3dobject.__lodCulled = true;

@@ -22,11 +22,10 @@ import {
 	makeRegexAdapter
 } from './d3dutility.js';
 import {
-	worldToScreen
-} from './d2dutility.js';
-import {
 	protectedNames
-} from './d3dmetaobject.js'
+} from './d3dmetaobject.js';
+
+import * as D2DUtility from './d2dutility.js';
 
 export default class D3DObject {
 	constructor(name = 'object', parent = null) {
@@ -373,43 +372,74 @@ export default class D3DObject {
 	}
 	
 	get worldPosition() {
+		if(this.is2D) {
+			const M = D2DUtility.worldMatrix(this);
+			return new THREE.Vector3(M.e, M.f, Number(this.position?.z || 0));
+		}
 		return this.object3d.getWorldPosition(new THREE.Vector3());
 	}
 	set worldPosition({ x, y, z }) {
-		if (Number.isNaN(x) || Number.isNaN(y) || Number.isNaN(z))
+		if(this.is2D) {
+			if(Number.isNaN(x) || Number.isNaN(y)) return;
+	
+			const parent = this.parent || null;
+			const MinvP = D2DUtility.invert(D2DUtility.worldMatrix(parent));
+			const lp = D2DUtility.applyMat(MinvP, x, y);
+	
+			this.position = this.position || { x:0, y:0, z:0 };
+			this.position.x = lp.x;
+			this.position.y = lp.y;
 			return;
-		
-		// ensure ancestors are up to date
-		if (this.parent)
+		}
+	
+		if(Number.isNaN(x) || Number.isNaN(y) || Number.isNaN(z))
+			return;
+	
+		if(this.parent)
 			this.parent.object3d.updateWorldMatrix(true, false);
-			
+	
 		const targetW = new THREE.Vector3(x, y, z);
-		if (this.parent)
+		if(this.parent)
 			this.parent.object3d.worldToLocal(targetW);
-		
+	
 		this.object3d.position.copy(targetW);
 		this.object3d.updateMatrixWorld(true);
 	}
 	
 	get worldRotation() {
+		if(this.is2D) {
+			const M = D2DUtility.worldMatrix(this);
+			const ang = Math.atan2(M.b, M.a);
+			return new THREE.Vector3(0, 0, ang);
+		}
+	
 		const q = this.object3d.getWorldQuaternion(new THREE.Quaternion());
 		const e = new THREE.Euler().setFromQuaternion(q, 'XYZ');
-		return new THREE.Vector3(e.x, e.y, e.z); // radians as a vector3
+		return new THREE.Vector3(e.x, e.y, e.z);
 	}
 	set worldRotation({ x, y, z }) {
-		if (Number.isNaN(x) || Number.isNaN(y) || Number.isNaN(z))
+		if(this.is2D) {
+			if(Number.isNaN(z)) return;
+	
+			const parent = this.parent || null;
+			const Mp = D2DUtility.worldMatrix(parent);
+			const parentAng = Math.atan2(Mp.b, Mp.a);
+	
+			this.rotation = this.rotation || { x:0, y:0, z:0 };
+			this.rotation.z = z - parentAng;
+			return;
+		}
+	
+		if(Number.isNaN(x) || Number.isNaN(y) || Number.isNaN(z))
 			return;
 	
-		// ensure ancestors are up to date
-		if (this.parent)
+		if(this.parent)
 			this.parent.object3d.updateWorldMatrix(true, false);
 	
-		// target rotation as quaternion in world space
 		const targetEuler = new THREE.Euler(x, y, z, 'XYZ');
 		const targetQ = new THREE.Quaternion().setFromEuler(targetEuler);
 	
-		if (this.parent) {
-			// convert world quaternion into local space relative to parent
+		if(this.parent) {
 			const parentQ = this.parent.object3d.getWorldQuaternion(new THREE.Quaternion());
 			parentQ.invert();
 			targetQ.multiply(parentQ);
@@ -417,6 +447,49 @@ export default class D3DObject {
 	
 		this.object3d.quaternion.copy(targetQ);
 		this.object3d.updateMatrixWorld(true);
+	}
+	
+	get worldScale() {
+		if(this.is2D) {
+			const M = D2DUtility.worldMatrix(this);
+			const sx = Math.hypot(M.a, M.b);
+			const sy = Math.hypot(M.c, M.d);
+			return new THREE.Vector3(sx, sy, 1);
+		}
+	
+		const ws = new THREE.Vector3();
+		this.object3d.updateWorldMatrix(true, true);
+		this.object3d.getWorldScale(ws);
+		return ws;
+	}
+	set worldScale({ x, y, z }) {
+		if(this.is2D) {
+			if(Number.isNaN(x) || Number.isNaN(y)) return;
+	
+			const parent = this.parent || null;
+			const Mp = D2DUtility.worldMatrix(parent);
+	
+			const psx = Math.hypot(Mp.a, Mp.b) || 1;
+			const psy = Math.hypot(Mp.c, Mp.d) || 1;
+	
+			this.scale = this.scale || { x:1, y:1, z:1 };
+			this.scale.x = x / psx;
+			this.scale.y = y / psy;
+			return;
+		}
+	
+		if(Number.isNaN(x) || Number.isNaN(y) || Number.isNaN(z))
+			return;
+	
+		const parentScale = new THREE.Vector3(1, 1, 1);
+		if(this.object3d.parent)
+			this.object3d.parent.getWorldScale(parentScale);
+	
+		this.object3d.scale.set(
+			x / parentScale.x,
+			y / parentScale.y,
+			z / parentScale.z
+		);
 	}
 	
 	get worldQuaternion() {
@@ -437,6 +510,56 @@ export default class D3DObject {
 		}
 	
 		this.object3d.updateMatrixWorld(true);
+	}
+	
+	get worldAttitude() {
+		// Get world quaternion (orientation in global space)
+		const q = this.object3d.getWorldQuaternion(new THREE.Quaternion());
+	
+		const f = new THREE.Vector3(0, 0, -1).applyQuaternion(q); // forward
+		const r = new THREE.Vector3(1, 0, 0).applyQuaternion(q);  // right
+		const u = new THREE.Vector3(0, 1, 0).applyQuaternion(q);  // up
+	
+		// Stable aircraft-style angles (no Euler decomposition)
+		const yaw   = Math.atan2(f.x, -f.z);                 // rad
+		const pitch = Math.atan2(f.y, Math.hypot(f.x, f.z)); // rad
+		const bank  = Math.atan2(r.y, u.y);                  // rad
+	
+		const toDeg = THREE.MathUtils.radToDeg;
+		return {
+			pitch: toDeg(pitch),
+			yaw:   toDeg(yaw),
+			bank:  toDeg(bank)
+		};
+	}
+	set worldAttitude({ pitch = 0, yaw = 0, bank = 0 }) {
+		const obj = this.object3d;
+	
+		// Convert to radians
+		const p = THREE.MathUtils.degToRad(pitch);
+		const y = THREE.MathUtils.degToRad(yaw);
+		const b = THREE.MathUtils.degToRad(bank);
+	
+		// Compose world quaternion in Y→X→Z order (yaw, pitch, bank)
+		const qYaw   = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), y);
+		const qPitch = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), p);
+		const qBank  = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), b);
+	
+		const qWorld = new THREE.Quaternion()
+			.multiply(qYaw)
+			.multiply(qPitch)
+			.multiply(qBank);
+	
+		// If object has a parent, convert world → local:
+		if (this.parent) {
+			const qParent = this.parent.object3d.getWorldQuaternion(new THREE.Quaternion());
+			qParent.invert();
+			qWorld.premultiply(qParent);
+		}
+	
+		obj.quaternion.copy(qWorld);
+		obj.rotation.setFromQuaternion(qWorld);
+		obj.updateMatrixWorld(true);
 	}
 	
 	get position() {
@@ -532,56 +655,6 @@ export default class D3DObject {
 		obj.updateMatrixWorld(true);
 	}
 	
-	get worldAttitude() {
-		// Get world quaternion (orientation in global space)
-		const q = this.object3d.getWorldQuaternion(new THREE.Quaternion());
-	
-		const f = new THREE.Vector3(0, 0, -1).applyQuaternion(q); // forward
-		const r = new THREE.Vector3(1, 0, 0).applyQuaternion(q);  // right
-		const u = new THREE.Vector3(0, 1, 0).applyQuaternion(q);  // up
-	
-		// Stable aircraft-style angles (no Euler decomposition)
-		const yaw   = Math.atan2(f.x, -f.z);                 // rad
-		const pitch = Math.atan2(f.y, Math.hypot(f.x, f.z)); // rad
-		const bank  = Math.atan2(r.y, u.y);                  // rad
-	
-		const toDeg = THREE.MathUtils.radToDeg;
-		return {
-			pitch: toDeg(pitch),
-			yaw:   toDeg(yaw),
-			bank:  toDeg(bank)
-		};
-	}
-	set worldAttitude({ pitch = 0, yaw = 0, bank = 0 }) {
-		const obj = this.object3d;
-	
-		// Convert to radians
-		const p = THREE.MathUtils.degToRad(pitch);
-		const y = THREE.MathUtils.degToRad(yaw);
-		const b = THREE.MathUtils.degToRad(bank);
-	
-		// Compose world quaternion in Y→X→Z order (yaw, pitch, bank)
-		const qYaw   = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), y);
-		const qPitch = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), p);
-		const qBank  = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), b);
-	
-		const qWorld = new THREE.Quaternion()
-			.multiply(qYaw)
-			.multiply(qPitch)
-			.multiply(qBank);
-	
-		// If object has a parent, convert world → local:
-		if (this.parent) {
-			const qParent = this.parent.object3d.getWorldQuaternion(new THREE.Quaternion());
-			qParent.invert();
-			qWorld.premultiply(qParent);
-		}
-	
-		obj.quaternion.copy(qWorld);
-		obj.rotation.setFromQuaternion(qWorld);
-		obj.updateMatrixWorld(true);
-	}
-	
 	get scale() {
 		return this.object3d.scale;
 	}
@@ -589,27 +662,6 @@ export default class D3DObject {
 		if (Number.isNaN(x) || Number.isNaN(y) || Number.isNaN(z))
 			return;
 		this.object3d.scale.set(x, y, z);
-	}
-	
-	get worldScale() {
-		const ws = new THREE.Vector3();
-		this.object3d.updateWorldMatrix(true, true);
-		this.object3d.getWorldScale(ws);
-		return ws;
-	}
-	set worldScale({x, y, z}) {
-		if (Number.isNaN(x) || Number.isNaN(y) || Number.isNaN(z))
-			return;
-		// convert to local scale relative to parent world scale
-		const parentScale = new THREE.Vector3(1, 1, 1);
-		if (this.object3d.parent)
-			this.object3d.parent.getWorldScale(parentScale);
-	
-		this.object3d.scale.set(
-			x / parentScale.x,
-			y / parentScale.y,
-			z / parentScale.z
-		);
 	}
 	
 	get visible() {
@@ -1503,7 +1555,7 @@ export default class D3DObject {
 			LocalStorage: Object.freeze(D3DLocalStorage),
 			RegEx: Object.freeze(makeRegexAdapter()),
 			typeOf: Object.freeze((val) => typeof val),
-			worldToScreen: Object.freeze(worldToScreen),
+			worldToScreen: Object.freeze(D2DUtility.worldToScreen),
 			
 			// Editor relevant only
 			_editor: window._editor,
@@ -2243,7 +2295,7 @@ export default class D3DObject {
 		return JSON.stringify(this.getSerializableObject());
 	}
 	
-	getSerializableObject() {
+	getSerializableObject(opts = {}) {
 		const obj = {
 			uuid: this.uuid,
 			suuid: this.suuid,
@@ -2286,6 +2338,15 @@ export default class D3DObject {
 			obj.scale.x = this.__preAnimationTransform.scale.x;
 			obj.scale.y = this.__preAnimationTransform.scale.y;
 			obj.scale.z = this.__preAnimationTransform.scale.z;
+		}
+		
+		if(opts.includeWorld) {
+			const worldPos = this.worldPosition;
+			const worldRot = this.worldRotation;
+			const worldScl = this.worldScale;
+			obj.worldPosition = {x: worldPos.x, y: worldPos.y, z: worldPos.z};
+			obj.worldRotation = {x: worldRot.x, y: worldRot.y, z: worldRot.z};
+			obj.worldScale = {x: worldScl.x, y: worldScl.y, z: worldScl.z};
 		}
 		
 		return obj;

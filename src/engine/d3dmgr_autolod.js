@@ -323,20 +323,7 @@ export default class AutoLODManager {
 				d3dobject: {
 					object3d: mesh,
 					parent: this.d3dobject.parent,
-					removeObject3D() {
-						const o = this.object3d;
-						if(!o || !o.parent)
-							return;
-						o.parent.remove(o);
-					},
-					addObject3D(parent = null) {
-						const o = this.object3d;
-						if(!o)
-							return;
-							
-						const p = parent || o.__savedParent || _root.object3d;
-						p.add(o);
-					}
+					root: this.d3dobject.root
 				}
 			};
 			

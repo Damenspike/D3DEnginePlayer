@@ -658,25 +658,67 @@ function sendSaveProject() {
 
 function sendSaveProjectAs() {
 	const session = getFocusedSession();
-	if(!session || !session.editorWindow || session.editorWindow.isDestroyed())
+	if (!session || !session.editorWindow || session.editorWindow.isDestroyed())
 		return;
 
 	dialog.showSaveDialog(session.editorWindow, {
 		title: 'Save Project As',
 		defaultPath: session.uri,
 		buttonLabel: 'Save',
-		filters: [
-			{ name: 'Damen3D Project', extensions: ['d3dproj'] }
-		],
+		filters: [{ name: 'Damen3D Project', extensions: ['d3dproj'] }],
 		properties: ['showOverwriteConfirmation']
 	}).then(result => {
-		if(!result.canceled && result.filePath) {
-			session.uri = result.filePath;
-			session.editorWindow.webContents.send('save-project', result.filePath);
+		if (result.canceled || !result.filePath)
+			return;
+
+		try {
+			rekeySessionToUri(session, result.filePath);
+		} catch (e) {
+			console.error(e);
+			// optional: show dialog to user here
+			return;
 		}
+
+		session.editorWindow.webContents.send('save-project', result.filePath);
+
+		// optional but usually correct: update window title / recent docs etc.
+		session.editorWindow.webContents.send('project-uri-changed', result.filePath);
 	}).catch(err => {
 		console.error('Save As dialog failed:', err);
 	});
+}
+
+function rekeySessionToUri(session, newUri) {
+	// old id derived from previous uri
+	const oldProjectId = session.projectId ?? makeProjectId(session.uri);
+	const newProjectId = makeProjectId(newUri);
+
+	// no-op if same file (case-insensitive etc.)
+	if (oldProjectId === newProjectId) {
+		session.uri = newUri;
+		session.projectId = newProjectId;
+		return;
+	}
+
+	// hard guard: if another session already owns the new id, bail
+	// (or close/merge depending on your app rules)
+	const existing = sessions.get(newProjectId);
+	if (existing && existing !== session) {
+		throw new Error(`A project is already open for: ${newUri}`);
+	}
+
+	// remove old key, set new key
+	sessions.delete(oldProjectId);
+	sessions.set(newProjectId, session);
+
+	// update win -> project mapping
+	if (session.editorWindow && !session.editorWindow.isDestroyed()) {
+		winToProject.set(session.editorWindow.id, newProjectId);
+	}
+
+	// update session fields
+	session.uri = newUri;
+	session.projectId = newProjectId;
 }
 
 function sendBuild({prompt, play}) {

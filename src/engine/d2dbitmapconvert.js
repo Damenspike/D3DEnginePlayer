@@ -145,7 +145,7 @@ export async function createImageFromData({ baseName, bitmapName, pngData, paren
 	});
 	
 	// Clear out of image cache
-	const cachedImage = _editor.renderer2d._imageCache.get(rel);
+	const cachedImage = _editor.renderer2d._imageCache?.get(rel);
 	if(cachedImage)
 		_editor.renderer2d._imageCache.delete(rel);
 

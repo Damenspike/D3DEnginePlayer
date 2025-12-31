@@ -310,6 +310,7 @@ export default class DayNightManager {
 		root.object3d.add(sprite);
 		
 		this._sun = sprite;
+		this.creatingSun = false;
 	}
 	async createSkyDomes() {
 		const root = this.d3dobject.root;
@@ -399,13 +400,18 @@ export default class DayNightManager {
 	}
 	
 	__onInternalExitFrame() {
-		if(this.pleaseCreateSun) {
+		if(this.pleaseCreateSun && !this.creatingSun) {
 			this.pleaseCreateSun = false;
+			this.creatingSun = true;
 			this.createSun();
 		}
 	}
 	__onInternalEnterFrame() {
 		this.updateSky();
+		
+		if(window._editor) {
+			this._skyDomes.group.visible = _editor.flatFocus || _editor.focus == _root;
+		}
 	}
 	
 	updateSky() {

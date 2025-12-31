@@ -419,6 +419,32 @@ export default class RigidbodyManager {
 		this._cachedAngularVelocity.set(0,0,0);
 		this._cachedSpeed = 0;
 	}
+	
+	_makePositionOnlyGeometry(srcGeom, { keepIndex = false } = {}) {
+		if (!srcGeom?.attributes?.position)
+			return null;
+	
+		// IMPORTANT: clone so we never mutate the render geometry
+		const srcPos = this._getPositionFloat32(srcGeom);
+		const pos32  = new Float32Array(srcPos); // <- copy
+	
+		const g = new THREE.BufferGeometry();
+		g.setAttribute('position', new THREE.BufferAttribute(pos32, 3, false));
+	
+		if (THREE.FloatType !== undefined)
+			g.attributes.position.gpuType = THREE.FloatType;
+	
+		if (keepIndex && srcGeom.index?.array) {
+			const ia = srcGeom.index.array;
+			const idx = (ia instanceof Uint32Array) ? new Uint32Array(ia) : new Uint32Array(ia); // copy
+			g.setIndex(new THREE.BufferAttribute(idx, 1));
+		}
+	
+		g.morphAttributes = {};
+		g.morphTargetsRelative = false;
+	
+		return g;
+	}
 
 	/* =========================================================
 	 * MOTION API – RE-WRITTEN (strong forces, stable speed)
@@ -878,15 +904,39 @@ export default class RigidbodyManager {
 
 		// Full merge
 		const geometries = [];
+		const wantIndex = (type === 'trimesh'); // keep index for trimesh only
+		
 		for (const mesh of meshes) {
 			mesh.updateMatrixWorld(true);
+		
 			const relative = new THREE.Matrix4().multiplyMatrices(parentInvMatrix, mesh.matrixWorld);
-			const geom = (mesh.userData?.d3dobject?.__lod0geom || mesh.geometry).clone();
-			geom.applyMatrix4(relative);
-			geometries.push(geom);
+		
+			const src = (mesh.userData?.d3dobject?.__lod0geom || mesh.geometry);
+			if (!src?.attributes?.position)
+				continue;
+		
+			// build a clean geometry that will always merge
+			const clean = this._makePositionOnlyGeometry(src, { keepIndex: wantIndex });
+			if (!clean)
+				continue;
+		
+			clean.applyMatrix4(relative);
+		
+			geometries.push(clean);
 		}
-
-		const merged = BufferGeometryUtils.mergeGeometries(geometries, type === 'trimesh');
+		
+		if (geometries.length === 0) {
+			console.error(`[RigidbodyManager] No geometries to merge for ${d3dobj.name}`);
+			d3dobj.__rbFailed = true;
+			return;
+		}
+		
+		// Merge. Use "useGroups" = false, index is already controlled above.
+		const merged = BufferGeometryUtils.mergeGeometries(geometries, false);
+		
+		// (Optional) dispose intermediates to avoid temporary memory spikes
+		for (const g of geometries) g.dispose?.();
+		
 		return merged;
 	}
 
