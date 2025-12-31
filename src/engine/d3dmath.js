@@ -51,3 +51,4 @@ export const randInt = Math.randInt;
 export const randVec3 = Math.randVec3;
 export const clamp01 = Math.clamp01;
 export const clamp = Math.clamp;
+export const rcoeff = Math.rcoeff;

@@ -655,11 +655,9 @@ export default class MeshManager {
 		const ao = this.ambientOcclusion;
 		if(!ao && this.aoEnabled) {
 			this.d3dobject.enableLayer(2);
-			this.d3dobject.disableLayer(0);
 			this.aoEnabled = false;
 		}else
 		if(ao && !this.aoEnabled) {
-			this.d3dobject.enableLayer(0);
 			this.d3dobject.disableLayer(2);
 			this.aoEnabled = true;
 		}
@@ -803,29 +801,10 @@ export default class MeshManager {
 		if (!this.d3dobject.modelScene) return;
 		const sceneRoot = this.d3dobject.modelScene;
 
-		// ---------------- Apply materials ----------------
-		const mats = this.component.properties.materials;
+		// ---------------- Apply materials to submeshes ----------------
 		const subs = this.d3dobject.findAllComponents('SubMesh');
-		
-		if(mats && mats.length) {
-			const host = this.d3dobject.object3d;
-		
-			if(host.isMesh || host.isSkinnedMesh)
-				await this._applyMaterialsToThreeMesh(host, mats);
-			else
-				for(const c of host.children)
-					if(c.isMesh || c.isSkinnedMesh)
-						await this._applyMaterialsToThreeMesh(c, mats);
-		
-			for(const sm of subs) {
-				const mesh = sm.d3dobject.object3d;
-				if(mesh.isMesh || mesh.isSkinnedMesh)
-					await this._applyMaterialsToThreeMesh(mesh, mats);
-			}
-		}else {
-			for(const sm of subs)
-				await sm.updateComponent();
-		}
+		for(const sm of subs)
+			sm.updateComponent();
 
 		// ---------------- Build GLTF hierarchy ----------------
 		if (justLoaded) {

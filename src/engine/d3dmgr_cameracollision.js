@@ -1,10 +1,12 @@
+import { rcoeff } from './d3dmath.js';
+
 export default class CameraCollisionManager {
 	constructor(d3dobject, component) {
 		this.d3dobject = d3dobject;
 		this.component = component;
 		this.physObjects = new Set();
 		
-		this._lastPosition = null;
+		this._smoothPos = null;
 		
 		this._evWorldAddRb = d3dobject => {
 			if(this.isPhysObject(d3dobject))
@@ -45,10 +47,29 @@ export default class CameraCollisionManager {
 	set targetOffset(v) {
 		this.component.properties.targetOffset = v;
 	}
-
+	
+	get minDistance() {
+		return Number(this.component.properties.minDistance) || 0;
+	}
+	set minDistance(v) {
+		this.component.properties.minDistance = Number(v);
+	}
+	
+	get smoothing() {
+		return !!this.component.properties.smoothing;
+	}
+	set smoothing(v) {
+		this.component.properties.smoothing = !!v;
+	}
+	
+	get smoothingSpeed() {
+		return Number(this.component.properties.smoothingSpeed) || 0;
+	}
+	set smoothingSpeed(v) {
+		this.component.properties.smoothingSpeed = Number(v);
+	}
+	
 	updateComponent() {
-		this.target = this.target ?? this.d3dobject.root.find(this.targetName);
-		
 		if (!this.__setup) 
 			this.setup();
 	}
@@ -76,9 +97,11 @@ export default class CameraCollisionManager {
 		)
 	}
 	
-	__onInternalBeforeRender() {
+	updateCameraCollision() {
 		if(!this.__setup)
 			return;
+			
+		this.target = this.target ?? this.d3dobject.root.find(this.targetName);
 		
 		const radius = Number(this.radius);
 		const target = this.target;
@@ -111,18 +134,20 @@ export default class CameraCollisionManager {
 			)
 		);
 		const worldPos = this.d3dobject.worldPosition;
+		const targetPos = target.localToWorld(targetOffset);
 		const opts = { 
 			all: true,
 			objects: this.physObjects
 		};
+		let anyHit = false;
+		
+		// first, ensure ray is done
+		const desiredPos = worldPos.clone();
 		const hits = _physics.rigidline(
-			target.localToWorld(targetOffset), 
+			targetPos, 
 			worldPos,
 			opts
 		);
-		
-		const desiredPos = worldPos.clone();
-		let anyHit = false;
 		
 		if(hits?.length > 0) {
 			const point = hits[0].point;
@@ -134,38 +159,68 @@ export default class CameraCollisionManager {
 			
 			desiredPos.copy(point).add(hitPointDir.multiplyScalar(radius)).add(coffset);
 			anyHit = true;
-		}else{
-			// ---------- 2) sphere keep-out: camera position ----------
-			// (this catches “too close to terrain” even when line doesn’t hit nicely)
-			const sphereHits = _physics.rigidsphere(
-				this.d3dobject.worldPosition,
-				radius * 0.025,
-				opts
-			);
+		}
+		
+		// ---------- sphere keep-out: camera position ----------
+		const probeR = radius * 0.05;
+		const sphereHits = _physics.rigidsphere(
+			desiredPos,
+			probeR,
+			opts
+		);
+		
+		if (sphereHits?.length > 0) {
+			const hit = sphereHits[0];
+			const n = new THREE.Vector3();
 			
-			if(sphereHits?.length > 0) {
-				// nearest first
-				const hit = sphereHits[0];
-				const point = hit.point;
-				
-				desiredPos.copy(point).add(coffset);
-				anyHit = true;
+			n.subVectors(desiredPos, hit.point).normalize();
+			
+			const padding = Math.max(0.001, radius * 0.02);
+			
+			desiredPos
+				.copy(hit.point)
+				.add(n.multiplyScalar(probeR + padding))
+				.add(coffset);
+			
+			anyHit = true;
+		}
+		
+		// Check if the desiredPos is too close or has gone past the player target pos
+		const toNatural = new THREE.Vector3().subVectors(worldPos, targetPos);
+		const toDesired = new THREE.Vector3().subVectors(desiredPos, targetPos);
+		if(toDesired.lengthSq() < this.minDistance * this.minDistance || toDesired.dot(toNatural) < 0) {
+			if(toNatural.lengthSq() > 1e-10) {
+				toNatural.normalize();
+				desiredPos.copy(targetPos).add(toNatural.multiplyScalar(this.minDistance));
+			}else{
+				desiredPos.copy(targetPos);
 			}
 		}
 		
+		const speed = this.smoothingSpeed;
+		
 		if(anyHit) {
-			// Smooth towards desired position (frame-rate independent)
-			const dt = Math.min(0.05, Number(_time?.delta || 0.016));
-			const speed = 22; // higher = snappier, lower = smoother
-			const t = 1 - Math.exp(-speed * dt);
-			
-			if(!this._lastPosition)
-				this._lastPosition = worldPos.clone();
-			
-			this._lastPosition.lerp(desiredPos, t);
-			this.d3dobject.worldPosition = this._lastPosition;
+			if(this.smoothing) {
+				if(!this._smoothPos)
+					this._smoothPos = desiredPos.clone();
+				else
+					this._smoothPos = this._smoothPos.lerp(desiredPos, _time.delta * speed);
+				
+				this.d3dobject.worldPosition = this._smoothPos;
+			}else{
+				this.d3dobject.worldPosition = desiredPos;	
+			}
+			this.lastHit = _time.now;
+			this.smoothTime = 1 * rcoeff(speed / 30);
 		}else{
-			this._lastPosition = worldPos.clone();
+			const sinceLastHit = _time.now - this.lastHit;
+			const smoothTime = this.smoothTime;
+			if(this.smoothing && this._smoothPos && this.lastHit && sinceLastHit < smoothTime) {
+				this._smoothPos = this._smoothPos.lerp(worldPos, sinceLastHit / smoothTime);
+				this.d3dobject.worldPosition = this._smoothPos;
+			}else{
+				this._smoothPos = worldPos.clone();
+			}
 		}
 	}
 	
@@ -181,6 +236,6 @@ export default class CameraCollisionManager {
 		
 		this.physObjects.clear();
 		this.target = null;
-		this._lastPosition = null;
+		this._smoothPos = null;
 	}
 }

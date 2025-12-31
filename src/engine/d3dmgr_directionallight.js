@@ -129,6 +129,9 @@ get color() {
 	}
 
 	updateLight() {
+		if(!this.d3dobject.enabled)
+			return;
+		
 		const c = this.component.properties;
 		const light = this.d3dobject.object3d;
 		if (!light) return;

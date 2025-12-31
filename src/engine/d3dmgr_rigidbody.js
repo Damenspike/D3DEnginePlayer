@@ -42,8 +42,10 @@ export default class RigidbodyManager {
 	/* =========================================================
 	 *  LIFECYCLE
 	 * ======================================================= */
-
+	 
 	updateComponent(force = false) {
+		if(this.d3dobject.name == 'player')
+			console.trace('RB updateComponent started');
 		if (!this.component.enabled) {
 			if (this.component.bodySetup) {
 				this._teardownBody();
@@ -88,8 +90,6 @@ export default class RigidbodyManager {
 	}
 
 	dispose() {
-		this.d3dobject.removeEventListener('onChildMeshReady', this.onChildMeshReady);
-		
 		this._teardownBody();
 		this.component.bodySetup = false;
 		this.component._cache = null;

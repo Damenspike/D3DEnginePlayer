@@ -210,6 +210,9 @@ export default class ThirdPersonCameraManager {
 		
 		this.d3dobject.position = camPos;
 		this.d3dobject.lookAt(focus);
+		
+		this.d3dobject.object3d.updateMatrixWorld(true);
+		this.d3dobject.getComponent('CameraCollision')?.updateCameraCollision();
 	}
 
 	_wrapAngle(a) {

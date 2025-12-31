@@ -24,6 +24,8 @@ export default class DayNightManager {
 		this.d3dobject.root._dayNightCycle = this;
 		this.directionalLightIntensity = 1;
 		this.ambientLightIntensity = 1;
+		this.tint = this.getTintForHour();
+		this.tintHex = '0x' + this.tint.getHexString();
 	}
 	
 	get dirLight() {
@@ -674,6 +676,9 @@ export default class DayNightManager {
 			
 		if(sun)
 			sun.material.color.copy(tint);
+		
+		this.tint = tint;
+		this.tintHex = hex;
 	}
 	
 	getTintForHour() {

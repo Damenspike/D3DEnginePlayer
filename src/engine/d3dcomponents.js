@@ -1833,7 +1833,28 @@ const D3DComponents = {
 				description: 'Offset applied in world space to the camera after a collision is solved',
 				type: 'vector3',
 				def: {x: 0, y: 0, z: 0}
-			}
+			},
+			'minDistance': {
+				label: 'Minimum distance',
+				description: 'Minimum distance allowed to target before it latches to the target position',
+				type: 'number',
+				min: 0.01,
+				max: Infinity,
+				def: 0.1,
+			},
+			'smoothing': {
+				label: 'Smoothing',
+				type: 'boolean',
+				def: false
+			},
+			'smoothingSpeed': {
+				label: 'Smoothing speed',
+				type: 'number',
+				min: 0.01,
+				max: Infinity,
+				def: 5,
+				condition: c => c.properties.smoothing === true
+			},
 		},
 		manager: D3DCameraCollisionManager
 	},
