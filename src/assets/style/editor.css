@@ -779,6 +779,7 @@ body.dark {
 	bottom: -10px;
 }
 .material-editor {
+	margin-bottom: 10px;
 	.material-editor-material { display: grid; gap: 8px; }
 	.material-editor-row {display: grid; grid-template-columns: 120px 1fr; align-items: center; gap: 8px; }
 	.material-editor-slider { display: flex; gap: 8px; align-items: center; }

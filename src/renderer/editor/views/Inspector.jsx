@@ -972,45 +972,41 @@ export default function Inspector() {
 											}
 										</select>
 									</div>
-									{
-										_editor.mode == '3D' && (
-											<div className='ml2'>
-												<label>Index</label>
-												<input 
-													type="number" 
-													className="tf tf--num"
-													onKeyDown={autoBlur}
-													step={1}
-													value={objects[0].hindex || 0} 
-													onChange={e => {
-														const newIndex = Number(e.target.value) || 0;
-														
+									<div className='ml2'>
+										<label>Index</label>
+										<input 
+											type="number" 
+											className="tf tf--num"
+											onKeyDown={autoBlur}
+											step={1}
+											value={objects[0].hindex || 0} 
+											onChange={e => {
+												const newIndex = Number(e.target.value) || 0;
+												
+												objects.forEach(object => {
+													object.__inspOldIndex = object.hindex;
+													object.hindex = newIndex;
+												});
+												update();
+												
+												_editor.addStep({
+													name: 'Update index',
+													undo: () => {
 														objects.forEach(object => {
-															object.__inspOldIndex = object.hindex;
+															object.hindex = object.__inspOldIndex;
+														});
+														update();
+													},
+													redo: () => {
+														objects.forEach(object => {
 															object.hindex = newIndex;
 														});
 														update();
-														
-														_editor.addStep({
-															name: 'Update index',
-															undo: () => {
-																objects.forEach(object => {
-																	object.hindex = object.__inspOldIndex;
-																});
-																update();
-															},
-															redo: () => {
-																objects.forEach(object => {
-																	object.hindex = newIndex;
-																});
-																update();
-															}
-														});
-													}} 
-												/>
-											</div>
-										)
-									}
+													}
+												});
+											}} 
+										/>
+									</div>
 								</div>
 							</>
 						)
@@ -1076,12 +1072,7 @@ export default function Inspector() {
 			
 			const setComponentEnabled = (enable, addStep = true) => {
 				objects.forEach(object => {
-					const mgr = object.getComponent(type);
-					if(!mgr || !canSee(mgr.component))
-						return;
-						
-					mgr.enabled = enable;
-					
+					object.toggleComponent(type, enable);
 					update();
 				});
 				
@@ -2056,28 +2047,16 @@ export default function Inspector() {
 				});
 			}
 			
-			if(_editor.mode == '2D') {
-				objects = objects.sort((a, b) => {
-					if(a.position.z > b.position.z)
-						return -1;
-					else
-					if(a.position.z < b.position.z)
-						return 1;
-					else
-						return 0;
-				});
-			}else
-			if(_editor.mode == '3D') {
-				objects = objects.sort((a, b) => {
-					if(a.hindex > b.hindex)
-						return 1;
-					else
-					if(a.hindex < b.hindex)
-						return -1;
-					else
-						return 0;
-				});
-			}
+			// Sort by index
+			objects = objects.sort((a, b) => {
+				if(a.hindex > b.hindex)
+					return 1;
+				else
+				if(a.hindex < b.hindex)
+					return -1;
+				else
+					return 0;
+			});
 			
 			if(objects.length < 1) {
 				if(!sceneFilter) {

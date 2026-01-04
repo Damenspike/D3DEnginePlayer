@@ -25,6 +25,7 @@ import D3DFirstPersonCharacterController from './d3dmgr_firstpersoncharactercont
 import D3DAutoLODManager from './d3dmgr_autolod.js';
 import D3DDayNightManager from './d3dmgr_daynight.js';
 import D3DStamperManager from './d3dmgr_stamper.js';
+import D3DTriggerManager from './d3dmgr_trigger.js';
 
 import { WebSafeFonts } from './d3dfonts.js';
 import { fileNameNoExt } from './d3dutility.js';
@@ -290,7 +291,7 @@ const D3DComponents = {
 				description: 'Offset applied to depth to reduce shadow acne (negative)',
 				type: 'number',
 				step: 0.0001,
-				def: -0.01,
+				def: -0.0005,
 				section: 'shadow',
 				condition: (c) => c.properties.castShadow
 			},
@@ -299,7 +300,7 @@ const D3DComponents = {
 				description: 'Adjusts bias based on surface normals (useful for skinned meshes)',
 				type: 'number',
 				step: 0.001,
-				def: 0,
+				def: 0.02,
 				section: 'shadow',
 				condition: (c) => c.properties.castShadow
 			},
@@ -400,7 +401,7 @@ const D3DComponents = {
 				label: 'Shadow bias',
 				type: 'number',
 				step: 0.0001,
-				def: -0.01,
+				def: -0.0005,
 				section: 'shadow',
 				condition: (c) => c.properties.castShadow
 			},
@@ -408,7 +409,7 @@ const D3DComponents = {
 				label: 'Shadow normal bias',
 				type: 'number',
 				step: 0.001,
-				def: 0,
+				def: 0.02,
 				section: 'shadow',
 				condition: (c) => c.properties.castShadow
 			},
@@ -518,7 +519,7 @@ const D3DComponents = {
 				label: 'Shadow bias',
 				type: 'number',
 				step: 0.0001,
-				def: -0.01,
+				def: -0.0005,
 				section: 'shadow',
 				condition: (c) => c.properties.castShadow
 			},
@@ -526,7 +527,7 @@ const D3DComponents = {
 				label: 'Shadow normal bias',
 				type: 'number',
 				step: 0.001,
-				def: 0,
+				def: 0.02,
 				section: 'shadow',
 				condition: (c) => c.properties.castShadow
 			},
@@ -2295,7 +2296,7 @@ const D3DComponents = {
 				label: 'Sunrise tint',
 				type: 'color',
 				def: '0xFFC2D4',
-				condition: c => !!c.properties.sunriseTexture,
+			//	condition: c => !!c.properties.sunriseTexture,
 				section: 'sunrise'
 			},
 			dayTexture: {
@@ -2309,7 +2310,7 @@ const D3DComponents = {
 				label: 'Day tint',
 				type: 'color',
 				def: '0xD9F5FF',
-				condition: c => !!c.properties.dayTexture,
+			//	condition: c => !!c.properties.dayTexture,
 				section: 'day'
 			},
 			sunsetTexture: {
@@ -2323,7 +2324,7 @@ const D3DComponents = {
 				label: 'Sunset tint',
 				type: 'color',
 				def: '0xFFC3A3',
-				condition: c => !!c.properties.sunsetTexture,
+			//	condition: c => !!c.properties.sunsetTexture,
 				section: 'sunset'
 			},
 			nightTexture: {
@@ -2334,10 +2335,10 @@ const D3DComponents = {
 				section: 'night'
 			},
 			nightTint: {
-				label: 'Sunset tint',
+				label: 'Night tint',
 				type: 'color',
 				def: '0x000000',
-				condition: c => !!c.properties.nightTexture,
+			//	condition: c => !!c.properties.nightTexture,
 				section: 'night'
 			},
 			skyDomeRadius: {
@@ -2479,6 +2480,23 @@ const D3DComponents = {
 			}
 		},
 		manager: D3DStamperManager
+	},
+	Trigger: {
+		name: 'Trigger',
+		fields: {
+			'targetName': {
+				label: 'Target name',
+				description: 'Path to the target object instance (.target property pointing to an object instance overrides this value)',
+				type: 'string',
+				def: ''
+			},
+			'label': {
+				label: 'Label',
+				type: 'string',
+				def: ''
+			}
+		},
+		manager: D3DTriggerManager
 	}
 }
 

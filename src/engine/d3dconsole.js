@@ -13,6 +13,10 @@ const D3DConsole = {
 		console.log(...args);
 		_host.onConsoleMessage({ level: 'log', message: formatMessage(args) });
 	},
+	trace: (...args) => {
+		console.trace(...args);
+		_host.onConsoleMessage({ level: 'trace', message: formatMessage(args) });
+	},
 	warn: (...args) => {
 		console.warn(...args);
 		_host.onConsoleMessage({ level: 'warn', message: formatMessage(args) });

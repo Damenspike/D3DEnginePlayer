@@ -214,6 +214,9 @@ export default class D3DEditorState {
 	setSelection(selectObjects, addStep = true, deselectAssets = true) {
 		if(!selectObjects || !Array.isArray(selectObjects))
 			selectObjects = [];
+		
+		selectObjects = selectObjects
+		.filter(object => !object.editorOnly);
 			
 		const objects = [];
 		
@@ -239,7 +242,9 @@ export default class D3DEditorState {
 		if(!selectObjects || !Array.isArray(selectObjects))
 			selectObjects = [];
 			
-		selectObjects = selectObjects.filter(object => !this.selectedObjects.includes(object));
+		selectObjects = selectObjects
+		.filter(object => !this.selectedObjects.includes(object))
+		.filter(object => !object.editorOnly);
 			
 		const objects = [];
 		
@@ -361,6 +366,10 @@ export default class D3DEditorState {
 		}
 		const clipboard = [];
 		this.selectedObjects.forEach(d3dobject => {
+			if(d3dobject.hasComponent('SubMesh')) {
+				D3DConsole.warn(`${d3dobject.name} can't be duplicated. Try using the parent Mesh object.`);
+				return;
+			}
 			clipboard.push(d3dobject.getSerializableObject());
 		});
 		
@@ -597,6 +606,9 @@ export default class D3DEditorState {
 			zip.forEach((rel, entry) => {
 				if(!rel.startsWith('assets/'))
 					return;
+					
+				if(rel.startsWith('assets/resources/'))
+					return;
 				
 				const uuid = _root.resolveAssetId(rel);
 				
@@ -754,7 +766,16 @@ export default class D3DEditorState {
 	async doCopySelectedObjects() {
 		this.pastes = 0;
 	
-		const objs = this.selectedObjects || [];
+		const objs = (this.selectedObjects || [])
+		.filter(d3dobject => {
+			if(d3dobject.hasComponent('SubMesh')) {
+				D3DConsole.warn(`${d3dobject.name} can't be copied. Try using the parent Mesh object.`);
+				return false;
+			}else{
+				return true;
+			}
+		});
+		
 		if(objs.length < 1)
 			return;
 			

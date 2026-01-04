@@ -4,19 +4,23 @@ export default class CharacterControllerManager {
 	constructor(d3dobject, component) {
 		this.d3dobject = d3dobject;
 		this.component = component;
-		
+
+		this.canJump = true;
 		this.__setup = false;
-		
-		this.component._state = {
-			yaw: 0,
-			vy: 0,
-			air: true,
-			kcc: null,
-			collider: null,
-		};
-		
+
+		// --- controller state (no _state bag) ---
+		this._yaw      = 0;
+		this._vy       = 0;
+		this._air      = true;
+		this._kcc      = null;
+		this._collider = null;
+
 		this.d3dobject.addEventListener('reset', () => this.reset());
 	}
+
+	// =====================================================
+	// GETTERS / SETTERS
+	// =====================================================
 
 	get moveSpeed() {
 		return this.component.properties.moveSpeed;
@@ -45,7 +49,7 @@ export default class CharacterControllerManager {
 	set gravityStrength(v) {
 		this.component.properties.gravityStrength = v;
 	}
-	
+
 	get cameraName() {
 		return this.component.properties.cameraName;
 	}
@@ -53,164 +57,170 @@ export default class CharacterControllerManager {
 		this.component.properties.cameraName = v;
 	}
 
+	// =====================================================
+	// LIFECYCLE
+	// =====================================================
+
 	updateComponent() {
-		if (!_physics?.ready) 
+		if (!_physics?.ready)
 			return;
-			
+
 		if (!window._player)
 			return;
-			
-		if (!this.__setup) 
+
+		if (!this.__setup)
 			this.setup();
 	}
 
 	dispose() {
-		if(this.component._state) {
-			this.component._state.kcc = null;
-			this.component._state.collider = null;
-		}
-		
+		this._kcc = null;
+		this._collider = null;
 		this.__setup = false;
 	}
 
 	setup() {
 		this.__setup = true;
 	}
-	
+
 	reset() {
-		const state = this.component._state;
-		if (!state) return;
-	
 		// Kill vertical motion and mark grounded
-		state.vy  = 0;
-		state.air = false;
-	
-		// Re-sync yaw from current object rotation (state-only change)
-		const rotY = this.d3dobject.rotation?.y || 0;
-		state.yaw = rotY;
-	
-		// Optionally re-sync KCC to current body position (still pure controller state)
+		this._vy  = 0;
+		this._air = false;
+
+		// Re-sync yaw from current object rotation
+		this._yaw = this.d3dobject.rotation?.y || 0;
+
+		// Re-sync KCC to current body position
 		const rb = _physics.getBody?.(this.d3dobject);
-		if (state.kcc && rb && typeof state.kcc.setPosition === 'function') {
+		if (this._kcc && rb && typeof this._kcc.setPosition === 'function') {
 			const p = rb.translation();
-			state.kcc.setPosition({ x: p.x, y: p.y, z: p.z });
+			this._kcc.setPosition({ x: p.x, y: p.y, z: p.z });
 		}
 	}
-	
+
+	// =====================================================
+	// UPDATE
+	// =====================================================
+
 	__onInternalEnterFrame() {
-		if (!this.__setup || !_physics?.ready || !this.component.enabled) 
+		if (!this.__setup || !_physics?.ready || !this.component.enabled)
 			return;
-			
+
 		const props = this.component.properties || {};
 		const moveSpeed       = Number(props.moveSpeed ?? 2);
 		const turnSpeed       = Number(props.turnSpeed ?? 8);
 		const jumpHeight      = Number(props.jumpHeight ?? 6);
 		const gravityStrength = Number(props.gravityStrength ?? 1);
-		
-		const state = this.component._state;
+
 		const camera = this.camera ?? this.d3dobject.root.find(this.cameraName || 'camera');
 		const forward = camera?.forward ?? this.d3dobject.forward;
-		
-		if(!camera && !this._noCameraWarning && _time.sinceStart > 0.5) {
+
+		if (!camera && !this._noCameraWarning && _time.sinceStart > 0.5) {
 			D3DConsole.warn(`[${this.d3dobject.name}] No camera referenced by character controller. The character won't know which way to face. It will default to local forward.`);
 			this._noCameraWarning = true;
 		}
-		
-		this._ensureController(state);
-		
+
+		this._ensureController();
+
 		if (window._editor && !this.d3dobject.getComponent('Rigidbody')) {
 			this.d3dobject.addComponent('Rigidbody', { kind: 'kinematicPosition' });
 		}
-		
+
 		const rbMgr = this.d3dobject.getComponent('Rigidbody');
 		const rb = _physics.getBody(this.d3dobject);
-		
-		if (!rbMgr || !rb || !state.kcc || !state.collider) 
+
+		if (!rbMgr || !rb || !this._kcc || !this._collider)
 			return;
-			
+
 		const dt = _time.delta;
-		
+
 		let fx = forward.x, fz = forward.z;
 		const fl = Math.hypot(fx, fz) || 1;
-		fx /= fl; 
+		fx /= fl;
 		fz /= fl;
+
 		const rx = fz;
 		const rz = -fx;
-		
+
 		const input = _input.getControllerAxis();
-		
+
 		// axis.y = forward/back, axis.x = strafe
 		let mx = fx * input.y + rx * input.x;
 		let mz = fz * input.y + rz * input.x;
-		
-		// raw length of stick input projected into world-space
+
 		const rawLen = Math.hypot(mx, mz);
-		
-		// direction + strength (0..1)
+
 		let dirX = 0, dirZ = 0;
 		let strength = 0;
-		
+
 		if (rawLen > 1e-6) {
 			dirX = mx / rawLen;
 			dirZ = mz / rawLen;
 			strength = Math.min(rawLen, 1);
 		}
-		
+
 		// rotate towards movement direction if any
 		if (strength > 1e-6) {
 			const targetYaw = Math.atan2(dirX, dirZ);
-			let delta = this._wrapAngle(targetYaw - state.yaw);
+			let delta = this._wrapAngle(targetYaw - this._yaw);
+
 			const maxTurn = turnSpeed * dt;
 			if (delta > maxTurn) delta = maxTurn;
 			if (delta < -maxTurn) delta = -maxTurn;
-			state.yaw = this._wrapAngle(state.yaw + delta);
+
+			this._yaw = this._wrapAngle(this._yaw + delta);
 		}
-		
+
 		const worldG = (_physics.world?.gravity?.y ?? -9.81);
 		const g = worldG * gravityStrength;
-		
-		if (!state.air && _input.getKeyDown('Space')) {
+
+		if (!this._air && (_input.getKeyDown('Space') && this.canJump) ) {
 			const v0 = Math.sqrt(Math.max(0, -2 * g * Math.max(0, jumpHeight)));
-			state.vy = v0;
-			state.air = true;
+			this._vy = v0;
+			this._air = true;
 		} else {
-			state.vy += g * dt;
+			this._vy += g * dt;
 		}
-		
+
 		const step = moveSpeed * dt * strength;
 		const dx = (strength > 1e-6 ? dirX * step : 0);
 		const dz = (strength > 1e-6 ? dirZ * step : 0);
-		const dy = state.vy * dt;
-		
+		const dy = this._vy * dt;
+
 		const currentPos = rb.translation();
-		const mv = _physics.kccMove(state.kcc, state.collider, { x: dx, y: dy, z: dz }, rb);
+		const mv = _physics.kccMove(this._kcc, this._collider, { x: dx, y: dy, z: dz }, rb);
+
 		const nextPos = {
 			x: currentPos.x + mv.x,
 			y: currentPos.y + mv.y,
 			z: currentPos.z + mv.z
 		};
-		
+
 		if (dy < 0 && Math.abs(mv.y - dy) > 0.001) {
-			state.air = false;
-			state.vy = 0;
+			this._air = false;
+			this._vy = 0;
 		} else if (dy > 0 && Math.abs(mv.y - dy) > 0.001) {
-			state.vy = 0;
+			this._vy = 0;
 		}
-		
-		rbMgr.setTransform(nextPos, this._quatFromYaw(state.yaw), false);
+
+		rbMgr.setTransform(nextPos, this._quatFromYaw(this._yaw), false);
 	}
 
-	_ensureController(state) {
-		if (!state.collider) {
+	// =====================================================
+	// INTERNALS
+	// =====================================================
+
+	_ensureController() {
+		if (!this._collider) {
 			const pack = _physics._bodies?.get?.(this.d3dobject.uuid);
-			if (pack && pack.colliders && pack.colliders.length) {
-				state.collider = pack.colliders[0];
-			}
+			if (pack && pack.colliders && pack.colliders.length)
+				this._collider = pack.colliders[0];
 		}
-		if (!state.kcc) {
-			state.kcc = _physics.createKCC(0.02, 50, 50);
-			state.kcc.enableAutostep(0.35, 0.35, true);
-			state.kcc.enableSnapToGround(0.1);
+
+		if (!this._kcc) {
+			this._kcc = _physics.createKCC(0.02, 50, 50);
+			this._kcc.enableAutostep(0.35, 0.35, true);
+			this._kcc.enableSnapToGround(0.1);
 		}
 	}
 

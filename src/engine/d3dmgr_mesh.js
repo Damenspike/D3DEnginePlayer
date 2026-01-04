@@ -816,6 +816,9 @@ export default class MeshManager {
 					if (!rawName)
 						continue; // IMPORTANT: Skip the weird empty children because they link to the wrong things and mess everything up
 					
+					if(rawName == 'Camera')
+						continue;
+					
 					if (/^root$/i.test(rawName)) {
 						await bindChildrenDirect(child, d3dHost);
 						continue;
@@ -828,7 +831,7 @@ export default class MeshManager {
 					
 					if (!d3dChild) {
 						// brand new auto wrapper
-						d3dChild = await d3dHost.createObject({ name: want, components: [] });
+						d3dChild = await d3dHost.createObject({ name: want, components: [], editorOnly: !!this.component.properties.__editorOnly });
 						d3dChild.__auto_gltf = true;
 						this._setLocalTRS(d3dChild, child);
 					}

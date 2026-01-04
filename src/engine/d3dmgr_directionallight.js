@@ -102,7 +102,7 @@ get color() {
 	
 	updateComponent() {
 		if (!this.__setup) this.setup();
-		else this.updateLight();
+		this.updateLight();
 	}
 
 	setup() {
@@ -125,16 +125,15 @@ get color() {
 		light.target = this._target;
 
 		this.__setup = true;
-		this.updateLight();
 	}
 
 	updateLight() {
-		if(!this.d3dobject.enabled)
+		if(!this.d3dobject.enabled || !this.component.enabled || !this.__setup)
 			return;
 		
 		const c = this.component.properties;
 		const light = this.d3dobject.object3d;
-		if (!light) return;
+		if (!light || !light.color) return;
 
 		light.color.set(Number(c.color));
 		light.intensity = c.intensity;
@@ -185,5 +184,21 @@ get color() {
 		sh.bias = bias;
 		sh.normalBias = normalBias;
 		if ('radius' in sh) sh.radius = radius;
+	}
+	
+	dispose() {
+		const light = this.d3dobject?.object3d;
+		if(!light || !light.isDirectionalLight)
+			return;
+	
+		if(light.shadow?.map) {
+			light.shadow.map.dispose();
+			light.shadow.map = null;
+		}
+	
+		if(light.parent)
+			light.parent.remove(light);
+	
+		this.__setup = false;
 	}
 }

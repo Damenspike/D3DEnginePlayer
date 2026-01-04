@@ -54,6 +54,9 @@ export default function AppPlayer({srcAttr}) {
 						case 'log':
 							console.log(message);
 						break;
+						case 'trace':
+							console.trace(message);
+						break;
 						case 'warn':
 							console.warn(message);
 						break;

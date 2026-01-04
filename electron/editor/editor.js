@@ -1066,7 +1066,8 @@ const menuTemplate = [
 					{
 						label: 'Advanced',
 						submenu: [
-							{ label: 'Auto LOD', click: () => sendAddComponent('AutoLOD') }
+							{ label: 'Auto LOD', click: () => sendAddComponent('AutoLOD') },
+							{ label: 'Trigger', click: () => sendAddComponent('Trigger') }
 						]
 					},
 					{ type: 'separator' },

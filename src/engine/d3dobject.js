@@ -74,21 +74,21 @@ export default class D3DObject {
 		return this.__loops.__onInternalStart;
 	}
 	set __onInternalStart(f) {
-		this._setLoop('__onInternalStart', f);
+		this.__setLoop('__onInternalStart', f);
 	}
 	
 	get __onStart() {
 		return this.__loops.__onStart;
 	}
 	set __onStart(f) {
-		this._setLoop('__onStart', f);
+		this.__setLoop('__onStart', f);
 	}
 	
 	get onStart() {
 		return this.__loops.onStart;
 	}
 	set onStart(f) {
-		this._setLoop('onStart', f);
+		this.__setLoop('onStart', f);
 	}
 	
 	/* =========================
@@ -99,14 +99,14 @@ export default class D3DObject {
 		return this.__loops.__onEditorStart;
 	}
 	set __onEditorStart(f) {
-		this._setLoop('__onEditorStart', f);
+		this.__setLoop('__onEditorStart', f);
 	}
 	
 	get onEditorStart() {
 		return this.__loops.onEditorStart;
 	}
 	set onEditorStart(f) {
-		this._setLoop('onEditorStart', f);
+		this.__setLoop('onEditorStart', f);
 	}
 	
 	/* =========================
@@ -117,21 +117,21 @@ export default class D3DObject {
 		return this.__loops.__onInternalGraphicsReady;
 	}
 	set __onInternalGraphicsReady(f) {
-		this._setLoop('__onInternalGraphicsReady', f);
+		this.__setLoop('__onInternalGraphicsReady', f);
 	}
 	
 	get __onGraphicsReady() {
 		return this.__loops.__onGraphicsReady;
 	}
 	set __onGraphicsReady(f) {
-		this._setLoop('__onGraphicsReady', f);
+		this.__setLoop('__onGraphicsReady', f);
 	}
 	
 	get onGraphicsReady() {
 		return this.__loops.onGraphicsReady;
 	}
 	set onGraphicsReady(f) {
-		this._setLoop('onGraphicsReady', f);
+		this.__setLoop('onGraphicsReady', f);
 	}
 	
 	/* =========================
@@ -142,21 +142,21 @@ export default class D3DObject {
 		return this.__loops.__onInternalPhysicsUpdate;
 	}
 	set __onInternalPhysicsUpdate(f) {
-		this._setLoop('__onInternalPhysicsUpdate', f);
+		this.__setLoop('__onInternalPhysicsUpdate', f);
 	}
 	
 	get __onPhysicsUpdate() {
 		return this.__loops.__onPhysicsUpdate;
 	}
 	set __onPhysicsUpdate(f) {
-		this._setLoop('__onPhysicsUpdate', f);
+		this.__setLoop('__onPhysicsUpdate', f);
 	}
 	
 	get onPhysicsUpdate() {
 		return this.__loops.onPhysicsUpdate;
 	}
 	set onPhysicsUpdate(f) {
-		this._setLoop('onPhysicsUpdate', f);
+		this.__setLoop('onPhysicsUpdate', f);
 	}
 	
 	/* =========================
@@ -167,21 +167,21 @@ export default class D3DObject {
 		return this.__loops.__onInternalEnterFrame;
 	}
 	set __onInternalEnterFrame(f) {
-		this._setLoop('__onInternalEnterFrame', f);
+		this.__setLoop('__onInternalEnterFrame', f);
 	}
 	
 	get __onEnterFrame() {
 		return this.__loops.__onEnterFrame;
 	}
 	set __onEnterFrame(f) {
-		this._setLoop('__onEnterFrame', f);
+		this.__setLoop('__onEnterFrame', f);
 	}
 	
 	get onEnterFrame() {
 		return this.__loops.onEnterFrame;
 	}
 	set onEnterFrame(f) {
-		this._setLoop('onEnterFrame', f);
+		this.__setLoop('onEnterFrame', f);
 	}
 	
 	/* =========================
@@ -192,21 +192,21 @@ export default class D3DObject {
 		return this.__loops.__onInternalBeforeRender;
 	}
 	set __onInternalBeforeRender(f) {
-		this._setLoop('__onInternalBeforeRender', f);
+		this.__setLoop('__onInternalBeforeRender', f);
 	}
 	
 	get __onBeforeRender() {
 		return this.__loops.__onBeforeRender;
 	}
 	set __onBeforeRender(f) {
-		this._setLoop('__onBeforeRender', f);
+		this.__setLoop('__onBeforeRender', f);
 	}
 	
 	get onBeforeRender() {
 		return this.__loops.onBeforeRender;
 	}
 	set onBeforeRender(f) {
-		this._setLoop('onBeforeRender', f);
+		this.__setLoop('onBeforeRender', f);
 	}
 	
 	/* =========================
@@ -217,21 +217,21 @@ export default class D3DObject {
 		return this.__loops.__onInternalExitFrame;
 	}
 	set __onInternalExitFrame(f) {
-		this._setLoop('__onInternalExitFrame', f);
+		this.__setLoop('__onInternalExitFrame', f);
 	}
 	
 	get __onExitFrame() {
 		return this.__loops.__onExitFrame;
 	}
 	set __onExitFrame(f) {
-		this._setLoop('__onExitFrame', f);
+		this.__setLoop('__onExitFrame', f);
 	}
 	
 	get onExitFrame() {
 		return this.__loops.onExitFrame;
 	}
 	set onExitFrame(f) {
-		this._setLoop('onExitFrame', f);
+		this.__setLoop('onExitFrame', f);
 	}
 	
 	/* =========================
@@ -242,14 +242,14 @@ export default class D3DObject {
 		return this.__loops.__onEditorEnterFrame;
 	}
 	set __onEditorEnterFrame(f) {
-		this._setLoop('__onEditorEnterFrame', f);
+		this.__setLoop('__onEditorEnterFrame', f);
 	}
 	
 	get onEditorEnterFrame() {
 		return this.__loops.onEditorEnterFrame;
 	}
 	set onEditorEnterFrame(f) {
-		this._setLoop('onEditorEnterFrame', f);
+		this.__setLoop('onEditorEnterFrame', f);
 	}
 	
 	/* =========================
@@ -260,14 +260,14 @@ export default class D3DObject {
 		return this.__loops.__onEditorBeforeRender;
 	}
 	set __onEditorBeforeRender(f) {
-		this._setLoop('__onEditorBeforeRender', f);
+		this.__setLoop('__onEditorBeforeRender', f);
 	}
 	
 	get onEditorBeforeRender() {
 		return this.__loops.onEditorBeforeRender;
 	}
 	set onEditorBeforeRender(f) {
-		this._setLoop('onEditorBeforeRender', f);
+		this.__setLoop('onEditorBeforeRender', f);
 	}
 	
 	/* =========================
@@ -278,19 +278,22 @@ export default class D3DObject {
 		return this.__loops.__onEditorExitFrame;
 	}
 	set __onEditorExitFrame(f) {
-		this._setLoop('__onEditorExitFrame', f);
+		this.__setLoop('__onEditorExitFrame', f);
 	}
 	
 	get onEditorExitFrame() {
 		return this.__loops.onEditorExitFrame;
 	}
 	set onEditorExitFrame(f) {
-		this._setLoop('onEditorExitFrame', f);
+		this.__setLoop('onEditorExitFrame', f);
 	}
 	
 	///////////////////////////////
 	// Getters and setters only
 	///////////////////////////////
+	get deleted() {
+		return !!this.__deleted;
+	}
 	get enabled() {
 		let o = this;
 		
@@ -787,6 +790,23 @@ export default class D3DObject {
 		}
 		return names.reverse();
 	}
+	get path() {
+		return this.rootTree.join('.');
+	}
+	get rootTree() {
+		// root of this object only
+		let r = this;
+		const names = [];
+		while(r) {
+			names.push(r.name);
+			
+			if(!r || r == _root)
+				break;
+			
+			r = r.parent;
+		}
+		return names.reverse();
+	}
 	get symbol() {
 		if(!this.symbolId)
 			return;
@@ -1213,9 +1233,8 @@ export default class D3DObject {
 		this.fileMeta = { bytesTotal: 0, bytesLoaded: 0 };
 		this.__origin = uri;
 		this.__symbols = {};
-	
-		this.removeAllChildren();
-		this.disposeImportant();
+		
+		this.destroyChildren();
 		
 		const isRemote = !_isStandalone || uri.startsWith('http://') || uri.startsWith('https://');
 		
@@ -1571,6 +1590,7 @@ export default class D3DObject {
 			// Console
 			console: Object.freeze({
 				log: (...args) => D3DConsole.log(`[${this.name}]`, ...args),
+				trace: (...args) => D3DConsole.trace(`[${this.name}]`, ...args),
 				warn: (...args) => D3DConsole.warn(`[${this.name}]`, ...args),
 				error: (...args) => D3DConsole.error(`[${this.name}]`, ...args),
 				assert: (...args) => D3DConsole.assert(...args),
@@ -1593,8 +1613,11 @@ export default class D3DObject {
 		
 		DamenScript.run(script, sandbox, { contextId: this.name })
 		.catch(e => {
-			D3DConsole.error(`[${this.name}]`, e.name, e.message);
-			console.error(`[${this.name}]`, e);
+			if(!e.message.includes(this.name))
+				e.message = `[${this.name}] ${e.message}`;
+			
+			D3DConsole.error(e.name, e.message);
+			console.error(e);
 		});
 	}
 	async setComponentValue(type, field, value) {
@@ -1678,18 +1701,7 @@ export default class D3DObject {
 				return component.enabled;
 			},
 			set(v) {
-				v = !!v;
-				if(v === component.enabled)
-					return;
-				
-				component.enabled = v;
-				
-				inst.d3dobject.updateComponents(true);
-				
-				if(v)
-					inst.onEnabled?.();
-				else
-					inst.onDisabled?.();
+				inst.d3dobject.toggleComponent(type, v);
 			}
 		});
 		
@@ -1806,8 +1818,24 @@ export default class D3DObject {
 		
 		if(!component)
 			return;
+			
+		const mgr = this.getComponent(type);
+		const wasEnabled = component.enabled;
+		
+		if(wasEnabled === enabled)
+			return;
 		
 		component.enabled = enabled;
+		
+		if(mgr) {
+			mgr.dispose();
+			mgr.__setup = false;
+			
+			if(enabled && !wasEnabled) {
+				mgr.setupComponent?.();
+			}
+		}
+		
 		this.updateComponents(true);
 		this.checkSymbols();
 		this.checkInstancedSubmeshes();
@@ -1946,7 +1974,7 @@ export default class D3DObject {
 		if(!window._editor)
 			return;
 		
-		if(this.__syncing || this.__lockSymbols)
+		if(this.__syncing)
 			return;
 		
 		const treeSymbolUpdate = (d3dobject) => {
@@ -1966,6 +1994,10 @@ export default class D3DObject {
 			console.error('No symbol');
 			return;
 		}
+		
+		// Symbol update locked
+		if(this.__lockSymbols)
+			return;
 		
 		// never update symbol before object is fully created or it will corrupt the symbol
 		if(!this.__ready)
@@ -2207,65 +2239,57 @@ export default class D3DObject {
 	replaceObject3D(newObject3D, { keepChildren = true } = {}) {
 		const old = this.object3d;
 		
-		if (!old || old === newObject3D) return;
-	
-		// --- cache LOCAL transform (relative to parent) ---
+		if (!old || old === newObject3D) 
+			return;
+		
 		const pos = old.position.clone();
 		const quat = old.quaternion.clone();
 		const scl = old.scale.clone();
-	
-		// --- keep scene graph context ---
-		const parent = old.parent || null;
+		
+		const parent = this.parent.object3d;
 		const oldIndex = parent ? parent.children.indexOf(old) : -1;
-	
-		// --- carry over useful flags/state ---
-		newObject3D.name = old.name; // so getObjectByName still works
+		
+		newObject3D.name = old.name;
 		newObject3D.visible = old.visible;
 		newObject3D.matrixAutoUpdate = old.matrixAutoUpdate;
 		newObject3D.renderOrder = old.renderOrder;
 		newObject3D.frustumCulled = old.frustumCulled;
 		newObject3D.castShadow = old.castShadow ?? newObject3D.castShadow;
 		newObject3D.receiveShadow = old.receiveShadow ?? newObject3D.receiveShadow;
-	
+		
 		// copy layers bitmask
 		for (let i = 0; i < 32; i++) {
 			if (old.layers.isEnabled(i)) newObject3D.layers.enable(i);
 			else newObject3D.layers.disable(i);
 		}
 	
-		// --- move children if desired ---
+		// move children
 		if (keepChildren && old.children.length) {
-			// clone array to avoid mutation during iteration
 			for (const child of [...old.children]) newObject3D.add(child);
 		}
 	
-		// --- set local transform (relative to SAME parent) ---
+		// set local transform (relative to SAME parent)
 		newObject3D.position.copy(pos);
 		newObject3D.quaternion.copy(quat);
 		newObject3D.scale.copy(scl);
 	
-		// --- reparent into the same spot in the tree ---
+		// reparent into the same spot in the tree
 		if (parent) {
-			parent.remove(old);          // detach old
-			parent.add(newObject3D);     // attach new
-	
-			// restore original sibling order
+			parent.remove(old);
+			parent.add(newObject3D);
+			
 			if (oldIndex >= 0) {
 				const arr = parent.children;
 				const cur = arr.indexOf(newObject3D);
 				if (cur !== -1 && cur !== oldIndex) {
-					// move newObject3D to oldIndex
 					arr.splice(cur, 1);
 					arr.splice(oldIndex, 0, newObject3D);
 				}
 			}
 		}
-	
-		// --- wire back to D3D ---
+		
 		this.object3d = newObject3D;
 		this.object3d.userData.d3dobject = this;
-		
-		// --- ensure matrices are coherent for anything that reads this frame ---
 		this.object3d.updateMatrixWorld(true);
 	}
 	
@@ -2442,7 +2466,8 @@ export default class D3DObject {
 			for (let i = 0; i < this.children.length; i++) {
 				const child = this.children[i];
 				if (child && typeof child.traverse === 'function') {
-					if (child.traverse(callback) === false)
+					const r = child.traverse(callback);
+					if (r === false)
 						return false;
 				}
 			}
@@ -2481,17 +2506,11 @@ export default class D3DObject {
 		const children = [...this.children];
 		children.forEach(d3dobj => d3dobj.remove(force));
 	}
-	forceDelete() {
-		this.forceRemove();
-	}
 	delete(force = false) {
 		this.remove(force);
 	}
-	forceRemove() {
-		this.remove(true);
-	}
 	destroy() {
-		this.forceRemove();
+		this.remove(true);
 	}
 	destroyChildren() {
 		this.removeAllChildren(true);
@@ -2514,42 +2533,49 @@ export default class D3DObject {
 		this.symbolId = null;
 		this.components = [];
 		
+		this.__lockSymbols = true; // MUST NOT ALLOW ANY SYMBOL SYNCING
+		
+		const objs = [];
+		
 		this.traverse(o => {
-			o.__lockSymbols = true; // MUST NOT ALLOW ANY SYMBOL SYNCING
-			o.disposeAllComponents();
-			o.__lockSymbols = false;
+			objs.push(o);
 		});
 		
-		this.unlinkFromZipInstance();
-		
-		const idx = this.parent.children.indexOf(this);
-		
-		if(idx < 0)
-			throw new Error("Parent doesn't contain child?");
+		objs.forEach(o => {
+			o.__lockSymbols = true; // MUST NOT ALLOW ANY SYMBOL SYNCING
 			
-		this.parent.children.splice(idx, 1);
-		
-		if(this.parent.object3d)
-			this.parent.object3d.remove(this.object3d);
-		
-		this.__deleted = true;
-		_events.invoke('world-add-object', this);
-		
-		delete this.parent[this.name];
-		delete _root.superIndex[this.uuid];
-		
-		this.disposeImportant();
-		this.removeFromAllLoops();
+			_events.invoke('world-remove-object', o);
+			
+			o.removeFromAllLoops();
+			o.unlinkFromZipInstance();
+			o.disposeAllComponents();
+			o.disposeImportant();
+			o.checkInstancedSubmeshes();
+			
+			const idx = o.parent.children.indexOf(o);
+			
+			if(idx > -1)
+				o.parent.children.splice(idx, 1);
+			
+			if(o.parent.object3d)
+				o.parent.object3d.remove(o.object3d);
+			
+			o.__deleted = true;
+			
+			delete o.parent[o.name];
+			delete _root.superIndex[o.uuid];
+		});
 		
 		if(shouldCheckSymbols)
 			this.checkSymbols();
-		
-		this.checkInstancedSubmeshes();
 	}
 	disposeAllComponents() {
 		for(let i in this.__componentInstances) {
 			const mgr = this.__componentInstances[i];
-			mgr?.dispose?.();
+			if(mgr) {
+				mgr.dispose?.();
+				mgr.__setup = false;
+			}
 		}
 		this.__componentInstances = {};
 	}
@@ -3017,44 +3043,43 @@ export default class D3DObject {
 		return true;
 	}
 	
-	_updateLoopIndex(k, f) {
-		const idx = window._loopFns;
-		if(!idx)
-			return;
-	
-		let map = idx[k];
-		if(!map)
-			map = idx[k] = new Map();
-	
-		if(f == null) {
-			map.delete(this);
-			return;
-		}
-	
-		map.set(this, f);
+	__updateLoopIndex() {
+		const masterLoops = window._loopFns;
+		const loops = this.__loops;
+		const loopNames = Object.keys(loops);
+		
+		loopNames.forEach(loopName => {
+			const loop = loops[loopName];
+			
+			if(!masterLoops[loopName])
+				masterLoops[loopName] = new Map();
+			
+			if(loop) {
+				masterLoops[loopName].set(this, loop);
+			}else{
+				masterLoops[loopName].delete(this);
+				delete this.__loops[loopName];
+			}
+		});
 	}
-	_setLoop(k, f) {
-		if(f == null) {
+	__setLoop(k, f) {
+		if(!f)
 			this.__loops[k] = null;
-			this._updateLoopIndex(k, null);
-			return;
-		}
-	
+		else
 		if(typeof f !== 'function')
-			throw new Error('This property must be of type Function');
-	
-		this.__loops[k] = f;
-		this._updateLoopIndex(k, f);
+			throw new Error('Loop must be of type Function');
+		else
+			this.__loops[k] = f;
+		
+		this.__updateLoopIndex();
 	}
 	removeFromAllLoops() {
-		const idx = window._loopFns;
-		if(!idx)
-			return;
-	
-		for(const k in idx) {
-			const map = idx[k];
-			if(map)
-				map.delete(this);
+		const masterLoops = window._loopFns;
+		
+		for(let loopName in masterLoops) {
+			masterLoops[loopName].delete(this);
 		}
+		
+		this.__loops = {};
 	}
 }

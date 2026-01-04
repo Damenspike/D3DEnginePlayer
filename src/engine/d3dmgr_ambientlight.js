@@ -22,7 +22,7 @@ export default class HemisphereLightManager {
 
 	updateComponent() {
 		if (!this.__setup) this.setup();
-		else this.updateLight();
+	    this.updateLight();
 	}
 
 	setup() {
@@ -34,13 +34,17 @@ export default class HemisphereLightManager {
 
 		this.d3dobject.replaceObject3D(hemi);
 		this.__setup = true;
-		this.updateLight();
 	}
 
 	updateLight() {
-		if (!this.__setup) return;
+		if(!this.d3dobject.enabled || !this.component.enabled || !this.__setup)
+			return;
 
 		const light = this.d3dobject.object3d;
+		
+		if(!light || !light.color)
+			return;
+		
 		light.color.set(Number(this.skyColor));
 		light.groundColor.set(Number(this.groundColor));
 		light.intensity = this.intensity;
@@ -60,5 +64,16 @@ export default class HemisphereLightManager {
 
 		light.position.copy(this._pos);
 		light.lookAt(this._pos.clone().add(this._dir));
+	}
+	
+	dispose() {
+		const light = this.d3dobject?.object3d;
+		if(!light || !light.isAmbientLight)
+			return;
+	
+		if(light.parent)
+			light.parent.remove(light);
+	
+		this.__setup = false;
 	}
 }

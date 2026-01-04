@@ -46,7 +46,7 @@ export default class PointLightManager {
 
 	updateComponent() {
 		if (!this.__setup) this.setup();
-		else this.updateLight();
+		this.updateLight();
 	}
 
 	setup() {
@@ -70,6 +70,9 @@ export default class PointLightManager {
 			light.shadow.radius = c.shadowRadius ?? 1.0;
 			light.shadow.camera.near = c.shadowNear ?? 0.5;
 			light.shadow.camera.far = c.shadowFar ?? (c.distance || 500);
+			
+			light.shadow.camera.updateProjectionMatrix();
+			light.shadow.needsUpdate = true;
 		} else {
 			light.castShadow = false;
 		}
@@ -79,18 +82,26 @@ export default class PointLightManager {
 	}
 
 	updateLight() {
+		if(!this.d3dobject.enabled || !this.component.enabled || !this.__setup)
+			return;
+		
 		const c = this.component.properties;
 		const light = this.d3dobject.object3d;
-
+		
+		if(!light || !light.color)
+			return;
+	
 		light.color.set(Number(c.color));
 		light.intensity = c.intensity ?? 1;
 		light.distance = c.distance ?? 0;
 		light.decay = c.decay ?? 1;
-
-		// --- update shadow params dynamically ---
-		light.castShadow = !!c.castShadow;
-
-		if (light.castShadow) {
+	
+		const wantShadow = !!c.castShadow;
+		const hadShadow = !!light.castShadow;
+	
+		light.castShadow = wantShadow;
+	
+		if (wantShadow) {
 			light.shadow.mapSize.width = c.shadowMapSize ?? 1024;
 			light.shadow.mapSize.height = c.shadowMapSize ?? 1024;
 			light.shadow.bias = c.shadowBias ?? -0.0005;
@@ -98,6 +109,33 @@ export default class PointLightManager {
 			light.shadow.radius = c.shadowRadius ?? 1.0;
 			light.shadow.camera.near = c.shadowNear ?? 0.5;
 			light.shadow.camera.far = c.shadowFar ?? (c.distance || 500);
+	
+			// if we just turned shadows on, force fresh allocation
+			if(!hadShadow && light.shadow?.map) {
+				light.shadow.map.dispose();
+				light.shadow.map = null;
+			}
+	
+			light.shadow.camera.updateProjectionMatrix();
+			light.shadow.needsUpdate = true;
 		}
+	}
+	
+	dispose() {
+		const light = this.d3dobject?.object3d;
+		if (!light || !light.isPointLight)
+			return;
+	
+		// Dispose shadow map if it exists
+		if (light.shadow?.map) {
+			light.shadow.map.dispose();
+			light.shadow.map = null;
+		}
+	
+		// Detach from scene graph (replaceObject3D usually handled this, but be safe)
+		if (light.parent)
+			light.parent.remove(light);
+			
+		this.__setup = false;
 	}
 }

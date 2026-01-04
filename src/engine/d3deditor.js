@@ -105,18 +105,26 @@ window.addEventListener('error', (event) => {
 // Unhandled promise rejections (async/await, .then chains, etc.)
 window.addEventListener('unhandledrejection', (event) => {
 	try {
-		const reason = event.reason;
-		const msg =
-			(reason && reason.message) ||
-			(typeof reason === 'string' ? reason : 'Unhandled promise rejection');
+		const r = event.reason;
 
-		if(reason) {
-			D3DConsole.error(reason)
-		}else{
-			D3DConsole.error('[Unhandled Promise Rejection]', msg);
+		if (r instanceof Error) {
+			D3DConsole.error(r);
+			if (r.cause) D3DConsole.error('[Cause]', r.cause);
+			return;
 		}
+
+		// Non-Error rejection: show a short message + attach the object
+		let msg = 'Unhandled promise rejection';
+		if (typeof r === 'string') msg += `: ${r}`;
+		else if (r && typeof r === 'object') {
+			if (typeof r.message === 'string') msg += `: ${r.message}`;
+			else msg += `: [object ${r.constructor?.name || 'Object'}]`;
+		}
+
+		D3DConsole.error('[Unhandled Promise Rejection]', msg, r || null);
 	} catch (_) {}
 });
+
 function showError(args) {
 	let title, message, closeEditorWhenDone;
 	
@@ -267,7 +275,7 @@ async function initEditorCamera() {
 		engineScript: 'd3deditorlight.js',
 		components: [{ type: 'DirectionalLight', properties: {
 			color: '0xffffff',
-			intensity: 2,
+			intensity: 4,
 			castShadow: false
 		} }]
 	});

@@ -1,131 +1,228 @@
+import * as THREE from 'three';
+import D3DConsole from './d3dconsole.js';
+
 export default class AudioSourceManager {
 	constructor(d3dobject, component) {
 		this.d3dobject = d3dobject;
 		this.component = component;
 
-		this.__threeAudio = null;    // THREE.Audio or THREE.PositionalAudio
-		this.__buffer = null;        // AudioBuffer
+		this.__setup = false;
+
+		this.__threeAudio = null;
+		this.__buffer = null;
+		this.__loadToken = 0;
+
+		this._audioListenerWarned = false;
 	}
 
-	// ==== schema-backed properties ====
-	get audio() { return this.component.properties.audio || ''; } // UUID
+	get props() {
+		if(!this.component.properties)
+			this.component.properties = {};
+		return this.component.properties;
+	}
+
+	get audio() {
+		return this.props.audio || '';
+	}
 	set audio(v) {
-		this.component.properties.audio = v || '';
+		this.props.audio = v || '';
 		this._reloadBuffer();
 	}
 
-	get volume() { return this.component.properties.volume ?? 0.5; }
+	get volume() {
+		return this.props.volume ?? 0.5;
+	}
 	set volume(v) {
 		const x = Math.max(0, Math.min(1, Number(v) || 0));
-		this.component.properties.volume = x;
-		if (this.__threeAudio) this.__threeAudio.setVolume(x);
+		this.props.volume = x;
+
+		if(this.__threeAudio)
+			this.__threeAudio.setVolume(x);
 	}
 
-	get soundSpace() { return this.component.properties.soundSpace || '3D'; } // '3D' | '2D'
+	get soundSpace() {
+		return this.props.soundSpace || '3D';
+	}
 	set soundSpace(v) {
-		this.component.properties.soundSpace = (v === '2D') ? '2D' : '3D';
-		this._rebuildThreeAudio(); // swap between Audio/PositionalAudio
+		this.props.soundSpace = (v === '2D') ? '2D' : '3D';
+		if(this.__setup)
+			this._rebuildThreeAudio();
 		this._applySpatial();
 	}
 
-	get distanceModel() { return this.component.properties.distanceModel || 'linear'; }
+	get distanceModel() {
+		return this.props.distanceModel || 'linear';
+	}
 	set distanceModel(v) {
-		const ok = ['linear','inverse','exponential'];
-		this.component.properties.distanceModel = ok.includes(v) ? v : 'linear';
+		const ok = ['linear', 'inverse', 'exponential'];
+		this.props.distanceModel = ok.includes(v) ? v : 'linear';
 		this._applySpatial();
 	}
 
-	get refDistance() { return Number(this.component.properties.refDistance ?? 10); }
-	set refDistance(v) { this.component.properties.refDistance = Number(v) || 0; this._applySpatial(); }
+	get refDistance() {
+		return Number(this.props.refDistance ?? 10);
+	}
+	set refDistance(v) {
+		this.props.refDistance = Number(v) || 0;
+		this._applySpatial();
+	}
 
-	get maxDistance() { return Number(this.component.properties.maxDistance ?? 100); }
-	set maxDistance(v) { this.component.properties.maxDistance = Number(v) || 0; this._applySpatial(); }
+	get maxDistance() {
+		return Number(this.props.maxDistance ?? 100);
+	}
+	set maxDistance(v) {
+		this.props.maxDistance = Number(v) || 0;
+		this._applySpatial();
+	}
 
-	get rolloffFactor() { return Number(this.component.properties.rolloffFactor ?? 1); }
+	get rolloffFactor() {
+		return Number(this.props.rolloffFactor ?? 1);
+	}
 	set rolloffFactor(v) {
-		this.component.properties.rolloffFactor = Math.max(0, Number(v) || 0);
+		this.props.rolloffFactor = Math.max(0, Number(v) || 0);
 		this._applySpatial();
 	}
 
-	get autoPlay() { return !!this.component.properties.autoPlay; }
-	set autoPlay(v) { this.component.properties.autoPlay = !!v; }
+	get autoPlay() {
+		return !!this.props.autoPlay;
+	}
+	set autoPlay(v) {
+		this.props.autoPlay = !!v;
+	}
 
-	get loop() { return !!this.component.properties.loop; }
+	get loop() {
+		return !!this.props.loop;
+	}
 	set loop(v) {
-		this.component.properties.loop = !!v;
-		if (this.__threeAudio) this.__threeAudio.setLoop(!!v);
+		this.props.loop = !!v;
+
+		if(this.__threeAudio)
+			this.__threeAudio.setLoop(!!v);
 	}
 
-	// ==== engine entry ====
-	__onInternalEnterFrame() {
-		if (window._player && !this.__setup) 
-			this.setup();
-	}
+	setupComponent() {
+		if(this.__setup)
+			return;
 
-	setup() {
-		const object3d = this.d3dobject?.object3d;
-		if (!object3d) {
-			console.warn('AudioSourceManager: requires a valid object3d');
+		const o3d = this.d3dobject.object3d;
+		if(!o3d)
+			return;
+
+		const listener = _host.audioListener;
+		if(!listener) {
+			if(!this._audioListenerWarned) {
+				console.warn('AudioSourceManager: no _host.audioListener yet; will retry.');
+				this._audioListenerWarned = true;
+			}
 			return;
 		}
 
-		const listener = _host?.audioListener;
-		if (!listener) {
-			console.warn('AudioSourceManager: no _host.audioListener yet; will retry.');
-			return;
-		}
-
-		this._rebuildThreeAudio();   // builds/attaches THREE.Audio or THREE.PositionalAudio
-		this.volume = this.volume;   // apply initial volume
-		this.loop = this.loop;       // apply loop
-		this._applySpatial();        // apply spatial props if 3D
-
-		if (this.audio) this._reloadBuffer();
-
+		this._rebuildThreeAudio();
 		this.__setup = true;
-		this.__onInternalEnterFrame = null;
+
+		this.volume = this.volume;
+		this.loop = this.loop;
+		this._applySpatial();
+
+		if(this.audio)
+			this._reloadBuffer();
 	}
 
-	deinitialize() {
-		this.stop();
-		const o3d = this.d3dobject?.object3d;
-		if (this.__threeAudio && o3d) o3d.remove(this.__threeAudio);
+	updateComponent() {
+		if(!this.component.enabled) {
+			this.dispose();
+			return;
+		}
+
+		if(!this.__setup)
+			this.setupComponent();
+
+		if(!this.__setup)
+			return;
+
+		this.volume = this.volume;
+		this.loop = this.loop;
+		this._applySpatial();
+
+		if(this.__threeAudio && this.__buffer && this.__threeAudio.buffer !== this.__buffer)
+			this.__threeAudio.setBuffer(this.__buffer);
+	}
+
+	dispose() {
+		if(!this.__setup)
+			return;
+
+		this.__loadToken++;
+
+		if(this.__threeAudio)
+			this.__threeAudio.stop();
+
+		const o3d = this.d3dobject.object3d;
+		if(o3d && this.__threeAudio)
+			o3d.remove(this.__threeAudio);
+
 		this.__threeAudio = null;
 		this.__buffer = null;
+		this.__setup = false;
 	}
 
-	// ==== playback ====
 	play() {
-		if (!this.__threeAudio || !this.__buffer) return;
-		if (!this.__threeAudio.isPlaying) this.__threeAudio.play();
+		if(!this.__threeAudio || !this.__buffer)
+			return;
+
+		if(!this.__threeAudio.isPlaying)
+			this.__threeAudio.play();
 	}
 
 	pause() {
-		// keep it simple: stop (three.js has no native pause/offset)
-		if (this.__threeAudio) this.__threeAudio.stop();
+		if(this.__threeAudio)
+			this.__threeAudio.stop();
 	}
-
-	resume() { this.play(); }
 
 	stop() {
-		if (this.__threeAudio) this.__threeAudio.stop();
+		if(this.__threeAudio)
+			this.__threeAudio.stop();
 	}
 
-	get isPlaying() { return !!this.__threeAudio?.isPlaying; }
+	resume() {
+		this.play();
+	}
 
-	// ==== internals ====
-	_rebuildThreeAudio() {
-		const o3d = this.d3dobject?.object3d;
-		if (!o3d) return;
+	get isPlaying() {
+		return !!(this.__threeAudio && this.__threeAudio.isPlaying);
+	}
 
-		// detach old
-		if (this.__threeAudio) {
-			try { o3d.remove(this.__threeAudio); } catch {}
-			this.__threeAudio = null;
+	async setAudio(path) {
+		const uuid = this.d3dobject.root.resolveAssetId(path);
+
+		if(!uuid) {
+			D3DConsole.error('Unknown asset', path);
+			return;
 		}
 
-		const listener = _host?.audioListener;
-		if (!listener) return;
+		this.props.audio = uuid;
+		await this._reloadBuffer();
+	}
+
+	async playAudio(path) {
+		await this.setAudio(path);
+		this.play();
+	}
+
+	_rebuildThreeAudio() {
+		const o3d = this.d3dobject.object3d;
+		if(!o3d)
+			return;
+
+		const listener = _host.audioListener;
+		if(!listener)
+			return;
+
+		if(this.__threeAudio) {
+			this.__threeAudio.stop();
+			o3d.remove(this.__threeAudio);
+			this.__threeAudio = null;
+		}
 
 		this.__threeAudio = (this.soundSpace === '2D')
 			? new THREE.Audio(listener)
@@ -133,85 +230,92 @@ export default class AudioSourceManager {
 
 		o3d.add(this.__threeAudio);
 
-		// re-apply props + buffer
 		this.__threeAudio.setVolume(this.volume);
 		this.__threeAudio.setLoop(this.loop);
+
+		if(this.__buffer)
+			this.__threeAudio.setBuffer(this.__buffer);
+
 		this._applySpatial();
-		if (this.__buffer) this.__threeAudio.setBuffer(this.__buffer);
 	}
 
 	_applySpatial() {
-		// only for 3D (PositionalAudio)
-		if (!(this.__threeAudio && this.__threeAudio.type === 'PositionalAudio')) return;
+		const a = this.__threeAudio;
+		if(!a || a.type !== 'PositionalAudio')
+			return;
 
-		const model = this.distanceModel;
-		this.__threeAudio.setDistanceModel(model);
+		a.setDistanceModel(this.distanceModel);
 
-		// Optional global unit scaling (default 1 = meters)
-		const scale = (typeof _host?.audioDistanceScale === 'number' && _host.audioDistanceScale > 0)
-			? _host.audioDistanceScale
-			: 1;
+		let scale = 1;
+		if(typeof _host.audioDistanceScale === 'number' && _host.audioDistanceScale > 0)
+			scale = _host.audioDistanceScale;
 
 		const eps = 0.0001;
+
 		const ref = Math.max(eps, this.refDistance * scale);
 		const max = Math.max(ref + eps, this.maxDistance * scale);
 
-		this.__threeAudio.setRefDistance(ref);
+		a.setRefDistance(ref);
 
-		if (typeof this.__threeAudio.setMaxDistance === 'function') {
-			// Has effect mainly for 'linear', harmless otherwise
-			this.__threeAudio.setMaxDistance(max);
-		}
+		if(typeof a.setMaxDistance === 'function')
+			a.setMaxDistance(max);
 
-		if (typeof this.__threeAudio.setRolloffFactor === 'function') {
-			this.__threeAudio.setRolloffFactor(this.rolloffFactor);
-		}
+		if(typeof a.setRolloffFactor === 'function')
+			a.setRolloffFactor(this.rolloffFactor);
 	}
 
 	async _reloadBuffer() {
+		const token = ++this.__loadToken;
+
 		const uuid = this.audio;
-		if (!uuid) {
+		if(!uuid) {
 			this.__buffer = null;
-			if (this.__threeAudio) this.__threeAudio.stop();
+			if(this.__threeAudio)
+				this.__threeAudio.stop();
 			return;
 		}
 
-		const root = this.d3dobject?.root;
-		const zip  = root?.zip;
-		if (!root || !zip || typeof root.resolvePath !== 'function') {
-			console.error('AudioSourceManager: root/zip/resolvePath unavailable');
+		const root = this.d3dobject.root;
+		const zip = root.zip;
+
+		let relPath = root.resolvePath(uuid);
+		if(!relPath || typeof relPath !== 'string')
+			throw new Error(`resolvePath failed for ${uuid}`);
+
+		relPath = relPath.replace(/^\/+/, '');
+
+		let entry = zip.file(relPath);
+		if(!entry && !/^assets\//i.test(relPath))
+			entry = zip.file(`assets/${relPath}`);
+
+		if(!entry)
+			throw new Error(`Missing in zip -> ${relPath}`);
+
+		const arrayBuf = await entry.async('arraybuffer');
+
+		if(token !== this.__loadToken)
 			return;
-		}
 
-		try {
-			let relPath = root.resolvePath(uuid);
-			if (!relPath || typeof relPath !== 'string') throw new Error(`resolvePath failed for ${uuid}`);
-			relPath = relPath.replace(/^\/+/, '');
+		const listener = _host.audioListener;
+		const ctx = listener.context;
 
-			let entry = zip.file(relPath);
-			if (!entry && !/^assets\//i.test(relPath)) entry = zip.file(`assets/${relPath}`);
-			if (!entry) throw new Error(`Missing in zip -> ${relPath}`);
+		const audioBuf = await ctx.decodeAudioData(arrayBuf);
 
-			const arrayBuf = await entry.async('arraybuffer');
+		if(token !== this.__loadToken)
+			return;
 
-			// decode using the global listener’s AudioContext
-			const listener = _host.audioListener;
-			const ctx = listener.context;
-			const audioBuf = await ctx.decodeAudioData(arrayBuf);
-			this.__buffer = audioBuf;
+		this.__buffer = audioBuf;
 
-			// bind to three audio node (rebuild if needed)
-			if (!this.__threeAudio) this._rebuildThreeAudio();
-			if (this.__threeAudio) {
-				this.__threeAudio.setBuffer(this.__buffer);
-				this.__threeAudio.setLoop(this.loop);
-				this.__threeAudio.setVolume(this.volume);
-				if (this.autoPlay) this.play();
-			}
-		} catch (err) {
-			console.warn('AudioSourceManager: failed to load audio from zip', err);
-			this.__buffer = null;
-			if (this.__threeAudio) this.__threeAudio.stop();
+		if(this.__setup && !this.__threeAudio)
+			this._rebuildThreeAudio();
+
+		if(this.__threeAudio) {
+			this.__threeAudio.setBuffer(this.__buffer);
+			this.__threeAudio.setLoop(this.loop);
+			this.__threeAudio.setVolume(this.volume);
+
+			if(this.autoPlay)
+				this.play();
 		}
 	}
 }

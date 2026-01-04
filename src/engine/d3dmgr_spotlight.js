@@ -34,7 +34,7 @@ export default class SpotLightManager {
 
 	updateComponent() {
 		if (!this.__setup) this.setup();
-		else this.updateLight();
+		this.updateLight();
 	}
 
 	setup() {
@@ -67,14 +67,16 @@ export default class SpotLightManager {
 		this.d3dobject.replaceObject3D(light);
 
 		this.__setup = true;
-		this.updateLight();
 	}
 
 	updateLight() {
+		if(!this.d3dobject.enabled || !this.component.enabled || !this.__setup)
+			return;
+		
 		const c = this.component.properties;
 		const light = this.d3dobject.object3d;
 
-		if (!light) return;
+		if (!light || !light.color) return;
 
 		light.color.set(Number(c.color));
 		light.intensity = c.intensity ?? 1;
@@ -115,5 +117,21 @@ export default class SpotLightManager {
 
 		target.position.copy(this._pos).addScaledVector(this._dir, dist);
 		target.updateMatrixWorld(true);
+	}
+	
+	dispose() {
+		const light = this.d3dobject?.object3d;
+		if(!light || !light.isSpotLight)
+			return;
+	
+		if(light.shadow?.map) {
+			light.shadow.map.dispose();
+			light.shadow.map = null;
+		}
+	
+		if(light.parent)
+			light.parent.remove(light);
+	
+		this.__setup = false;
 	}
 }

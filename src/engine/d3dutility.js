@@ -779,21 +779,18 @@ export function buildConvexWireGeometry(verts, puff = 1.005) {
 }*/
 
 export function updateObjects(loopNames) {
-	const idx = window._loopFns;
-	if(!idx)
-		return;
-
-	if(!loopNames || loopNames.length < 1)
-		return;
-
-	for(const loopName of loopNames) {
-		const map = idx[loopName];
-		if(!map || map.size < 1)
-			continue;
-
-		for(const fn of map.values())
-			fn();
-	}
+	const masterLoops = window._loopFns;
+	
+	loopNames.forEach(loopName => {
+		const objectLoops = masterLoops[loopName];
+		
+		if(!objectLoops)
+			return;
+		
+		objectLoops.forEach((loop, d3dobject) => {
+			loop();
+		});
+	});
 }
 export function getHitNormalRotation(face, d3dobject) {
 	const object3d = d3dobject?.object3d;
