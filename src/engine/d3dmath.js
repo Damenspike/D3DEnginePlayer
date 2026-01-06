@@ -41,6 +41,11 @@ Math.randVec3 = (a, b) => {
 		z: rand(Math.min(a.z, b.z), Math.max(a.z, b.z))
 	};
 }
+Math.wrapAngle = (a) => {
+	while(a > Math.PI) a -= Math.PI * 2;
+	while(a < -Math.PI) a += Math.PI * 2;
+	return a;
+}
 
 export default class D3DMath {
 	
@@ -52,3 +57,4 @@ export const randVec3 = Math.randVec3;
 export const clamp01 = Math.clamp01;
 export const clamp = Math.clamp;
 export const rcoeff = Math.rcoeff;
+export const wrapAngle = Math.wrapAngle;

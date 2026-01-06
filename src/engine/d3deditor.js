@@ -1890,6 +1890,17 @@ function updateProjectSettings(settings) {
 	if(settings.ssao !== undefined) {
 		editorConfig.ssao = !!settings.ssao;
 	}
+	if(settings.codeObfuscation !== undefined) {
+		editorConfig.codeObfuscation = Boolean(settings.codeObfuscation);
+	}
+	if(settings.stripAssets !== undefined) {
+		editorConfig.stripAssets = Boolean(settings.stripAssets);
+	}
+	if(settings.saveLODGeom !== undefined) {
+		editorConfig.saveLODGeometry = Boolean(settings.saveLODGeom);
+	}
+	
+	// 
 	if(settings.insMaxBatch !== undefined) {
 		_root.manifest.insMaxBatch = Number(settings.insMaxBatch);
 	}

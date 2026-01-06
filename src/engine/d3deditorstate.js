@@ -500,6 +500,8 @@ export default class D3DEditorState {
 		// Always store editor version
 		manifest.editorVersion = await D3D.getEditorVersion();
 		
+		const saveLOD = manifest.editorConfig?.saveLODGeometry ?? true;
+		
 		if(isEditorBuild) {
 			manifest.editorConfig.lastCameraPosition = {
 				x: this.camera.position.x,
@@ -529,7 +531,7 @@ export default class D3DEditorState {
 		});
 		
 		// Save LOD geometry
-		this.saveLODGeometry(zip);
+		this.saveLODGeometry(zip, saveLOD);
 		
 		// Save scene graph
 		_root.scene.objects = [];
@@ -661,7 +663,7 @@ export default class D3DEditorState {
 			});
 		}
 	}
-	saveLODGeometry(zip) {
+	saveLODGeometry(zip, shouldBake = true) {
 		if(!zip)
 			throw new Error('Invalid zip');
 		
@@ -694,12 +696,15 @@ export default class D3DEditorState {
 		
 		// Serialize the geometry
 		const serializedLODs = {};
-		for(const sig in _root.__lodGeoms) {
-			const lodGeom = _root.__lodGeoms[sig];
-			if(!lodGeom)
-				continue;
-			
-			serializedLODs[sig] = lodGeom.toJSON();
+		
+		if(shouldBake) {
+			for(const sig in _root.__lodGeoms) {
+				const lodGeom = _root.__lodGeoms[sig];
+				if(!lodGeom)
+					continue;
+				
+				serializedLODs[sig] = lodGeom.toJSON();
+			}
 		}
 		
 		const serializedData = JSON.stringify(serializedLODs);

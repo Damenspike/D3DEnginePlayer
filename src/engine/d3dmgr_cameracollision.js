@@ -7,6 +7,7 @@ export default class CameraCollisionManager {
 		this.physObjects = new Set();
 		
 		this._smoothPos = null;
+		this.finalPosition = this.d3dobject.worldPosition;
 		
 		this._evWorldAddRb = d3dobject => {
 			if(this.isPhysObject(d3dobject))
@@ -207,8 +208,10 @@ export default class CameraCollisionManager {
 					this._smoothPos = this._smoothPos.lerp(desiredPos, _time.delta * speed);
 				
 				this.d3dobject.worldPosition = this._smoothPos;
+				this.finalPosition = this._smoothPos;
 			}else{
 				this.d3dobject.worldPosition = desiredPos;	
+				this.finalPosition = desiredPos;
 			}
 			this.lastHit = _time.now;
 			this.smoothTime = 1 * rcoeff(speed / 30);
@@ -218,10 +221,19 @@ export default class CameraCollisionManager {
 			if(this.smoothing && this._smoothPos && this.lastHit && sinceLastHit < smoothTime) {
 				this._smoothPos = this._smoothPos.lerp(worldPos, sinceLastHit / smoothTime);
 				this.d3dobject.worldPosition = this._smoothPos;
+				this.finalPosition = this._smoothPos;
 			}else{
 				this._smoothPos = worldPos.clone();
+				this.finalPosition = this._smoothPos;
 			}
 		}
+	}
+	
+	/**
+		Resets the smoothing position
+	 */
+	resetSmoothing() {
+		this._smoothPos = null;
 	}
 	
 	dispose() {
@@ -237,5 +249,6 @@ export default class CameraCollisionManager {
 		this.physObjects.clear();
 		this.target = null;
 		this._smoothPos = null;
+		this.finalPosition = null;
 	}
 }

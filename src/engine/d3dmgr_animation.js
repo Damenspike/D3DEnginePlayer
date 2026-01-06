@@ -218,14 +218,16 @@ export default function AnimationManager(d3dobject, component) {
 					values: []
 				};
 				
-				smartTrack
-				.sort((a, b) => a.time - b.time)
-				.forEach(key => {
-					rebuiltTrack.times.push(key.time);
-					rebuiltTrack.values.push(...[key.value.x, key.value.y, key.value.z]);
-					if(rebuiltTrack.type == 'quaternion')
-						rebuiltTrack.values.push(key.value.w);
-				});
+				if(smartTrack) {
+					smartTrack
+					.sort((a, b) => a.time - b.time)
+					.forEach(key => {
+						rebuiltTrack.times.push(key.time);
+						rebuiltTrack.values.push(...[key.value.x, key.value.y, key.value.z]);
+						if(rebuiltTrack.type == 'quaternion')
+							rebuiltTrack.values.push(key.value.w);
+					});
+				}
 				
 				objectTrack[track].track = rebuiltTrack; // re-assign the track to the new one
 				

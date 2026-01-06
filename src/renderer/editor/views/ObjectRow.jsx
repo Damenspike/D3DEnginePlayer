@@ -4,7 +4,7 @@ let renameTimer;
 
 export default function ObjectRow({
 	style, title, icon, name, selected,
-	onClick, onRightClick, onDoubleClick, onRename, isInstance, children,
+	onClick, onRightClick, onDoubleClick, onRename, isInstance, isEnabled, children,
 	
 	// Other
 	displayName = '',
@@ -83,7 +83,9 @@ export default function ObjectRow({
 			className={[
 				'object-row',
 				selected ? 'object-row--selected' : '',
-				dragOver ? 'object-row--dragover' : ''
+				dragOver ? 'object-row--dragover' : '',
+				!isEnabled ? 'object-row--disabled' : '',
+				!isEnabled && selected ? 'object-row--disabled-selected' : ''
 			].filter(Boolean).join(' ')}
 			style={style ?? {}}
 			title={title}

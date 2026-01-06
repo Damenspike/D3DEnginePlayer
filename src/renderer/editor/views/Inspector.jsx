@@ -9,7 +9,8 @@ import ScriptFindReplaceDialog  from './ScriptFindAndReplaceDialog.jsx';
 import ObjectRow from './ObjectRow.jsx';
 import MaterialEditor from './MaterialEditor.jsx';
 import ColorPicker from './ColorPicker.jsx';
-import ColorPickerBest from './ColorPickerBest.jsx'
+import ColorPickerBest from './ColorPickerBest.jsx';
+import ImagePreview from './ImagePreview.jsx';
 
 import { 
 	MdDelete, 
@@ -28,6 +29,11 @@ import {
 	MdCheckBox, MdCheckBoxOutlineBlank
 } from 'react-icons/md';
 import { IoMdEye, IoMdEyeOff } from 'react-icons/io';
+import { IoLibrarySharp } from 'react-icons/io5';
+import { TbChartGridDotsFilled } from "react-icons/tb";
+import { FaGamepad } from "react-icons/fa";
+import { GiCube } from "react-icons/gi";
+import { MdPermMedia } from "react-icons/md";
 
 import {
 	MIME_D3D_ROW,
@@ -594,6 +600,13 @@ export default function Inspector() {
 			/>
 		)
 	}
+	const drawImagePreview = (uri) => {
+		return (
+			<div className='image-preview-media'>
+				<ImagePreview uri={uri} />
+			</div>
+		)
+	}
 	const drawObjectInspector = () => {
 		if(objects?.length < 1) {
 			// Should never happen. dummyObject == defined = objects.length > 0;
@@ -613,6 +626,7 @@ export default function Inspector() {
 			<InspectorCell 
 				id="insp-cell-object" 
 				title="Object" 
+				icon={<GiCube />}
 				expanded={objectInspectorExpanded}
 				onExpand={() => setObjectInspectorExpanded(!objectInspectorExpanded)}
 				alwaysOpen={tab != Tabs.All}
@@ -1837,6 +1851,7 @@ export default function Inspector() {
 			<InspectorCell 
 				id="insp-cell-project" 
 				title="Project"
+				icon={<FaGamepad />}
 				alwaysOpen={tab != Tabs.All}
 			>
 				<div className="field">
@@ -2015,7 +2030,11 @@ export default function Inspector() {
 				)
 			});
 			
-			return path;
+			return (
+				<div className="scene-insp-path">
+					{path}
+				</div>
+			);
 		}
 		const drawObjects = () => {
 			const rows = [];
@@ -2068,11 +2087,6 @@ export default function Inspector() {
 			
 			objects.forEach(object => {
 				const selected = _editor.selectedObjects.includes(object);
-				const styleObj = {};
-				
-				if(!object.enabled) {
-					styleObj.color = '#555';
-				}
 				
 				rows.push(
 					<ObjectRow
@@ -2081,7 +2095,7 @@ export default function Inspector() {
 						name={object.name}
 						selected={selected}
 						isInstance={true}
-						style={styleObj}
+						isEnabled={object.enabled}
 						onRename={(newName) => {
 							//if(!object.isValidName(newName))
 								//return object.name;
@@ -2415,6 +2429,7 @@ export default function Inspector() {
 			<InspectorCell 
 				id="insp-cell-scene" 
 				title="Scene" 
+				icon={<TbChartGridDotsFilled />}
 				expanded={sceneInspectorExpanded}
 				onExpand={() => setSceneInspectorExpanded(!sceneInspectorExpanded)}
 				alwaysOpen={tab != Tabs.All}
@@ -2851,6 +2866,7 @@ export default function Inspector() {
 						name={node.name}
 						displayName={displayName}
 						selected={selected}
+						isEnabled={true}
 						style={{ paddingLeft: 6 + depth * 24 }}
 						draggable
 						dragData={{
@@ -2907,6 +2923,7 @@ export default function Inspector() {
 							)}
 							name={node.name}
 							displayName={displayName}
+							isEnabled={true}
 							selected={selected}
 							title={node.path || '/'}
 							style={{ paddingLeft: 6 + depth * 14 }}
@@ -3088,6 +3105,7 @@ export default function Inspector() {
 			<InspectorCell
 				id="insp-cell-assets"
 				title="Assets"
+				icon={<IoLibrarySharp />}
 				alwaysOpen={tab != Tabs.All}
 				expanded={assetsInspectorExpanded}
 				onExpand={() => setAssetsInspectorExpanded(!assetsInspectorExpanded)}
@@ -3181,6 +3199,15 @@ export default function Inspector() {
 				case 'mat': {
 					return drawMaterialEditor(uri);
 				}
+				case 'png':
+				case 'jpeg':
+				case 'gif':
+				case 'webp':
+				case 'bmp':
+				case 'svg':
+				case 'jpg': {
+					return drawImagePreview(uri);
+				}
 				default: return;
 			}
 		}
@@ -3212,6 +3239,7 @@ export default function Inspector() {
 			<InspectorCell 
 				id="insp-cell-media" 
 				title="Media" 
+				icon={<MdPermMedia />}
 				expanded={mediaInspectorExpanded}
 				onExpand={() => setMediaInspectorExpanded(!mediaInspectorExpanded)}
 				alwaysOpen={tab != Tabs.All}
@@ -3266,7 +3294,7 @@ export default function Inspector() {
 				{!loaded && (<div className="no-label mt">Waiting for project to load</div>)}
 				{(tab == 'assets' || tab == 'all') && loaded && drawAssetInspector()}
 				{(tab == 'scene' || tab == 'all') && loaded && drawSceneInspector()}
-				{(tab == 'object' || tab == 'all') && loaded && objects.length > 0 && drawObjectInspector()}
+				{(tab == 'scene' || tab == 'object' || tab == 'all') && loaded && objects.length > 0 && drawObjectInspector()}
 				{loaded && drawMediaInspector()}
 				{(tab == 'project' || tab == 'all') && loaded && _editor.project && (_editor.focus == _root || tab == 'project') && drawProjectInspector()}
 				

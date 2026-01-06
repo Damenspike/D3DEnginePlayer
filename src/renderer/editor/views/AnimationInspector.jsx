@@ -636,7 +636,7 @@ export default function AnimationInspector() {
 		setSelectedTracks([]);
 	};
 	const openTrack = (trackName) => {
-		const d3dobject = selectedObject.findDeep(trackName)[0];
+		const d3dobject = selectedObject.findDeep(trackName);
 		if(!d3dobject) {
 			console.warn('Could not open track object', trackName);
 			return;

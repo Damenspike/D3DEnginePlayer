@@ -26,6 +26,7 @@ function ProjectSettings() {
 	const [insMaxBatch, setInsMaxBatch] = useState(1024);
 	const [codeObfuscation, setCodeObfuscation] = useState(true);
 	const [stripAssets, setStripAssets] = useState(true);
+	const [saveLODGeom, setSaveLODGeom] = useState(true);
 	
 	useEffect(() => {
 		if(!theme) return;
@@ -47,6 +48,7 @@ function ProjectSettings() {
 			setCodeObfuscation(s.codeObfuscation ?? true);
 			setStripAssets(s.stripAssets ?? true);
 			setInsMaxBatch(s.insMaxBatch ?? 1024);
+			setSaveLODGeom(s.saveLODGeometry ?? true);
 		})();
 	}, []);
 	
@@ -57,7 +59,8 @@ function ProjectSettings() {
 			compression,
 			insMaxBatch,
 			codeObfuscation,
-			stripAssets
+			stripAssets,
+			saveLODGeom
 		});
 		
 		if(gtao && ssao) {
@@ -70,7 +73,8 @@ function ProjectSettings() {
 		compression,
 		insMaxBatch,
 		codeObfuscation,
-		stripAssets
+		stripAssets,
+		saveLODGeom
 	]);
 	
 	const drawSection = (title, children) => (
@@ -181,6 +185,7 @@ function ProjectSettings() {
 						<br />
 						{drawCheckbox('Code obfuscation', codeObfuscation, setCodeObfuscation)}
 						{drawCheckbox('Strip assets', stripAssets, setStripAssets)}
+						{drawCheckbox('Bake LOD Geometry', saveLODGeom, setSaveLODGeom)}
 					</>
 				))
 			}

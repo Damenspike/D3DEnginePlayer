@@ -798,6 +798,11 @@ const D3DComponents = {
 				min: 0,
 				max: Infinity,
 				def: 1
+			},
+			'positionOnly': {
+				label: 'Position only',
+				type: 'boolean',
+				def: false
 			}
 		},
 		manager: D3DCharacterControllerManager
@@ -1863,15 +1868,43 @@ const D3DComponents = {
 		name: 'First Person Camera',
 		sectionsLast: true,
 		fields: {
+			'targetName': {
+				label: 'Target name',
+				description: 'Path to the target object instance (.target property pointing to an object instance overrides this value)',
+				type: 'string',
+				def: '',
+				section: 'target'
+			},
+			'targetOffset': {
+				label: 'Target offset',
+				type: 'vector3',
+				def: {x: 0, y: 0, z: 0},
+				section: 'target'
+			},
 			'rotateSpeed': {
 				label: 'Rotate speed',
 				description: 'Mouse look sensitivity',
-				section: 'rotation',
+				section: 'speeds',
 				type: 'number',
 				def: 1,
 				min: 0.1,
 				max: 10,
 				step: 0.1
+			},
+			'smoothRotate': {
+				label: 'Smooth rotate',
+				type: 'boolean',
+				def: false,
+				section: 'speeds'
+			},
+			'damping': {
+				label: 'Damping amount',
+				type: 'number',
+				min: 0,
+				max: Infinity,
+				def: 5,
+				condition: c => c.properties.smoothRotate === true,
+				section: 'speeds'
 			},
 			'invertX': {
 				label: 'Invert X-axis',
@@ -1914,6 +1947,13 @@ const D3DComponents = {
 				min: 0,
 				max: 90,
 				step: 1,
+				condition: c => c.properties.advancedControls == true
+			},
+			'useWorldTargetPosition': {
+				label: 'Use world target position',
+				section: 'rotation',
+				type: 'boolean',
+				def: false,
 				condition: c => c.properties.advancedControls == true
 			},
 			'advancedControls': {

@@ -101,6 +101,9 @@ export default class AudioSourceManager {
 	}
 
 	setupComponent() {
+		if(!window._player)
+			return;
+		
 		if(this.__setup)
 			return;
 
@@ -129,6 +132,9 @@ export default class AudioSourceManager {
 	}
 
 	updateComponent() {
+		if(!window._player)
+			return;
+		
 		if(!this.component.enabled) {
 			this.dispose();
 			return;
@@ -210,6 +216,9 @@ export default class AudioSourceManager {
 	}
 
 	_rebuildThreeAudio() {
+		if(!window._player)
+			return;
+		
 		const o3d = this.d3dobject.object3d;
 		if(!o3d)
 			return;
@@ -240,6 +249,9 @@ export default class AudioSourceManager {
 	}
 
 	_applySpatial() {
+		if(!window._player)
+			return;
+		
 		const a = this.__threeAudio;
 		if(!a || a.type !== 'PositionalAudio')
 			return;
@@ -265,6 +277,9 @@ export default class AudioSourceManager {
 	}
 
 	async _reloadBuffer() {
+		if(!window._player)
+			return;
+		
 		const token = ++this.__loadToken;
 
 		const uuid = this.audio;

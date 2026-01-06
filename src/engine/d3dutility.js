@@ -822,6 +822,17 @@ export function getHitNormalRotation(face, d3dobject) {
 export function isLiveObject(d3dobject) {
 	return !!d3dobject && d3dobject?.enabled === true;
 }
+export async function getImageBlob(path, zip) {
+	const file = zip.file(path);
+	if (!file) {
+		console.warn('Image not found in zip', path);
+		return;
+	}
+	
+	const base64 = await file.async('base64');
+	
+	return `data:image/png;base64,${base64}`;
+}
 export async function applyTextureToSceneBackground(root, zip, scene, assetId) {
 	if(!zip || !assetId) 
 		return;

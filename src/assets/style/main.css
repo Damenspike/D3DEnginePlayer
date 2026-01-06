@@ -179,6 +179,9 @@ body, button, input, select {
 .mrx {
 	margin-right: 15px;
 }
+.mts {
+	margin-top: 5px;
+}
 .vt, .vt * {
 	vertical-align: top;
 }

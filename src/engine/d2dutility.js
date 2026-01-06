@@ -1626,60 +1626,126 @@ export function parseRadialGradient(s){
 /* ===================== main: toCanvasPaint ===================== */
 
 export function toCanvasPaint(ctx, paint, bounds) {
-	if (!paint) return '#000';
-	if (typeof paint !== 'string') {
-		// later: normalize objects -> css string here
-		return '#000';
-	}
+	if (!ctx) return '#000';
+
+	// pass-through for CanvasGradient / CanvasPattern etc
+	if (paint && typeof paint === 'object') return paint;
+
+	if (!paint || typeof paint !== 'string') return '#000';
 	const s = paint.trim();
+	if (!s) return '#000';
+
+	// bounds sanity
+	const bx = Number(bounds?.x) || 0;
+	const by = Number(bounds?.y) || 0;
+	const bw = Number(bounds?.w) || 0;
+	const bh = Number(bounds?.h) || 0;
+
+	// inline “is this a valid canvas color?” check
+	const normalizeColor = (c) => {
+		if (!c || typeof c !== 'string') return null;
+		let v = c.trim();
+		if (!v) return null;
+
+		// common leak from broken gradient parsing
+		if (v === 'deg' || v.endsWith('deg')) return null;
+
+		// keep your existing normalizer, but never let it throw
+		try { v = hex8ToRgba(v, v); } catch { /* leave v as-is */ }
+
+		// validate using canvas parsing
+		const sentinel = '#123456';
+		try {
+			const prev = ctx.fillStyle;
+			ctx.fillStyle = sentinel;
+			ctx.fillStyle = v;                 // throws or normalizes if valid
+			const out = ctx.fillStyle;
+			ctx.fillStyle = prev;              // restore
+			if (out === sentinel && v.toLowerCase() !== sentinel) return null;
+			return out;                        // normalized css color
+		} catch {
+			return null;
+		}
+	};
+
+	const clamp01 = (n) => (n <= 0 ? 0 : n >= 1 ? 1 : n);
 
 	// ----- linear-gradient -----
 	if (/^linear-gradient/i.test(s)) {
-		const g = parseLinearGradient(s);
-		if (!g) return s;
+		let g = null;
+		try { g = parseLinearGradient(s); } catch { g = null; }
+		if (!g || !Array.isArray(g.stops) || g.stops.length < 1) return normalizeColor(s) || '#000';
 
-		// Center of bounds
-		const cx = bounds.x + bounds.w * 0.5;
-		const cy = bounds.y + bounds.h * 0.5;
+		const cx = bx + bw * 0.5;
+		const cy = by + bh * 0.5;
 
-		// Canvas vs CSS angle: canvas 0rad = +X, CSS 0deg = "to top"
-		// We keep your original correction:
-		const angleRad = g.angleRad - Math.PI / 2;
-
-		const ux = Math.cos(angleRad), uy = Math.sin(angleRad);
-		const rx = bounds.w * 0.5,     ry = bounds.h * 0.5;
+		const a = (Number.isFinite(g.angleRad) ? g.angleRad : 0) - Math.PI / 2;
+		const ux = Math.cos(a), uy = Math.sin(a);
+		const rx = bw * 0.5,     ry = bh * 0.5;
 		const L  = Math.hypot(ux * rx, uy * ry) || 1;
 
-		const x0 = cx - ux * L, y0 = cy - uy * L;
-		const x1 = cx + ux * L, y1 = cy + uy * L;
-
-		const grad = ctx.createLinearGradient(x0, y0, x1, y1);
-		for (const stop of g.stops) {
-			grad.addColorStop(stop.offset, hex8ToRgba(stop.color, stop.color));
+		let grad = null;
+		try {
+			grad = ctx.createLinearGradient(
+				cx - ux * L, cy - uy * L,
+				cx + ux * L, cy + uy * L
+			);
+		} catch {
+			return '#000';
 		}
+
+		for (const stop of g.stops) {
+			const offRaw = stop?.offset ?? stop?.pos ?? stop?.position;
+			const colRaw = stop?.color  ?? stop?.value ?? stop?.col;
+
+			let off = Number(offRaw);
+			if (!Number.isFinite(off)) continue;
+			off = clamp01(off);
+
+			const col = normalizeColor(colRaw);
+			if (!col) continue;
+
+			try { grad.addColorStop(off, col); } catch { /* skip */ }
+		}
+
 		return grad;
 	}
 
 	// ----- radial-gradient -----
 	if (/^radial-gradient/i.test(s)) {
-		const g = parseRadialGradient(s);
-		if (!g) return s;
+		let g = null;
+		try { g = parseRadialGradient(s); } catch { g = null; }
+		if (!g || !Array.isArray(g.stops) || g.stops.length < 1) return normalizeColor(s) || '#000';
 
-		const cx = bounds.x + bounds.w * g.cx;
-		const cy = bounds.y + bounds.h * g.cy;
-		const r  = Math.hypot(bounds.w, bounds.h) * 0.5; // simple fit
+		const cx = bx + bw * (Number.isFinite(g.cx) ? g.cx : 0.5);
+		const cy = by + bh * (Number.isFinite(g.cy) ? g.cy : 0.5);
+		const r  = Math.hypot(bw, bh) * 0.5 || 1;
 
-		const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+		let grad = null;
+		try { grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r); }
+		catch { return '#000'; }
+
 		for (const stop of g.stops) {
-			grad.addColorStop(stop.offset, hex8ToRgba(stop.color, stop.color));
+			const offRaw = stop?.offset ?? stop?.pos ?? stop?.position;
+			const colRaw = stop?.color  ?? stop?.value ?? stop?.col;
+
+			let off = Number(offRaw);
+			if (!Number.isFinite(off)) continue;
+			off = clamp01(off);
+
+			const col = normalizeColor(colRaw);
+			if (!col) continue;
+
+			try { grad.addColorStop(off, col); } catch { /* skip */ }
 		}
+
 		return grad;
 	}
 
 	// ----- solid -----
-	if (s.startsWith('#') || s.startsWith('0x')) return hex8ToRgba(s, s);
-	// rgb(...) / rgba(...) / named → pass through (but normalize RGB→rgba)
-	return hex8ToRgba(s, s);
+	// preserve your behavior but make it un-crashable + validated
+	const solid = normalizeColor(s);
+	return solid || '#000';
 }
 export function localBitmapRectFromGraphic2D(o) {
 	const g = o?.graphic2d;

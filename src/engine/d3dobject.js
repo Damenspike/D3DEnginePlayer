@@ -9,6 +9,10 @@ import D3DWebsocket from './d3dwebsocket.js';
 import D3DWebRTC from './d3dwebrtc.js';
 import D3DLocalStorage from './d3dlocalstorage.js';
 import D3DFileCache from './d3dfilecache.js';
+import D3DVector3 from './d3dvector3.js';
+import D3DVector2 from './d3dvector2.js';
+import D3DQuaternion from './d3dquaternion.js';
+import D3DEuler from './d3deuler.js';
 import Tween from './d3dtween.js';
 import { v4 as uuidv4 } from 'uuid';
 import {
@@ -565,6 +569,42 @@ export default class D3DObject {
 		obj.updateMatrixWorld(true);
 	}
 	
+	get worldYaw() {
+		return this.worldAttitude.yaw;
+	}
+	set worldYaw(v) {
+		const a = this.worldAttitude;
+		this.worldAttitude = {
+			pitch: a.pitch,
+			yaw: v,
+			bank: a.bank
+		};
+	}
+	
+	get worldPitch() {
+		return this.worldAttitude.pitch;
+	}
+	set worldPitch(v) {
+		const a = this.worldAttitude;
+		this.worldAttitude = {
+			pitch: v,
+			yaw: a.yaw,
+			bank: a.bank
+		};
+	}
+	
+	get worldBank() {
+		return this.worldAttitude.bank;
+	}
+	set worldBank(v) {
+		const a = this.worldAttitude;
+		this.worldAttitude = {
+			pitch: a.pitch,
+			yaw: a.yaw,
+			bank: v
+		};
+	}
+	
 	get position() {
 		return this.object3d.position;
 	}
@@ -828,6 +868,25 @@ export default class D3DObject {
 		up.applyQuaternion(this.worldQuaternion);
 		return up;
 	}
+	
+	get localForward() {
+		const fwd = THREE.Vector3.forward.clone();
+		fwd.applyQuaternion(this.object3d.quaternion);
+		return fwd;
+	}
+	
+	get localRight() {
+		const right = THREE.Vector3.right.clone();
+		right.applyQuaternion(this.object3d.quaternion);
+		return right;
+	}
+	
+	get localUp() {
+		const up = THREE.Vector3.up.clone();
+		up.applyQuaternion(this.object3d.quaternion);
+		return up;
+	}
+	
 	get is3D() {
 		return !this.is2D;
 	}
@@ -1599,12 +1658,12 @@ export default class D3DObject {
 			
 			// THREE
 			MathUtils: Object.freeze(THREE.MathUtils),
-			Vector3: (...a) => new THREE.Vector3(...a),
-			Vector2: (...a) => new THREE.Vector2(...a),
-			Quaternion: (...a) => new THREE.Quaternion(...a),
+			Vector3: (...a) => new D3DVector3(...a),
+			Vector2: (...a) => new D3DVector2(...a),
+			Quaternion: (...a) => new D3DQuaternion(...a),
 			Box3: (...a) => new THREE.Box3(...a),
 			Matrix4: (...a) => new THREE.Matrix4(...a),
-			Euler: (...a) => new THREE.Euler(...a),
+			Euler: (...a) => new D3DEuler(...a),
 			Color: (...a) => new THREE.Color(...a),
 			Raycaster: (...a) => new THREE.Raycaster(...a),
 			Sphere: (...a) => new THREE.Sphere(...a),
@@ -1636,6 +1695,34 @@ export default class D3DObject {
 		await this.updateComponents();
 		this.checkSymbols();
 		this.checkInstancedSubmeshes();
+	}
+	async createComponentManager(type) {
+		const schema = D3DComponents[type];
+		const component = this.getComponentObject(type);
+		const inst = new schema.manager(this, component);
+		
+		inst.component = component;
+		inst.d3dobject = this;
+		
+		Object.defineProperty(inst, 'enabled', {
+			configurable: true,
+			enumerable: true,
+			get() {
+				return inst.component.enabled;
+			},
+			set(v) {
+				v = Boolean(v);
+				inst.d3dobject.toggleComponent(type, v);
+			}
+		});
+		
+		this.__componentInstances[type] = inst;
+		
+		// Always setup
+		if(typeof inst.setupComponent === 'function')
+			await inst.setupComponent();
+		
+		return inst;
 	}
 	async addComponent(
 		type, 
@@ -1690,39 +1777,18 @@ export default class D3DObject {
 		if(component.properties.__componentEnabled !== undefined)
 			delete component.properties.__componentEnabled;
 		
-		const inst = new schema.manager(this, component);
-		inst.component = component;
-		inst.d3dobject = this;
-		
-		Object.defineProperty(inst, 'enabled', {
-			configurable: true,
-			enumerable: true,
-			get() {
-				return component.enabled;
-			},
-			set(v) {
-				inst.d3dobject.toggleComponent(type, v);
-			}
-		});
-		
-		this.__componentInstances[type] = inst;
-		
 		if(unshift)
 			this.components.unshift(component);
 		else 
 			this.components.push(component);
-			
-		if(typeof inst.setupComponent == 'function') {
-			await inst.setupComponent();
-		}
+		
+		// Create manager instance
+		const inst = await this.createComponentManager(type);
 		
 		doUpdateAll && this.updateComponents();
 		doUpdateSelf && inst.updateComponent();
 		this.setupDefaultMethods();
 		
-		if(window._editor && this.symbol && !dontRecurseSymbols) {
-			
-		}
 		if(window._editor && !dontRecurseSymbols) {
 			if(this.symbol) {
 				// Add instances of this component to symbols
@@ -1814,26 +1880,21 @@ export default class D3DObject {
 		return !!component && component?.properties.__editorOnly !== true;
 	}
 	toggleComponent(type, enabled = true) {
-		const component = this.components.find(c => c.type == type);
-		
-		if(!component)
-			return;
-			
 		const mgr = this.getComponent(type);
-		const wasEnabled = component.enabled;
+		
+		if(!mgr)
+			return;
+		
+		const wasEnabled = mgr.component.enabled;
 		
 		if(wasEnabled === enabled)
 			return;
 		
-		component.enabled = enabled;
+		mgr.component.enabled = enabled;
 		
 		if(mgr) {
 			mgr.dispose();
 			mgr.__setup = false;
-			
-			if(enabled && !wasEnabled) {
-				mgr.setupComponent?.();
-			}
 		}
 		
 		this.updateComponents(true);
@@ -1896,11 +1957,7 @@ export default class D3DObject {
 					if(component.enabled)
 						await mgr.updateComponent?.(force);
 				} else {
-					const schema = D3DComponents[component.type];
-					const inst = new schema.manager(this, component);
-					this.__componentInstances[component.type] = inst;
-					
-					inst.component = component;
+					const inst = await this.createComponentManager(component.type);
 					
 					if(component.enabled)
 						await inst.updateComponent?.(force);

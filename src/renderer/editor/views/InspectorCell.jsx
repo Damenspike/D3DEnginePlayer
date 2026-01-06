@@ -3,7 +3,7 @@ import { MdMoreHoriz } from 'react-icons/md';
 import { HiPlus } from "react-icons/hi";
 
 export default function InspectorCell({ 
-	id, title, defaultOpen = true, children,
+	id, title, icon = null, defaultOpen = true, children,
 	expanded = false, onExpand = null, onDragOver = null, onDrop = null, alwaysOpen = null
 }) {
 	const key = 'insp-collapsed:' + (id || '');
@@ -25,7 +25,7 @@ export default function InspectorCell({
 		return;
 	
 	const isOpen = alwaysOpen ? true : open;
-
+	
 	return (
 		<div className={`inspector-cell${isOpen ? '' : ' collapsed'} shade`} id={id} tabIndex={1}>
 			<div className="insp-title" role="button" tabIndex={0}
@@ -43,6 +43,11 @@ export default function InspectorCell({
 					}
 				}}
 			>
+				{icon && (
+					<div className='insp-title__icon'>
+						{icon}
+					</div>
+				)}
 				{title}
 				{onExpand && isOpen && (
 					<button 
