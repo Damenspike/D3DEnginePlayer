@@ -89,6 +89,7 @@ export default function CodeEditor({isOpen, theme}) {
 	
 	useEffect(() => {
 		const onSelectedObjects = objects => {
+			return;
 			if(!isOpen || objects.length < 1 || pinnedObjects.includes(objectOpen))
 				return;
 			
