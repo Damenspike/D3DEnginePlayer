@@ -50,7 +50,7 @@ export const FORBIDDEN_PROPS = [
 	'__componentInstances','__deleted','__animatedTransformChange',
 	'_animation','_mesh','_camera','_directionallight','_ambientlight',
 	'_pointlight','__runInSandbox','__batches','__symbols','__lodGeoms',
-	'__bbShared', '__zipInstances'
+	'__bbShared', '__zipInstances','assetIndex','dirtyAssets'
 ];
 export const NO_OBFUSCATE = [
 	"_root",

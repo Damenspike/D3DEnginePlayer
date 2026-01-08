@@ -226,7 +226,7 @@ async function createStartWindow() {
 		startWindow = null;
 	});
 
-	startWindow.webContents.on('preload-error', (_event, preloadPath, error) => {
+	startWindow.webContents.on('preload-error', (event, preloadPath, error) => {
 		console.error('❌ Preload failed:', preloadPath, error);
 	});
 
@@ -645,8 +645,8 @@ function sendExportAsD3DProj() { sendToEditor('export-as-d3dproj'); }
 function sendModify(type) { sendToEditor('modify', type); }
 function sendPasteInPlace() { sendToEditor('paste-in-place'); }
 
-function sendImportAssets(paths) {
-	sendToEditor('menu-import-assets', paths);
+function sendImportAssets(paths, opts) {
+	sendToEditor('menu-import-assets', paths, opts);
 }
 
 function sendSaveProject() {
@@ -805,6 +805,18 @@ function sendPublish(opts = {}) {
 	}).catch(err => {
 		console.error('Publish dialog failed:', err);
 	});
+}
+
+async function promptImportAssets(opts = {}) {
+	const session = getFocusedSession();
+	if(!session || !session.editorWindow) return;
+	
+	const { canceled, filePaths } = await dialog.showOpenDialog(session.editorWindow, {
+		properties: ['openFile', 'multiSelections'],
+	});
+	
+	if(!canceled && filePaths.length)
+		sendImportAssets(filePaths, opts);
 }
 
 function openToolWindow(name) {
@@ -1162,17 +1174,7 @@ const menuTemplate = [
 			{
 				label: 'Import Assets…',
 				accelerator: 'CmdOrCtrl+I',
-				click: async () => {
-					const session = getFocusedSession();
-					if(!session || !session.editorWindow) return;
-
-					const { canceled, filePaths } = await dialog.showOpenDialog(session.editorWindow, {
-						properties: ['openFile', 'multiSelections'],
-					});
-
-					if(!canceled && filePaths.length)
-						sendImportAssets(filePaths);
-				}
+				click: () => promptImportAssets()
 			},
 			{ label: 'Export Assets…', accelerator: 'CmdOrCtrl+E', click: () => sendExportSelectedAssets() }
 		]
@@ -1453,12 +1455,12 @@ ipcMain.handle('show-confirm', async (event, { title = 'Confirm', message = 'Are
 });
 
 // Resolve path
-ipcMain.handle('resolve-path', (_e, ...args) => {
+ipcMain.handle('resolve-path', (event, ...args) => {
 	return !isDev ? resolvePath(...args) : null;
 });
 
 // Show save dialog
-ipcMain.handle('show-save-dialog', async (_e, opts) => {
+ipcMain.handle('show-save-dialog', async (event, opts) => {
 	return await dialog.showSaveDialog(opts || {});
 });
 
@@ -1521,8 +1523,13 @@ ipcMain.on('set-dirty', (event, isDirty) => {
 	bw.setTitle(session.editorTitleBase + (session.dirty ? ' *' : ''));
 });
 
+// Import files
+ipcMain.on('import-files', (event, opts) => {
+	promptImportAssets(opts);
+});
+
 // Finder
-ipcMain.on('show-in-finder', (_event, uri) => {
+ipcMain.on('show-in-finder', (event, uri) => {
 	shell.showItemInFolder(uri);
 });
 
@@ -1586,7 +1593,7 @@ ipcMain.on('console-message', (event, {level, message}) => {
 
 // Echoes
 ipcMain.on('echo-save', () => sendSaveProject());
-ipcMain.on('echo-build', (_event, {prompt, play}) => sendBuild({prompt, play}));
+ipcMain.on('echo-build', (event, {prompt, play}) => sendBuild({prompt, play}));
 
 // Context menu (route action to that project’s editor + game)
 ipcMain.on('ctx-menu', (event, {template, x, y}) => {
@@ -1614,12 +1621,12 @@ ipcMain.on('ctx-menu', (event, {template, x, y}) => {
 });
 
 // Open project uri (from renderer)
-ipcMain.on('open-project-uri', (_event, uri) => {
+ipcMain.on('open-project-uri', (event, uri) => {
 	openProject(uri);
 });
 
 // Tool windows (focused project)
-ipcMain.on('open-tool-window', (_event, name) => {
+ipcMain.on('open-tool-window', (event, name) => {
 	openToolWindow(name);
 });
 

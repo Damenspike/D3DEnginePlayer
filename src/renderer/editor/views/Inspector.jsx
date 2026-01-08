@@ -275,6 +275,11 @@ export default function Inspector() {
 					label: 'Delete'
 				},
 				{
+					id: 'replace',
+					label: 'Replace...',
+					enabled: selectedAssetPaths.size === 1
+				},
+				{
 					id: 'export',
 					label: 'Export...'
 				},
@@ -304,6 +309,9 @@ export default function Inspector() {
 				case 'rename':
 					_events.invoke('edit-object-row');
 				break;
+				case 'import':
+					_editor.importAssets();
+				break;
 				case 'export':
 					_editor.exportAssets([...selectedAssetPaths]);
 				break;
@@ -311,8 +319,35 @@ export default function Inspector() {
 					_editor.delete();
 				break;
 				case 'newfolder':
-				console.log('new folder');
 					_editor.newFolder();
+				break;
+				case 'replace':
+					const assetPath = Array.from(selectedAssetPaths)[0];
+					if(!assetPath) {
+						_editor.showError({
+							title: 'Import', 
+							message: `Invalid asset path ${assetPath}`
+						});
+					}
+					
+					const file = zip.file(assetPath) || zip.file(assetPath + '/');
+					
+					const assetId = _root.resolveAssetId(file.name);
+					if(!assetId) {
+						_editor.showError({
+							title: 'Import', 
+							message: `Invalid asset ID to replace by path ${assetPath}`
+						});
+						return;
+					}
+					
+					_editor.importAssets({
+						replaceAsset: {
+							uuid: assetId,
+							path: file.name,
+							isDir: file.dir
+						}
+					});
 				break;
 			}
 		}
@@ -3234,7 +3269,7 @@ export default function Inspector() {
 		
 		if(controlsDrawn.length < 1)
 			return;
-		
+			
 		return (
 			<InspectorCell 
 				id="insp-cell-media" 

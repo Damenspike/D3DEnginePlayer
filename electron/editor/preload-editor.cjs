@@ -269,6 +269,7 @@ contextBridge.exposeInMainWorld('D3D', {
 	resolveEngineScriptPath: resolveEngineScriptPath,
 	resolveProjectorPath: resolveProjectorPath,
 	getEditorInFocus: () => document.hasFocus(),
+	importFiles: (opts) => ipcRenderer.send('import-files', opts),
 	exportMultipleFiles: (files) => ipcRenderer.invoke('export-multiple-files', files),
 	openToolWindow: (name) => ipcRenderer.send('open-tool-window', name),
 	closeToolWindow: (name) => ipcRenderer.send('close-tool-window', name),

@@ -11,6 +11,10 @@ export default class MeshManager {
 		this.isSubMesh = (this.component.type === 'SubMesh');
 		this.aoEnabled = true;
 		
+		this._onRefreshResource = this.onRefreshResource.bind(this);
+		
+		_events.on('refresh-resource', this._onRefreshResource);
+		
 		if(!_root.__texShared)
 			_root.__texShared = new Map();
 	}
@@ -763,12 +767,13 @@ export default class MeshManager {
 		const meshUUID = this.component.properties.mesh || null;
 		const modelPath = meshUUID ? this.d3dobject.resolvePathNoAssets(meshUUID) : null;
 		const modelBase = this._safeModelBase(modelPath);
-
+		
 		const needLoad = !!modelPath &&
 			(
 				!this.d3dobject.modelScene ||
 				this.d3dobject._loadedMeshUUID !== meshUUID ||
-				!this.d3dobject.modelScene.parent
+				!this.d3dobject.modelScene.parent || 
+				force
 			);
 
 		let justLoaded = false;
@@ -796,8 +801,11 @@ export default class MeshManager {
 					console.error('Failed to import model:', modelPath, e);
 				}
 			}
+		}else
+		if(!modelPath) {
+			this.d3dobject.destroyChildren();
 		}
-
+		
 		if (!this.d3dobject.modelScene) return;
 		const sceneRoot = this.d3dobject.modelScene;
 
@@ -1084,8 +1092,53 @@ export default class MeshManager {
 	
 		return updated;
 	}
+	async refreshSharedTexture(assetUUID) {
+		if(!assetUUID)
+			return false;
+	
+		const shared = _root.__texShared;
+		const entry = shared?.get(assetUUID);
+		if(!entry)
+			return false;
+	
+		const rel = this.d3dobject.resolvePathNoAssets(assetUUID);
+		if(!rel)
+			return false;
+	
+		const zf = this.zip.file(this._norm('assets/' + rel));
+		if(!zf)
+			return false;
+	
+		const buf  = await zf.async('arraybuffer');
+		const blob = new Blob([buf], { type: this._mimeFromExt(rel) });
+		const bmp  = await createImageBitmap(blob);
+	
+		// close old bitmap if possible (prevents weird “overlay” artifacts)
+		const oldBmp = entry.bmp;
+		entry.bmp = bmp;
+		if(oldBmp && typeof oldBmp.close === 'function' && oldBmp !== bmp)
+			oldBmp.close();
+	
+		// Re-upload properly: kill old GPU textures then reassign image
+		entry.base.image = bmp;
+		entry.base.dispose();          // force GL texture to be recreated
+		entry.base.needsUpdate = true;
+	
+		for(const tex of entry.variants.values()) {
+			tex.image = bmp;
+			tex.dispose();              // same for variants
+			tex.needsUpdate = true;
+		}
+	
+		return true;
+	}
+	async onRefreshResource(uuid) {
+		await this.refreshSharedTexture(uuid);
+	}
 	
 	dispose() {
+		_events.un('refresh-resource', this._onRefreshResource);
+		
 		if(this.instancing && this.instancingId)
 			_instancing.removeFromInstance(this.instancingId, this);
 	}

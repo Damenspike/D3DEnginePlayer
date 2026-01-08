@@ -12,7 +12,10 @@ import {
 } from './d3dexporter.js';
 import {
 	getSelectionCenter,
-	fileName
+	fileName,
+	fileNameNoExt,
+	fileExt,
+	getBaseDir
 } from './d3dutility.js';
 import {
 	mergeGraphic2Ds
@@ -1255,8 +1258,45 @@ export default class D3DEditorState {
 		this.setSelection([]);
 	}
 	
-	async importFile(file, destDir) {
-		return await handleImportFile(file, destDir);
+	async importFile(file, destDir, opts) {
+		if(opts.replaceAsset) {
+			if(!opts.replaceAsset.uuid || !opts.replaceAsset.path) {
+				console.error('Malformed replace asset object', opts.replaceAsset);
+				throw new Error('Invalid replace asset id or path');
+			}
+			
+			const { uuid, path, isDir } = opts.replaceAsset;
+			const assetName = fileName(path);
+			
+			// Construct file name
+			const fileBaseName = fileNameNoExt(path);
+			let fileExtension = fileExt(path).replace('container', '');
+			
+			// Re-write name
+			file.overrideName = `${fileBaseName}.${fileExtension}`;
+			file.overwrite = true;
+			destDir = getBaseDir(isDir ? path.replace(/\/+$/, '') : path);
+		}
+		
+		const res = await handleImportFile(file, destDir);
+		
+		if(opts.replaceAsset) {
+			const { uuid, path } = opts.replaceAsset;
+			
+			const assetIndexEntry = _root.assetIndex.find(a => a.rel == path);
+			
+			if(!assetIndexEntry) {
+				console.error('Unexpected asset replace result', opts.replaceAsset);
+				throw new Error('Asset replace failed because destination asset did not import properly');
+			}
+			
+			// Rewrite UUID
+			assetIndexEntry.uuid = uuid;
+			
+			_editor.updateInspector();
+		}
+		
+		return res;
 	}
 	
 	getCleanObjectStates(states) {

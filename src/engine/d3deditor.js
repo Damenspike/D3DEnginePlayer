@@ -1090,6 +1090,16 @@ async function readFileData(path, zip) {
 
 	return await file.async("arraybuffer");
 }
+async function deleteFile(path, zip) {
+	const z = zip ?? _root.zip;
+	const file = z.file(path);
+	if (!file) 
+		return null;
+		
+	_editor.onAssetsUpdated();
+	
+	return z.remove(path);
+}
 function clearDirectory(path, zip) {
 	const z = zip ?? _root.zip;
 	return clearDir(z, path);
@@ -1353,8 +1363,9 @@ function onEditorFocusChanged() {
 		_editor.grayPass.enabled = inFocusMode;
 }
 function onAssetsUpdated() {
-	_editor.onAssetsUpdatedInspector?.();
 	_root.updateAssetIndex();
+	_root.updateDependencies();
+	_editor.onAssetsUpdatedInspector?.();
 }
 function onAssetDeleted(path) {
 	const ext = getExtension(path);
@@ -1381,11 +1392,11 @@ function onAssetDeleted(path) {
 		console.log(`Deleted ${desymbolised} instance(s) of ${path}`);
 	}
 }
-async function onImportAssets(paths) {
+async function onImportAssets(paths, opts) {
 	const files = await D3D.readAsFiles(paths);
 	const importedPaths = [];
 	for(const f of files) {
-		const path = await _editor.importFile(f, 'assets');
+		const path = await _editor.importFile(f, 'assets', opts);
 		if(path?.wrote?.length > 0)
 			importedPaths.push(...path.wrote);
 	}
@@ -1626,6 +1637,9 @@ function focusOnSelected() {
 	else
 	if(_editor.mode == '2D')
 		_editor.renderer2d.gizmo.focusSelected2D();
+}
+function importAssets(opts) {
+	D3D.importFiles(opts);
 }
 async function exportAssets(paths) {
 	const zip = _root.zip;
@@ -1926,6 +1940,7 @@ _editor.onAssetsUpdated = onAssetsUpdated;
 _editor.addNewFile = addNewFile;
 _editor.writeFile = writeFile;
 _editor.readFile = readFile;
+_editor.deleteFile = deleteFile;
 _editor.newAsset = newAsset;
 _editor.clearDirectory = clearDirectory;
 _editor.saveProject = saveProject;
@@ -1943,6 +1958,7 @@ _editor.zoomStep = zoomStep;
 _editor.resetView = resetView;
 _editor.resetView2D = resetView2D;
 _editor.newFolder = newFolder;
+_editor.importAssets = importAssets;
 _editor.exportAssets = exportAssets;
 _editor.focusOnSelected = focusOnSelected;
 _editor.groupSelectedObjects = groupSelectedObjects;

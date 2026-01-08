@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getImageBlob } from '../../../engine/d3dutility.js';
 
-export default function ImagePreview({ uri }) {
+export default function ImagePreview({ uri, date }) {
 	const [dataUri, setDataUri] = useState('');
 
 	useEffect(() => {
@@ -24,7 +24,7 @@ export default function ImagePreview({ uri }) {
 			dead = true; 
 		}
 		
-	}, [uri]);
+	}, [uri, date]);
 
 	if (!dataUri) {
 		return (

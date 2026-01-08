@@ -57,6 +57,9 @@ class FolderProxy {
 	}
 
 	file(name, data, options) {
+		if(data !== undefined)
+			window._root?.markAssetDirty(name);
+		
 		return this._zip.file(this._base + name, data, options);
 	}
 
@@ -191,7 +194,9 @@ class ZipProxy {
 			date: opts.date ? +new Date(opts.date) : 0,
 			comment: opts.comment || ''
 		});
-
+		
+		window._root?.markAssetDirty(name);
+		
 		// Queue worker mutation
 		this._enqueue(async () => {
 			let payload = data;

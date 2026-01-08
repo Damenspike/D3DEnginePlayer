@@ -63,7 +63,7 @@ export default class D3DObject {
 		
 		if(this == _root) {
 			// ROOT ONLY
-			
+			this.dirtyAssets = [];
 		}
 		
 		this.setupDefaultMethods();
@@ -1975,20 +1975,29 @@ export default class D3DObject {
 			return;
 		
 		const newAssetIndex = [];
-		
 		zip.forEach((rel, file) => {
 			if(rel.split('/')[0] != 'assets' || rel == 'assets/')
 				return;
 			
 			const a = this.assetIndex.find(a => a.rel == rel);
 			
+			if(!a)
+				this.markAssetDirty(rel);
+			
 			newAssetIndex.push({
 				rel: rel,
 				uuid: a?.uuid ?? uuidv4()
-			})
+			});
 		});
 		
 		this.assetIndex = newAssetIndex;
+		
+		if(!this.__lastAssetIndex)
+			this.__lastAssetIndex = structuredClone(this.assetIndex);
+	}
+	markAssetDirty(rel) {
+		if(!this.dirtyAssets.includes(rel))
+			this.dirtyAssets.push(rel);
 	}
 	async updateSymbolStore() {
 		const zip = this.root.zip;
@@ -2350,7 +2359,7 @@ export default class D3DObject {
 		this.object3d.updateMatrixWorld(true);
 	}
 	
-	refreshObjectsWithResource(uri) {
+	refreshObjectsWithResource(uri, force = false) {
 		const uuid = this.resolveAssetId(uri);
 		
 		const checkObject = (d3dobject) => {
@@ -2360,7 +2369,7 @@ export default class D3DObject {
 			
 			if (serializedComponents.includes(`"${uuid}"`)) {
 				// refresh this child
-				d3dobject.updateComponents();
+				d3dobject.updateComponents(force);
 			}
 		}
 		
@@ -2370,6 +2379,61 @@ export default class D3DObject {
 			checkObject(child);
 			child.refreshObjectsWithResource(uri);
 		}
+	}
+	refreshComponentsWithResource(uuid, force = false) {
+		this.components.forEach(component => {
+			const mgr = this.getComponent(component.type);
+			
+			if(!mgr)
+				return;
+			
+			let shouldUpdate = false;
+			
+			for(let i in component.properties) {
+				const val = component.properties[i];
+				if(val == uuid) {
+					shouldUpdate = true;
+				}
+			}
+			
+			if(shouldUpdate) {
+				mgr.updateComponent(force);
+			}
+		});
+	}
+	
+	updateComponentsDeep() {
+		this.traverse(d3dobject => d3dobject.updateComponents(true));
+	}
+	updateDependencies() {
+		const oldAssetIndex = this.__lastAssetIndex;
+		
+		if(!oldAssetIndex) {
+			console.warn('No old asset index for dependency update')
+			return;
+		}
+		
+		this.assetIndex.forEach(assetIndexItem => {
+			const oldItem = oldAssetIndex.find(a => a.uuid == assetIndexItem.uuid);
+			if(!oldItem || this.dirtyAssets.includes(assetIndexItem.rel)) {
+				// New asset found
+				//console.log('New asset found', assetIndexItem);
+				_events.invoke('refresh-resource', assetIndexItem.uuid);
+				this.traverse(o => o.refreshComponentsWithResource(assetIndexItem.uuid, true));
+			}
+		});
+		oldAssetIndex.forEach(oldAssetIndexItem => {
+			const existingItem = this.assetIndex.find(a => a.uuid == oldAssetIndexItem.uuid);
+			if(!existingItem) {
+				// Asset deleted
+				//console.log('Asset deleted', oldAssetIndexItem);
+				_events.invoke('refresh-resource', oldAssetIndexItem.uuid);
+				this.traverse(o => o.refreshComponentsWithResource(oldAssetIndexItem.uuid, true));
+			}
+		});
+		
+		this.__lastAssetIndex = structuredClone(this.assetIndex);
+		this.dirtyAssets = [];
 	}
 	
 	serialize() {
