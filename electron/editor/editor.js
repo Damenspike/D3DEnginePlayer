@@ -1054,6 +1054,7 @@ const menuTemplate = [
 					{ type: 'separator' },
 					{ label: 'Particle System', click: () => sendAddObject('particlesys') },
 					{ label: 'Audio Source', click: () => sendAddObject('audiosrc') },
+					{ label: 'Audio Filter', click: () => sendAddObject('audiofilter') },
 					{ label: 'Day Night Cycle', click: () => sendAddObject('dncycle') },
 					{ label: 'Stamper', click: () => sendAddObject('stamper') }
 				]

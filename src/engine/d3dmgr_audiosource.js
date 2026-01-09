@@ -11,8 +11,14 @@ export default class AudioSourceManager {
 		this.__threeAudio = null;
 		this.__buffer = null;
 		this.__loadToken = 0;
+		this.__lastRandomOffset = 0;
+		this.__restartOnRandomChange = false;
 
 		this._audioListenerWarned = false;
+
+		this.__gizmoRoot = null;
+		this.__gizmoRefSphere = null;
+		this.__gizmoMaxSphere = null;
 	}
 
 	get props() {
@@ -100,15 +106,31 @@ export default class AudioSourceManager {
 			this.__threeAudio.setLoop(!!v);
 	}
 
+	get random() {
+		return !!this.props.random;
+	}
+	set random(v) {
+		v = !!v;
+		if(this.props.random === v)
+			return;
+
+		this.props.random = v;
+
+		if(this.__threeAudio && this.__buffer && this.__threeAudio.isPlaying) {
+			this.__threeAudio.stop();
+			this.play();
+		}
+	}
+
 	setupComponent() {
 		if(!window._player)
 			return;
-		
+
 		if(this.__setup)
 			return;
 
-		const o3d = this.d3dobject.object3d;
-		if(!o3d)
+		const object3d = this.d3dobject.object3d;
+		if(!object3d)
 			return;
 
 		const listener = _host.audioListener;
@@ -134,7 +156,7 @@ export default class AudioSourceManager {
 	updateComponent() {
 		if(!window._player)
 			return;
-		
+
 		if(!this.component.enabled) {
 			this.dispose();
 			return;
@@ -153,6 +175,10 @@ export default class AudioSourceManager {
 		if(this.__threeAudio && this.__buffer && this.__threeAudio.buffer !== this.__buffer)
 			this.__threeAudio.setBuffer(this.__buffer);
 	}
+	
+	__onEditorEnterFrame() {
+		this._updateEditorGizmo();
+	}
 
 	dispose() {
 		if(!this.__setup)
@@ -163,21 +189,27 @@ export default class AudioSourceManager {
 		if(this.__threeAudio)
 			this.__threeAudio.stop();
 
-		const o3d = this.d3dobject.object3d;
-		if(o3d && this.__threeAudio)
-			o3d.remove(this.__threeAudio);
+		const object3d = this.d3dobject.object3d;
+		if(object3d && this.__threeAudio)
+			object3d.remove(this.__threeAudio);
 
 		this.__threeAudio = null;
 		this.__buffer = null;
 		this.__setup = false;
+
+		this._disposeEditorGizmo();
 	}
 
 	play() {
 		if(!this.__threeAudio || !this.__buffer)
 			return;
 
-		if(!this.__threeAudio.isPlaying)
-			this.__threeAudio.play();
+		if(this.__threeAudio.isPlaying)
+			return;
+
+		this._applyRandomOffsetForNextPlay();
+
+		this.__threeAudio.play();
 	}
 
 	pause() {
@@ -218,9 +250,9 @@ export default class AudioSourceManager {
 	_rebuildThreeAudio() {
 		if(!window._player)
 			return;
-		
-		const o3d = this.d3dobject.object3d;
-		if(!o3d)
+
+		const object3d = this.d3dobject.object3d;
+		if(!object3d)
 			return;
 
 		const listener = _host.audioListener;
@@ -229,7 +261,7 @@ export default class AudioSourceManager {
 
 		if(this.__threeAudio) {
 			this.__threeAudio.stop();
-			o3d.remove(this.__threeAudio);
+			object3d.remove(this.__threeAudio);
 			this.__threeAudio = null;
 		}
 
@@ -237,7 +269,7 @@ export default class AudioSourceManager {
 			? new THREE.Audio(listener)
 			: new THREE.PositionalAudio(listener);
 
-		o3d.add(this.__threeAudio);
+		object3d.add(this.__threeAudio);
 
 		this.__threeAudio.setVolume(this.volume);
 		this.__threeAudio.setLoop(this.loop);
@@ -251,35 +283,32 @@ export default class AudioSourceManager {
 	_applySpatial() {
 		if(!window._player)
 			return;
-		
-		const a = this.__threeAudio;
-		if(!a || a.type !== 'PositionalAudio')
+
+		const threeAudio = this.__threeAudio;
+		if(!threeAudio || threeAudio.type !== 'PositionalAudio')
 			return;
 
-		a.setDistanceModel(this.distanceModel);
+		threeAudio.setDistanceModel(this.distanceModel);
 
-		let scale = 1;
-		if(typeof _host.audioDistanceScale === 'number' && _host.audioDistanceScale > 0)
-			scale = _host.audioDistanceScale;
+		const distanceScale = 1;
+		const epsilon = 0.0001;
 
-		const eps = 0.0001;
+		const fullVolumeRadius = Math.max(epsilon, this.refDistance * distanceScale);
+		const cutOffRadius = Math.max(fullVolumeRadius + epsilon, this.maxDistance * distanceScale);
 
-		const ref = Math.max(eps, this.refDistance * scale);
-		const max = Math.max(ref + eps, this.maxDistance * scale);
+		threeAudio.setRefDistance(fullVolumeRadius);
 
-		a.setRefDistance(ref);
+		if(typeof threeAudio.setMaxDistance === 'function')
+			threeAudio.setMaxDistance(cutOffRadius);
 
-		if(typeof a.setMaxDistance === 'function')
-			a.setMaxDistance(max);
-
-		if(typeof a.setRolloffFactor === 'function')
-			a.setRolloffFactor(this.rolloffFactor);
+		if(typeof threeAudio.setRolloffFactor === 'function')
+			threeAudio.setRolloffFactor(this.rolloffFactor);
 	}
 
 	async _reloadBuffer() {
 		if(!window._player)
 			return;
-		
+
 		const token = ++this.__loadToken;
 
 		const uuid = this.audio;
@@ -312,9 +341,9 @@ export default class AudioSourceManager {
 			return;
 
 		const listener = _host.audioListener;
-		const ctx = listener.context;
+		const audioContext = listener.context;
 
-		const audioBuf = await ctx.decodeAudioData(arrayBuf);
+		const audioBuf = await audioContext.decodeAudioData(arrayBuf);
 
 		if(token !== this.__loadToken)
 			return;
@@ -332,5 +361,138 @@ export default class AudioSourceManager {
 			if(this.autoPlay)
 				this.play();
 		}
+	}
+
+	_applyRandomOffsetForNextPlay() {
+		if(!this.__threeAudio || !this.__buffer)
+			return;
+
+		if(!this.random) {
+			this.__lastRandomOffset = 0;
+			this.__threeAudio.offset = 0;
+			return;
+		}
+
+		const durationSeconds = this.__buffer.duration || 0;
+		if(durationSeconds <= 0) {
+			this.__lastRandomOffset = 0;
+			this.__threeAudio.offset = 0;
+			return;
+		}
+
+		let maxStartSeconds = durationSeconds;
+		if(this.loop)
+			maxStartSeconds = Math.max(0, durationSeconds - 0.05);
+
+		const randomOffsetSeconds = (maxStartSeconds > 0) ? (Math.random() * maxStartSeconds) : 0;
+
+		this.__lastRandomOffset = randomOffsetSeconds;
+		this.__threeAudio.offset = randomOffsetSeconds;
+	}
+
+	_isEditorSelected() {
+		if(!window._editor)
+			return false;
+			
+		const selectedObjects = window._editor.selectedObjects;
+		if(!Array.isArray(selectedObjects) || selectedObjects.length === 0)
+			return false;
+		
+		return selectedObjects.includes(this.d3dobject);
+	}
+
+	_updateEditorGizmo() {
+		if(!this._isEditorSelected()) {
+			this._disposeEditorGizmo();
+			return;
+		}
+
+		if(this.soundSpace !== '3D') {
+			this._disposeEditorGizmo();
+			return;
+		}
+
+		if(!this.d3dobject?.object3d) {
+			this._disposeEditorGizmo();
+			return;
+		}
+		
+		const distanceScale = 1;
+		const epsilon = 0.0001;
+
+		const fullVolumeRadius = Math.max(epsilon, this.refDistance * distanceScale);
+		const cutOffRadius = Math.max(fullVolumeRadius + epsilon, this.maxDistance * distanceScale);
+
+		if(!this.__gizmoRoot) {
+			this.__gizmoRoot = new THREE.Group();
+			this.__gizmoRoot.name = '__d3d_audio_gizmo__';
+
+			const sphereGeometry = new THREE.SphereGeometry(1, 24, 16);
+
+			const fullVolumeMaterial = new THREE.MeshBasicMaterial({
+				color: 0xff3333,
+				wireframe: true,
+				depthTest: false,
+				transparent: true,
+				opacity: 0.3
+			});
+			
+			const cutOffMaterial = new THREE.MeshBasicMaterial({
+				color: 0x3366ff,
+				wireframe: true,
+				depthTest: false,
+				transparent: true,
+				opacity: 0.08
+			});
+
+			this.__gizmoRefSphere = new THREE.Mesh(sphereGeometry, fullVolumeMaterial);
+			this.__gizmoMaxSphere = new THREE.Mesh(sphereGeometry, cutOffMaterial);
+
+			this.__gizmoRefSphere.renderOrder = 9999;
+			this.__gizmoMaxSphere.renderOrder = 9998;
+
+			this.__gizmoRoot.add(this.__gizmoMaxSphere);
+			this.__gizmoRoot.add(this.__gizmoRefSphere);
+
+			this.d3dobject.object3d.add(this.__gizmoRoot);
+		}
+
+		if(this.__gizmoRefSphere)
+			this.__gizmoRefSphere.scale.set(fullVolumeRadius, fullVolumeRadius, fullVolumeRadius);
+
+		if(this.__gizmoMaxSphere)
+			this.__gizmoMaxSphere.scale.set(cutOffRadius, cutOffRadius, cutOffRadius);
+	}
+
+	_disposeEditorGizmo() {
+		if(!this.__gizmoRoot)
+			return;
+
+		const parentObject = this.__gizmoRoot.parent;
+		if(parentObject)
+			parentObject.remove(this.__gizmoRoot);
+
+		if(this.__gizmoRefSphere?.geometry)
+			this.__gizmoRefSphere.geometry.dispose();
+		if(this.__gizmoMaxSphere?.geometry && this.__gizmoMaxSphere.geometry !== this.__gizmoRefSphere?.geometry)
+			this.__gizmoMaxSphere.geometry.dispose();
+
+		if(this.__gizmoRefSphere?.material) {
+			if(Array.isArray(this.__gizmoRefSphere.material))
+				this.__gizmoRefSphere.material.forEach(material => material.dispose());
+			else
+				this.__gizmoRefSphere.material.dispose();
+		}
+
+		if(this.__gizmoMaxSphere?.material) {
+			if(Array.isArray(this.__gizmoMaxSphere.material))
+				this.__gizmoMaxSphere.material.forEach(material => material.dispose());
+			else
+				this.__gizmoMaxSphere.material.dispose();
+		}
+
+		this.__gizmoRoot = null;
+		this.__gizmoRefSphere = null;
+		this.__gizmoMaxSphere = null;
 	}
 }

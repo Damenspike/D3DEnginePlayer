@@ -26,6 +26,7 @@ import D3DAutoLODManager from './d3dmgr_autolod.js';
 import D3DDayNightManager from './d3dmgr_daynight.js';
 import D3DStamperManager from './d3dmgr_stamper.js';
 import D3DTriggerManager from './d3dmgr_trigger.js';
+import D3DAudioFilterManager from './d3dmgr_audiofilter.js';
 
 import { WebSafeFonts } from './d3dfonts.js';
 import { fileNameNoExt } from './d3dutility.js';
@@ -1452,6 +1453,7 @@ const D3DComponents = {
 	AudioListener: {
 		name: 'Audio Listener',
 		is2Dand3D: true,
+		priority: -1,
 		fields: {
 			'masterVolume': {
 				label: 'Master volume',
@@ -1486,6 +1488,11 @@ const D3DComponents = {
 			},
 			'loop': {
 				label: 'Loop',
+				type: 'boolean',
+				def: false
+			},
+			'random': {
+				label: 'Random',
 				type: 'boolean',
 				def: false
 			},
@@ -1539,6 +1546,124 @@ const D3DComponents = {
 			]
 		},
 		manager: D3DAudioSourceManager
+	},
+	AudioFilter: {
+		name: 'Audio Filter',
+		is2Dand3D: true,
+		sectionsLast: true,
+		fields: {
+			enableLowpass: {
+				label: 'Lowpass',
+				type: 'boolean',
+				def: false,
+				section: 'Lowpass'
+			},
+			lowpassFrequency: {
+				label: 'Frequency',
+				type: 'number',
+				min: 0,
+				step: 1,
+				def: 1200,
+				section: 'Lowpass',
+				condition: c => c.properties.enableLowpass === true
+			},
+			lowpassQ: {
+				label: 'Q',
+				type: 'number',
+				min: 0,
+				step: 0.01,
+				def: 0.7,
+				section: 'Lowpass',
+				condition: c => c.properties.enableLowpass === true
+			},
+	
+			enableHighpass: {
+				label: 'Highpass',
+				type: 'boolean',
+				def: false,
+				section: 'Highpass'
+			},
+			highpassFrequency: {
+				label: 'Frequency',
+				type: 'number',
+				min: 0,
+				step: 1,
+				def: 120,
+				section: 'Highpass',
+				condition: c => c.properties.enableHighpass === true
+			},
+			highpassQ: {
+				label: 'Q',
+				type: 'number',
+				min: 0,
+				step: 0.01,
+				def: 0.7,
+				section: 'Highpass',
+				condition: c => c.properties.enableHighpass === true
+			},
+	
+			enableReverb: {
+				label: 'Reverb',
+				type: 'boolean',
+				def: false,
+				section: 'Reverb'
+			},
+			reverbWet: {
+				label: 'Wet',
+				type: 'slider',
+				min: 0,
+				max: 1,
+				step: 0.01,
+				def: 0.25,
+				section: 'Reverb',
+				condition: c => c.properties.enableReverb === true
+			},
+			reverbDecay: {
+				label: 'Decay',
+				type: 'slider',
+				min: 0,
+				max: 0.95,
+				step: 0.01,
+				def: 0.6,
+				section: 'Reverb',
+				condition: c => c.properties.enableReverb === true
+			},
+			reverbTime: {
+				label: 'Time',
+				type: 'number',
+				min: 0.001,
+				step: 0.001,
+				def: 0.03,
+				section: 'Reverb',
+				condition: c => c.properties.enableReverb === true
+			},
+			reverbTone: {
+				label: 'Tone',
+				type: 'number',
+				min: 60,
+				step: 1,
+				def: 1800,
+				section: 'Reverb',
+				condition: c => c.properties.enableReverb === true
+			},
+	
+			enableGain: {
+				label: 'Gain',
+				type: 'boolean',
+				def: false,
+				section: 'Gain'
+			},
+			gain: {
+				label: 'Gain',
+				type: 'number',
+				min: 0,
+				step: 0.01,
+				def: 1,
+				section: 'Gain',
+				condition: c => c.properties.enableGain === true
+			}
+		},
+		manager: D3DAudioFilterManager
 	},
 	ParticleSystem: {
 		name: 'Particle System',

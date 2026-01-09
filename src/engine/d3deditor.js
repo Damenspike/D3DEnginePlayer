@@ -943,6 +943,7 @@ async function addD3DObjectEditor(type) {
 		case 'audiosrc':
 		case 'stamper':
 		case 'dncycle':
+		case 'audiofilter':
 			supported = true;
 		break;
 	}
@@ -995,6 +996,10 @@ async function addD3DObjectEditor(type) {
 		case 'audiosrc':
 			newd3dobj.name = 'audio source';
 			newd3dobj.addComponent('AudioSource', {});
+		break;
+		case 'audiofilter':
+			newd3dobj.name = 'audio filter';
+			newd3dobj.addComponent('AudioFilter', {});
 		break;
 		case 'particlesys':
 			newd3dobj.name = 'particle system';

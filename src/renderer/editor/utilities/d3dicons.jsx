@@ -18,6 +18,7 @@ import { LuCloudMoon } from "react-icons/lu";
 import { BsFonts, BsStars } from "react-icons/bs";
 import { LuStamp } from "react-icons/lu";
 import { PiSphereFill } from "react-icons/pi";
+import { HiMiniAdjustmentsVertical } from "react-icons/hi2";
 
 export function drawIconForObject(object) {
 	if(object.symbol)
@@ -42,6 +43,9 @@ export function drawIconForObject(object) {
 	else
 	if(object.hasComponent('AudioSource'))
 		return <MdOutlineVolumeUp />;
+	else
+	if(object.hasComponent('AudioFilter'))
+		return <HiMiniAdjustmentsVertical />;
 	else
 	if(object.hasComponent('Stamper'))
 		return <LuStamp />;

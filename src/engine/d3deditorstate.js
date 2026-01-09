@@ -948,9 +948,9 @@ export default class D3DEditorState {
 		}
 	}
 	pasteSpecial(type) {
-		const d3dobj = this.selectedObjects[0];
+		const targets = this.selectedObjects;
 		
-		if(!d3dobj) {
+		if(!targets || targets.length < 1) {
 			this.showError({
 				title: 'Paste Special',
 				message: 'Please select an object first'
@@ -965,46 +965,56 @@ export default class D3DEditorState {
 			return;
 		}
 		
-		const originTransform = {
-			position: d3dobj.position.clone(),
-			rotation: d3dobj.rotation.clone(),
-			scale: d3dobj.scale.clone()
-		}
 		const clip = {...this.clipboardSpecial};
+		const originByObj = new Map();
+		
+		for(const d3dobj of targets) {
+			originByObj.set(d3dobj, {
+				position: d3dobj.position.clone(),
+				rotation: d3dobj.rotation.clone(),
+				scale: d3dobj.scale.clone()
+			});
+		}
+		
 		const revPaste = () => {
-			switch(type) {
-				case 'all': 
-					d3dobj.position = originTransform.position;
-					d3dobj.rotation = originTransform.rotation;
-					d3dobj.scale = originTransform.scale;
-				break;
-				case 'position': 
-					d3dobj.position = originTransform.position;
-				break;
-				case 'rotation': 
-					d3dobj.rotation = originTransform.rotation;
-				break;
-				case 'scale': 
-					d3dobj.scale = originTransform.scale;
-				break;
+			for(const d3dobj of targets) {
+				const o = originByObj.get(d3dobj);
+				switch(type) {
+					case 'all':
+						d3dobj.position = o.position;
+						d3dobj.rotation = o.rotation;
+						d3dobj.scale = o.scale;
+					break;
+					case 'position':
+						d3dobj.position = o.position;
+					break;
+					case 'rotation':
+						d3dobj.rotation = o.rotation;
+					break;
+					case 'scale':
+						d3dobj.scale = o.scale;
+					break;
+				}
 			}
 		}
 		const doPaste = () => {
-			switch(type) {
-				case 'all': 
-					d3dobj.position = clip.position;
-					d3dobj.rotation = clip.rotation;
-					d3dobj.scale = clip.scale;
-				break;
-				case 'position': 
-					d3dobj.position = clip.position;
-				break;
-				case 'rotation': 
-					d3dobj.rotation = clip.rotation;
-				break;
-				case 'scale': 
-					d3dobj.scale = clip.scale;
-				break;
+			for(const d3dobj of targets) {
+				switch(type) {
+					case 'all':
+						d3dobj.position = clip.position;
+						d3dobj.rotation = clip.rotation;
+						d3dobj.scale = clip.scale;
+					break;
+					case 'position':
+						d3dobj.position = clip.position;
+					break;
+					case 'rotation':
+						d3dobj.rotation = clip.rotation;
+					break;
+					case 'scale':
+						d3dobj.scale = clip.scale;
+					break;
+				}
 			}
 		}
 		

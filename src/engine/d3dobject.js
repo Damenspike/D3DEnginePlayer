@@ -948,6 +948,8 @@ export default class D3DObject {
 			this.lastMatrixLocal ??= new THREE.Matrix4();
 		
 			this.__onEditorEnterFrame = () => {
+				this.__onEditorEnterFrameComponents?.();
+				
 				if(!this.object3d)
 					return;
 		
@@ -1094,6 +1096,20 @@ export default class D3DObject {
 						
 						if(mgr?.component?.enabled)
 							mgr?.__onInternalPhysicsUpdate?.();
+					}
+				}
+			}
+			
+			if(managers.find(mgr => !!mgr.__onEditorEnterFrame)) {
+				this.__onEditorEnterFrameComponents = () => {
+					//////////////////////////////////////////////
+					//// ENGINE LOOP USED FOR INTERNALS
+					//////////////////////////////////////////////
+					for(let i in this.__componentInstances) {
+						const mgr = this.__componentInstances[i];
+						
+						if(mgr?.component?.enabled)
+							mgr?.__onEditorEnterFrame?.();
 					}
 				}
 			}
@@ -1996,7 +2012,7 @@ export default class D3DObject {
 			this.__lastAssetIndex = structuredClone(this.assetIndex);
 	}
 	markAssetDirty(rel) {
-		if(!this.dirtyAssets.includes(rel))
+		if(this.dirtyAssets && !this.dirtyAssets.includes(rel))
 			this.dirtyAssets.push(rel);
 	}
 	async updateSymbolStore() {
@@ -2407,6 +2423,9 @@ export default class D3DObject {
 	}
 	updateDependencies() {
 		const oldAssetIndex = this.__lastAssetIndex;
+		
+		if(!this.dirtyAssets)
+			return;
 		
 		if(!oldAssetIndex) {
 			console.warn('No old asset index for dependency update')

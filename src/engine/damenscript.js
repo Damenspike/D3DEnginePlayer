@@ -78,7 +78,8 @@ function createCore(DSyntax, DRuntime) {
   const KEYWORDS = new Set([
 	'let','const','var','if','else','while','for','true','false','null',
 	'function','return','undefined','NaN','Infinity','in','of','async','await',
-	'try','catch','finally','throw','delete'
+	'try','catch','finally','throw','delete',
+	'break','continue'
   ]);
   const PUNCT = new Set(['(',')','{','}','[',']',';',',','.',':','?']);
   const TWO_CHAR_OPS = new Set([
@@ -457,6 +458,16 @@ function createCore(DSyntax, DRuntime) {
 		  const argument = hasExpr ? Expression() : null;
 		  match('punc',';');
 		  return { type:'ReturnStatement', argument };
+		}
+		if (t.type === 'kw' && t.value === 'break') {
+		  next();
+		  match('punc',';');
+		  return { type:'BreakStatement' };
+		}
+		if (t.type === 'kw' && t.value === 'continue') {
+		  next();
+		  match('punc',';');
+		  return { type:'ContinueStatement' };
 		}
 		if (t.type === 'punc' && t.value === '{') return Block();
 		const expr = Expression();
@@ -1483,7 +1494,9 @@ function createCore(DSyntax, DRuntime) {
   function _buildEvaluator(top, budget, mode, helpers) {
 	const { getProp, setProp, deleteProp } = helpers;
 
-	const RETURN = Symbol('return');
+	const RETURN   = Symbol('return');
+	const BREAK    = Symbol('break');
+	const CONTINUE = Symbol('continue');
 
 	// async-mode only: promise boxing to prevent implicit await
 	const DS_PROMISE_BOX = Symbol('ds.promiseBox');
@@ -1956,6 +1969,11 @@ function createCore(DSyntax, DRuntime) {
 			const val = node.argument ? evalNode(node.argument, scope) : undefined;
 			throw { __kind: RETURN, value: val };
 		  }
+		  case 'BreakStatement':
+			throw { __kind: BREAK };
+		  
+		  case 'ContinueStatement':
+			throw { __kind: CONTINUE };
 
 		  case 'FunctionDeclaration': {
 			const fn = createCallable(node.params, node.body, scope, !!node.async);
@@ -2005,7 +2023,13 @@ function createCore(DSyntax, DRuntime) {
 			let r;
 			while (truthy(evalNode(node.test, scope))) {
 			  budget.bump();
-			  r = evalNode(node.body, scope);
+			  try {
+				r = evalNode(node.body, scope);
+			  } catch (e) {
+				if (e && e.__kind === CONTINUE) continue;
+				if (e && e.__kind === BREAK) break;
+				throw e;
+			  }
 			}
 			return r;
 		  }
@@ -2013,10 +2037,22 @@ function createCore(DSyntax, DRuntime) {
 		  case 'ForStatement': {
 			const inner = new Scope(scope);
 			if (node.init) evalNode(node.init, inner);
+		  
 			let r;
 			while (node.test ? truthy(evalNode(node.test, inner)) : true) {
 			  budget.bump();
-			  r = evalNode(node.body, inner);
+		  
+			  try {
+				r = evalNode(node.body, inner);
+			  } catch (e) {
+				if (e && e.__kind === CONTINUE) {
+				  if (node.update) evalNode(node.update, inner);
+				  continue;
+				}
+				if (e && e.__kind === BREAK) break;
+				throw e;
+			  }
+		  
 			  if (node.update) evalNode(node.update, inner);
 			}
 			return r;
@@ -2279,7 +2315,13 @@ function createCore(DSyntax, DRuntime) {
 					  catch { loopScope.declare('let', declName, k); }
 				  }
 		  
-				  evalNode(node.body, iterScope);
+				  try {
+					evalNode(node.body, iterScope);
+				  } catch (e) {
+					if (e && e.__kind === CONTINUE) continue;
+					if (e && e.__kind === BREAK) break;
+					throw e;
+				  }
 			  }
 			  return undefined;
 		  }
@@ -2310,7 +2352,13 @@ function createCore(DSyntax, DRuntime) {
 					  catch { loopScope.declare('let', declName, v); }
 				  }
 		  
-				  evalNode(node.body, iterScope);
+				  try {
+					evalNode(node.body, iterScope);
+				  } catch (e) {
+					if (e && e.__kind === CONTINUE) continue;
+					if (e && e.__kind === BREAK) break;
+					throw e;
+				  }
 			  }
 			  return undefined;
 		  }
@@ -2328,7 +2376,7 @@ function createCore(DSyntax, DRuntime) {
 			  try {
 				result = evalNode(node.block, scope);
 			  } catch (e) {
-				if (e && e.__kind === RETURN) {
+				if (e && (e.__kind === RETURN || e.__kind === BREAK || e.__kind === CONTINUE)) {
 				  pending = e;
 				} else if (node.handler) {
 				  const catchScope = new Scope(scope);
@@ -2381,6 +2429,12 @@ function createCore(DSyntax, DRuntime) {
 		  const val = node.argument ? evalNode(node.argument, scope) : undefined;
 		  return toPromise(val).then(v => { throw { __kind: RETURN, value: v }; });
 		}
+		
+		case 'BreakStatement':
+		  throw { __kind: BREAK };
+		
+		case 'ContinueStatement':
+		  throw { __kind: CONTINUE };
 
 		case 'FunctionDeclaration': {
 		  const fn = createCallable(node.params, node.body, scope, !!node.async);
@@ -2469,25 +2523,48 @@ function createCore(DSyntax, DRuntime) {
 		  const loop = () => toPromise(evalNode(node.test, scope)).then(t => {
 			if (!truthy(t)) return undefined;
 			budget.bump();
-			return toPromise(evalNode(node.body, scope)).then(loop);
+		
+			return toPromise(evalNode(node.body, scope))
+			  .catch(e => {
+				if (e && e.__kind === CONTINUE) return undefined;
+				if (e && e.__kind === BREAK) return { __ds_break: true };
+				throw e;
+			  })
+			  .then(res => {
+				if (res && res.__ds_break) return undefined;
+				return loop();
+			  });
 		  });
+		
 		  return loop();
 		}
 
 		case 'ForStatement': {
 		  const inner = new Scope(scope);
-
+		
 		  const doInit = node.init ? toPromise(evalNode(node.init, inner)) : Promise.resolve();
+		
 		  const loop = () => {
 			const testP = node.test ? toPromise(evalNode(node.test, inner)) : Promise.resolve(true);
+		
 			return testP.then(t => {
 			  if (!truthy(t)) return undefined;
 			  budget.bump();
-			  const bodyP = toPromise(evalNode(node.body, inner));
-			  return bodyP.then(() => node.update ? toPromise(evalNode(node.update, inner)) : undefined).then(loop);
+		
+			  const runUpdate = () => node.update ? toPromise(evalNode(node.update, inner)) : Promise.resolve();
+		
+			  return toPromise(evalNode(node.body, inner))
+				.then(
+				  () => runUpdate().then(loop),
+				  (e) => {
+					if (e && e.__kind === CONTINUE) return runUpdate().then(loop);
+					if (e && e.__kind === BREAK) return undefined;
+					throw e;
+				  }
+				);
 			});
 		  };
-
+		
 		  return doInit.then(loop);
 		}
 
@@ -2781,7 +2858,9 @@ function createCore(DSyntax, DRuntime) {
 		}
 
 		case 'ForInStatement': {
-			const obj = evalNode(node.right, scope);
+		  const rightP = toPromise(evalNode(node.right, scope));
+		
+		  return rightP.then(obj => {
 			if (obj == null || typeof obj !== 'object') return undefined;
 		
 			const loopScope = new Scope(scope);
@@ -2789,57 +2868,103 @@ function createCore(DSyntax, DRuntime) {
 			const declKind = node.left?.kind || null;
 			const declName = declKind ? node.left.id.name : node.left.name;
 		
-			for (const k in obj) {
-				if (!Object.prototype.hasOwnProperty.call(obj, k)) continue;
-		
-				const iterScope = new Scope(loopScope);
-		
-				if (declKind) {
-					if (declKind === 'var') {
-						try { loopScope.set(declName, k); }
-						catch { loopScope.declare('var', declName, k); }
-					} else {
-						iterScope.declare(declKind, declName, k);
-					}
-				} else {
-					try { loopScope.set(declName, k); }
-					catch { loopScope.declare('let', declName, k); }
-				}
-		
-				evalNode(node.body, iterScope);
+			if (declKind === 'var') {
+			  try { loopScope.declare('var', declName, undefined); } catch {}
 			}
-			return undefined;
+		
+			const keys = Object.keys(obj);
+			let i = 0;
+		
+			const step = () => {
+			  if (i >= keys.length) return undefined;
+		
+			  const k = keys[i++];
+			  const iterScope = new Scope(loopScope);
+		
+			  if (declKind) {
+				if (declKind === 'var') {
+				  loopScope.set(declName, k);
+				} else {
+				  iterScope.declare(declKind, declName, k);
+				}
+			  } else {
+				try { loopScope.set(declName, k); }
+				catch { loopScope.declare('let', declName, k); }
+			  }
+		
+			  return toPromise(evalNode(node.body, iterScope))
+				.then(
+				  () => step(),
+				  (e) => {
+					if (e && e.__kind === CONTINUE) return step();
+					if (e && e.__kind === BREAK) return undefined;
+					throw e;
+				  }
+				);
+			};
+		
+			return step();
+		  });
 		}
 		
 		case 'ForOfStatement': {
-			const iterable = evalNode(node.right, scope);
+		  const rightP = toPromise(evalNode(node.right, scope));
+		
+		  return rightP.then(iterable => {
 			if (iterable == null) return undefined;
-			if (typeof iterable[Symbol.iterator] !== 'function')
-				throw DRuntime('Right-hand side of for-of is not iterable', node.line, node.col);
+		
+			const itFn = iterable[Symbol.iterator];
+			if (typeof itFn !== 'function')
+			  throw DRuntime('Right-hand side of for-of is not iterable', node.line, node.col);
+		
+			const iterator = itFn.call(iterable);
 		
 			const loopScope = new Scope(scope);
 		
 			const declKind = node.left?.kind || null;
 			const declName = declKind ? node.left.id.name : node.left.name;
 		
-			for (const v of iterable) {
-				const iterScope = new Scope(loopScope);
-		
-				if (declKind) {
-					if (declKind === 'var') {
-						try { loopScope.set(declName, v); }
-						catch { loopScope.declare('var', declName, v); }
-					} else {
-						iterScope.declare(declKind, declName, v);
-					}
-				} else {
-					try { loopScope.set(declName, v); }
-					catch { loopScope.declare('let', declName, v); }
-				}
-		
-				evalNode(node.body, iterScope);
+			if (declKind === 'var') {
+			  try { loopScope.declare('var', declName, undefined); } catch {}
 			}
-			return undefined;
+		
+			const step = () => {
+			  let n;
+			  try {
+				n = iterator.next();
+			  } catch (e) {
+				throw e;
+			  }
+		
+			  if (!n || n.done) return undefined;
+		
+			  const v = n.value;
+			  const iterScope = new Scope(loopScope);
+		
+			  if (declKind) {
+				if (declKind === 'var') {
+				  loopScope.set(declName, v);
+				} else {
+				  iterScope.declare(declKind, declName, v);
+				}
+			  } else {
+				try { loopScope.set(declName, v); }
+				catch { loopScope.declare('let', declName, v); }
+			  }
+		
+			  return toPromise(evalNode(node.body, iterScope))
+				.then(
+				  () => step(),
+				  (e) => {
+					if (e && e.__kind === CONTINUE) return step();
+					if (e && e.__kind === BREAK) return undefined;
+					throw e;
+				  }
+				);
+			};
+		
+			return step();
+		  });
 		}
 
 		case 'ThrowStatement': {
@@ -2864,7 +2989,7 @@ function createCore(DSyntax, DRuntime) {
 
 		  return runBlock()
 			.catch(e => {
-			  if (e && e.__kind === RETURN) throw e;
+			  if (e && (e.__kind === RETURN || e.__kind === BREAK || e.__kind === CONTINUE)) throw e;
 
 			  if (node.handler) {
 				const catchScope = new Scope(scope);
