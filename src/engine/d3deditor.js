@@ -95,25 +95,45 @@ THREE.Vector3.forward = new THREE.Vector3(0, 0, 1);
 ////////////////////
 window.addEventListener('error', (event) => {
 	try {
+		const err = event.error;
+
+		const stack =
+			(err && typeof err.stack === 'string' && err.stack) ||
+			(event && typeof event.stack === 'string' && event.stack) ||
+			(event && typeof event.message === 'string'
+				? `${event.message}\n    at ${event.filename || '<unknown>'}:${event.lineno || 0}:${event.colno || 0}`
+				: '');
+
 		D3DConsole.error(
 			'[Uncaught Error]',
-			event.message,
-			event.error || null
+			event.message || (err ? err.message : 'Unknown error'),
+			err || null,
+			stack || null
 		);
+
+		// If you want a dedicated stack line:
+		if (stack) D3DConsole.error('[Stack]', stack);
 	} catch (_) {}
 });
+
 // Unhandled promise rejections (async/await, .then chains, etc.)
 window.addEventListener('unhandledrejection', (event) => {
 	try {
 		const r = event.reason;
 
+		const stack =
+			(r && typeof r.stack === 'string' && r.stack) ||
+			(r && r.error && typeof r.error.stack === 'string' && r.error.stack) ||
+			(event && typeof event.stack === 'string' && event.stack) ||
+			'';
+
 		if (r instanceof Error) {
-			D3DConsole.error(r);
-			if (r.cause) D3DConsole.error('[Cause]', r.cause);
+			D3DConsole.error('[Unhandled Promise Rejection]', r.message, r, stack || null);
+			if (stack) D3DConsole.error('[Stack]', stack);
+			if (r.cause) D3DConsole.error('[Cause]', r.cause, (r.cause && r.cause.stack) ? r.cause.stack : null);
 			return;
 		}
 
-		// Non-Error rejection: show a short message + attach the object
 		let msg = 'Unhandled promise rejection';
 		if (typeof r === 'string') msg += `: ${r}`;
 		else if (r && typeof r === 'object') {
@@ -121,7 +141,8 @@ window.addEventListener('unhandledrejection', (event) => {
 			else msg += `: [object ${r.constructor?.name || 'Object'}]`;
 		}
 
-		D3DConsole.error('[Unhandled Promise Rejection]', msg, r || null);
+		D3DConsole.error('[Unhandled Promise Rejection]', msg, r || null, stack || null);
+		if (stack) D3DConsole.error('[Stack]', stack);
 	} catch (_) {}
 });
 

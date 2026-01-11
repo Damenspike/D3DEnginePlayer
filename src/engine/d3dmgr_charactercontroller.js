@@ -37,6 +37,11 @@ export default class CharacterControllerManager {
 
 	get positionOnly() { return !!this.component.properties.positionOnly; }
 	set positionOnly(v) { this.component.properties.positionOnly = !!v; }
+	
+	get isMoving() {
+		const input = _input.getControllerAxis();
+		return Math.hypot(input.x, input.y) > 1e-6;
+	}
 
 	updateComponent() {
 		if(!_physics?.ready)

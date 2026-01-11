@@ -22,7 +22,7 @@ export const TYPE_KEYWORDS = [
 	'destroy', 'destroyChildren',
 	'addComponent', 'removeComponent', 'getComponent', 'hasComponent',
 	'findComponent', 'findAllComponents',
-	'worldToScreen', 'RegEx'
+	'worldToScreen', 'RegEx', 'isNaN', 'NaN'
 ]
 export const FORBIDDEN_KEYWORDS = [
 	'window','document','globalThis',
@@ -109,7 +109,9 @@ export const NO_OBFUSCATE = [
 	"_rootParent",
 	"RegEx",
 	"findComponent",
-	"findAllComponents"
+	"findAllComponents",
+	"isNaN",
+	"NaN"
 ]
 export const D3D_OBJECT_SCHEMA = {
 	// ---------- identity & basic state ----------

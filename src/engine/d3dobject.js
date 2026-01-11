@@ -69,6 +69,10 @@ export default class D3DObject {
 		this.setupDefaultMethods();
 	}
 	
+	get isLoaded() {
+		return !!this.__loaded;
+	}
+	
 	/* 
 	 * =========================
 	 * LOOPS
@@ -1641,6 +1645,8 @@ export default class D3DObject {
 			Float32Array: Object.freeze(Float32Array),
 			Float64Array: Object.freeze(Float64Array),
 			Infinity,
+			NaN,
+			isNaN,
 			
 			// JS Adaptors
 			Promise: Object.freeze(D3DPromise),

@@ -134,14 +134,9 @@ export default class AudioSourceManager {
 			return;
 
 		const listener = _host.audioListener;
-		if(!listener) {
-			if(!this._audioListenerWarned) {
-				console.warn('AudioSourceManager: no _host.audioListener yet; will retry.');
-				this._audioListenerWarned = true;
-			}
+		if(!listener) 
 			return;
-		}
-
+		
 		this._rebuildThreeAudio();
 		this.__setup = true;
 
@@ -181,6 +176,8 @@ export default class AudioSourceManager {
 	}
 
 	dispose() {
+		this._disposeEditorGizmo();
+		
 		if(!this.__setup)
 			return;
 
@@ -196,19 +193,19 @@ export default class AudioSourceManager {
 		this.__threeAudio = null;
 		this.__buffer = null;
 		this.__setup = false;
-
-		this._disposeEditorGizmo();
 	}
 
-	play() {
+	play(restart = false) {
 		if(!this.__threeAudio || !this.__buffer)
 			return;
-
-		if(this.__threeAudio.isPlaying)
-			return;
-
+	
+		if(this.__threeAudio.isPlaying) {
+			if(!restart)
+				return;
+			this.__threeAudio.stop();
+		}
+		
 		this._applyRandomOffsetForNextPlay();
-
 		this.__threeAudio.play();
 	}
 
@@ -231,6 +228,9 @@ export default class AudioSourceManager {
 	}
 
 	async setAudio(path) {
+		if(!path.startsWith('assets/'))
+			path = `assets/${path}`;
+		
 		const uuid = this.d3dobject.root.resolveAssetId(path);
 
 		if(!uuid) {
@@ -242,9 +242,13 @@ export default class AudioSourceManager {
 		await this._reloadBuffer();
 	}
 
-	async playAudio(path) {
+	async playAudio(path, volume) {
 		await this.setAudio(path);
-		this.play();
+		
+		if(volume !== undefined)
+			this.volume = Number(volume) ?? 0;
+		
+		this.play(true);
 	}
 
 	_rebuildThreeAudio() {
@@ -308,6 +312,14 @@ export default class AudioSourceManager {
 	async _reloadBuffer() {
 		if(!window._player)
 			return;
+			
+		if(!_host.audioListener) {
+			if(!this._audioListenerWarned) {
+				D3DConsole.warn('AudioSourceManager: No audio listener found');
+				this._audioListenerWarned = true;
+			}
+			return;
+		}
 
 		const token = ++this.__loadToken;
 

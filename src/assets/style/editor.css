@@ -16,16 +16,28 @@ html, body {
 }
 body.light {
 	#insp-cell-assets {
-		background: rgba(162, 209, 222, 0.6);
+		//background: rgba(162, 209, 222, 0.6);
+		.insp-title {
+			color: rgba(0, 79, 101, 1);
+		}
 	}
 	#insp-cell-scene {
-		background: rgba(155, 211, 165, 0.6);
+		//background: rgba(155, 211, 165, 0.6);
+		.insp-title {
+			color: rgba(0, 111, 20, 1);
+		}
 	}
 	#insp-cell-object {
-		background: rgba(218, 212, 157, 0.6);
+		//background: rgba(218, 212, 157, 0.6);
+		.insp-title {
+			color: rgba(127, 115, 0, 1);
+		}
 	}
 	#insp-cell-project {
-		background: rgba(214, 158, 158, 0.6);
+		//background: rgba(214, 158, 158, 0.6);
+		.insp-title {
+			color: rgba(82, 23, 152, 0.969);
+		}
 	}
 	
 	.inspector, .console, .topbar {
@@ -34,16 +46,28 @@ body.light {
 }
 body.dark {
 	#insp-cell-assets {
-		background: rgba(0, 86, 128, 0.85);
+		//background: rgba(0, 86, 128, 0.85);
+		.insp-title {
+			color: rgba(0, 157, 255, 1);
+		}
 	}
 	#insp-cell-scene {
-		background: rgba(0, 128, 42, 0.85);
+		//background: rgba(0, 128, 42, 0.85);
+		.insp-title {
+			color: rgba(0, 255, 84, 0.85);
+		}
 	}
 	#insp-cell-object {
-		background: rgba(91, 81, 0, 0.85);
+		//background: rgba(91, 81, 0, 0.85);
+		.insp-title {
+			color: rgba(255, 227, 0, 0.85);
+		}
 	}
 	#insp-cell-project {
-		background: rgba(139, 40, 40, 0.85);
+		//background: rgba(139, 40, 40, 0.85);
+		.insp-title {
+			color: rgba(173, 104, 255, 0.969);
+		}
 	}
 	
 	.inspector, .console, .topbar {

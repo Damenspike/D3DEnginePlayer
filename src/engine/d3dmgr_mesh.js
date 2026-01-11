@@ -17,6 +17,9 @@ export default class MeshManager {
 		
 		if(!_root.__texShared)
 			_root.__texShared = new Map();
+		
+		if(!_root.__meshStore)
+			_root.__meshStore = new Set();
 	}
 
 	// =====================================================
@@ -885,18 +888,22 @@ export default class MeshManager {
 		this._applyAmbientOcclusion();
 		this._applyMorphTargets();
 		
-		this.d3dobject.onMeshReady?.();
-		this.d3dobject.root.onChildMeshReady?.(this.d3dobject);
-		
-		this.d3dobject.invokeEvent('meshReady');
-		
-		let p = this.d3dobject;
-		while(p) {
-			p.invokeEvent('onChildMeshReady', this.d3dobject);
-			p = p.parent;
+		if(!this.__setup) {
+			this.__setup = true;
+			this.d3dobject.onMeshReady?.();
+			this.d3dobject.root.onChildMeshReady?.(this.d3dobject);
+			
+			this.d3dobject.invokeEvent('meshReady');
+			
+			let p = this.d3dobject;
+			while(p) {
+				p.invokeEvent('onChildMeshReady', this.d3dobject);
+				p = p.parent;
+			}
+			
+			_root.__meshStore.add(this.d3dobject);
+			this.d3dobject.updateVisibility(true);
 		}
-		
-		this.d3dobject.updateVisibility(true);
 	}
 	
 	setMaterial(index, params) {
@@ -909,7 +916,7 @@ export default class MeshManager {
 		mats[index] = params;
 		props.materials = mats;
 		
-		this.d3dobject.updateComponents();
+		this.updateComponent();
 	}
 	
 	setMorph(name, value) {
@@ -1141,6 +1148,8 @@ export default class MeshManager {
 		
 		if(this.instancing && this.instancingId)
 			_instancing.removeFromInstance(this.instancingId, this);
+		
+		_root.__meshStore.delete(this.d3dobject);
 	}
 	
 	onEnabled() {

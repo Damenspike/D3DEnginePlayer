@@ -326,7 +326,7 @@ export default class D3DPhysics {
 		const maxDist   = Number(opts.maxDistance) || Infinity;
 		const recursive = opts.recursive !== false;
 		
-		let objects = opts.objects || _root.children;
+		let objects = opts.objects || _root.__meshStore || [];
 		
 		if(filter && typeof filter !== 'function')
 			throw new Error('Invalid filter value. Filter must be a Function<boolean>');

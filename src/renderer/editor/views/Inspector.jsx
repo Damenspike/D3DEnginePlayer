@@ -274,6 +274,7 @@ export default function Inspector() {
 					id: 'delete',
 					label: 'Delete'
 				},
+				{type: 'separator'},
 				{
 					id: 'replace',
 					label: 'Replace...',
@@ -283,14 +284,14 @@ export default function Inspector() {
 					id: 'export',
 					label: 'Export...'
 				},
+				{
+					id: 'import',
+					label: 'Import...'
+				},
 				{type: 'separator'},
 				{
 					id: 'newfolder',
 					label: 'New Folder'
-				},
-				{
-					id: 'import',
-					label: 'Import Asset...'
 				}
 			];
 			const x = e.clientX + 2;
